@@ -1,0 +1,3 @@
+“Read PRODUCT_VISION.md, DOMAIN_GLOSSARY.md, AUTHORIZATION_MODEL.md, DOMAIN_EVENTS.md.
+Create a NestJS Project module with Prisma schema, REST APIs, RBAC checks, domain events, and tests.
+Follow repo structure strictly.”

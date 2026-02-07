@@ -1,0 +1,45 @@
+services:
+  # BACKEND SERVICE (Split from 'app')
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+    container_name: setu_backend_dev
+    command: npm run start:dev
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USER: admin
+      DATABASE_PASSWORD: password
+      DATABASE_NAME: setu_db
+      JWT_SECRET: supersecretkey
+    volumes:
+      - ./backend:/app/backend
+      - /app/backend/node_modules
+    depends_on:
+      - db
+
+  # FRONTEND SERVICE (Split from 'app')
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-builder
+    container_name: setu_frontend_dev
+    command: npm run dev -- --host
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    environment:
+      - VITE_API_URL=http://backend:3000
+    depends_on:
+      - backend
+
+  # DISABLE ORIGINAL 'APP' SERVICE IN DEV MODE
+  app:
+    profiles: [ "donotstart" ]

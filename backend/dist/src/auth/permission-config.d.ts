@@ -1,0 +1,26 @@
+export declare const PermissionCode: {
+    readonly VIEW_DASHBOARD: "VIEW_DASHBOARD";
+    readonly VIEW_PROJECTS: "VIEW_PROJECTS";
+    readonly MANAGE_USERS: "MANAGE_USERS";
+    readonly MANAGE_ROLES: "MANAGE_ROLES";
+    readonly MANAGE_EPS: "MANAGE_EPS";
+    readonly DESIGN_READ: "DESIGN.READ";
+    readonly DESIGN_UPLOAD: "DESIGN.UPLOAD";
+    readonly DESIGN_APPROVE: "DESIGN.APPROVE";
+    readonly PLANNING_READ: "PLANNING.READ";
+    readonly PLANNING_EDIT: "PLANNING.EDIT";
+    readonly PLANNING_BASELINE: "PLANNING.BASELINE";
+    readonly BOQ_READ: "BOQ.READ";
+    readonly BOQ_MANAGE: "BOQ.MANAGE";
+    readonly EXECUTION_READ: "EXECUTION.READ";
+    readonly EXECUTION_UPDATE: "EXECUTION.UPDATE";
+    readonly QUALITY_READ: "QUALITY.READ";
+    readonly QUALITY_MANAGE: "QUALITY.MANAGE";
+    readonly EHS_READ: "EHS.READ";
+    readonly EHS_MANAGE: "EHS.MANAGE";
+    readonly LABOR_READ: "LABOR.READ";
+    readonly LABOR_MANAGE: "LABOR.MANAGE";
+};
+export type Permission = typeof PermissionCode[keyof typeof PermissionCode];
+export declare const PERMISSION_DEPENDENCIES: Record<string, string[]>;
+export declare function expandPermissions(directPermissions: string[]): string[];
