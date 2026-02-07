@@ -44,9 +44,9 @@ export const MENU_CONFIG: MenuItem[] = [
                 permission: PermissionCode.MANAGE_ROLES
             },
             {
-                label: 'Calendars',
-                path: '/dashboard/calendars',
-                permission: PermissionCode.MANAGE_ROLES // Or strict admin? Existing uses MANAGE_ROLES for now.
+                label: 'System Settings',
+                path: '/dashboard/admin/settings',
+                permission: PermissionCode.MANAGE_USERS
             }
         ]
     },

@@ -1,13 +1,20 @@
 
 import { useState, useEffect } from 'react';
-import { X, Save, AlertCircle } from 'lucide-react';
+import { X, Save, AlertCircle, Upload, Settings } from 'lucide-react';
 import api from '../../../api/axios';
+import CategoryManagerModal from './CategoryManagerModal';
 
 interface CreateDrawingModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
     projectId: string;
+    initialData?: {
+        id: number;
+        drawingNumber: string;
+        title: string;
+        category: { id: number };
+    } | null;
 }
 
 interface Category {
@@ -17,24 +24,35 @@ interface Category {
     children?: Category[];
 }
 
-const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDrawingModalProps) => {
+const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId, initialData }: CreateDrawingModalProps) => {
+    const isEditMode = !!initialData;
     const [drawingNumber, setDrawingNumber] = useState('');
     const [title, setTitle] = useState('');
     const [categoryId, setCategoryId] = useState<number | ''>('');
     const [categories, setCategories] = useState<Category[]>([]);
+    const [file, setFile] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [isCatManagerOpen, setIsCatManagerOpen] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             fetchCategories();
-            // Reset form
-            setDrawingNumber('');
-            setTitle('');
-            setCategoryId('');
+            if (initialData) {
+                setDrawingNumber(initialData.drawingNumber);
+                setTitle(initialData.title);
+                setCategoryId(initialData.category.id);
+                setFile(null); // Files handled separately for edit
+            } else {
+                // Reset form
+                setDrawingNumber('');
+                setTitle('');
+                setCategoryId('');
+                setFile(null);
+            }
             setError('');
         }
-    }, [isOpen]);
+    }, [isOpen, initialData]);
 
     const fetchCategories = async () => {
         try {
@@ -56,28 +74,66 @@ const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDra
         setError('');
 
         try {
-            await api.post(`/design/${projectId}/register`, {
-                categoryId: Number(categoryId),
-                drawingNumber,
-                title
-            });
+            if (isEditMode && initialData) {
+                // Edit Logic
+                await api.patch(`/design/${projectId}/register/${initialData.id}`, {
+                    categoryId: Number(categoryId),
+                    drawingNumber,
+                    title
+                });
+
+                // If file is selected in edit mode, it's a new revision (upload separate handled?)
+                // For simplicity, we only edit metadata here. File uploads should be done via the specific 'Upload Revision' button in the main grid.
+                if (file) {
+                    // Optional: Auto-trigger upload if user selected a file, but strictly speaking "Edit" usually means metadata
+                    // Let's inform user or handle it. For now, let's keep it metadata only for Edit to avoid confusion with Revisioning.
+                    // Or we can treat it as "Update Metadata" and "Upload New Revision" in one go?
+                    // The prompt asked for "edit and delete", implied metadata edit.
+                    // Let's stick to metadata update.
+                }
+
+            } else {
+                // Create Logic
+                const res = await api.post(`/design/${projectId}/register`, {
+                    categoryId: Number(categoryId),
+                    drawingNumber,
+                    title
+                });
+
+                const newRegisterId = res.data.id;
+
+                // If file selected, Upload it immediately as Rev 0
+                if (file) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('registerId', String(newRegisterId));
+                    formData.append('revisionNumber', '0'); // Default to 0
+
+                    await api.post(`/design/${projectId}/upload`, formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                }
+            }
+
             onSuccess();
             onClose();
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Failed to create drawing');
+            setError(err.response?.data?.message || 'Failed to save drawing');
         } finally {
             setLoading(false);
         }
     };
 
-    // Flatten categories for select (or use grouped select)
-    const renderCategoryOptions = (cats: Category[], prefix = ''): React.ReactNode[] => {
-        return cats.map(cat => (
-            <>
-                <option key={cat.id} value={cat.id}>{prefix}{cat.name}</option>
-                {cat.children && renderCategoryOptions(cat.children, prefix + '-- ')}
-            </>
-        ));
+    // Flatten categories for select
+    const flattenCategories = (cats: Category[], prefix = ''): { id: number, name: string }[] => {
+        let result: { id: number, name: string }[] = [];
+        for (const cat of cats) {
+            result.push({ id: cat.id, name: prefix + cat.name });
+            if (cat.children) {
+                result = [...result, ...flattenCategories(cat.children, prefix + '-- ')];
+            }
+        }
+        return result;
     };
 
     if (!isOpen) return null;
@@ -86,7 +142,9 @@ const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDra
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 animate-in fade-in zoom-in duration-200">
                 <div className="flex justify-between items-center p-4 border-b border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-800">New Drawing Register</h3>
+                    <h3 className="text-lg font-semibold text-gray-800">
+                        {isEditMode ? 'Edit Drawing Details' : 'New Drawing Register'}
+                    </h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
                         <X size={20} />
                     </button>
@@ -102,7 +160,12 @@ const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDra
 
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-medium text-gray-700">Category</label>
+                                <button type="button" onClick={() => setIsCatManagerOpen(true)} className="text-xs text-blue-600 hover:align-text-top flex items-center">
+                                    <Settings size={12} className="mr-1" /> Manage
+                                </button>
+                            </div>
                             <select
                                 value={categoryId}
                                 onChange={(e) => setCategoryId(Number(e.target.value))}
@@ -110,7 +173,9 @@ const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDra
                                 required
                             >
                                 <option value="">Select Category</option>
-                                {renderCategoryOptions(categories)}
+                                {flattenCategories(categories).map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                ))}
                             </select>
                         </div>
 
@@ -137,6 +202,28 @@ const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDra
                                 required
                             />
                         </div>
+
+                        {!isEditMode && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Initial File (Optional)</label>
+                                <div className="flex items-center justify-center w-full">
+                                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                            <Upload className="w-8 h-8 mb-3 text-gray-400" />
+                                            <p className="text-sm text-gray-500">
+                                                {file ? file.name : <span className="font-semibold">Click to upload</span>}
+                                            </p>
+                                            <p className="text-xs text-gray-500">PDF, DWG, DXF, RVT, IFC, NWD</p>
+                                        </div>
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            onChange={(e) => e.target.files && setFile(e.target.files[0])}
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="mt-6 flex justify-end gap-3">
@@ -152,15 +239,21 @@ const CreateDrawingModal = ({ isOpen, onClose, onSuccess, projectId }: CreateDra
                             disabled={loading}
                             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
                         >
-                            {loading ? 'Creating...' : (
+                            {loading ? 'Saving...' : (
                                 <>
                                     <Save size={16} />
-                                    Create Register
+                                    {isEditMode ? 'Update Details' : (file ? 'Create & Upload' : 'Create Register')}
                                 </>
                             )}
                         </button>
                     </div>
                 </form>
+
+                <CategoryManagerModal
+                    isOpen={isCatManagerOpen}
+                    onClose={() => setIsCatManagerOpen(false)}
+                    onUpdate={fetchCategories}
+                />
             </div>
         </div>
     );

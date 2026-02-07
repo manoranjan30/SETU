@@ -1,3 +1,4 @@
+
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
@@ -42,6 +43,7 @@ import { MeasurementProgress } from './boq/entities/measurement-progress.entity'
 
 import { BoqSubItem } from './boq/entities/boq-sub-item.entity';
 import { TableViewConfig } from './common/entities/table-view-config.entity';
+import { SystemSetting } from './common/entities/system-setting.entity';
 import { PlanningModule } from './planning/planning.module';
 import { BoqActivityPlan } from './planning/entities/boq-activity-plan.entity';
 import { RecoveryPlan } from './planning/entities/recovery-plan.entity';
@@ -83,6 +85,14 @@ import { QualitySnagList } from './quality/entities/quality-snag-list.entity';
 import { QualityAudit } from './quality/entities/quality-audit.entity';
 import { QualityDocument } from './quality/entities/quality-document.entity';
 import { DesignModule } from './design/design.module';
+import { DrawingCategory } from './design/entities/drawing-category.entity';
+import { DrawingRegister } from './design/entities/drawing-register.entity';
+import { DrawingRevision } from './design/entities/drawing-revision.entity';
+import { WorkDocModule } from './workdoc/workdoc.module';
+import { Vendor } from './workdoc/entities/vendor.entity';
+import { WorkOrder } from './workdoc/entities/work-order.entity';
+import { WorkOrderItem } from './workdoc/entities/work-order-item.entity';
+import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
 
 @Module({
   imports: [
@@ -134,7 +144,6 @@ import { DesignModule } from './design/design.module';
         EhsIncident,
         EhsEnvironmental,
         EhsTraining,
-        EhsTraining,
         EhsProjectConfig,
         EhsPerformance,
         EhsManhours,
@@ -152,6 +161,16 @@ import { DesignModule } from './design/design.module';
         QualitySnagList,
         QualityAudit,
         QualityDocument,
+        // Design
+        DrawingCategory,
+        DrawingRegister,
+        DrawingRevision,
+        SystemSetting,
+        // WorkDoc
+        Vendor,
+        WorkOrder,
+        WorkOrderItem,
+        WorkOrderBoqMap,
       ],
       synchronize: true,
     }),
@@ -176,7 +195,13 @@ import { DesignModule } from './design/design.module';
     EhsModule,
     QualityModule,
     DesignModule,
-    TypeOrmModule.forFeature([Permission, Role, User]),
+    WorkDocModule,
+    TypeOrmModule.forFeature([
+      Permission,
+      Role,
+      User,
+      DrawingCategory
+    ]),
   ],
   controllers: [AppController],
   providers: [AppService, SeedService],

@@ -25,6 +25,9 @@ export class DrawingRevision {
     @Column()
     revisionNumber: string; // e.g., "0", "A", "B", "1"
 
+    @Column({ type: 'date', nullable: true })
+    revisionDate: Date;
+
     @Column()
     filePath: string; // Physical path on disk relative to upload root
 

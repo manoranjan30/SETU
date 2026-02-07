@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Permission } from '../permissions/permission.entity';
 import { Role } from '../roles/role.entity';
 import { User } from '../users/user.entity';
+import { DrawingCategory } from '../design/entities/drawing-category.entity';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -17,12 +18,15 @@ export class SeedService implements OnApplicationBootstrap {
     private roleRepo: Repository<Role>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    @InjectRepository(DrawingCategory)
+    private categoryRepo: Repository<DrawingCategory>,
   ) { }
 
   async onApplicationBootstrap() {
     await this.seedPermissions();
     await this.seedDefaultRoles();
     await this.seedDefaultUser();
+    await this.seedCategories();
   }
 
   private async seedPermissions() {
@@ -185,6 +189,27 @@ export class SeedService implements OnApplicationBootstrap {
         }),
       );
       this.logger.log('Seeded Default Standard User');
+    }
+  }
+
+  private async seedCategories() {
+    const CATEGORIES = [
+      { name: 'Architectural', code: 'ARCH' },
+      { name: 'Structural', code: 'STR' },
+      { name: 'Electrical', code: 'ELE' },
+      { name: 'Plumbing', code: 'PLU' },
+      { name: 'Fire Fighting', code: 'FIRE' },
+      { name: 'MEP (Combined)', code: 'MEP' },
+      { name: 'Interiors', code: 'INT' },
+      { name: 'Landscape', code: 'LAND' },
+    ];
+
+    for (const cat of CATEGORIES) {
+      const exists = await this.categoryRepo.findOne({ where: { code: cat.code } });
+      if (!exists) {
+        await this.categoryRepo.save(this.categoryRepo.create(cat));
+        this.logger.log(`Seeded Category: ${cat.name}`);
+      }
     }
   }
 }

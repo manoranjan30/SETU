@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Table, CheckSquare, Layers, Split } from 'lucide-react';
+import { Calendar, Table, CheckSquare, Layers, Split, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface PlanningDashboardProps {
@@ -24,6 +24,11 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ children, current
             key: 'mapper',
             icon: <Split size={18} />,
             label: 'Qty Mapper',
+        },
+        {
+            key: 'contracts',
+            icon: <FileText size={18} />,
+            label: 'Contracts (WO)',
         },
         {
             key: 'schedules', // New Item

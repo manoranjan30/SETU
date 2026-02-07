@@ -10,17 +10,20 @@ exports.CommonModule = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const table_view_config_entity_1 = require("./entities/table-view-config.entity");
+const system_setting_entity_1 = require("./entities/system-setting.entity");
 const table_view_service_1 = require("./table-view.service");
 const table_view_controller_1 = require("./table-view.controller");
+const system_settings_service_1 = require("./system-settings.service");
+const system_settings_controller_1 = require("./system-settings.controller");
 let CommonModule = class CommonModule {
 };
 exports.CommonModule = CommonModule;
 exports.CommonModule = CommonModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([table_view_config_entity_1.TableViewConfig])],
-        controllers: [table_view_controller_1.TableViewController],
-        providers: [table_view_service_1.TableViewService],
-        exports: [table_view_service_1.TableViewService],
+        imports: [typeorm_1.TypeOrmModule.forFeature([table_view_config_entity_1.TableViewConfig, system_setting_entity_1.SystemSetting])],
+        providers: [table_view_service_1.TableViewService, system_settings_service_1.SystemSettingsService],
+        controllers: [table_view_controller_1.TableViewController, system_settings_controller_1.SystemSettingsController],
+        exports: [table_view_service_1.TableViewService, system_settings_service_1.SystemSettingsService],
     })
 ], CommonModule);
 //# sourceMappingURL=common.module.js.map

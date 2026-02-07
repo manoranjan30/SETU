@@ -3,10 +3,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { type ColDef, ModuleRegistry, ClientSideRowModelModule, ValidationModule } from 'ag-grid-community';
-import { Upload, Download, FileText, Plus } from 'lucide-react';
+import { Upload, Download, FileText, Plus, History, Eye } from 'lucide-react';
 import api from '../../api/axios';
 import UploadModal from './components/UploadModal';
 import CreateDrawingModal from './components/CreateDrawingModal';
+import RevisionHistoryModal from './components/RevisionHistoryModal';
+import PreviewModal from './components/PreviewModal';
 
 // Register modules
 ModuleRegistry.registerModules([ClientSideRowModelModule, ValidationModule]);
@@ -30,6 +32,8 @@ interface RegisterItem {
             username: string;
         };
         fileSize: number;
+        originalFileName?: string;
+        fileType?: string;
     };
     revisions: any[];
 }
@@ -37,23 +41,21 @@ interface RegisterItem {
 const DrawingRegister = () => {
     const { projectId } = useParams();
     const [rowData, setRowData] = useState<RegisterItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+    const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewFile, setPreviewFile] = useState<{ name: string, type: string } | null>(null);
 
     const fetchData = async () => {
         if (!projectId) return;
         try {
-            // Force usage (or I could just remove the variable, but I might use it properly later)
-            console.log("Loading state:", isLoading);
-            setIsLoading(true);
             const response = await api.get(`/design/${projectId}/register`);
             setRowData(response.data);
         } catch (error) {
             console.error('Failed to fetch register:', error);
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -62,11 +64,8 @@ const DrawingRegister = () => {
     }, [projectId]);
 
     const handleUploadClick = (item: any) => {
-        // Determine next revision logic (simple for now: if rev A, next is B? or just let user input)
-        // Helper to guess next rev?
         let nextRevision = '0';
         if (item.currentRevision) {
-            // Simple heuristic: 0 -> A -> B -> ...
             const current = item.currentRevision.revisionNumber;
             if (current === '0') nextRevision = 'A';
             else if (current.match(/^[A-Z]$/)) nextRevision = String.fromCharCode(current.charCodeAt(0) + 1);
@@ -77,12 +76,13 @@ const DrawingRegister = () => {
         setIsUploadModalOpen(true);
     };
 
-    const handleUpload = async (file: File, registerId: number, revisionNumber: string) => {
+    const handleUpload = async (file: File, registerId: number, revisionNumber: string, revisionDate: string) => {
         if (!projectId) return;
         const formData = new FormData();
         formData.append('file', file);
         formData.append('registerId', String(registerId));
         formData.append('revisionNumber', revisionNumber);
+        formData.append('revisionDate', revisionDate);
 
         await api.post(`/design/${projectId}/upload`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
@@ -93,25 +93,53 @@ const DrawingRegister = () => {
     };
 
     const handleDownload = async (revisionId: number, filename: string) => {
-        // Implement download logic (window.open or blob)
-        // For secure download, we usually fetch blob
+        if (!projectId) return;
         try {
-            // Placeholder: Assume API endpoint exists, or just use window.open if it handles header auth (it doesn't usually with JWT)
-            // So we use axios to get blob
-            // const response = await api.get(`/design/${projectId}/download/${revisionId}`, { responseType: 'blob' });
-            // const url = window.URL.createObjectURL(new Blob([response.data]));
-            // const link = document.createElement('a');
-            // link.href = url;
-            // link.setAttribute('download', filename);
-            // document.body.appendChild(link);
-            // link.click();
-            // link.remove();
-
-            // For now, let's just log as the backend download endpoint needs to be implemented fully (stream)
-            console.log("Download clicked for", revisionId, filename);
-            alert("Download feature coming soon (Backend stream endpoint is ready but needs integration)");
+            const response = await api.get(`/design/${projectId}/download/${revisionId}`, {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
         } catch (e) {
             console.error("Download failed", e);
+            alert("Failed to download file");
+        }
+    };
+
+    const handlePreview = async (revisionId: number, filename: string, fileType: string) => {
+        if (!projectId) return;
+        try {
+            const response = await api.get(`/design/${projectId}/download/${revisionId}`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { type: fileType || 'application/pdf' }); // Fallback to PDF if unknown, though risky
+            const url = window.URL.createObjectURL(blob);
+
+            setPreviewUrl(url);
+            setPreviewFile({ name: filename, type: fileType });
+            setIsPreviewModalOpen(true);
+        } catch (e) {
+            console.error("Preview failed", e);
+            alert("Failed to load preview");
+        }
+    }
+
+    const handleDelete = async (item: any) => {
+        if (!projectId) return;
+        if (!confirm(`Are you sure you want to delete ${item.drawingNumber}? This will strictly delete the file also from the system.`)) return;
+
+        try {
+            await api.delete(`/design/${projectId}/register/${item.id}`);
+            await fetchData();
+        } catch (e) {
+            console.error("Delete failed", e);
+            alert("Failed to delete record");
         }
     };
 
@@ -120,7 +148,7 @@ const DrawingRegister = () => {
             field: 'category.name',
             headerName: 'Category',
             width: 150,
-            rowGroup: false, // Community version
+            rowGroup: false,
             enableRowGroup: false
         },
         { field: 'drawingNumber', headerName: 'Drawing No', width: 140, sortable: true, filter: true, pinned: 'left' },
@@ -154,13 +182,22 @@ const DrawingRegister = () => {
         },
         {
             headerName: 'Actions',
-            width: 140,
+            width: 260,
             pinned: 'right',
             cellRenderer: (params: any) => {
                 const item = params.data;
                 if (!item) return null;
                 return (
                     <div className="flex gap-2">
+                        {item.currentRevision && (
+                            <button
+                                onClick={() => handlePreview(item.currentRevision.id, item.currentRevision.originalFileName || 'drawing', item.currentRevision.fileType)}
+                                className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                title="Preview"
+                            >
+                                <Eye size={16} />
+                            </button>
+                        )}
                         <button
                             onClick={() => handleUploadClick(item)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -177,6 +214,33 @@ const DrawingRegister = () => {
                                 <Download size={16} />
                             </button>
                         )}
+                        <button
+                            onClick={() => {
+                                setSelectedItem(item);
+                                setIsHistoryModalOpen(true);
+                            }}
+                            className="p-1.5 text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                            title="View History"
+                        >
+                            <History size={16} />
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSelectedItem(item);
+                                setIsCreateModalOpen(true);
+                            }}
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                            title="Edit Details"
+                        >
+                            <FileText size={16} />
+                        </button>
+                        <button
+                            onClick={() => handleDelete(item)}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Delete"
+                        >
+                            <Plus size={16} className="rotate-45" />
+                        </button>
                     </div>
                 );
             }
@@ -192,14 +256,17 @@ const DrawingRegister = () => {
                 </h2>
                 <div className="flex gap-2">
                     <button
-                        onClick={() => setIsCreateModalOpen(true)}
+                        onClick={() => {
+                            setSelectedItem(null);
+                            setIsCreateModalOpen(true);
+                        }}
                         className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
                     >
                         <Plus size={16} />
                         Add Drawing
                     </button>
                     <button
-                        onClick={() => fetchData()} // Just refresh
+                        onClick={() => fetchData()}
                         className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
                     >
                         Refresh
@@ -236,6 +303,27 @@ const DrawingRegister = () => {
                 onClose={() => setIsCreateModalOpen(false)}
                 onSuccess={fetchData}
                 projectId={projectId || ''}
+                initialData={selectedItem}
+            />
+
+            <RevisionHistoryModal
+                isOpen={isHistoryModalOpen}
+                onClose={() => setIsHistoryModalOpen(false)}
+                registerItem={selectedItem}
+                projectId={projectId || ''}
+                onDownload={handleDownload}
+            />
+
+            <PreviewModal
+                isOpen={isPreviewModalOpen}
+                onClose={() => {
+                    setIsPreviewModalOpen(false);
+                    if (previewUrl) window.URL.revokeObjectURL(previewUrl);
+                    setPreviewUrl(null);
+                }}
+                fileUrl={previewUrl}
+                fileName={previewFile?.name || ''}
+                fileType={previewFile?.type || ''}
             />
         </div>
     );
