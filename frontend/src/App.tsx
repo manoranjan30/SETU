@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -24,6 +25,7 @@ import ManagementDashboard from './views/dashboard/ManagementDashboard';
 import EhsProjectDashboard from './views/ehs/EhsProjectDashboard';
 import QualityProjectDashboard from './views/quality/QualityProjectDashboard';
 import DesignDashboard from './views/design/DesignDashboard';
+import SystemSettings from './views/admin/SystemSettings';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -37,7 +39,7 @@ const ProtectedRoute = ({ children, permission }: ProtectedRouteProps) => {
   if (!isAuthenticated) return <Navigate to="/login" />;
 
   if (permission && !hasPermission(permission)) {
-    return <div className="p-8 text-red-600">You do not have permission to view this page.</div>; // Or redirect
+    return <div className="p-8 text-red-600">You do not have permission to view this page.</div>;
   }
 
   return <>{children}</>;
@@ -78,6 +80,11 @@ const AppRoutes = () => {
             <CalendarListPage />
           </ProtectedRoute>
         } />
+        <Route path="admin/settings" element={
+          <ProtectedRoute permission="MANAGE_USERS">
+            <SystemSettings />
+          </ProtectedRoute>
+        } />
         <Route path="calendars/new" element={
           <ProtectedRoute permission="MANAGE_ROLES">
             <CalendarEditor />
@@ -98,7 +105,6 @@ const AppRoutes = () => {
             <WbsPage />
           </ProtectedRoute>
         } />
-
         <Route path="projects/:projectId/boq" element={
           <ProtectedRoute permission="WBS.READ">
             <BoqPage />

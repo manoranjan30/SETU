@@ -53,21 +53,25 @@ const typeorm_2 = require("typeorm");
 const permission_entity_1 = require("../permissions/permission.entity");
 const role_entity_1 = require("../roles/role.entity");
 const user_entity_1 = require("../users/user.entity");
+const drawing_category_entity_1 = require("../design/entities/drawing-category.entity");
 const bcrypt = __importStar(require("bcryptjs"));
 let SeedService = SeedService_1 = class SeedService {
     permissionRepo;
     roleRepo;
     userRepo;
+    categoryRepo;
     logger = new common_1.Logger(SeedService_1.name);
-    constructor(permissionRepo, roleRepo, userRepo) {
+    constructor(permissionRepo, roleRepo, userRepo, categoryRepo) {
         this.permissionRepo = permissionRepo;
         this.roleRepo = roleRepo;
         this.userRepo = userRepo;
+        this.categoryRepo = categoryRepo;
     }
     async onApplicationBootstrap() {
         await this.seedPermissions();
         await this.seedDefaultRoles();
         await this.seedDefaultUser();
+        await this.seedCategories();
     }
     async seedPermissions() {
         const PERMISSIONS = [
@@ -181,6 +185,25 @@ let SeedService = SeedService_1 = class SeedService {
             this.logger.log('Seeded Default Standard User');
         }
     }
+    async seedCategories() {
+        const CATEGORIES = [
+            { name: 'Architectural', code: 'ARCH' },
+            { name: 'Structural', code: 'STR' },
+            { name: 'Electrical', code: 'ELE' },
+            { name: 'Plumbing', code: 'PLU' },
+            { name: 'Fire Fighting', code: 'FIRE' },
+            { name: 'MEP (Combined)', code: 'MEP' },
+            { name: 'Interiors', code: 'INT' },
+            { name: 'Landscape', code: 'LAND' },
+        ];
+        for (const cat of CATEGORIES) {
+            const exists = await this.categoryRepo.findOne({ where: { code: cat.code } });
+            if (!exists) {
+                await this.categoryRepo.save(this.categoryRepo.create(cat));
+                this.logger.log(`Seeded Category: ${cat.name}`);
+            }
+        }
+    }
 };
 exports.SeedService = SeedService;
 exports.SeedService = SeedService = SeedService_1 = __decorate([
@@ -188,7 +211,9 @@ exports.SeedService = SeedService = SeedService_1 = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(permission_entity_1.Permission)),
     __param(1, (0, typeorm_1.InjectRepository)(role_entity_1.Role)),
     __param(2, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
+    __param(3, (0, typeorm_1.InjectRepository)(drawing_category_entity_1.DrawingCategory)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository])
 ], SeedService);

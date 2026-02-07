@@ -8,6 +8,7 @@ import WorkingScheduleList from '../components/planning/versions/WorkingSchedule
 // import ActivityDistributor from '../components/planning/distributor/ActivityDistributor';
 
 import { Construction, CheckSquare } from 'lucide-react'; // Split unused
+import WorkDocManager from '../components/workdoc/WorkDocManager';
 import LookAheadView from '../components/planning/LookAheadView';
 
 const PlanningPage: React.FC = () => {
@@ -32,6 +33,8 @@ const PlanningPage: React.FC = () => {
                 return <WorkingScheduleList />;
             case 'gantt_version':
                 return <SchedulePage />;
+            case 'contracts':
+                return <WorkDocManager />;
 
             case 'lookahead':
                 return <LookAheadView />;

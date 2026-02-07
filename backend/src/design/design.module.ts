@@ -8,6 +8,8 @@ import { DrawingRegister } from './entities/drawing-register.entity';
 import { DrawingRevision } from './entities/drawing-revision.entity';
 import { User } from '../users/user.entity';
 
+import { CommonModule } from '../common/common.module';
+
 @Module({
     imports: [
         TypeOrmModule.forFeature([
@@ -15,7 +17,8 @@ import { User } from '../users/user.entity';
             DrawingRegister,
             DrawingRevision,
             User // Needed to validate users
-        ])
+        ]),
+        CommonModule
     ],
     controllers: [DesignController],
     providers: [DesignService],

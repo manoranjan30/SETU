@@ -18,7 +18,7 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /usr/src/app
 
-# Copy Backend Production Node_Modules and Build
+# Stage to copy build outputs
 COPY --from=backend-builder /app/backend/dist ./dist
 COPY --from=backend-builder /app/backend/node_modules ./node_modules
 COPY --from=backend-builder /app/backend/package*.json ./

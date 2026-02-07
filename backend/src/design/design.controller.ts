@@ -1,5 +1,6 @@
 
-import { Controller, Get, Post, Body, Param, UseGuards, UploadedFile, UseInterceptors, Query, Res, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Patch, Body, Param, UseGuards, UploadedFile, UseInterceptors, Query, Res, BadRequestException, NotFoundException, ParseIntPipe } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -34,20 +35,20 @@ export class DesignController {
 
     @Get(':projectId/register')
     async getRegister(
-        @Param('projectId') projectId: number,
+        @Param('projectId', ParseIntPipe) projectId: number,
         @Query('categoryId') categoryId?: number
     ) {
-        return this.designService.getRegister(projectId, categoryId);
+        return this.designService.getRegister(projectId, categoryId ? Number(categoryId) : undefined);
     }
 
     @Post(':projectId/register')
     async createRegisterItem(
-        @Param('projectId') projectId: number,
+        @Param('projectId', ParseIntPipe) projectId: number,
         @Body() body: { categoryId: number; drawingNumber: string; title: string }
     ) {
         return this.designService.createRegisterItem({
             projectId,
-            categoryId: body.categoryId,
+            categoryId: Number(body.categoryId),
             drawingNumber: body.drawingNumber,
             title: body.title
         });
@@ -72,9 +73,10 @@ export class DesignController {
         },
     }))
     async uploadRevision(
-        @Param('projectId') projectId: number,
-        @Body('registerId') registerId: number,
+        @Param('projectId', ParseIntPipe) projectId: number,
+        @Body('registerId', ParseIntPipe) registerId: number,
         @Body('revisionNumber') revisionNumber: string,
+        @Body('revisionDate') revisionDate: string,
         @UploadedFile() file: Express.Multer.File,
         @GetUser() user: User
     ) {
@@ -91,7 +93,46 @@ export class DesignController {
                 size: file.size,
                 mimetype: file.mimetype
             },
-            revisionNumber
+            revisionNumber,
+            revisionDate ? new Date(revisionDate) : undefined
         );
+    }
+
+    @Get(':projectId/register/:registerId/revisions')
+    async getRevisions(
+        @Param('projectId', ParseIntPipe) projectId: number,
+        @Param('registerId', ParseIntPipe) registerId: number
+    ) {
+        return this.designService.getRevisions(registerId);
+    }
+
+    @Get(':projectId/download/:revisionId')
+    async downloadRevision(
+        @Param('projectId', ParseIntPipe) projectId: number,
+        @Param('revisionId', ParseIntPipe) revisionId: number,
+        @Res() res: Response // Express response
+    ) {
+        const fileInfo = await this.designService.getRevisionFile(revisionId);
+        res.download(fileInfo.path, fileInfo.filename);
+    }
+
+    @Delete(':projectId/register/:registerId')
+    async deleteRegisterItem(
+        @Param('projectId', ParseIntPipe) projectId: number,
+        @Param('registerId', ParseIntPipe) registerId: number
+    ) {
+        return this.designService.deleteRegisterItem(registerId);
+    }
+
+    @Patch(':projectId/register/:registerId')
+    async updateRegisterItem(
+        @Param('projectId', ParseIntPipe) projectId: number,
+        @Param('registerId', ParseIntPipe) registerId: number,
+        @Body() body: { categoryId?: number; drawingNumber?: string; title?: string }
+    ) {
+        return this.designService.updateRegisterItem(registerId, {
+            ...body,
+            categoryId: body.categoryId ? Number(body.categoryId) : undefined
+        });
     }
 }

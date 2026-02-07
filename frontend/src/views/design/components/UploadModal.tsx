@@ -1,18 +1,19 @@
 
 import { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { X, Upload, FileText, AlertCircle } from 'lucide-react';
+import { X, Upload, FileText, AlertCircle, Calendar } from 'lucide-react';
 
 interface UploadModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onUpload: (file: File, registerId: number, revisionNumber: string) => Promise<void>;
+    onUpload: (file: File, registerId: number, revisionNumber: string, revisionDate: string) => Promise<void>;
     registerItem: { id: number; drawingNumber: string; title: string; nextRevision: string } | null;
 }
 
 const UploadModal = ({ isOpen, onClose, onUpload, registerItem }: UploadModalProps) => {
     const [file, setFile] = useState<File | null>(null);
     const [revisionNumber, setRevisionNumber] = useState(registerItem?.nextRevision || '0');
+    const [revisionDate, setRevisionDate] = useState(new Date().toISOString().split('T')[0]);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +26,12 @@ const UploadModal = ({ isOpen, onClose, onUpload, registerItem }: UploadModalPro
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: { 'application/pdf': ['.pdf'] },
+        accept: {
+            'application/pdf': ['.pdf'],
+            'image/vnd.dwg': ['.dwg'],
+            'image/vnd.dxf': ['.dxf'],
+            'application/octet-stream': ['.rvt', '.ifc', '.nwd', '.h']
+        },
         maxFiles: 1,
         multiple: false
     });
@@ -38,7 +44,7 @@ const UploadModal = ({ isOpen, onClose, onUpload, registerItem }: UploadModalPro
         setError(null);
 
         try {
-            await onUpload(file, registerItem.id, revisionNumber);
+            await onUpload(file, registerItem.id, revisionNumber, revisionDate);
             onClose();
             setFile(null);
         } catch (err: any) {
@@ -64,19 +70,46 @@ const UploadModal = ({ isOpen, onClose, onUpload, registerItem }: UploadModalPro
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    {/* Revision Input */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Revision Input */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Revision Number
+                            </label>
+                            <input
+                                type="text"
+                                value={revisionNumber}
+                                onChange={(e) => setRevisionNumber(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                                placeholder="e.g. 0, A, B, 1"
+                                required
+                            />
+                        </div>
+
+                        {/* Revision Date Input */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Revision Date
+                            </label>
+                            <input
+                                type="date"
+                                value={revisionDate}
+                                onChange={(e) => setRevisionDate(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    {/* Upload Date (Read Only) */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Revision Number
+                            Upload Date (System)
                         </label>
-                        <input
-                            type="text"
-                            value={revisionNumber}
-                            onChange={(e) => setRevisionNumber(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
-                            placeholder="e.g. 0, A, B, 1"
-                            required
-                        />
+                        <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 flex items-center gap-2 cursor-not-allowed">
+                            <Calendar size={16} />
+                            {new Date().toLocaleDateString()}
+                        </div>
                         <p className="text-xs text-gray-500 mt-1">
                             System suggested next revision: <span className="font-mono font-medium">{registerItem.nextRevision}</span>
                         </p>
@@ -109,9 +142,9 @@ const UploadModal = ({ isOpen, onClose, onUpload, registerItem }: UploadModalPro
                             <div className="flex flex-col items-center text-gray-500">
                                 <Upload size={40} className="mb-2 text-gray-400" />
                                 <p className="text-sm font-medium text-gray-700">
-                                    {isDragActive ? 'Drop PDF here' : 'Click or Drag PDF here'}
+                                    {isDragActive ? 'Drop file here' : 'Click or Drag file here'}
                                 </p>
-                                <p className="text-xs text-gray-400 mt-1">Max size 50MB</p>
+                                <p className="text-xs text-gray-400 mt-1">PDF, DWG, DXF, RVT, IFC, NWD (Max 50MB)</p>
                             </div>
                         )}
                     </div>
