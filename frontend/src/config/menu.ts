@@ -1,5 +1,5 @@
 import { PermissionCode, type Permission } from './permissions';
-import { Home, Settings, Database, ClipboardList } from 'lucide-react';
+import { Home, Settings, Database, ClipboardList, ExternalLink } from 'lucide-react';
 
 export interface MenuItem {
     label: string;
@@ -7,6 +7,7 @@ export interface MenuItem {
     icon?: any;
     permission?: Permission; // If undefined, visible to all (or authentication only)
     children?: MenuItem[];
+    external?: boolean;
 }
 
 export const MENU_CONFIG: MenuItem[] = [
@@ -55,5 +56,17 @@ export const MENU_CONFIG: MenuItem[] = [
         path: '/dashboard/execution',
         icon: ClipboardList,
         permission: PermissionCode.VIEW_PROJECTS // Reuse project permission for now
+    },
+    {
+        label: 'External Tools',
+        path: '/tools', // Dummy path
+        icon: ExternalLink,
+        children: [
+            {
+                label: 'PDF Table Extractor',
+                path: 'http://localhost:8001',
+                external: true
+            }
+        ]
     }
 ];

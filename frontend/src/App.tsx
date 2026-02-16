@@ -26,6 +26,7 @@ import EhsProjectDashboard from './views/ehs/EhsProjectDashboard';
 import QualityProjectDashboard from './views/quality/QualityProjectDashboard';
 import DesignDashboard from './views/design/DesignDashboard';
 import SystemSettings from './views/admin/SystemSettings';
+import TemplateBuilder from './views/admin/TemplateBuilder';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -83,6 +84,11 @@ const AppRoutes = () => {
         <Route path="admin/settings" element={
           <ProtectedRoute permission="MANAGE_USERS">
             <SystemSettings />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/template-builder" element={
+          <ProtectedRoute permission="MANAGE_USERS">
+            <TemplateBuilder />
           </ProtectedRoute>
         } />
         <Route path="calendars/new" element={

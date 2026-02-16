@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
@@ -93,6 +92,9 @@ import { Vendor } from './workdoc/entities/vendor.entity';
 import { WorkOrder } from './workdoc/entities/work-order.entity';
 import { WorkOrderItem } from './workdoc/entities/work-order-item.entity';
 import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
+import { WorkDocTemplate } from './workdoc/entities/work-doc-template.entity';
+import { TemplateBuilderModule } from './template-builder/template-builder.module';
+import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
 
 @Module({
   imports: [
@@ -171,6 +173,9 @@ import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
         WorkOrder,
         WorkOrderItem,
         WorkOrderBoqMap,
+        WorkDocTemplate,
+        // Template Builder
+        PdfTemplate,
       ],
       synchronize: true,
     }),
@@ -196,14 +201,16 @@ import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
     QualityModule,
     DesignModule,
     WorkDocModule,
+    TemplateBuilderModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,
       User,
-      DrawingCategory
+      DrawingCategory,
+      WorkDocTemplate,
     ]),
   ],
   controllers: [AppController],
   providers: [AppService, SeedService],
 })
-export class AppModule { }
+export class AppModule {}

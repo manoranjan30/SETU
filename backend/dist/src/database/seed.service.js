@@ -54,24 +54,28 @@ const permission_entity_1 = require("../permissions/permission.entity");
 const role_entity_1 = require("../roles/role.entity");
 const user_entity_1 = require("../users/user.entity");
 const drawing_category_entity_1 = require("../design/entities/drawing-category.entity");
+const work_doc_template_entity_1 = require("../workdoc/entities/work-doc-template.entity");
 const bcrypt = __importStar(require("bcryptjs"));
 let SeedService = SeedService_1 = class SeedService {
     permissionRepo;
     roleRepo;
     userRepo;
     categoryRepo;
+    templateRepo;
     logger = new common_1.Logger(SeedService_1.name);
-    constructor(permissionRepo, roleRepo, userRepo, categoryRepo) {
+    constructor(permissionRepo, roleRepo, userRepo, categoryRepo, templateRepo) {
         this.permissionRepo = permissionRepo;
         this.roleRepo = roleRepo;
         this.userRepo = userRepo;
         this.categoryRepo = categoryRepo;
+        this.templateRepo = templateRepo;
     }
     async onApplicationBootstrap() {
         await this.seedPermissions();
         await this.seedDefaultRoles();
         await this.seedDefaultUser();
         await this.seedCategories();
+        await this.seedTemplates();
     }
     async seedPermissions() {
         const PERMISSIONS = [
@@ -82,16 +86,32 @@ let SeedService = SeedService_1 = class SeedService {
             { code: 'MANAGE_EPS', name: 'Manage EPS Structure', module: 'EPS' },
             { code: 'DESIGN.READ', name: 'View Drawings', module: 'DESIGN' },
             { code: 'DESIGN.UPLOAD', name: 'Upload Drawings', module: 'DESIGN' },
-            { code: 'DESIGN.APPROVE', name: 'Approve Drawings (GFC)', module: 'DESIGN' },
+            {
+                code: 'DESIGN.APPROVE',
+                name: 'Approve Drawings (GFC)',
+                module: 'DESIGN',
+            },
             { code: 'PLANNING.READ', name: 'View Schedule', module: 'PLANNING' },
             { code: 'PLANNING.EDIT', name: 'Edit Schedule/WBS', module: 'PLANNING' },
-            { code: 'PLANNING.BASELINE', name: 'Manage Baselines', module: 'PLANNING' },
+            {
+                code: 'PLANNING.BASELINE',
+                name: 'Manage Baselines',
+                module: 'PLANNING',
+            },
             { code: 'BOQ.READ', name: 'View BOQ', module: 'BOQ' },
             { code: 'BOQ.MANAGE', name: 'Manage BOQ', module: 'BOQ' },
             { code: 'EXECUTION.READ', name: 'View Progress', module: 'EXECUTION' },
-            { code: 'EXECUTION.UPDATE', name: 'Update Daily Progress', module: 'EXECUTION' },
+            {
+                code: 'EXECUTION.UPDATE',
+                name: 'Update Daily Progress',
+                module: 'EXECUTION',
+            },
             { code: 'QUALITY.READ', name: 'View Quality Records', module: 'QUALITY' },
-            { code: 'QUALITY.MANAGE', name: 'Manage Quality Records', module: 'QUALITY' },
+            {
+                code: 'QUALITY.MANAGE',
+                name: 'Manage Quality Records',
+                module: 'QUALITY',
+            },
             { code: 'EHS.READ', name: 'View Safety Records', module: 'EHS' },
             { code: 'EHS.MANAGE', name: 'Manage Safety Records', module: 'EHS' },
             { code: 'LABOR.READ', name: 'View Labor Records', module: 'LABOR' },
@@ -137,7 +157,13 @@ let SeedService = SeedService_1 = class SeedService {
             relations: ['permissions'],
         });
         if (!userRole) {
-            const userPermissions = allPermissions.filter((p) => ['VIEW_DASHBOARD', 'VIEW_PROJECTS', 'EXECUTION.READ', 'PLANNING.READ', 'BOQ.READ'].includes(p.permissionCode));
+            const userPermissions = allPermissions.filter((p) => [
+                'VIEW_DASHBOARD',
+                'VIEW_PROJECTS',
+                'EXECUTION.READ',
+                'PLANNING.READ',
+                'BOQ.READ',
+            ].includes(p.permissionCode));
             userRole = await this.roleRepo.save(this.roleRepo.create({
                 name: 'User',
                 description: 'Standard User',
@@ -146,7 +172,13 @@ let SeedService = SeedService_1 = class SeedService {
             this.logger.log('Seeded Standard User Role');
         }
         else {
-            const userPermissions = allPermissions.filter((p) => ['VIEW_DASHBOARD', 'VIEW_PROJECTS', 'EXECUTION.READ', 'PLANNING.READ', 'BOQ.READ'].includes(p.permissionCode));
+            const userPermissions = allPermissions.filter((p) => [
+                'VIEW_DASHBOARD',
+                'VIEW_PROJECTS',
+                'EXECUTION.READ',
+                'PLANNING.READ',
+                'BOQ.READ',
+            ].includes(p.permissionCode));
             userRole.permissions = userPermissions;
             await this.roleRepo.save(userRole);
             this.logger.log('Updated Standard User Role Permissions');
@@ -197,10 +229,47 @@ let SeedService = SeedService_1 = class SeedService {
             { name: 'Landscape', code: 'LAND' },
         ];
         for (const cat of CATEGORIES) {
-            const exists = await this.categoryRepo.findOne({ where: { code: cat.code } });
+            const exists = await this.categoryRepo.findOne({
+                where: { code: cat.code },
+            });
             if (!exists) {
                 await this.categoryRepo.save(this.categoryRepo.create(cat));
                 this.logger.log(`Seeded Category: ${cat.name}`);
+            }
+        }
+    }
+    async seedTemplates() {
+        const TEMPLATES = [
+            {
+                name: 'Starworth SAP Standard',
+                description: 'Standard layout for Starworth Infrastructure Work Orders (SAP format)',
+                config: {
+                    vendorRegex: 'Vendor\\s*[:#]?\\s*(\\d+)',
+                    woNumberRegex: 'Order\\s*No\\.?\\s*[:]?\\s*(\\d{10})',
+                    dateRegex: 'Date\\s*[:]?\\s*(\\d{2}[./-]\\d{2}[./-]\\d{4})',
+                    tableConfig: {
+                        startMarker: 'ITEM DETAILS',
+                        rowRegex: '^\\s*(\\d+\\.\\d+|\\d+)\\s+([\\d/ ]+)\\s+(.+?)\\s+([\\d,.]+)\\s+([a-zA-Z]{2,4})\\s+([\\d,.]+)\\s+([\\d,.]+)',
+                        columnMapping: {
+                            itemNo: 1,
+                            code: 2,
+                            description: 3,
+                            qty: 4,
+                            uom: 5,
+                            rate: 6,
+                            amount: 7,
+                        },
+                    },
+                },
+            },
+        ];
+        for (const t of TEMPLATES) {
+            const exists = await this.templateRepo.findOne({
+                where: { name: t.name },
+            });
+            if (!exists) {
+                await this.templateRepo.save(this.templateRepo.create(t));
+                this.logger.log(`Seeded Template: ${t.name}`);
             }
         }
     }
@@ -212,7 +281,9 @@ exports.SeedService = SeedService = SeedService_1 = __decorate([
     __param(1, (0, typeorm_1.InjectRepository)(role_entity_1.Role)),
     __param(2, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(3, (0, typeorm_1.InjectRepository)(drawing_category_entity_1.DrawingCategory)),
+    __param(4, (0, typeorm_1.InjectRepository)(work_doc_template_entity_1.WorkDocTemplate)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository])

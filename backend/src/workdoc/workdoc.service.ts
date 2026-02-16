@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+const FormData = require('form-data');
 const pdf = require('pdf-parse');
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,237 +18,461 @@ import { WorkOrderItem } from './entities/work-order-item.entity';
 import { Vendor } from './entities/vendor.entity';
 import { WorkOrderBoqMap } from './entities/work-order-boq-map.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
+import { WorkDocTemplate } from './entities/work-doc-template.entity';
 
-interface ExtractedItem {
-    code: string;
-    description: string;
-    qty: number;
-    uom: string;
-    rate: number;
-    amount: number;
-    longText: string;
+export interface ExtractedItem {
+  code: string;
+  description: string;
+  qty: number;
+  uom: string;
+  rate: number;
+  amount: number;
+  longText: string;
 }
 
 @Injectable()
 export class WorkDocService {
-    constructor(
-        @InjectRepository(WorkOrder)
-        private woRepo: Repository<WorkOrder>,
-        @InjectRepository(WorkOrderItem)
-        private woItemRepo: Repository<WorkOrderItem>,
-        @InjectRepository(Vendor)
-        private vendorRepo: Repository<Vendor>,
-        @InjectRepository(WorkOrderBoqMap)
-        private mapRepo: Repository<WorkOrderBoqMap>,
-        @InjectRepository(BoqItem)
-        private boqItemRepo: Repository<BoqItem>,
-    ) { }
+  constructor(
+    @InjectRepository(WorkOrder)
+    private woRepo: Repository<WorkOrder>,
+    @InjectRepository(WorkOrderItem)
+    private woItemRepo: Repository<WorkOrderItem>,
+    @InjectRepository(Vendor)
+    private vendorRepo: Repository<Vendor>,
+    @InjectRepository(WorkOrderBoqMap)
+    private mapRepo: Repository<WorkOrderBoqMap>,
+    @InjectRepository(BoqItem)
+    private boqItemRepo: Repository<BoqItem>,
+    @InjectRepository(WorkDocTemplate)
+    private templateRepo: Repository<WorkDocTemplate>,
+    private readonly httpService: HttpService,
+  ) {}
 
-    // --- Vendors ---
-    async getAllVendors() {
-        return this.vendorRepo.find({ order: { name: 'ASC' } });
+  // --- Vendors ---
+  async getAllVendors() {
+    return this.vendorRepo.find({ order: { name: 'ASC' } });
+  }
+
+  async createVendor(data: Partial<Vendor>) {
+    const existing = await this.vendorRepo.findOne({
+      where: { vendorCode: data.vendorCode },
+    });
+    if (existing)
+      throw new BadRequestException(
+        `Vendor code ${data.vendorCode} already exists`,
+      );
+    const vendor = this.vendorRepo.create(data);
+    return this.vendorRepo.save(vendor);
+  }
+
+  // --- Templates ---
+  async getAllTemplates() {
+    return this.templateRepo.find({ order: { name: 'ASC' } });
+  }
+
+  async createTemplate(data: Partial<WorkDocTemplate>) {
+    const template = this.templateRepo.create(data);
+    return this.templateRepo.save(template);
+  }
+
+  async updateTemplate(id: number, data: Partial<WorkDocTemplate>) {
+    const template = await this.templateRepo.findOne({ where: { id } });
+    if (!template) throw new NotFoundException('Template not found');
+    Object.assign(template, data);
+    return this.templateRepo.save(template);
+  }
+
+  async deleteTemplate(id: number) {
+    const template = await this.templateRepo.findOne({ where: { id } });
+    if (!template) throw new NotFoundException('Template not found');
+    return this.templateRepo.remove(template);
+  }
+
+  // --- Work Orders ---
+  async getProjectWorkOrders(projectId: number) {
+    return this.woRepo.find({
+      where: { projectId },
+      relations: ['vendor', 'items'],
+      order: { woDate: 'DESC' },
+    });
+  }
+
+  async createWorkOrder(data: Partial<WorkOrder>) {
+    const wo = this.woRepo.create(data);
+    return this.woRepo.save(wo);
+  }
+
+  async deleteWorkOrder(woId: number) {
+    const wo = await this.woRepo.findOne({ where: { id: woId } });
+    if (!wo) throw new NotFoundException('Work Order not found');
+    return this.woRepo.remove(wo);
+  }
+
+  async getWorkOrderDetails(woId: number) {
+    const wo = await this.woRepo.findOne({
+      where: { id: woId },
+      relations: ['vendor', 'items'],
+    });
+    if (!wo) throw new NotFoundException('Work Order not found');
+    return wo;
+  }
+
+  // --- Mapping ---
+  async mapItem(
+    woItemId: number,
+    boqItemId: number,
+    conversionFactor: number = 1,
+  ) {
+    const woItem = await this.woItemRepo.findOne({ where: { id: woItemId } });
+    if (!woItem) throw new NotFoundException('Work Order Item not found');
+
+    const boqItem = await this.boqItemRepo.findOne({
+      where: { id: boqItemId },
+    });
+    if (!boqItem) throw new NotFoundException('BOQ Item not found');
+
+    const mapping = this.mapRepo.create({
+      workOrderItem: woItem,
+      boqItem: boqItem,
+      conversionFactor,
+    });
+
+    return this.mapRepo.save(mapping);
+  }
+
+  // --- PDF Processing ---
+  async analyzeWorkOrderPdf(
+    projectId: number,
+    file: Express.Multer.File,
+    templateId?: number,
+    test: boolean = false,
+    volatileConfig?: string,
+  ) {
+    let config: any = null;
+
+    // 1. Resolve Config
+    if (test && volatileConfig) {
+      try {
+        config = JSON.parse(volatileConfig);
+      } catch (e) {
+        console.error('Invalid volatile config JSON', e);
+      }
+    } else if (templateId) {
+      const template = await this.templateRepo.findOne({
+        where: { id: templateId },
+      });
+      if (!template) throw new NotFoundException('Template not found');
+      config = template.config;
     }
 
-    async createVendor(data: Partial<Vendor>) {
-        const existing = await this.vendorRepo.findOne({ where: { vendorCode: data.vendorCode } });
-        if (existing) throw new BadRequestException(`Vendor code ${data.vendorCode} already exists`);
-        const vendor = this.vendorRepo.create(data);
-        return this.vendorRepo.save(vendor);
-    }
+    // 2. Check for Coordinate Template (Python Tool)
+    if (config && config.coordinateTemplate) {
+      try {
+        // Call Python Microservice
+        // Assume Python tool is at http://localhost:8000
+        const pythonUrl = process.env.PDF_TOOL_URL || 'http://localhost:8002';
 
-    // --- Work Orders ---
-    async getProjectWorkOrders(projectId: number) {
-        return this.woRepo.find({
-            where: { projectId },
-            relations: ['vendor', 'items'],
-            order: { woDate: 'DESC' }
-        });
-    }
+        const formData = new FormData();
+        formData.append('file', fs.createReadStream(file.path));
+        // Ensure coordinateTemplate is a string
+        const templateStr =
+          typeof config.coordinateTemplate === 'string'
+            ? config.coordinateTemplate
+            : JSON.stringify(config.coordinateTemplate);
+        formData.append('template_json', templateStr);
 
-    async createWorkOrder(data: Partial<WorkOrder>) {
-        // Basic creation logic, will be expanded with PDF parsing later
-        const wo = this.woRepo.create(data);
-        return this.woRepo.save(wo);
-    }
+        const response: any = await firstValueFrom(
+          this.httpService.post(
+            `${pythonUrl}/extract/from_template`,
+            formData,
+            {
+              headers: {
+                ...formData.getHeaders(),
+              },
+            },
+          ),
+        );
 
-    async getWorkOrderDetails(woId: number) {
-        const wo = await this.woRepo.findOne({
-            where: { id: woId },
-            relations: ['vendor', 'items']
-        });
-        if (!wo) throw new NotFoundException('Work Order not found');
-        return wo;
-    }
+        const extractedData = response.data;
 
-    // --- Mapping ---
-    async mapItem(woItemId: number, boqItemId: number, conversionFactor: number = 1) {
-        const woItem = await this.woItemRepo.findOne({ where: { id: woItemId } });
-        if (!woItem) throw new NotFoundException('Work Order Item not found');
-
-        const boqItem = await this.boqItemRepo.findOne({ where: { id: boqItemId } });
-        if (!boqItem) throw new NotFoundException('BOQ Item not found');
-
-        const mapping = this.mapRepo.create({
-            workOrderItem: woItem,
-            boqItem: boqItem,
-            conversionFactor
-        });
-
-        return this.mapRepo.save(mapping);
-    }
-
-    // --- PDF Processing ---
-    async processWorkOrderPdf(projectId: number, file: Express.Multer.File) {
-        const dataBuffer = fs.readFileSync(file.path);
-
-        try {
-            const data = await pdf(dataBuffer);
-            const text = data.text;
-
-            // 1. Extract Header Info
-            const vendorInfo = this.extractVendor(text);
-            const woInfo = this.extractWorkOrderHeader(text);
-
-            // 2. Extract Items
-            const items: ExtractedItem[] = this.extractLineItems(text);
-
-            // 3. Save to DB
-            let vendor = await this.vendorRepo.findOne({ where: { vendorCode: vendorInfo.code } });
-            if (!vendor) {
-                // Determine name: fallback from PDF or Default
-                const vendorName = vendorInfo.name || `Unknown Vendor (${vendorInfo.code})`;
-                vendor = this.vendorRepo.create({
-                    vendorCode: vendorInfo.code,
-                    name: vendorName,
-                    address: vendorInfo.address
-                });
-                await this.vendorRepo.save(vendor);
-            }
-
-            const workOrder = this.woRepo.create({
-                projectId,
-                woNumber: woInfo.woNumber || `TEMP-${Date.now()}`,
-                woDate: woInfo.date || new Date(),
-                vendor: vendor!, // Assert non-null as we just created/found it
-                status: 'DRAFT',
-                pdfPath: file.path,
-                originalFileName: file.originalname,
-                totalAmount: items.reduce((sum, item) => sum + item.amount, 0)
-            });
-
-            const savedWo = await this.woRepo.save(workOrder);
-
-            // Ensure savedWo is treated as a single entity
-            const woEntity = Array.isArray(savedWo) ? savedWo[0] : savedWo;
-
-            const workOrderItems = items.map(item => this.woItemRepo.create({
-                workOrder: woEntity,
-                materialCode: item.code,
-                shortText: item.description,
-                quantity: item.qty,
-                uom: item.uom,
-                rate: item.rate,
-                amount: item.amount,
-                longText: item.longText
-            }));
-
-            await this.woItemRepo.save(workOrderItems);
-
-            return {
-                workOrderId: woEntity.id,
-                message: 'Work Order processed successfully',
-                extractedData: {
-                    vendor: vendorInfo,
-                    header: woInfo,
-                    itemsCount: items.length
-                }
-            };
-
-        } catch (error) {
-            console.error('PDF Parse Error:', error);
-            throw new BadRequestException('Failed to parse PDF: ' + error.message);
-        }
-    }
-
-    private extractVendor(text: string) {
-        // Regex for Vendor Code (Common SAP pattern: "Vendor: 123456" or just digits)
-        const codeMatch = text.match(/Vendor\s*[:#]?\s*(\d+)/i) || text.match(/Supplier\s*[:#]?\s*(\d+)/i);
-        // Regex for Name (Capture text after found code or specific label)
-        const nameMatch = text.match(/Name\s*[:]\s*(.+)/i);
+        // Map result to expected format if needed, but Python tool returns structured data
+        // { vendor: {...}, header: {...}, items: [...] }
+        // So we can return it directly
 
         return {
-            code: codeMatch ? codeMatch[1] : `UNK-${Date.now()}`, // Fallback if not found
-            name: nameMatch ? nameMatch[1].trim() : undefined,
-            address: '' // Hard to parse address reliably without structure
+          projectId,
+          ...extractedData,
+          pdfPath: file.path,
+          originalFileName: file.originalname,
+          templateId,
+          rawText: 'Coordinate Extraction Used',
         };
+      } catch (error) {
+        console.error(
+          'Python PDF Tool Error:',
+          error.response?.data || error.message,
+        );
+        throw new BadRequestException(
+          'Coordinate Extraction Failed: ' +
+            (error.response?.data?.detail || error.message),
+        );
+      }
     }
 
-    private extractWorkOrderHeader(text: string) {
-        // SAP WO Number: 45000xxxxx
-        const woMatch = text.match(/Order\s*No\.?\s*[:]?\s*(\d{10})/i) || text.match(/PO\s*No\.?\s*[:]?\s*(\d+)/i);
-        const dateMatch = text.match(/Date\s*[:]?\s*(\d{2}[./-]\d{2}[./-]\d{4})/i);
+    // 3. Fallback to Legacy Regex (pdf-parse)
+    const dataBuffer = fs.readFileSync(file.path);
 
-        let date = new Date();
-        if (dateMatch) {
-            // parse date formatDD.MM.YYYY
-            const parts = dateMatch[1].split(/[./-]/);
-            if (parts.length === 3) {
-                date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`); // ISO
-            }
+    try {
+      const data = await pdf(dataBuffer);
+      const text = data.text;
+
+      let extractedData: any;
+
+      if (config) {
+        extractedData = this.parseWithTemplate(text, config);
+      } else {
+        // Default simple regex extraction
+        const vendorInfo = this.extractVendor(text);
+        const woInfo = this.extractWorkOrderHeader(text);
+        const items = this.extractLineItems(text);
+        extractedData = { vendor: vendorInfo, header: woInfo, items };
+      }
+
+      return {
+        projectId,
+        ...extractedData,
+        pdfPath: file.path,
+        originalFileName: file.originalname,
+        templateId,
+        rawText: text, // Include full text for regex testing UI
+      };
+    } catch (error) {
+      console.error('PDF Parse Error:', error);
+      throw new BadRequestException('Failed to parse PDF: ' + error.message);
+    }
+  }
+
+  async saveConfirmedWorkOrder(projectId: number, data: any) {
+    const {
+      vendor: vendorInfo,
+      header: woInfo,
+      items,
+      pdfPath,
+      originalFileName,
+    } = data;
+
+    // 1. Find or Create Vendor
+    let vendor = await this.vendorRepo.findOne({
+      where: { vendorCode: vendorInfo.code },
+    });
+    if (!vendor) {
+      vendor = this.vendorRepo.create({
+        vendorCode: vendorInfo.code,
+        name: vendorInfo.name || `Unknown Vendor (${vendorInfo.code})`,
+        address: vendorInfo.address,
+      });
+      await this.vendorRepo.save(vendor);
+    }
+
+    // 2. Create Work Order
+    const workOrder = this.woRepo.create({
+      projectId,
+      woNumber: woInfo.woNumber || `TEMP-${Date.now()}`,
+      woDate: woInfo.date ? new Date(woInfo.date) : new Date(),
+      vendor: vendor,
+      status: 'DRAFT',
+      pdfPath,
+      originalFileName,
+      totalAmount: items.reduce(
+        (sum: number, item: any) => sum + Number(item.amount || 0),
+        0,
+      ),
+    });
+
+    const savedWo = await this.woRepo.save(workOrder);
+    const woEntity = Array.isArray(savedWo) ? savedWo[0] : savedWo;
+
+    // 3. Create Items
+    const workOrderItems = items.map((item: any) =>
+      this.woItemRepo.create({
+        workOrder: woEntity,
+        materialCode: item.code,
+        shortText: item.description,
+        quantity: Number(item.qty || 0),
+        uom: item.uom,
+        rate: Number(item.rate || 0),
+        amount: Number(item.amount || 0),
+        longText: item.longText,
+      }),
+    );
+
+    await this.woItemRepo.save(workOrderItems);
+
+    return {
+      id: woEntity.id,
+      message: 'Work Order imported successfully',
+    };
+  }
+
+  private extractVendor(text: string) {
+    // Regex for Vendor Code (Common SAP pattern: "Vendor: 123456" or just digits)
+    const codeMatch =
+      text.match(/Vendor\s*[:#]?\s*(\d+)/i) ||
+      text.match(/Supplier\s*[:#]?\s*(\d+)/i);
+    // Regex for Name (Capture text after found code or specific label)
+    const nameMatch = text.match(/Name\s*[:]\s*(.+)/i);
+
+    return {
+      code: codeMatch ? codeMatch[1] : `UNK-${Date.now()}`, // Fallback if not found
+      name: nameMatch ? nameMatch[1].trim() : undefined,
+      address: '', // Hard to parse address reliably without structure
+    };
+  }
+
+  private extractWorkOrderHeader(text: string) {
+    // SAP WO Number: 45000xxxxx
+    const woMatch =
+      text.match(/Order\s*No\.?\s*[:]?\s*(\d{10})/i) ||
+      text.match(/PO\s*No\.?\s*[:]?\s*(\d+)/i);
+    const dateMatch = text.match(/Date\s*[:]?\s*(\d{2}[./-]\d{2}[./-]\d{4})/i);
+
+    let date = new Date();
+    if (dateMatch) {
+      // parse date formatDD.MM.YYYY
+      const parts = dateMatch[1].split(/[./-]/);
+      if (parts.length === 3) {
+        date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`); // ISO
+      }
+    }
+
+    return {
+      woNumber: woMatch ? woMatch[1] : null,
+      date: date,
+    };
+  }
+
+  private extractLineItems(text: string): ExtractedItem[] {
+    const items: ExtractedItem[] = [];
+    const lines = text.split('\n');
+
+    // Regex for a line item row
+    // Expecting: ItemNo (10,20) | Material Code (Digits) | Qty (Decimal) | Unit | Rate | Amount
+    // This is tricky. We'll look for lines that contain at least a material code pattern and numbers
+
+    // Strategy: Look for lines with multiple numbers.
+    // SAP Item:  10   10001234   Concrete M30   100.000   M3    5000.00    5,00,000.00
+
+    const rowRegex =
+      /^\s*(\d+)\s+(\d{6,18})\s+(.+?)\s+([\d,.]+)\s+([a-zA-Z]+)\s+([\d,.]+)\s+([\d,.]+)/;
+
+    for (const line of lines) {
+      const match = line.match(rowRegex);
+      if (match) {
+        const qty = parseFloat(match[4].replace(/,/g, ''));
+        const rate = parseFloat(match[6].replace(/,/g, ''));
+        const amount = parseFloat(match[7].replace(/,/g, ''));
+
+        items.push({
+          code: match[2],
+          description: match[3].trim(),
+          qty,
+          uom: match[5],
+          rate,
+          amount,
+          longText: '',
+        });
+      }
+    }
+
+    return items;
+  }
+
+  private parseWithTemplate(text: string, config: any) {
+    const vendorVal = this.extractWithRegex(text, config.vendorRegex);
+    const vendorInfo = {
+      code: vendorVal || 'UNK-' + Date.now(),
+      name: 'Vendor ' + (vendorVal || 'Unknown'),
+      address: '',
+    };
+
+    const woVal = this.extractWithRegex(text, config.woNumberRegex);
+    const woInfo = {
+      woNumber: woVal || 'TEMP-' + Date.now(),
+      date: new Date(), // TODO: Add date regex support
+    };
+
+    // Multi-page table extraction logic
+    const items: ExtractedItem[] = [];
+    const lines = text.split('\n');
+
+    if (config.tableConfig) {
+      const { rowRegex, columnMapping } = config.tableConfig;
+      // Remove start/end anchors if they exist in strict mode, or ensure we match nicely
+      // But relying on user config is best.
+      const regex = new RegExp(rowRegex);
+
+      // console.log('Debug: Using Row Regex:', rowRegex);
+
+      for (const line of lines) {
+        const match = line.match(regex);
+        if (match) {
+          items.push({
+            code: this.safeGet(match, columnMapping.code, 'N/A'),
+            description: this.safeGet(
+              match,
+              columnMapping.description,
+              'No Description',
+            ).trim(),
+            qty: parseFloat(
+              this.safeGet(match, columnMapping.qty, '0').replace(/,/g, ''),
+            ),
+            uom: this.safeGet(match, columnMapping.uom, 'NOS'),
+            rate: parseFloat(
+              this.safeGet(match, columnMapping.rate, '0').replace(/,/g, ''),
+            ),
+            amount: parseFloat(
+              this.safeGet(match, columnMapping.amount, '0').replace(/,/g, ''),
+            ),
+            longText: columnMapping.longText
+              ? this.safeGet(match, columnMapping.longText, '')
+              : '',
+          });
         }
-
-        return {
-            woNumber: woMatch ? woMatch[1] : null,
-            date: date
-        };
+      }
     }
 
-    private extractLineItems(text: string): ExtractedItem[] {
-        const items: ExtractedItem[] = [];
-        const lines = text.split('\n');
+    return { vendor: vendorInfo, header: woInfo, items };
+  }
 
-        // Regex for a line item row
-        // Expecting: ItemNo (10,20) | Material Code (Digits) | Qty (Decimal) | Unit | Rate | Amount
-        // This is tricky. We'll look for lines that contain at least a material code pattern and numbers
+  private safeGet(
+    match: RegExpMatchArray,
+    index: number,
+    defaultVal: string,
+  ): string {
+    if (index !== undefined && match[index]) return match[index];
+    return defaultVal;
+  }
 
-        // Strategy: Look for lines with multiple numbers.
-        // SAP Item:  10   10001234   Concrete M30   100.000   M3    5000.00    5,00,000.00
+  private extractWithRegex(text: string, pattern: string) {
+    if (!pattern) return null;
+    try {
+      const match = text.match(new RegExp(pattern, 'i')); // Case insensitive by default
+      if (!match) return null;
 
-        const rowRegex = /^\s*(\d+)\s+(\d{6,18})\s+(.+?)\s+([\d,.]+)\s+([a-zA-Z]+)\s+([\d,.]+)\s+([\d,.]+)/;
+      // If it's a simple regex with one capture group, return that
+      if (match.length > 1) return match[1];
 
-        for (const line of lines) {
-            const match = line.match(rowRegex);
-            if (match) {
-                // match[1] = Item No (10) - stored as part of description? or ignored
-                // match[2] = Material (10001234)
-                // match[3] = Description (Concrete M30) - might need trimming
-                // match[4] = Qty (100.000)
-                // match[5] = Unit (M3)
-                // match[6] = Rate (5000.00)
-                // match[7] = Amount (5,00,000.00)
-
-                const qty = parseFloat(match[4].replace(/,/g, ''));
-                const rate = parseFloat(match[6].replace(/,/g, ''));
-                const amount = parseFloat(match[7].replace(/,/g, ''));
-
-                items.push({
-                    code: match[2],
-                    description: match[3].trim(),
-                    qty,
-                    uom: match[5],
-                    rate,
-                    amount,
-                    longText: '' // Can be extracted if we check subsequent lines
-                });
-            }
-        }
-
-        return items;
+      // Otherwise return the whole match
+      return match[0];
+    } catch (e) {
+      console.error('Regex error:', e);
+      return null;
     }
+  }
 
-    // --- Billing / Gap Analysis ---
-    async getBillingStatus(woId: number) {
-        // TODO: Aggregation logic for billable value
-        return { message: "Not implemented yet" };
-    }
+  // --- Billing / Gap Analysis ---
+  async getBillingStatus(woId: number) {
+    // TODO: Aggregation logic for billable value
+    return { message: 'Not implemented yet' };
+  }
 }

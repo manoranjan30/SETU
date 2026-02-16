@@ -37,7 +37,9 @@ __decorate([
     __metadata("design:type", Boolean)
 ], DrawingCategory.prototype, "isActive", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => DrawingCategory, (category) => category.children, { nullable: true }),
+    (0, typeorm_1.ManyToOne)(() => DrawingCategory, (category) => category.children, {
+        nullable: true,
+    }),
     __metadata("design:type", DrawingCategory)
 ], DrawingCategory.prototype, "parent", void 0);
 __decorate([

@@ -79,7 +79,7 @@ export class BoqImportService {
       throw new BadRequestException('Empty file');
     }
 
-    const headers = rows[0].map((h) => String(h).trim());
+    const headers = rows[0].map((h: any) => String(h).trim());
     const dataRows = rows.slice(1);
 
     console.log('[ImportMeasurements] Headers:', headers);
@@ -387,7 +387,7 @@ export class BoqImportService {
 
     if (rows.length < 2) throw new BadRequestException('Empty file');
 
-    const headers = rows[0].map((h) => String(h).trim());
+    const headers = rows[0].map((h: any) => String(h).trim());
     const dataRows = rows.slice(1);
 
     console.log('[ImportBOQ] Headers:', headers);

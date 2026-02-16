@@ -1,5 +1,20 @@
-
-import { Controller, Get, Post, Delete, Patch, Body, Param, UseGuards, UploadedFile, UseInterceptors, Query, Res, BadRequestException, NotFoundException, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  UseGuards,
+  UploadedFile,
+  UseInterceptors,
+  Query,
+  Res,
+  BadRequestException,
+  NotFoundException,
+  ParseIntPipe,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -13,126 +28,142 @@ import * as fs from 'fs';
 
 // Helper to ensure directory exists
 const ensureDir = (dir: string) => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 };
 
 @Controller('design')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DesignController {
-    constructor(private readonly designService: DesignService) { }
+  constructor(private readonly designService: DesignService) {}
 
-    @Get('categories')
-    async getCategories() {
-        return this.designService.findAllCategories();
-    }
+  @Get('categories')
+  async getCategories() {
+    return this.designService.findAllCategories();
+  }
 
-    @Post('categories')
-    async createCategory(@Body() body: { name: string; code: string; parentId?: number }) {
-        return this.designService.createCategory(body.name, body.code, body.parentId);
-    }
+  @Post('categories')
+  async createCategory(
+    @Body() body: { name: string; code: string; parentId?: number },
+  ) {
+    return this.designService.createCategory(
+      body.name,
+      body.code,
+      body.parentId,
+    );
+  }
 
-    @Get(':projectId/register')
-    async getRegister(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Query('categoryId') categoryId?: number
-    ) {
-        return this.designService.getRegister(projectId, categoryId ? Number(categoryId) : undefined);
-    }
+  @Get(':projectId/register')
+  async getRegister(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('categoryId') categoryId?: number,
+  ) {
+    return this.designService.getRegister(
+      projectId,
+      categoryId ? Number(categoryId) : undefined,
+    );
+  }
 
-    @Post(':projectId/register')
-    async createRegisterItem(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Body() body: { categoryId: number; drawingNumber: string; title: string }
-    ) {
-        return this.designService.createRegisterItem({
-            projectId,
-            categoryId: Number(body.categoryId),
-            drawingNumber: body.drawingNumber,
-            title: body.title
-        });
-    }
+  @Post(':projectId/register')
+  async createRegisterItem(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: { categoryId: number; drawingNumber: string; title: string },
+  ) {
+    return this.designService.createRegisterItem({
+      projectId,
+      categoryId: Number(body.categoryId),
+      drawingNumber: body.drawingNumber,
+      title: body.title,
+    });
+  }
 
-    @Post(':projectId/upload')
-    @UseInterceptors(FileInterceptor('file', {
-        storage: diskStorage({
-            destination: (req: any, file, cb) => {
-                const projectId = req.params.projectId;
-                const uploadPath = `./uploads/projects/${projectId}/drawings`;
-                ensureDir(uploadPath); // Ensure folder exists
-                cb(null, uploadPath);
-            },
-            filename: (req, file, cb) => {
-                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                cb(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
-            },
-        }),
-        limits: {
-            fileSize: 50 * 1024 * 1024, // 50MB limit
+  @Post(':projectId/upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req: any, file, cb) => {
+          const projectId = req.params.projectId;
+          const uploadPath = `./uploads/projects/${projectId}/drawings`;
+          ensureDir(uploadPath); // Ensure folder exists
+          cb(null, uploadPath);
         },
-    }))
-    async uploadRevision(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Body('registerId', ParseIntPipe) registerId: number,
-        @Body('revisionNumber') revisionNumber: string,
-        @Body('revisionDate') revisionDate: string,
-        @UploadedFile() file: Express.Multer.File,
-        @GetUser() user: User
-    ) {
-        if (!file) {
-            throw new BadRequestException('File is required');
-        }
-
-        return this.designService.createRevision(
-            registerId,
-            user.id,
-            {
-                path: file.path, // The physical path provided by multer
-                filename: file.originalname,
-                size: file.size,
-                mimetype: file.mimetype
-            },
-            revisionNumber,
-            revisionDate ? new Date(revisionDate) : undefined
-        );
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(
+            null,
+            `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`,
+          );
+        },
+      }),
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB limit
+      },
+    }),
+  )
+  async uploadRevision(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body('registerId', ParseIntPipe) registerId: number,
+    @Body('revisionNumber') revisionNumber: string,
+    @Body('revisionDate') revisionDate: string,
+    @UploadedFile() file: Express.Multer.File,
+    @GetUser() user: User,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
     }
 
-    @Get(':projectId/register/:registerId/revisions')
-    async getRevisions(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Param('registerId', ParseIntPipe) registerId: number
-    ) {
-        return this.designService.getRevisions(registerId);
-    }
+    return this.designService.createRevision(
+      registerId,
+      user.id,
+      {
+        path: file.path, // The physical path provided by multer
+        filename: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+      },
+      revisionNumber,
+      revisionDate ? new Date(revisionDate) : undefined,
+    );
+  }
 
-    @Get(':projectId/download/:revisionId')
-    async downloadRevision(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Param('revisionId', ParseIntPipe) revisionId: number,
-        @Res() res: Response // Express response
-    ) {
-        const fileInfo = await this.designService.getRevisionFile(revisionId);
-        res.download(fileInfo.path, fileInfo.filename);
-    }
+  @Get(':projectId/register/:registerId/revisions')
+  async getRevisions(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('registerId', ParseIntPipe) registerId: number,
+  ) {
+    return this.designService.getRevisions(registerId);
+  }
 
-    @Delete(':projectId/register/:registerId')
-    async deleteRegisterItem(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Param('registerId', ParseIntPipe) registerId: number
-    ) {
-        return this.designService.deleteRegisterItem(registerId);
-    }
+  @Get(':projectId/download/:revisionId')
+  async downloadRevision(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('revisionId', ParseIntPipe) revisionId: number,
+    @Res() res: Response, // Express response
+  ) {
+    const fileInfo = await this.designService.getRevisionFile(revisionId);
+    res.download(fileInfo.path, fileInfo.filename);
+  }
 
-    @Patch(':projectId/register/:registerId')
-    async updateRegisterItem(
-        @Param('projectId', ParseIntPipe) projectId: number,
-        @Param('registerId', ParseIntPipe) registerId: number,
-        @Body() body: { categoryId?: number; drawingNumber?: string; title?: string }
-    ) {
-        return this.designService.updateRegisterItem(registerId, {
-            ...body,
-            categoryId: body.categoryId ? Number(body.categoryId) : undefined
-        });
-    }
+  @Delete(':projectId/register/:registerId')
+  async deleteRegisterItem(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('registerId', ParseIntPipe) registerId: number,
+  ) {
+    return this.designService.deleteRegisterItem(registerId);
+  }
+
+  @Patch(':projectId/register/:registerId')
+  async updateRegisterItem(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('registerId', ParseIntPipe) registerId: number,
+    @Body()
+    body: { categoryId?: number; drawingNumber?: string; title?: string },
+  ) {
+    return this.designService.updateRegisterItem(registerId, {
+      ...body,
+      categoryId: body.categoryId ? Number(body.categoryId) : undefined,
+    });
+  }
 }

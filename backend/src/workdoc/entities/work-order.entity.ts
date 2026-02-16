@@ -1,42 +1,58 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from 'typeorm';
 import { Vendor } from './vendor.entity';
 import { WorkOrderItem } from './work-order-item.entity';
+import { WorkDocTemplate } from './work-doc-template.entity';
 
 @Entity('work_orders')
 export class WorkOrder {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-    @Column()
-    woNumber: string;
+  @Column()
+  woNumber: string;
 
-    @ManyToOne(() => Vendor, (vendor) => vendor.workOrders, { onDelete: 'CASCADE' })
-    vendor: Vendor;
+  @ManyToOne(() => Vendor, (vendor) => vendor.workOrders, {
+    onDelete: 'CASCADE',
+  })
+  vendor: Vendor;
 
-    @Column()
-    projectId: number;
+  @ManyToOne(() => WorkDocTemplate, { nullable: true })
+  @JoinColumn({ name: 'templateId' })
+  template: WorkDocTemplate;
 
-    @Column({ type: 'date' })
-    woDate: Date;
+  @Column()
+  projectId: number;
 
-    @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-    totalAmount: number;
+  @Column({ type: 'date' })
+  woDate: Date;
 
-    @Column({ default: 'DRAFT' })
-    status: string; // DRAFT, ACTIVE, CLOSED, CANCELLED
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  totalAmount: number;
 
-    @Column({ nullable: true })
-    pdfPath: string; // Path to original file
+  @Column({ default: 'DRAFT' })
+  status: string; // DRAFT, ACTIVE, CLOSED, CANCELLED
 
-    @Column({ nullable: true })
-    originalFileName: string;
+  @Column({ nullable: true })
+  pdfPath: string; // Path to original file
 
-    @CreateDateColumn()
-    createdAt: Date;
+  @Column({ nullable: true })
+  originalFileName: string;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+  @CreateDateColumn()
+  createdAt: Date;
 
-    @OneToMany(() => WorkOrderItem, (item) => item.workOrder, { cascade: true })
-    items: WorkOrderItem[];
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @OneToMany(() => WorkOrderItem, (item) => item.workOrder, { cascade: true })
+  items: WorkOrderItem[];
 }

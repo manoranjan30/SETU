@@ -48,6 +48,24 @@ const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?:
         );
     }
 
+    if (item.external) {
+        return (
+            <a
+                href={item.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center py-2 text-sm hover:text-blue-600 transition-colors relative text-gray-700`}
+                style={{ paddingLeft: `${paddingLeft}px`, paddingRight: isCollapsed ? '0' : '24px' }}
+                title={isCollapsed ? item.label : ''}
+            >
+                <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : ''}`}>
+                    {item.icon && <item.icon className={`w-4 h-4 ${isCollapsed ? '' : 'mr-3'}`} />}
+                    {!isCollapsed && item.label}
+                </div>
+            </a>
+        );
+    }
+
     return (
         <Link
             to={item.path}

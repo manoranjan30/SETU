@@ -1,7 +1,8 @@
 
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { Settings, AlertCircle, CheckCircle2, FlaskConical, Layout } from 'lucide-react';
+import { Settings, AlertCircle, CheckCircle2, FlaskConical, Layout, FileText } from 'lucide-react';
 
 interface SystemSetting {
     id: number;
@@ -124,6 +125,29 @@ const SystemSettings = () => {
                         </div>
                     </section>
                 )}
+
+                {/* Tools Section */}
+                <section>
+                    <div className="flex items-center gap-2 mb-4">
+                        <FileText className="w-5 h-5 text-gray-400" />
+                        <h2 className="text-lg font-semibold text-gray-700">Tools</h2>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+                        <Link
+                            to="/dashboard/admin/template-builder"
+                            className="flex items-center gap-4 p-5 hover:bg-gray-50 transition-colors"
+                        >
+                            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                <FileText className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-medium text-gray-800">PDF Template Builder</h3>
+                                <p className="text-sm text-gray-500">Create and manage templates for extracting data from PDFs</p>
+                            </div>
+                            <span className="text-gray-400">→</span>
+                        </Link>
+                    </div>
+                </section>
             </div>
         </div>
     );

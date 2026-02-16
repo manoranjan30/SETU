@@ -7,14 +7,21 @@ interface ModalProps {
     onClose: () => void;
     title: string;
     children: React.ReactNode;
+    size?: 'medium' | 'large' | 'xl';
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'medium' }) => {
     if (!isOpen) return null;
 
+    const sizeClass = {
+        medium: 'max-w-2xl',
+        large: 'max-w-4xl',
+        xl: 'max-w-6xl'
+    };
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+            <div className={`bg-white rounded-3xl shadow-2xl w-full ${sizeClass[size]} max-h-[90vh] flex flex-col border border-white/20`}>
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 flex-shrink-0">
                     <h3 className="text-xl font-bold text-gray-900">{title}</h3>
                     <button

@@ -28,6 +28,16 @@ services:
       DATABASE_PASSWORD: password
       DATABASE_NAME: setu_db
       JWT_SECRET: supersecretkey
+      PDF_TOOL_URL: http://pdf-tool:8002
+
+  pdf-tool:
+    build:
+      context: ./tools/pdf_processor
+      dockerfile: Dockerfile
+    container_name: setu_pdf_tool
+    ports:
+      - "8002:8002"
+    restart: always
 
 volumes:
   postgres_data:
