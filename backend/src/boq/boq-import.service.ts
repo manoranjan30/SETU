@@ -72,7 +72,7 @@ export class BoqImportService {
     );
     const wb = XLSX.read(fileBuffer, { type: 'buffer' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+    const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
 
     if (rows.length < 2) {
       console.warn('[ImportMeasurements] Empty file (less than 2 rows)');
@@ -227,6 +227,20 @@ export class BoqImportService {
           epsId = currentEpsId;
         } else if (epsNameRef && epsNameMap.has(epsNameRef)) {
           epsId = epsNameMap.get(epsNameRef)!;
+        } else if (epsNameRef && epsNameRef.includes('>')) {
+          // Detect Path: 'Tower A > Floor 1'
+          const parts = epsNameRef.split('>').map(p => p.trim());
+          // We need all nodes to resolve path. line 147 fetches all.
+          // But validEpsIds logic above might have filtered? 
+          // We need full list for path resolution.
+          // epsNameMap keys are just names.
+          // We need the `allNodes` array from line 147. But scope?
+          // I will assume `epsNodes` from line 156 (which is populated if hierarchyMapping). 
+          // If not hierarchyMapping, epsNodes might be empty?
+          // Line 158: if hierarchyMapping find().
+          // I should ensure I have all nodes.
+          const nodes = epsNodes.length > 0 ? epsNodes : await this.epsRepo.find();
+          epsId = await this.resolveEpsPath(projectId, parts, nodes);
         } else if (defaultEpsId) {
           epsId = defaultEpsId;
         }
@@ -343,33 +357,85 @@ export class BoqImportService {
   }
 
   getTemplateBuffer(): Buffer {
+    // Sheet 1: Blank Data Entry Template
     const headers = [
-      'EPS Node ID',
-      'EPS Name (Reference)',
-      'Parent BOQ Code',
+      'Row Type',
       'BOQ Code',
-      'BOQ Name', // Description
+      'Parent BOQ Code',
+      'Parent Sub-Item',
+      'Description',
       'Detailed Description',
       'UOM',
-      'Total Quantity',
+      'Quantity',
       'Rate',
-    ];
-    const data = [headers];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [
-      { wch: 15 },
-      { wch: 30 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 40 },
-      { wch: 30 },
-      { wch: 10 },
-      { wch: 15 },
-      { wch: 15 },
+      'EPS Path',
+      'Element Name',
+      'Length',
+      'Breadth',
+      'Depth',
+      'Calculated Qty',
     ];
 
+    // Create Worksheet with Headers
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+
+    // Set Column Widths for better visibility
+    ws['!cols'] = [
+      { wch: 15 }, // Row Type
+      { wch: 15 }, // BOQ Code
+      { wch: 15 }, // Parent Code
+      { wch: 20 }, // Parent Sub-Item (New)
+      { wch: 40 }, // Description
+      { wch: 30 }, // Detailed Desc
+      { wch: 10 }, // UOM
+      { wch: 12 }, // Qty
+      { wch: 12 }, // Rate
+      { wch: 30 }, // EPS Path
+      { wch: 20 }, // Element Name
+      { wch: 10 }, // L
+      { wch: 10 }, // B
+      { wch: 10 }, // D
+      { wch: 15 }, // Calc Qty
+    ];
+
+    // Sheet 2: Example / Guide
+    const exampleHeaders = headers;
+    const exampleData = [
+      headers,
+      ['MAIN_ITEM', 'CIV-001', '', '', 'Earth Work Excavation', 'Excavation for foundation', 'cum', '100', '500', 'Tower A > Basement', '', '', '', '', ''],
+      ['SUB_ITEM', '', 'CIV-001', '', 'Manual Excavation', 'Labor work', 'cum', '40', '600', '', '', '', '', '', ''],
+      ['MEASUREMENT', '', 'CIV-001', 'Manual Excavation', 'Grid 1-A Pit', '', 'cum', '0', '0', 'Tower A > Basement', 'Pit 1', '2', '2', '1.5', '6'],
+      ['MEASUREMENT', '', 'CIV-001', 'Manual Excavation', 'Grid 1-B Pit', '', 'cum', '0', '0', 'Tower A > Basement', 'Pit 2', '2', '2', '1.5', '6'],
+      ['MAIN_ITEM', 'CIV-002', '', '', 'PCC Work', 'M10 Grade', 'cum', '50', '3500', 'Tower A > Basement', '', '', '', '', ''],
+    ];
+
+    const wsExample = XLSX.utils.aoa_to_sheet(exampleData);
+    wsExample['!cols'] = ws['!cols'];
+
+    // Sheet 3: Legend / Instructions
+    const legendData = [
+      ['Column Name', 'Description', 'Applicable For'],
+      ['Row Type', 'Type of row: MAIN_ITEM, SUB_ITEM, or MEASUREMENT', 'All'],
+      ['BOQ Code', 'Unique identifier for the main item', 'MAIN_ITEM'],
+      ['Parent BOQ Code', 'Links Sub-items/Measurements to a Main Item', 'SUB_ITEM, MEASUREMENT'],
+      ['Parent Sub-Item', 'Exact Name of the Sub-item to link Measurement to', 'MEASUREMENT (if child of sub-item)'],
+      ['Description', 'Name or Title of the item', 'All'],
+      ['UOM', 'Unit of Measurement', 'MAIN_ITEM, SUB_ITEM, MEASUREMENT'],
+      ['Quantity', 'Total Quantity Override (Manual)', 'MAIN_ITEM, SUB_ITEM'],
+      ['Rate', 'Unit Price', 'MAIN_ITEM, SUB_ITEM'],
+      ['EPS Path', 'Location Hierarchy (e.g. Tower A > Floor 1)', 'MAIN_ITEM, MEASUREMENT'],
+      ['Element Name', 'Name of the measured element', 'MEASUREMENT'],
+      ['Dimensions', 'L, B, D for Calculation', 'MEASUREMENT'],
+    ];
+    const wsLegend = XLSX.utils.aoa_to_sheet(legendData);
+    wsLegend['!cols'] = [{ wch: 20 }, { wch: 50 }, { wch: 30 }];
+
+    // Create Workbook
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Import Template');
+    XLSX.utils.book_append_sheet(wb, ws, 'Data Entry');
+    XLSX.utils.book_append_sheet(wb, wsExample, 'Example Data');
+    XLSX.utils.book_append_sheet(wb, wsLegend, 'Instructions');
+
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
 
@@ -379,50 +445,49 @@ export class BoqImportService {
     mapping?: any,
     defaultEpsId?: number,
     hierarchyMapping?: any,
+    dryRun: boolean = false,
   ) {
-    // Read via XLSX (More robust than csv-parser for headers)
     const wb = XLSX.read(fileBuffer, { type: 'buffer' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+    const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
 
     if (rows.length < 2) throw new BadRequestException('Empty file');
 
     const headers = rows[0].map((h: any) => String(h).trim());
     const dataRows = rows.slice(1);
 
-    console.log('[ImportBOQ] Headers:', headers);
-
-    // Helper to find column index
     const getIndex = (key: string, defaultName?: string) => {
       let colName = mapping && mapping[key] ? mapping[key] : defaultName;
       if (!colName && defaultName) colName = defaultName;
-
       if (colName) {
-        // Try exact or fuzzy match
-        const idx = headers.findIndex(
-          (h) => h.toLowerCase() === colName!.toLowerCase(),
-        );
+        const idx = headers.findIndex((h) => h.toLowerCase() === colName!.toLowerCase());
         if (idx !== -1) return idx;
-        // Fallback: search key itself if mapping failed
-        return headers.findIndex((h) =>
-          h.toLowerCase().includes(key.toLowerCase()),
-        );
+        return headers.findIndex((h) => h.toLowerCase().includes(key.toLowerCase()));
       }
       return -1;
     };
 
+    const idxId = getIndex('id', 'ID');
+    const idxRowType = getIndex('rowType', 'Row Type');
     const idxCode = getIndex('boqCode', 'BOQ Code');
+    const idxParentCode = getIndex('parentBoqCode', 'Parent BOQ Code');
+    const idxParentSub = getIndex('parentSubItem', 'Parent Sub-Item'); // New Column Index
     const idxDesc = getIndex('description', 'Description');
-    const idxLongDesc = getIndex('longDescription', 'Detailed Description'); // Matches template
+    const idxLongDesc = getIndex('longDescription', 'Detailed Description');
     const idxUom = getIndex('uom', 'UOM');
-    const idxQty = getIndex('qty', 'Total Quantity');
+    const idxQty = getIndex('qty', 'Quantity');
     const idxRate = getIndex('rate', 'Rate');
-    const idxParentCode = getIndex('parentBoqCode', 'Parent BOQ Code'); // Needed for Sub Items
+    let idxEpsPath = getIndex('epsPath', 'EPS Path');
+    if (idxEpsPath === -1) idxEpsPath = getIndex('epsName', 'EPS Name');
+    const idxElName = getIndex('elementName', 'Element Name');
+    const idxL = getIndex('length', 'Length');
+    const idxB = getIndex('breadth', 'Breadth');
+    const idxD = getIndex('depth', 'Depth');
+    const idxCalcQty = getIndex('calculatedQty', 'Calculated Qty');
 
-    const idxEpsId = getIndex('epsId', 'EPS Node ID');
-    const idxEpsName = getIndex('epsName', 'EPS Name');
+    const allEps = await this.epsRepo.find({ select: ['id', 'name', 'parentId'] });
 
-    // Hierarchy Indices
+    // Handle Hierarchy Mapping Indices
     let hierarchyIndices: number[] = [];
     if (hierarchyMapping) {
       const getColIndex = (colName: string | undefined): number =>
@@ -431,6 +496,7 @@ export class BoqImportService {
             (h) => h.trim().toLowerCase() === colName.trim().toLowerCase(),
           )
           : -1;
+
       hierarchyIndices = [
         getColIndex(hierarchyMapping.level1),
         getColIndex(hierarchyMapping.level2),
@@ -440,209 +506,517 @@ export class BoqImportService {
       ].filter((idx) => idx !== -1);
     }
 
-    const allEps = await this.epsRepo.find({
-      select: ['id', 'name', 'parentId'],
-    });
+    const result = {
+      newCount: 0,
+      updateCount: 0,
+      errorCount: 0,
+      errors: [] as string[],
+      warnings: [] as string[],
+      preview: [] as any[]
+    };
 
-    const batchMain: BoqItem[] = [];
-    const batchSub: { parentCode: string; data: Partial<BoqSubItem> }[] = [];
+    // === PASS 1: VALIDATE EPS PATHS ===
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      if (!row || row.length === 0) continue;
+      const pathStr = idxEpsPath !== -1 ? String(row[idxEpsPath] || '').trim() : '';
+      if (pathStr && pathStr !== 'undefined' && pathStr !== '') {
+        const parts = pathStr.split('>').map(p => p.trim());
+        const epsId = await this.resolveEpsPath(projectId, parts, allEps);
+        if (!epsId) {
+          result.warnings.push(`Row ${i + 2}: EPS Path "${pathStr}" not found. Will use default or root.`);
+        }
+      } else if (hierarchyIndices.length > 0) {
+        // Validation for Hierarchy
+        const pathValues = hierarchyIndices
+          .map((idx) => row[idx])
+          .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
 
-    // Cache for Code -> Entity
-    const itemCodeMap = new Map<string, BoqItem>(); // Codes in DB or current batch
+        if (pathValues.length > 0) {
+          const epsId = await this.resolveEpsPath(projectId, pathValues.map(String), allEps);
+          if (!epsId) {
+            result.warnings.push(`Row ${i + 2}: Hierarchy Path "${pathValues.join(' > ')}" not found.`);
+          }
+        }
+      }
+    }
 
-    // Pre-fetch existing items for this project to resolve parents
+    if (dryRun) {
+      // Simple Dry Run Logic
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        if (!row || row.length === 0) continue;
+        const type = String(row[idxRowType] || '').trim().toUpperCase();
+        if (['MAIN_ITEM', 'SUB_ITEM', 'MEASUREMENT'].includes(type)) {
+          result.newCount++;
+        } else {
+          result.warnings.push(`Row ${i + 2}: Unknown Row Type "${type}"`);
+        }
+      }
+      return result;
+    }
+
+    // === DATA PREP & PERSISTENCE ===
+    // 1. Load Existing Items
+    const itemCodeMap = new Map<string, BoqItem>();
     const existingItems = await this.boqItemRepo.find({
       where: { projectId },
-      select: ['id', 'boqCode'],
+      loadRelationIds: { relations: ['epsNode'] } // Ensure we get the ID
     });
-    existingItems.forEach((i) => itemCodeMap.set(i.boqCode, i));
+    existingItems.forEach(i => itemCodeMap.set(i.boqCode, i));
 
-    let processedCount = 0;
-
+    // 2. Process MAIN_ITEMS first
     for (const row of dataRows) {
-      if (row.length === 0) continue;
+      const type = String(row[idxRowType] || '').trim().toUpperCase();
+      if (type === 'MAIN_ITEM') {
+        const code = String(row[idxCode] || '').trim();
+        if (!code) continue;
 
-      const code = String(row[idxCode] || '').trim();
-      if (!code) continue;
+        let item = itemCodeMap.get(code);
+        if (!item) {
+          item = this.boqItemRepo.create({
+            projectId,
+            boqCode: code,
+            status: 'IMPORTED'
+          });
+        }
 
-      const parentCode =
-        idxParentCode !== -1 ? String(row[idxParentCode] || '').trim() : '';
+        // Update fields
+        item.description = String(row[idxDesc] || '');
+        item.longDescription = idxLongDesc !== -1 ? String(row[idxLongDesc] || '') : '';
+        item.uom = String(row[idxUom] || 'set');
 
-      // Common Data
-      const desc = String(row[idxDesc] || '');
-      const uom = String(row[idxUom] || 'nos');
-      const qty = Number(row[idxQty] || 0);
-      const rate = Number(row[idxRate] || 0);
-      const longDesc =
-        idxLongDesc !== -1 ? String(row[idxLongDesc] || '') : null;
+        item.qty = Number(row[idxQty] || 0);
+        item.rate = Number(row[idxRate] || 0);
 
-      if (parentCode) {
-        // === SUB ITEM ===
-        // Defer processing until Main Items are saved?
-        // We might need to save Main Items first if they are in the same file.
-        batchSub.push({
-          parentCode,
-          data: {
-            description: desc,
-            uom,
-            qty,
-            rate,
-            amount: qty * rate,
-            // longDescription? SubItem entity doesn't have it yet?
-            // Plan said "Summary Level Changes". SubItem uses standard fields.
-            // Ideally SubItems should inherit or just use description.
-            // If user put detail in SubItem row, maybe append to desc?
-          },
-        });
-      } else {
-        // === MAIN ITEM ===
-        // EPS Logic
-        let epsId = 0;
-        // 1. Hierarchy
-        if (hierarchyMapping && hierarchyIndices.length > 0) {
+        // EPS
+        const pathStr = idxEpsPath !== -1 ? String(row[idxEpsPath] || '').trim() : '';
+        if (pathStr) {
+          const epsId = await this.resolveEpsPath(projectId, pathStr.split('>').map(p => p.trim()), allEps);
+          if (epsId) item.epsNodeId = epsId;
+        } else if (hierarchyIndices.length > 0) {
           const pathValues = hierarchyIndices
             .map((idx) => row[idx])
-            .filter((v) => v);
-          epsId = await this.resolveEpsPath(projectId, pathValues, allEps);
-        }
-        // 2. Direct ID/Name
-        if (!epsId) {
-          const directId = Number(row[idxEpsId]);
-          if (!isNaN(directId) && directId > 0) epsId = directId;
-        }
-        if (!epsId) {
-          // Try EPS Name match from map?
-          // Skipped for brevity, assume ID or Hierarchy is primary.
+            .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+          if (pathValues.length > 0) {
+            const epsId = await this.resolveEpsPath(projectId, pathValues.map(String), allEps);
+            if (epsId) item.epsNodeId = epsId;
+          } else if (defaultEpsId) {
+            item.epsNodeId = defaultEpsId;
+          }
+        } else if (defaultEpsId) {
+          item.epsNodeId = defaultEpsId;
         }
 
-        if (!epsId && defaultEpsId) epsId = defaultEpsId;
+        await this.boqItemRepo.save(item);
+        itemCodeMap.set(code, item); // Update map with saved entity (has ID)
+        result.newCount++;
+      }
+    }
 
-        const boq = this.boqItemRepo.create({
-          projectId,
-          boqCode: code,
+    // 3. Process SUB_ITEMS (Require Main Item ID)
+    const subItemMap = new Map<string, BoqSubItem>(); // parentCode + desc -> SubItem
+    const subItemCodeMap = new Map<string, BoqSubItem>(); // boqCode -> SubItem (New)
+
+    for (const row of dataRows) {
+      const type = String(row[idxRowType] || '').trim().toUpperCase();
+      if (type === 'SUB_ITEM') {
+        const parentCode = String(row[idxParentCode] || '').trim();
+        const desc = String(row[idxDesc] || '').trim();
+        if (!parentCode || !desc) continue;
+
+        const mainItem = itemCodeMap.get(parentCode);
+        if (!mainItem) {
+          result.errors.push(`Sub-Item "${desc}": Parent BOQ Code "${parentCode}" not found.`);
+          continue;
+        }
+
+        const subItem = this.boqSubItemRepo.create({
+          boqItem: mainItem,
           description: desc,
-          longDescription: longDesc || undefined, // New Field
-          uom,
-          qtyMode: BoqQtyMode.MANUAL,
-          qty,
-          rate,
-          amount: qty * rate,
-          status: 'IMPORTED',
-          epsNode: epsId ? ({ id: epsId } as any) : null, // Optional
-          epsNodeId: epsId || null,
-          customAttributes: { source: 'Excel Import' },
+          uom: String(row[idxUom] || mainItem.uom),
+          qty: Number(row[idxQty] || 0),
+          rate: Number(row[idxRate] || mainItem.rate),
+          amount: (Number(row[idxQty] || 0)) * (Number(row[idxRate] || mainItem.rate))
         });
 
-        // Update Map immediately (using placeholder ID? No, need save first)
-        // We will save batchMain first, then reload map.
-        batchMain.push(boq);
+        await this.boqSubItemRepo.save(subItem);
+        await this.boqSubItemRepo.save(subItem);
+        subItemMap.set(`${parentCode}:${desc}`, subItem); // Key for linking measurements
+
+        // Also map by Sub-Item Code if available
+        const subCode = String(row[idxCode] || '').trim();
+        if (subCode) {
+          subItemCodeMap.set(subCode, subItem);
+        }
+
+        result.newCount++;
       }
-      processedCount++;
     }
 
-    // 1. Save Main Items
-    if (batchMain.length > 0) {
-      console.log(`[Import] Saving ${batchMain.length} Main Items...`);
-      // Insert or Update? For now Insert (might duplicate code errors if constraint)
-      // Ideally Upsert.
-      await this.boqItemRepo.save(batchMain);
+    // 4. Process MEASUREMENTS
+    for (const row of dataRows) {
+      const type = String(row[idxRowType] || '').trim().toUpperCase();
+      if (type === 'MEASUREMENT') {
+        const parentCode = String(row[idxParentCode] || '').trim();
+        const parentSub = idxParentSub !== -1 ? String(row[idxParentSub] || '').trim() : '';
 
-      // Refresh Map
-      const refreshed = await this.boqItemRepo.find({
-        where: { projectId },
-        select: ['id', 'boqCode'],
-      });
-      refreshed.forEach((i) => itemCodeMap.set(i.boqCode, i));
-    }
+        if (!parentCode) continue;
 
-    // 2. Save Sub Items
-    if (batchSub.length > 0) {
-      console.log(`[Import] Saving ${batchSub.length} Sub Items...`);
-      const subItemsToSave: BoqSubItem[] = [];
-      for (const sub of batchSub) {
-        const parent = itemCodeMap.get(sub.parentCode);
-        if (parent) {
-          const s = this.boqSubItemRepo.create({
-            ...sub.data,
-            boqItem: parent,
-          });
-          subItemsToSave.push(s);
+        let mainItem: BoqItem | undefined;
+        let targetSubItem: BoqSubItem | null | undefined;
+
+        // Try resolving Parent as a Sub-Item first (e.g. 2.2.1 -> Parent 2.2)
+        if (subItemCodeMap.has(parentCode)) {
+          targetSubItem = subItemCodeMap.get(parentCode);
+          if (targetSubItem) {
+            mainItem = targetSubItem.boqItem;
+          }
+        }
+
+        // If not found, assume Parent Code is Main Item (e.g. 2.2.1 -> Parent 2, Sub "Excavation")
+        if (!mainItem) {
+          mainItem = itemCodeMap.get(parentCode);
+        }
+
+        if (!mainItem) continue;
+
+        // If Measurement belongs to a Sub-Item (and not already linked via Code)
+        if (parentSub && !targetSubItem) {
+          targetSubItem = subItemMap.get(`${parentCode}:${parentSub}`);
+          if (!targetSubItem) {
+            // Try finding it in DB if not in current batch
+            targetSubItem = await this.boqSubItemRepo.findOne({
+              where: { boqItem: { id: mainItem.id }, description: parentSub }
+            });
+          }
+
+          if (!targetSubItem) {
+            result.warnings.push(`Measurement "${row[idxElName]}": Parent Sub-Item "${parentSub}" not found under "${parentCode}". Linking to Main Item instead.`);
+          }
+        }
+
+        // SMART DESCRIPTION MAPPING
+        // If Element Name is mapped, use it. If not, fallback to Description column (often used for measurement linkage)
+        let elName = 'Measurement';
+        if (idxElName !== -1 && row[idxElName]) {
+          elName = String(row[idxElName]);
+        } else if (idxDesc !== -1 && row[idxDesc]) {
+          elName = String(row[idxDesc]);
+        }
+
+        const meas = this.measurementRepo.create({
+          projectId,
+          boqItem: mainItem,
+          boqSubItem: targetSubItem || undefined,
+          elementName: elName,
+          length: Number(row[idxL] || 0),
+          breadth: Number(row[idxB] || 0),
+          depth: Number(row[idxD] || 0),
+          qty: 0, // Will settle below
+          uom: String(row[idxUom] || 'set')
+        });
+
+        // Quantity Logic:
+        // 1. Explicit Calculated Qty Column
+        let finalQty = Number(row[idxCalcQty] || 0);
+
+        // 2. If 0, try Auto-Calculation from Dimensions (L*B*D)
+        if (finalQty === 0) {
+          const l = meas.length || 0;
+          const b = meas.breadth || 0;
+          const d = meas.depth || 0;
+          // Only calculate if at least two dimensions are non-zero (Area/Vol) or L is non-zero (Linear)?
+          // Strict interpretation: If L, B, D are provided, multiply them.
+          // But if B=0 and D=0, maybe it's just Length?
+          // Let's assume standard multiplication if any dimension exists.
+          // However, if all are 0, product is 0.
+          if (l !== 0 || b !== 0 || d !== 0) {
+            finalQty = (l || 1) * (b || 1) * (d || 1);
+          }
+        }
+
+        // 3. Fallback to "Quantity" Column (Manual Entry) if still 0
+        if (finalQty === 0) {
+          finalQty = Number(row[idxQty] || 0);
+        }
+
+        meas.qty = finalQty;
+
+        // EPS for Measurement
+        const pathStr = idxEpsPath !== -1 ? String(row[idxEpsPath] || '').trim() : '';
+        let resolvedEpsId: number | undefined;
+
+        if (pathStr) {
+          resolvedEpsId = await this.resolveEpsPath(projectId, pathStr.split('>').map(p => p.trim()), allEps);
+        } else if (hierarchyIndices.length > 0) {
+          const pathValues = hierarchyIndices
+            .map((idx) => row[idx])
+            .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+          if (pathValues.length > 0) {
+            resolvedEpsId = await this.resolveEpsPath(projectId, pathValues.map(String), allEps);
+          }
+        }
+
+        // Final Assignment with Logic Flow
+        if (resolvedEpsId) {
+          meas.epsNodeId = resolvedEpsId;
+        } else if (defaultEpsId) {
+          meas.epsNodeId = defaultEpsId;
         } else {
-          console.warn(
-            `[Import] Orphan SubItem skipped. Parent Code '${sub.parentCode}' not found.`,
-          );
+          // Inheritance from Main Item (loaded from DB or newly created)
+          // Check both epsNodeId property and epsNode relation (which might be an ID if loadRelationIds is true)
+          const parentEps = mainItem.epsNode as any;
+          if (mainItem.epsNodeId) {
+            meas.epsNodeId = mainItem.epsNodeId;
+          } else if (parentEps) {
+            meas.epsNodeId = typeof parentEps === 'number' ? parentEps : parentEps.id;
+          }
+        }
+
+        // Absolute Backup: Use Root/First Node if still null
+        if (!meas.epsNodeId && allEps.length > 0) {
+          meas.epsNodeId = allEps[0].id;
+          result.warnings.push(`Measurement "${row[idxElName]}": No EPS found. Fallback to First Available EPS: ${allEps[0].name}`);
+        }
+
+        await this.measurementRepo.save(meas);
+        result.newCount++;
+      }
+    }
+
+    // POST-PROCESSING: Recalculate Sub-Item Quantities
+    // We iterate over unique Sub-Items touched and sum their measurements
+    // We iterate over unique Sub-Items we processed
+    const allSubs = Array.from(subItemCodeMap.values());
+    for (const sub of allSubs) {
+      // Reload with measurements to calculate total
+      const freshSub = await this.boqSubItemRepo.findOne({
+        where: { id: sub.id },
+        relations: ['measurements']
+      });
+
+      if (freshSub && freshSub.measurements) {
+        const total = freshSub.measurements.reduce((sum, m) => sum + Number(m.qty), 0);
+        // Update if difference > epsilon 
+        if (Math.abs(freshSub.qty - total) > 0.001) {
+          freshSub.qty = total;
+          await this.boqSubItemRepo.save(freshSub);
         }
       }
-      if (subItemsToSave.length > 0) {
-        await this.boqSubItemRepo.save(subItemsToSave);
-      }
     }
 
-    return processedCount;
+    return {
+      newCount: result.newCount,
+      updateCount: result.updateCount,
+      errorCount: result.errorCount,
+      errors: result.errors,
+      warnings: result.warnings,
+      preview: result.preview
+    };
   }
 
   private async resolveEpsPath(
-    rootId: number,
-    pathValues: any[],
+    projectId: number,
+    pathValues: string[],
     allNodes: EpsNode[],
   ): Promise<number> {
-    const normalize = (str: string) =>
-      str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalize = (str: any) =>
+      String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
     if (pathValues.length === 0) return 0;
 
-    // Try to identify the starting parent.
-    // Usually, imports are under a Project. The first value (e.g. Block) should be a child of the Project.
-    // We find the Project Node first.
-    let parentId: number | null = null;
+    console.log(`[ResolveEPS] resolving: ${pathValues.join(' > ')}`);
 
-    // Find project node first
-    const projectNode = allNodes.find((n) => n.id === rootId);
-    // If the projectId passed IS a node ID, we start there.
-    if (projectNode) {
-      parentId = projectNode.id;
-    } else {
-      // Fallback: If projectId refers to something else (e.g. project profile ID),
-      // we should have passed the actual Root Node ID.
-      // Assuming for now rootId IS the EPS Node ID for the project.
+    // Strategy 1: Identify all potential Root Nodes (Company/Project level)
+    const rootNodes = allNodes.filter(n => !n.parentId || n.parentId == 0);
+
+    let startNode: EpsNode | undefined;
+    let startIndex = 0;
+    const firstVal = normalize(pathValues[0]);
+
+    // Check A: Does path[0] match any Root?
+    startNode = rootNodes.find(n => normalize(n.name).includes(firstVal));
+
+    // Check B: Does path[0] match any CHILD of any Root? (Skipped implicit root)
+    if (!startNode) {
+      for (const root of rootNodes) {
+        const children = allNodes.filter(n => n.parentId == root.id);
+        const match = children.find(c => normalize(c.name).includes(firstVal));
+        if (match) {
+          startNode = match;
+          startIndex = 1; // We matched path[0] to a child, so next is path[1]
+          break;
+        }
+      }
     }
 
-    let resolvedNode: EpsNode | null = null;
+    // Check C: Does path[1] match any CHILD of any Root? (Skip path[0] as metadata)
+    if (!startNode && pathValues.length > 1) {
+      const secondVal = normalize(pathValues[1]);
+      for (const root of rootNodes) {
+        const children = allNodes.filter(n => n.parentId == root.id);
+        const match = children.find(c => normalize(c.name).includes(secondVal));
+        if (match) {
+          startNode = match;
+          startIndex = 2; // We matched path[1], so next is path[2]
+          break;
+        }
+      }
+    }
 
-    for (const valRaw of pathValues) {
-      const val = String(valRaw || '').trim();
-      if (!val) break;
+    if (!startNode) {
+      console.warn(`[ResolveEPS] Failed to find start node for path: ${pathValues.join(' > ')}`);
+      return 0; // Fallback to system default
+    }
 
-      const normVal = normalize(val);
-      // Search Children
-      const candidates = allNodes.filter((n) => n.parentId === parentId);
+    console.log(`[ResolveEPS] Start Node: ${startNode.name} (Index: ${startIndex})`);
+    let currentParentId = startNode.id;
+    let resolvedNode = startNode;
 
-      // Debug Log
-      // console.log(`Searching for '${val}' under Parent ${parentId}. Candidates: ${candidates.length}`);
+    // Traverse remaining path
+    for (let i = startIndex; i < pathValues.length; i++) {
+      const val = normalize(pathValues[i]);
+      if (!val) continue;
 
-      let match = candidates.find((n) => normalize(n.name) === normVal);
-      if (!match)
-        match = candidates.find(
-          (n) =>
-            normalize(n.name).includes(normVal) ||
-            normVal.includes(normalize(n.name)),
-        );
+      // Find child
+      const children = allNodes.filter(n => n.parentId == currentParentId);
+      let match = children.find(n => normalize(n.name).includes(val));
 
       if (match) {
         resolvedNode = match;
-        parentId = match.id;
+        currentParentId = match.id;
       } else {
-        // console.warn(`Path broken at '${val}'.`);
-        // Break logic: We found as deep as we could.
-        // Should we return the last known good node?
-        // User requirement implies "Full Hierarchy mapped".
-        // If we fail on "Level 3", returning "Level 2" (Block) is why they see "Block" only.
-        // However, if the node doesn't exist, we can't link to it.
-        // We are not auto-creating nodes yet.
-        return resolvedNode ? resolvedNode.id : 0;
+        console.warn(`[ResolveEPS] Path break at "${pathValues[i]}". Best: ${resolvedNode.name}`);
+        break;
       }
     }
-    return resolvedNode ? resolvedNode.id : 0;
+
+    return resolvedNode.id;
+  }
+
+  async exportBoqToCsv(projectId: number): Promise<Buffer> {
+    const items = await this.boqItemRepo.find({
+      where: { projectId },
+      relations: {
+        epsNode: true,
+        subItems: {
+          measurements: {
+            epsNode: true
+          }
+        }
+      },
+      order: { boqCode: 'ASC' },
+    });
+
+    // 1. Fetch All EPS Nodes for Path Building
+    const allEps = await this.epsRepo.find({ select: ['id', 'name', 'parentId'] });
+    const epsMap = new Map<number, EpsNode>();
+    allEps.forEach(n => epsMap.set(n.id, n));
+
+    // Helper to build path
+    const getEpsPath = (nodeId: number | undefined): string => {
+      if (!nodeId) return '';
+      let curr = epsMap.get(nodeId);
+      const path: string[] = [];
+      // Safety depth limit
+      let depth = 0;
+      while (curr && depth < 20) {
+        path.unshift(curr.name);
+        if (curr.parentId) curr = epsMap.get(curr.parentId);
+        else break;
+        depth++;
+      }
+      return path.join(' > ');
+    };
+
+    const headers = [
+      'ID',
+      'BOQ Code',
+      'Parent BOQ Code',
+      'Row Type',
+      'Description',
+      'Detailed Description',
+      'UOM',
+      'Quantity',
+      'Rate',
+      'Amount',
+      'EPS Path',
+      'Element Name',
+      'Length',
+      'Breadth',
+      'Depth',
+      'Calculated Qty'
+    ];
+
+    const data: any[][] = [headers];
+
+    for (const item of items) {
+      // 1. Main Item
+      data.push([
+        item.id,
+        item.boqCode,
+        '', // No parent for main item
+        'MAIN_ITEM',
+        item.description,
+        item.longDescription || '',
+        item.uom,
+        item.qty,
+        item.rate,
+        item.amount,
+        getEpsPath(item.epsNode?.id),
+        '', '', '', '', ''
+      ]);
+
+      if (item.subItems && item.subItems.length > 0) {
+        for (const sub of item.subItems) {
+          // 2. Sub Item
+          data.push([
+            sub.id,
+            '', // SubItems don't have their own code usually
+            item.boqCode, // Link to parent
+            'SUB_ITEM',
+            sub.description,
+            '',
+            sub.uom,
+            sub.qty,
+            sub.rate,
+            sub.amount,
+            getEpsPath(item.epsNode?.id),
+            '', '', '', '', ''
+          ]);
+
+          if (sub.measurements && sub.measurements.length > 0) {
+            for (const m of sub.measurements) {
+              // 3. Measurement
+              data.push([
+                m.id,
+                '',
+                item.boqCode, // Link back to main item (or we could use sub.id if we wanted to be more specific)
+                'MEASUREMENT',
+                m.elementName || '', // Description for measurement
+                '',
+                m.uom || sub.uom,
+                '',
+                '',
+                '',
+                m.epsNode ? getEpsPath(m.epsNode.id) : getEpsPath(sub.boqItem?.epsNode?.id),
+                m.elementName || '',
+                m.length,
+                m.breadth,
+                m.depth,
+                m.qty
+              ]);
+            }
+          }
+        }
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'BOQ Export');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'csv' });
   }
 
   private tryParseJson(val: any): any {

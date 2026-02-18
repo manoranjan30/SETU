@@ -27,6 +27,7 @@ import QualityProjectDashboard from './views/quality/QualityProjectDashboard';
 import DesignDashboard from './views/design/DesignDashboard';
 import SystemSettings from './views/admin/SystemSettings';
 import TemplateBuilder from './views/admin/TemplateBuilder';
+import VendorMappingPage from './pages/VendorMappingPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -164,6 +165,11 @@ const AppRoutes = () => {
         <Route path="projects/:projectId/design" element={
           <ProtectedRoute permission="VIEW_PROJECTS">
             <DesignDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/vendor-mapping" element={
+          <ProtectedRoute permission="WBS.READ">
+            <VendorMappingPage />
           </ProtectedRoute>
         } />
       </Route>

@@ -177,6 +177,9 @@ const BoqPage = () => {
                             <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 shadow-sm">
                                 <Download className="w-4 h-4" /> Template
                             </button>
+                            <button onClick={() => projectId && boqService.exportBoqCsv(Number(projectId))} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 shadow-sm">
+                                <FileSpreadsheet className="w-4 h-4 text-green-600" /> Export CSV
+                            </button>
                             <button onClick={() => setIsImportWizardOpen(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm">
                                 <Upload className="w-4 h-4" /> Import CSV
                             </button>

@@ -20,6 +20,7 @@ import QualityChecklist from './subviews/QualityChecklist';
 import QualitySnagList from './subviews/QualitySnagList';
 import QualityAudit from './subviews/QualityAudit';
 import QualityDocuments from './subviews/QualityDocuments';
+import QualityStructureManager from './subviews/QualityStructureManager';
 
 const QualityProjectDashboard = () => {
     const { projectId } = useParams();
@@ -49,6 +50,7 @@ const QualityProjectDashboard = () => {
         { id: 'observation-ncr', label: 'Observations & NCR', icon: AlertCircle },
         { id: 'checklists', label: 'Checklists', icon: CheckSquare },
         { id: 'snags', label: 'Snag List', icon: Hammer },
+        { id: 'structure', label: 'Structure', icon: LayoutDashboard },
         { id: 'audits', label: 'Audits', icon: ShieldCheck },
         { id: 'documents', label: 'Documents', icon: FileText },
     ];
@@ -62,6 +64,7 @@ const QualityProjectDashboard = () => {
             case 'observation-ncr': return <QualityObservationNcr projectId={numericProjectId} />;
             case 'checklists': return <QualityChecklist projectId={numericProjectId} />;
             case 'snags': return <QualitySnagList projectId={numericProjectId} />;
+            case 'structure': return <QualityStructureManager projectId={numericProjectId} />;
             case 'audits': return <QualityAudit projectId={numericProjectId} />;
             case 'documents': return <QualityDocuments projectId={numericProjectId} />;
             default: return <QualityOverview projectId={numericProjectId} />;

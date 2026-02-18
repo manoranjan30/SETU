@@ -1,5 +1,6 @@
 @echo off
 setlocal
+cd /d "%~dp0"
 
 :: Determine if python is available
 where python >nul 2>nul

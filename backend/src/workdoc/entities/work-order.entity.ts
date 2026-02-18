@@ -20,6 +20,9 @@ export class WorkOrder {
   @Column()
   woNumber: string;
 
+  @Column({ nullable: true })
+  orderAmendNo: string;
+
   @ManyToOne(() => Vendor, (vendor) => vendor.workOrders, {
     onDelete: 'CASCADE',
   })
@@ -32,8 +35,32 @@ export class WorkOrder {
   @Column()
   projectId: number;
 
+  @Column({ nullable: true })
+  projectCode: string; // SAP Project Code (e.g., "2C39")
+
+  @Column({ nullable: true })
+  projectDescription: string;
+
   @Column({ type: 'date' })
   woDate: Date;
+
+  @Column({ type: 'date', nullable: true })
+  orderAmendDate: Date;
+
+  @Column({ type: 'date', nullable: true })
+  orderValidityStart: Date;
+
+  @Column({ type: 'date', nullable: true })
+  orderValidityEnd: Date;
+
+  @Column({ nullable: true })
+  orderType: string; // e.g., "Project Services WO"
+
+  @Column({ nullable: true })
+  invoiceTo: string;
+
+  @Column({ type: 'text', nullable: true })
+  scopeOfWork: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalAmount: number;

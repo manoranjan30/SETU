@@ -40,7 +40,16 @@ let BoqController = class BoqController {
         });
         res.end(buffer);
     }
-    async importBoq(projectId, file, mappingStr, defaultEpsIdStr, hierarchyMappingStr) {
+    async exportBoq(projectId, res) {
+        const buffer = await this.boqImportService.exportBoqToCsv(projectId);
+        res.set({
+            'Content-Type': 'text/csv',
+            'Content-Disposition': 'attachment; filename=BOQ_Export.csv',
+            'Content-Length': buffer.length,
+        });
+        res.end(buffer);
+    }
+    async importBoq(projectId, file, mappingStr, defaultEpsIdStr, hierarchyMappingStr, dryRunStr) {
         let mapping = null;
         if (mappingStr) {
             try {
@@ -58,7 +67,8 @@ let BoqController = class BoqController {
         const defaultEpsId = defaultEpsIdStr
             ? parseInt(defaultEpsIdStr, 10)
             : undefined;
-        return await this.boqImportService.importBoq(projectId, file.buffer, mapping, defaultEpsId, hierarchyMapping);
+        const dryRun = dryRunStr === 'true' || dryRunStr === '1';
+        return await this.boqImportService.importBoq(projectId, file.buffer, mapping, defaultEpsId, hierarchyMapping, dryRun);
     }
     async downloadMeasurementTemplate(res) {
         const buffer = this.boqImportService.getMeasurementTemplate();
@@ -166,6 +176,15 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], BoqController.prototype, "downloadTemplate", null);
 __decorate([
+    (0, common_1.Get)('export/:projectId'),
+    (0, swagger_1.ApiOperation)({ summary: 'Export BOQ to CSV' }),
+    __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", Promise)
+], BoqController.prototype, "exportBoq", null);
+__decorate([
     (0, common_1.Post)('import/:projectId'),
     (0, swagger_1.ApiOperation)({ summary: 'Import BOQ from Excel File' }),
     (0, swagger_1.ApiConsumes)('multipart/form-data'),
@@ -186,8 +205,9 @@ __decorate([
     __param(2, (0, common_1.Body)('mapping')),
     __param(3, (0, common_1.Body)('defaultEpsId')),
     __param(4, (0, common_1.Body)('hierarchyMapping')),
+    __param(5, (0, common_1.Body)('dryRun')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Object, String, String, String]),
+    __metadata("design:paramtypes", [Number, Object, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], BoqController.prototype, "importBoq", null);
 __decorate([

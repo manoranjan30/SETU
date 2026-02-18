@@ -47,10 +47,10 @@ services:
       dockerfile: Dockerfile
     container_name: setu_pdf_tool_dev
     ports:
-      - "8002:8002"
+      - "8001:8001"
     volumes:
       - ./tools/pdf_processor:/app
-    command: uvicorn app:app --host 0.0.0.0 --port 8002 --reload
+    command: uvicorn app:app --host 0.0.0.0 --port 8001 --reload
 
   # disable original app
   app:

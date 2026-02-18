@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import api from '../../api/axios';
 import TemplateList from '../../components/template-builder/TemplateList';
 import TemplateEditor from '../../components/template-builder/TemplateEditor';
 import type { PdfTemplate } from '../../types/template.types';
@@ -9,8 +9,6 @@ type ViewMode = 'list' | 'editor';
 const TemplateBuilder = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [editingTemplate, setEditingTemplate] = useState<PdfTemplate | null>(null);
-
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
     const handleCreateNew = () => {
         setEditingTemplate(null);
@@ -26,7 +24,7 @@ const TemplateBuilder = () => {
         try {
             if (templateData.id) {
                 // Update existing
-                await axios.put(`${API_URL}/api/pdf-templates/${templateData.id}`, {
+                await api.put(`/pdf-templates/${templateData.id}`, {
                     name: templateData.name,
                     category: templateData.category,
                     description: templateData.description,
@@ -34,7 +32,7 @@ const TemplateBuilder = () => {
                 });
             } else {
                 // Create new
-                await axios.post(`${API_URL}/api/pdf-templates`, {
+                await api.post('/pdf-templates', {
                     name: templateData.name,
                     category: templateData.category || 'custom',
                     description: templateData.description || '',

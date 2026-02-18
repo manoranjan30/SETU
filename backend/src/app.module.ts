@@ -80,9 +80,12 @@ import { QualityInspection } from './quality/entities/quality-inspection.entity'
 import { QualityMaterialTest } from './quality/entities/quality-material-test.entity';
 import { QualityObservationNcr } from './quality/entities/quality-observation-ncr.entity';
 import { QualityChecklist } from './quality/entities/quality-checklist.entity';
-import { QualitySnagList } from './quality/entities/quality-snag-list.entity';
+import { QualityItem } from './quality/entities/quality-item.entity';
+import { QualityHistory } from './quality/entities/quality-history.entity';
 import { QualityAudit } from './quality/entities/quality-audit.entity';
 import { QualityDocument } from './quality/entities/quality-document.entity';
+import { QualitySnagPhoto } from './quality/entities/quality-snag-photo.entity';
+import { QualityUnitTemplate } from './quality/entities/quality-unit-template.entity';
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
@@ -95,6 +98,12 @@ import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
 import { WorkDocTemplate } from './workdoc/entities/work-doc-template.entity';
 import { TemplateBuilderModule } from './template-builder/template-builder.module';
 import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
+import { MicroScheduleModule } from './micro-schedule/micro-schedule.module';
+import { MicroSchedule } from './micro-schedule/entities/micro-schedule.entity';
+import { MicroScheduleActivity } from './micro-schedule/entities/micro-schedule-activity.entity';
+import { MicroDailyLog } from './micro-schedule/entities/micro-daily-log.entity';
+import { MicroQuantityLedger } from './micro-schedule/entities/micro-quantity-ledger.entity';
+import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
 
 @Module({
   imports: [
@@ -160,9 +169,12 @@ import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
         QualityMaterialTest,
         QualityObservationNcr,
         QualityChecklist,
-        QualitySnagList,
+        QualityItem,
+        QualityHistory,
         QualityAudit,
         QualityDocument,
+        QualitySnagPhoto,
+        QualityUnitTemplate,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -176,11 +188,23 @@ import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
         WorkDocTemplate,
         // Template Builder
         PdfTemplate,
+        // Micro Schedule
+        MicroSchedule,
+        MicroScheduleActivity,
+        MicroDailyLog,
+        MicroQuantityLedger,
+        DelayReason,
+        QuantityProgressRecord,
+        UserRoleNodeAssignment,
       ],
       synchronize: true,
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'client'),
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
     }),
     UsersModule,
     RolesModule,
@@ -202,6 +226,7 @@ import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
     DesignModule,
     WorkDocModule,
     TemplateBuilderModule,
+    MicroScheduleModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,
@@ -213,4 +238,4 @@ import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
   controllers: [AppController],
   providers: [AppService, SeedService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -35,14 +35,41 @@ export class WorkDocController {
 
   @Get('vendors')
   @Permissions('EXECUTION.READ') // Adjust permissions later
-  async getVendors() {
-    return this.workService.getAllVendors();
+  async getVendors(@Query('search') search?: string) {
+    return this.workService.getAllVendors(search);
+  }
+
+  @Get('vendors/code/:code')
+  @Permissions('EXECUTION.READ')
+  async getVendorByCode(@Param('code') code: string) {
+    return this.workService.getVendorByCode(code);
   }
 
   @Post('vendors')
   @Permissions('EXECUTION.UPDATE')
   async createVendor(@Body() data: Partial<Vendor>) {
     return this.workService.createVendor(data);
+  }
+
+  @Post('vendors/:id/update')
+  @Permissions('EXECUTION.UPDATE')
+  async updateVendor(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: Partial<Vendor>,
+  ) {
+    return this.workService.updateVendor(id, data);
+  }
+
+  @Post('vendors/:id/delete')
+  @Permissions('EXECUTION.UPDATE')
+  async deleteVendor(@Param('id', ParseIntPipe) id: number) {
+    return this.workService.deleteVendor(id);
+  }
+
+  @Get('vendors/:id/work-orders')
+  @Permissions('EXECUTION.READ')
+  async getVendorWorkOrders(@Param('id', ParseIntPipe) id: number) {
+    return this.workService.getVendorWorkOrders(id);
   }
 
   @Post(':projectId/analyze')
@@ -98,6 +125,72 @@ export class WorkDocController {
     return this.workService.saveConfirmedWorkOrder(projectId, data);
   }
 
+  @Post(':projectId/import-excel')
+  @Permissions('EXECUTION.UPDATE')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req: any, file, cb) => {
+          const projectId = req.params.projectId;
+          const uploadPath = `./uploads/projects/${projectId}/work-orders`;
+          ensureDir(uploadPath);
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `excel-${uniqueSuffix}${extname(file.originalname)}`);
+        },
+      }),
+      limits: {
+        fileSize: 20 * 1024 * 1024, // 20MB limit for Excel
+      },
+    }),
+  )
+  async importExcel(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('columnMapping') columnMappingStr: string,
+    @Body('headerRow') headerRowStr: string,
+  ) {
+    if (!file) throw new BadRequestException('File is required');
+
+    const columnMapping = columnMappingStr
+      ? JSON.parse(columnMappingStr)
+      : null;
+    const headerRow = headerRowStr ? parseInt(headerRowStr, 10) : 1;
+
+    return this.workService.parseExcelWorkOrder(
+      projectId,
+      file,
+      columnMapping,
+      headerRow,
+    );
+  }
+
+  @Post(':projectId/preview-excel')
+  @Permissions('EXECUTION.UPDATE')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req: any, file, cb) => {
+          const uploadPath = `./uploads/temp`;
+          ensureDir(uploadPath);
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `preview-${uniqueSuffix}${extname(file.originalname)}`);
+        },
+      }),
+    }),
+  )
+  async previewExcel(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('File is required');
+    return this.workService.previewExcelFile(file);
+  }
+
   // --- Templates ---
   @Get('templates')
   @Permissions('EXECUTION.READ')
@@ -142,5 +235,79 @@ export class WorkDocController {
   @Permissions('EXECUTION.UPDATE')
   async deleteWorkOrder(@Param('woId', ParseIntPipe) woId: number) {
     return this.workService.deleteWorkOrder(woId);
+  }
+
+  // --- Linkage & Pending Board ---
+  @Get(':projectId/linkage-data')
+  @Permissions('EXECUTION.READ')
+  async getLinkageData(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('woId') woId?: number,
+  ) {
+    return this.workService.getLinkageData(projectId, woId);
+  }
+
+  @Post('items/:woItemId/map')
+  @Permissions('EXECUTION.UPDATE')
+  async updateMapping(
+    @Param('woItemId', ParseIntPipe) woItemId: number,
+    @Body()
+    data: { boqItemId?: number; boqSubItemId?: number; factor: number }[],
+  ) {
+    return this.workService.updateMapping(woItemId, data);
+  }
+
+  // --- Intelligent Mapping Endpoints ---
+
+  @Get('mapping/suggestions')
+  @Permissions('EXECUTION.READ')
+  async getMappingSuggestions(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Query('search') search: string,
+  ) {
+    return this.workService.findMatchingBoqItems(projectId, search);
+  }
+
+  @Post('mapping/auto')
+  @Permissions('EXECUTION.UPDATE')
+  async autoMapWorkOrder(
+    @Body('workOrderId', ParseIntPipe) workOrderId: number,
+  ) {
+    return this.workService.autoMapWorkOrder(workOrderId);
+  }
+
+  @Post('mapping/bulk')
+  @Permissions('EXECUTION.UPDATE')
+  async bulkMapItems(
+    @Body('projectId', ParseIntPipe) projectId: number,
+    @Body('mappings')
+    mappings: { woItemId: number; boqItemId: number | null }[],
+  ) {
+    return this.workService.bulkMapWorkOrderItems(projectId, mappings);
+  }
+
+  @Get(':projectId/pending-vendor-board')
+  @Permissions('EXECUTION.READ')
+  async getPendingVendorBoard(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.workService.getPendingVendorBoard(projectId);
+  }
+
+  @Get(':projectId/global-registry')
+  @Permissions('EXECUTION.READ')
+  async getGlobalMappingRegistry(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.workService.getGlobalMappingRegistry(projectId);
+  }
+
+  // --- Execution / Vendor Discovery ---
+  @Get('execution/vendors-for-activity')
+  @Permissions('EXECUTION.READ')
+  async getVendorsForActivity(
+    @Query('activityId', ParseIntPipe) activityId: number,
+  ) {
+    return this.workService.getVendorsForActivity(activityId);
   }
 }

@@ -39,7 +39,7 @@ export class BoqController {
   constructor(
     private readonly boqService: BoqService,
     private readonly boqImportService: BoqImportService,
-  ) {}
+  ) { }
 
   @Get('template')
   @ApiOperation({ summary: 'Download BOQ Import Excel Template' })
@@ -49,6 +49,18 @@ export class BoqController {
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': 'attachment; filename=BOQ_Import_Template.xlsx',
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Get('export/:projectId')
+  @ApiOperation({ summary: 'Export BOQ to CSV' })
+  async exportBoq(@Param('projectId', ParseIntPipe) projectId: number, @Res() res: Response) {
+    const buffer = await this.boqImportService.exportBoqToCsv(projectId);
+    res.set({
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename=BOQ_Export.csv',
       'Content-Length': buffer.length,
     });
     res.end(buffer);
@@ -75,28 +87,33 @@ export class BoqController {
     @Body('mapping') mappingStr?: string,
     @Body('defaultEpsId') defaultEpsIdStr?: string,
     @Body('hierarchyMapping') hierarchyMappingStr?: string,
+    @Body('dryRun') dryRunStr?: string,
   ) {
     let mapping = null;
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     const defaultEpsId = defaultEpsIdStr
       ? parseInt(defaultEpsIdStr, 10)
       : undefined;
+
+    const dryRun = dryRunStr === 'true' || dryRunStr === '1';
+
     return await this.boqImportService.importBoq(
       projectId,
       file.buffer,
       mapping,
       defaultEpsId,
       hierarchyMapping,
+      dryRun,
     );
   }
 
@@ -132,19 +149,19 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     let valueMap = undefined;
     if (valueMapStr) {
       try {
         valueMap = JSON.parse(valueMapStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const defaultEpsId = defaultEpsIdStr

@@ -7,14 +7,40 @@ import {
   Body,
   Param,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { QualityService } from './quality.service';
+import { QualityStructureService } from './quality-structure.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+
+const multerOptions = {
+  storage: diskStorage({
+    destination: './uploads',
+    filename: (req, file, cb) => {
+      const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+      return cb(null, `${randomName}${extname(file.originalname)}`);
+    }
+  })
+};
 
 @Controller('quality')
 @UseGuards(JwtAuthGuard)
 export class QualityController {
-  constructor(private readonly qualityService: QualityService) {}
+  constructor(
+    private readonly qualityService: QualityService,
+    private readonly structureService: QualityStructureService,
+  ) { }
+
+  // ... (Existing endpoints omitted for brevity, keeping all existing methods via replace_file logic) ...
+  // Wait, I cannot use "..." in replacement unless I use multi_replace or target specific chunks.
+  // replace_file_content replaces the whole block defined by Start/End.
+  // I should use multi_replace to inject Imports, Constructor, and Endpoints separately, OR replace the whole file.
+  // The file is small (150 lines). I'll replace the whole file or use chunks.
+  // Using chunks is safer to avoid accidental omission.
 
   @Get(':projectId/summary')
   getSummary(@Param('projectId') projectId: number) {
@@ -99,12 +125,15 @@ export class QualityController {
     return this.qualityService.getSnags(projectId);
   }
   @Post('snags')
-  createSnag(@Body() data: any) {
-    return this.qualityService.createSnag(data);
+  @UseInterceptors(FileInterceptor('file', multerOptions))
+  createSnag(@Body() data: any, @UploadedFile() file?: Express.Multer.File) {
+    return this.qualityService.createSnag(data, file);
   }
+
   @Put('snags/:id')
-  updateSnag(@Param('id') id: number, @Body() data: any) {
-    return this.qualityService.updateSnag(id, data);
+  @UseInterceptors(FileInterceptor('file', multerOptions))
+  updateSnag(@Param('id') id: number, @Body() data: any, @UploadedFile() file?: Express.Multer.File) {
+    return this.qualityService.updateSnag(id, data, file);
   }
   @Delete('snags/:id')
   deleteSnag(@Param('id') id: number) {
@@ -145,5 +174,43 @@ export class QualityController {
   @Delete('documents/:id')
   deleteDocument(@Param('id') id: number) {
     return this.qualityService.deleteDocument(id);
+  }
+
+  // === STRUCTURE ENDPOINTS ===
+
+  @Post(':projectId/structure/templates')
+  createTemplate(@Param('projectId') projectId: number, @Body() data: any) {
+    return this.structureService.createTemplate(projectId, data.name, data.rooms);
+  }
+
+  @Get(':projectId/structure/templates')
+  getTemplates(@Param('projectId') projectId: number) {
+    return this.structureService.getTemplates(projectId);
+  }
+
+  @Post('structure/apply-unit')
+  addUnit(@Body() data: any) {
+    return this.structureService.addUnitFromTemplate(
+      data.floorId,
+      data.templateId,
+      data.unitName,
+    );
+  }
+
+  @Post('structure/bulk-apply')
+  bulkAddUnits(@Body() data: any) {
+    return this.structureService.bulkCreateUnits(
+      data.floorIds,
+      data.templateId,
+      data.config,
+    );
+  }
+
+  @Post('structure/copy')
+  copyStructure(@Body() data: any) {
+    return this.structureService.copyStructure(
+      data.sourceNodeId,
+      data.targetParentIds,
+    );
   }
 }

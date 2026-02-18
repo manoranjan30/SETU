@@ -21,6 +21,7 @@ let BoqSubItem = class BoqSubItem {
     uom;
     rate;
     qty;
+    executedQty;
     amount;
     measurements;
     analysisTemplateId;
@@ -57,6 +58,10 @@ __decorate([
     (0, typeorm_1.Column)('decimal', { precision: 12, scale: 3, default: 0 }),
     __metadata("design:type", Number)
 ], BoqSubItem.prototype, "qty", void 0);
+__decorate([
+    (0, typeorm_1.Column)('decimal', { precision: 12, scale: 3, default: 0 }),
+    __metadata("design:type", Number)
+], BoqSubItem.prototype, "executedQty", void 0);
 __decorate([
     (0, typeorm_1.Column)('decimal', { precision: 12, scale: 2, default: 0 }),
     __metadata("design:type", Number)

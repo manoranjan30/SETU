@@ -8,6 +8,11 @@ export interface WorkOrderItem {
     rate: number;
     amount: number;
     longText?: string;
+    level?: number;
+    isParent?: boolean;
+    serialNumber?: string;
+    parentSerialNumber?: string | null;
+    executedQuantity?: number;
 }
 
 export interface WorkOrderVendor {
@@ -17,6 +22,7 @@ export interface WorkOrderVendor {
 
 export interface WorkOrder {
     id: number;
+    projectId: number;
     woNumber: string;
     woDate: string;
     totalAmount: number | string;

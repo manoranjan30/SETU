@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../api/axios';
 import { FileText, Plus, Download, Upload, Trash2, Edit2, Search } from 'lucide-react';
 import type { PdfTemplate } from '../../types/template.types';
 
@@ -14,15 +14,13 @@ const TemplateList = ({ onEdit, onCreateNew }: TemplateListProps) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
     useEffect(() => {
         fetchTemplates();
     }, []);
 
     const fetchTemplates = async () => {
         try {
-            const response = await axios.get(`${API_URL}/api/pdf-templates`);
+            const response = await api.get('/pdf-templates');
             setTemplates(response.data);
         } catch (error) {
             console.error('Failed to fetch templates:', error);
@@ -34,7 +32,7 @@ const TemplateList = ({ onEdit, onCreateNew }: TemplateListProps) => {
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to delete this template?')) return;
         try {
-            await axios.delete(`${API_URL}/api/pdf-templates/${id}`);
+            await api.delete(`/pdf-templates/${id}`);
             setTemplates(prev => prev.filter(t => t.id !== id));
         } catch (error) {
             console.error('Failed to delete template:', error);
@@ -43,7 +41,7 @@ const TemplateList = ({ onEdit, onCreateNew }: TemplateListProps) => {
 
     const handleExport = async (template: PdfTemplate) => {
         try {
-            const response = await axios.get(`${API_URL}/api/pdf-templates/${template.id}/export`);
+            const response = await api.get(`/pdf-templates/${template.id}/export`);
             const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -63,7 +61,7 @@ const TemplateList = ({ onEdit, onCreateNew }: TemplateListProps) => {
         try {
             const text = await file.text();
             const templateData = JSON.parse(text);
-            await axios.post(`${API_URL}/api/pdf-templates/import`, { templateData });
+            await api.post('/pdf-templates/import', { templateData });
             fetchTemplates();
         } catch (error) {
             console.error('Failed to import template:', error);

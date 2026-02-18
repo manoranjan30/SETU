@@ -16,7 +16,6 @@ interface Props {
     epsNodes?: EpsNode[]; // Pass flatten list or fetch
 }
 
-// ... unchanged interface definitions ...
 interface EpsNode {
     id: number;
     name: string;
@@ -29,6 +28,7 @@ interface CSVRow {
 }
 
 const BOQ_FIELDS = [
+    { key: 'rowType', label: 'Row Type (Main/Sub/Meas)', required: false },
     { key: 'parentBoqCode', label: 'Parent BOQ Code', required: false },
     { key: 'boqCode', label: 'Item Code', required: true },
     { key: 'description', label: 'Description/Title', required: true },
@@ -38,6 +38,13 @@ const BOQ_FIELDS = [
     { key: 'rate', label: 'Rate', required: false },
     { key: 'epsName', label: 'Location / EPS Name', required: false },
     { key: 'epsId', label: 'Location ID (Optional)', required: false },
+    // Measurement / Pamphlet Fields
+    { key: 'parentSubItem', label: 'Parent Sub-Item (Ref)', required: false },
+    { key: 'elementName', label: 'Measurement Name', required: false },
+    { key: 'length', label: 'Length', required: false },
+    { key: 'breadth', label: 'Breadth', required: false },
+    { key: 'depth', label: 'Depth', required: false },
+    { key: 'calculatedQty', label: 'Calculated Qty', required: false },
 ];
 
 const MEASUREMENT_FIELDS = [
@@ -80,10 +87,12 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
     const [headers, setHeaders] = useState<string[]>([]);
     const [mapping, setMapping] = useState<ImportMapping>({});
     const [validationReport, setValidationReport] = useState<{
-        valid: number;
-        fuzzy: number;
-        errors: { row: number; path: string; msg: string }[];
-        total: number;
+        newCount: number;
+        updateCount: number;
+        errorCount: number;
+        errors: string[];
+        warnings: string[];
+        total?: number;
     } | null>(null);
 
     // Hierarchy Mapping State
@@ -95,7 +104,9 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
         level5?: string; // Room
     }>({});
     const [defaultEpsId, setDefaultEpsId] = useState<number | undefined>(undefined);
+    const [locationMode, setLocationMode] = useState<'SINGLE' | 'HIERARCHY'>('SINGLE'); // New Toggle State
     const [uploading, setUploading] = useState(false);
+    const [validating, setValidating] = useState(false);
 
     // Step 3 State
     const [valueMap, setValueMap] = useState<ImportMapping>({}); // Key=CSV Value, Val=EPS ID (stringified)
@@ -105,12 +116,9 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
 
     useEffect(() => {
         if (epsNodes && epsNodes.length > 0) {
-            console.log("ImportWizard: Received nodes from props:", epsNodes.length);
             setLocalNodes(epsNodes);
         } else if (projectId) {
-            console.log("ImportWizard: Props empty. Fetching locally for Project:", projectId);
-            boqService.getEpsList().then(nodes => { // No args
-                console.log("ImportWizard: Local fetch success:", nodes.length);
+            boqService.getEpsList().then(nodes => {
                 setLocalNodes(nodes);
             }).catch(e => console.error("ImportWizard: Local fetch failed", e));
         }
@@ -169,28 +177,24 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
             .every(f => mapping[f.key as keyof ImportMapping]);
 
         const hasLocation = mode === 'RESOURCE_MASTER' || (mapping['epsName'] || hierarchyMapping.level1 || defaultEpsId);
-
-        // DEBUG: Check what we actually have
-        // alert(`Nodes: ${localNodes?.length}, First: ${JSON.stringify(localNodes?.[0])}, PID: ${projectId}`);
-
-
         return standardRequired && !!hasLocation;
     };
 
     // Transition Step 2 -> Step 3
-    const onStep2Next = () => {
-        // Priority: Hierarchy > Single Column
-        const hasHierarchy = Object.values(hierarchyMapping).some(v => v);
+    const onStep2Next = async () => {
+        if (mode === 'BOQ_ITEM') {
+            await runBackendDryRun();
+            return;
+        }
 
+        const hasHierarchy = Object.values(hierarchyMapping).some(v => v);
         if (hasHierarchy) {
-            validateRows();
+            setStep(3);
             return;
         }
 
         const epsCol = mapping['epsName'];
         if (mode === 'RESOURCE_MASTER' || !epsCol) {
-            // No location mapping at all?
-            // If defaultEpsId is set, that's fine.
             setStep(3);
             return;
         }
@@ -212,117 +216,35 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
         }
     };
 
-    // --- Validation Logic ---
-    const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-    const validateRows = async () => {
-        if (!file || !epsNodes) return;
-
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-                const rows = results.data as any[];
-                const report = { valid: 0, fuzzy: 0, errors: [] as any[], total: rows.length };
-
-                // Build Tree Lookup for fast traversal?
-                // Actually `epsNodes` is flat, but we need children lookup.
-                // Let's build an adjacency list: parentId -> children[]
-                const childrenMap = new Map<number, EpsNode[]>();
-                const rootNodes: EpsNode[] = [];
-                localNodes.forEach(n => {
-                    if (!n.parentId) rootNodes.push(n);
-                    else {
-                        if (!childrenMap.has(n.parentId)) childrenMap.set(n.parentId, []);
-                        childrenMap.get(n.parentId)?.push(n);
-                    }
-                });
-
-                rows.forEach((row, index) => {
-                    const rowNum = index + 2; // +1 for 0-index, +1 for header
-
-                    // 1. Construct Path Values
-                    const pathValues = [
-                        hierarchyMapping.level1 ? row[hierarchyMapping.level1] : null,
-                        hierarchyMapping.level2 ? row[hierarchyMapping.level2] : null,
-                        hierarchyMapping.level3 ? row[hierarchyMapping.level3] : null,
-                        hierarchyMapping.level4 ? row[hierarchyMapping.level4] : null,
-                        hierarchyMapping.level5 ? row[hierarchyMapping.level5] : null,
-                    ].filter(v => v); // Remove null/empty
-
-                    if (pathValues.length === 0) {
-                        // Fallback to "Default Location" behavior if no path
-                        // No error, just count as "default"
-                        report.valid++;
-                        return;
-                    }
-
-                    // 1. Find Project Node
-                    // Strategy: We need to find the node that matches our 'projectId'.
-                    // Why? Because usually the import is happening "Inside" a project.
-                    // If epsNodes includes the Project Node itself (Type=PROJECT), we start there.
-                    // If epsNodes includes only children of the project, we might need to look differently.
-
-                    // Assuming obtaining Project Root from the list if possible
-                    let projectNode = localNodes.find(n => n.id === projectId);
-                    if (!projectNode) {
-                        const projects = localNodes.filter(n => (n as any).type && (n as any).type.toUpperCase() === 'PROJECT');
-                        if (projects.length === 1) projectNode = projects[0];
-                        if (projects.length > 1) projectNode = projects[0]; // Best guess
-                    }
-
-                    let currentCandidates = projectNode
-                        ? (childrenMap.get(projectNode.id) || [])
-                        : rootNodes;
-
-                    console.log("Validation: Root Candidates:", currentCandidates.length, "ProjectNode:", projectNode?.name);
-
-                    let resolvedId = null;
-                    let isFuzzy = false;
-                    let pathError = null;
-
-                    for (let i = 0; i < pathValues.length; i++) {
-                        const val = pathValues[i]?.toString().trim();
-                        if (!val) break; // Stop at empty value (e.g. Floor level row)
-
-                        // Find Match
-                        const normVal = normalize(val);
-                        // Exact match first
-                        let match = currentCandidates.find(n => normalize(n.name) === normVal);
-
-                        // If no exact match, try fuzzy (very simple for now)
-                        if (!match) {
-                            // Try contains? or numeric?
-                            // matching "Floor 1" to "1"?
-                            match = currentCandidates.find(n => normalize(n.name).includes(normVal) || normVal.includes(normalize(n.name)));
-                            if (match) isFuzzy = true;
-                        }
-
-                        if (match) {
-                            resolvedId = match.id;
-                            // Prepare next level
-                            currentCandidates = childrenMap.get(match.id) || [];
-                        } else {
-                            pathError = `Current Node: ${resolvedId || 'Root'}. Child '${val}' not found.`;
-                            break;
-                        }
-                    }
-
-                    if (pathError) {
-                        report.errors.push({ row: rowNum, path: pathValues.join(' > '), msg: pathError });
-                    } else {
-                        if (isFuzzy) report.fuzzy++;
-                        else report.valid++;
-                    }
-                });
-
-                setValidationReport(report);
-                setStep(3);
+    const runBackendDryRun = async () => {
+        if (!file) return;
+        setValidating(true);
+        try {
+            const formData = new FormData();
+            formData.append('projectId', String(projectId));
+            formData.append('file', file);
+            const finalMapping = { ...mapping };
+            if (locationMode === 'HIERARCHY') {
+                delete finalMapping['epsName'];
             }
-        });
+            formData.append('mapping', JSON.stringify(finalMapping));
+            formData.append('dryRun', 'true');
+            if (locationMode === 'HIERARCHY' && Object.keys(hierarchyMapping).length > 0) {
+                formData.append('hierarchyMapping', JSON.stringify(hierarchyMapping));
+            }
+            if (defaultEpsId) formData.append('defaultEpsId', String(defaultEpsId));
+
+            const res = await boqService.importBoq(formData);
+            setValidationReport(res.data);
+            setStep(3);
+        } catch (error: any) {
+            console.error(error);
+            const msg = error.response?.data?.message || 'Validation failed';
+            toast.error(msg);
+        } finally {
+            setValidating(false);
+        }
     };
-
-
 
     // --- Step 3: Execution ---
     const handleImport = async () => {
@@ -332,73 +254,67 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
             const formData = new FormData();
             formData.append('projectId', String(projectId));
             formData.append('file', file);
+            const finalMapping = { ...mapping };
+            if (locationMode === 'HIERARCHY') {
+                delete finalMapping['epsName'];
+            }
 
             if (mode === 'BOQ_ITEM') {
-                // await boqService.importBoq(projectId, file, mapping, defaultEpsId);
-                // Updated logic for BOQ_ITEM to use hierarchy mapping
-                if (mapping.epsName) { // If a single EPS column is mapped
-                    formData.append('mapping', JSON.stringify(mapping));
-                } else { // If hierarchy levels are mapped
-                    formData.append('mapping', JSON.stringify({ ...mapping }));
+                formData.append('mapping', JSON.stringify(finalMapping));
+                if (locationMode === 'HIERARCHY' && Object.keys(hierarchyMapping).length > 0) {
                     formData.append('hierarchyMapping', JSON.stringify(hierarchyMapping));
                 }
                 if (defaultEpsId) formData.append('defaultEpsId', String(defaultEpsId));
-                await boqService.importBoq(formData); // Assuming service now takes FormData
+                await boqService.importBoq(formData);
             } else if (mode === 'MEASUREMENT') {
                 if (!boqItemId) throw new Error("BOQ Item ID required");
                 formData.append('boqItemId', String(boqItemId));
-                if (boqSubItemId) formData.append('boqSubItemId', String(boqSubItemId)); // NEW: Send SubItem ID
-
-                // Convert valueMap strings to numbers for API if needed,
-                // but service accepts Record<string, number> usually.
-                // Our UI select values are stringified numbers.
-                if (mapping.epsName) { // If a single EPS column is mapped
-                    formData.append('mapping', JSON.stringify(mapping));
-                } else {
-                    // Pass hierarchy mapping if standard EPS column not mapped
-                    formData.append('mapping', JSON.stringify({ ...mapping }));
+                if (boqSubItemId) formData.append('boqSubItemId', String(boqSubItemId));
+                formData.append('mapping', JSON.stringify(finalMapping));
+                if (locationMode === 'HIERARCHY' && Object.keys(hierarchyMapping).length > 0) {
                     formData.append('hierarchyMapping', JSON.stringify(hierarchyMapping));
                 }
-
-                // Pass valueMap only if strictly using the old logic (Optional, likely deprecating)
-                // formData.append('valueMap', JSON.stringify(valueMap));
-                const numericValueMap: Record<string, number> = {};
-                Object.entries(valueMap).forEach(([k, v]) => {
-                    if (v && v !== 'SKIP') numericValueMap[k] = Number(v);
-                    // Explicitly handle SKIP? Maybe send as negative or separate list?
-                    // For now, let's just send mapped ones.
-                });
                 if (defaultEpsId) formData.append('defaultEpsId', String(defaultEpsId));
-                // Assuming importMeasurements also takes FormData now
                 await boqService.importMeasurements(formData);
             } else if (mode === 'RESOURCE_MASTER') {
                 formData.append('mapping', JSON.stringify(mapping));
                 await api.post('/resources/import', formData);
             }
-            toast.success('Import started successfully!');
+            toast.success('Import completed successfully!');
             onSuccess();
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error('Import failed. Please check the file.');
+            toast.error(error.response?.data?.message || 'Import failed.');
         } finally {
             setUploading(false);
         }
     };
 
     // --- Renders ---
-
     const renderStep1 = () => (
-        <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors cursor-pointer ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-400'}`}>
-            <input {...getInputProps()} />
-            <div className="flex flex-col items-center gap-4">
-                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
-                    <Upload size={32} />
-                </div>
-                <div>
-                    <h3 className="text-lg font-semibold text-slate-900">Upload CSV File</h3>
-                    <p className="text-slate-500 mt-1">Drag & drop or click to select</p>
-                    <p className="text-xs text-slate-400 mt-2">Supports large files (Streamed)</p>
+        <div className="space-y-4">
+            <div className="flex justify-end">
+                <button
+                    onClick={() => mode === 'MEASUREMENT' ? boqService.getMeasurementTemplate() : boqService.getBoqTemplate()}
+                    className="px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 flex items-center gap-2 font-medium transition-colors"
+                >
+                    <FileText size={16} />
+                    Download {mode === 'MEASUREMENT' ? 'Measurement' : 'BOQ'} Template
+                </button>
+            </div>
+
+            <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors cursor-pointer ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-400'}`}>
+                <input {...getInputProps()} />
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                        <Upload size={32} />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-slate-900">Upload CSV/Excel File</h3>
+                        <p className="text-slate-500 mt-1">Drag & drop or click to select</p>
+                        <p className="text-xs text-slate-400 mt-2">Supports .csv, .xlsx, .xls</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -435,38 +351,81 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
                     </div>
                 </div>
 
-                {/* Hierarchy & Fallback (Only for BOQ/Measurement) */}
+                {/* Hierarchy & Fallback */}
                 {mode !== 'RESOURCE_MASTER' && (
                     <div className="space-y-6">
-                        <div className="space-y-2">
+                        <div className="space-y-4">
                             <h3 className="font-semibold text-blue-800 flex items-center gap-2">
                                 <AlertTriangle size={18} className="text-blue-500" />
-                                EPS Hierarchy Levels
+                                Location / EPS Mapping
                             </h3>
-                            <p className="text-xs text-gray-500 mb-4 bg-blue-50 p-2 rounded">
-                                Map columns to define the Location Path. The system will auto-match rows to Block &gt; Tower &gt; Floor etc.
-                            </p>
-                            <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                {[
-                                    { level: 'level1', label: 'Level 1 (e.g. Block)' },
-                                    { level: 'level2', label: 'Level 2 (e.g. Tower)' },
-                                    { level: 'level3', label: 'Level 3 (e.g. Floor)' },
-                                    { level: 'level4', label: 'Level 4 (e.g. Unit)' },
-                                    { level: 'level5', label: 'Level 5 (e.g. Room)' },
-                                ].map((L) => (
-                                    <div key={L.level} className="flex items-center justify-between">
-                                        <span className="text-sm text-gray-600">{L.label}</span>
+
+                            {/* Mode Toggle */}
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button
+                                    onClick={() => setLocationMode('SINGLE')}
+                                    className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${locationMode === 'SINGLE' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    Single Column (Path)
+                                </button>
+                                <button
+                                    onClick={() => setLocationMode('HIERARCHY')}
+                                    className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${locationMode === 'HIERARCHY' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    Separate Columns (Hierarchy)
+                                </button>
+                            </div>
+
+                            {/* Single Column Mapping */}
+                            {locationMode === 'SINGLE' && (
+                                <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                    <p className="text-xs text-slate-500 mb-2">
+                                        Map a single column containing the full path (e.g. "Tower A &gt; Floor 1").
+                                    </p>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-medium text-slate-700">EPS Path Column</span>
+                                            <span className="text-xs text-slate-400">epsName</span>
+                                        </div>
                                         <select
-                                            className="w-48 border rounded px-2 py-1 text-sm"
-                                            value={hierarchyMapping[L.level as keyof typeof hierarchyMapping] || ''}
-                                            onChange={e => setHierarchyMapping({ ...hierarchyMapping, [L.level]: e.target.value })}
+                                            className="w-48 text-sm border border-slate-300 rounded px-2 py-1"
+                                            value={mapping['epsName'] || ''}
+                                            onChange={(e) => handleMapChange('epsName', e.target.value)}
                                         >
-                                            <option value="">-- (Skip Level) --</option>
+                                            <option value="">-- Select Column --</option>
                                             {headers.map(h => <option key={h} value={h}>{h}</option>)}
                                         </select>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
+                            )}
+
+                            {/* Hierarchy Mapping */}
+                            {locationMode === 'HIERARCHY' && (
+                                <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                    <p className="text-xs text-slate-500 mb-2">
+                                        Map separate columns for each level (Structure).
+                                    </p>
+                                    {[
+                                        { level: 'level1', label: 'Level 1 (e.g. Block)' },
+                                        { level: 'level2', label: 'Level 2 (e.g. Tower)' },
+                                        { level: 'level3', label: 'Level 3 (e.g. Floor)' },
+                                    ].map((L) => (
+                                        <div key={L.level} className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-600">{L.label}</span>
+                                            <select
+                                                className="w-48 border rounded px-2 py-1 text-sm"
+                                                value={hierarchyMapping[L.level as keyof typeof hierarchyMapping] || ''}
+                                                onChange={e => setHierarchyMapping({ ...hierarchyMapping, [L.level]: e.target.value })}
+                                            >
+                                                <option value="">-- (Skip Level) --</option>
+                                                {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                                            </select>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -474,156 +433,136 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
                                 <AlertTriangle size={18} className="text-amber-500" />
                                 Fallback Values
                             </h3>
-                            <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg">
-                                <p className="text-sm text-amber-800 mb-3">
-                                    If Location/EPS is missing in a row, use this default:
-                                </p>
-                                <label className="text-xs font-bold text-amber-900 uppercase">Default Location</label>
-                                <select
-                                    className="w-full mt-1 border-amber-300 rounded px-2 py-1.5 focus:ring-amber-500"
-                                    value={defaultEpsId || ''}
-                                    onChange={(e) => setDefaultEpsId(Number(e.target.value))}
-                                >
-                                    <option value="">(None) Skip row if missing</option>
-                                    <option disabled>──────────</option>
-                                    {localNodes?.map(node => (
-                                        <option key={node.id} value={node.id}>{node.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            <select
+                                className="w-full mt-1 border border-slate-300 rounded px-2 py-1.5 text-sm"
+                                value={defaultEpsId || ''}
+                                onChange={(e) => setDefaultEpsId(Number(e.target.value))}
+                            >
+                                <option value="">(None) Skip row if missing</option>
+                                {localNodes?.map(node => (
+                                    <option key={node.id} value={node.id}>{node.name}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                 )}
+            </div>
 
-                <div className="space-y-2">
-                    <h3 className="text-sm font-medium text-slate-700">Data Preview (First 5 Rows)</h3>
-                    <div className="overflow-auto max-h-48 border rounded bg-white text-xs">
-                        <table className="w-full">
-                            <thead className="bg-slate-100 sticky top-0">
-                                <tr>
-                                    {headers.map(h => <th key={h} className="p-2 text-left font-medium text-slate-600">{h}</th>)}
+            <div className="space-y-2">
+                <h3 className="text-sm font-medium text-slate-700">Data Preview (First 5 Rows)</h3>
+                <div className="overflow-auto max-h-48 border rounded bg-white text-xs">
+                    <table className="w-full">
+                        <thead className="bg-slate-100 sticky top-0">
+                            <tr>
+                                {headers.map(h => <th key={h} className="p-2 text-left font-medium text-slate-600">{h}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {previewData.slice(0, 5).map((row, i) => (
+                                <tr key={i} className="border-t">
+                                    {headers.map(h => <td key={h} className="p-2 whitespace-nowrap">{row[h]}</td>)}
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {previewData.slice(0, 5).map((row, i) => (
-                                    <tr key={i} className="border-t">
-                                        {headers.map(h => <td key={h} className="p-2 whitespace-nowrap">{row[h]}</td>)}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     );
 
     const renderStep3 = () => {
+        if (validating) {
+            return (
+                <div className="flex flex-col items-center justify-center p-12 space-y-4 text-center">
+                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-slate-600 font-medium">Running Structural Analysis...</p>
+                    <p className="text-xs text-slate-400">Comparing your file against Project EPS structure</p>
+                </div>
+            );
+        }
+
         if (mode === 'RESOURCE_MASTER') {
             return (
-                <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                        <CheckCircle className="text-emerald-500" />
-                        Ready to Import
-                    </h3>
-                    <div className="bg-emerald-50 border border-emerald-200 p-8 rounded-xl text-center">
-                        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <CheckCircle size={32} />
-                        </div>
-                        <h4 className="text-xl font-bold text-emerald-900">Resources Ready for Import</h4>
-                        <p className="text-emerald-700 mt-2">
-                            All required resource fields have been mapped successfully.
-                        </p>
-                        <div className="mt-6 p-4 bg-white/50 rounded-lg text-sm text-emerald-800 inline-block">
-                            Mapping confirmed for: <strong>{Object.keys(mapping).length}</strong> vital fields
-                        </div>
-                        <p className="text-xs text-emerald-600 mt-6 italic">
-                            Click the "Finish & Import" button below to start the process.
-                        </p>
-                    </div>
+                <div className="space-y-6 text-center py-12">
+                    <CheckCircle className="text-emerald-500 mx-auto" size={48} />
+                    <h4 className="text-xl font-bold text-slate-900">Ready to Import Resources</h4>
+                    <p className="text-slate-500">All fields mapped successfully. Click Finish to import.</p>
                 </div>
             );
         }
 
-        // Mode A: Validation Report (Hierarchy)
         if (validationReport) {
+            const hasCriticalErrors = (validationReport.errorCount || 0) > 0 || (validationReport.errors && validationReport.errors.length > 0);
+
             return (
                 <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        {validationReport.errors.length === 0 ? <CheckCircle className="text-green-600" /> : <AlertTriangle className="text-amber-500" />}
-                        Pre-Import Validation Report
-                    </h3>
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            {hasCriticalErrors ? <AlertTriangle className="text-red-500" /> : <CheckCircle className="text-emerald-500" />}
+                            Structural Analysis & Verification
+                        </h3>
+                    </div>
 
-                    <div className="grid grid-cols-4 gap-4">
-                        <div className="bg-gray-50 p-4 rounded text-center">
-                            <div className="text-2xl font-bold text-gray-700">{validationReport.total}</div>
-                            <div className="text-xs text-gray-500 uppercase">Total Rows</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-white border p-4 rounded-xl shadow-sm text-center">
+                            <div className="text-3xl font-black text-blue-600">{validationReport.newCount}</div>
+                            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">New Elements</div>
                         </div>
-                        <div className="bg-green-50 p-4 rounded text-center text-green-700">
-                            <div className="text-2xl font-bold">{validationReport.valid}</div>
-                            <div className="text-xs uppercase">Perfect Matches</div>
+                        <div className="bg-white border p-4 rounded-xl shadow-sm text-center">
+                            <div className="text-3xl font-black text-amber-500">{validationReport.updateCount}</div>
+                            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">Existing Updates</div>
                         </div>
-                        <div className="bg-yellow-50 p-4 rounded text-center text-yellow-700">
-                            <div className="text-2xl font-bold">{validationReport.fuzzy}</div>
-                            <div className="text-xs uppercase">Fuzzy / Auto-Corrected</div>
-                        </div>
-                        <div className={`p-4 rounded text-center ${validationReport.errors.length > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-400'}`}>
-                            <div className="text-2xl font-bold">{validationReport.errors.length}</div>
-                            <div className="text-xs uppercase">Path Errors</div>
+                        <div className={`p-4 rounded-xl shadow-sm border text-center ${hasCriticalErrors ? 'bg-red-50 border-red-200' : 'bg-white'}`}>
+                            <div className={`text-3xl font-black ${hasCriticalErrors ? 'text-red-600' : 'text-slate-300'}`}>
+                                {validationReport.errorCount || (validationReport.errors?.length || 0)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-1">Structural Errors</div>
                         </div>
                     </div>
 
-                    {validationReport.errors.length > 0 && (
-                        <div className="border border-red-200 rounded-lg overflow-hidden">
-                            <div className="bg-red-50 px-4 py-2 border-b border-red-200 flex justify-between items-center">
-                                <span className="font-semibold text-red-800 text-sm">Error Log (Top 50)</span>
-                                <span className="text-xs text-red-600">Please fix these rows in CSV or create missing Nodes.</span>
-                            </div>
-                            <div className="max-h-60 overflow-y-auto bg-white">
-                                <table className="w-full text-left text-xs">
-                                    <thead className="text-gray-500 bg-red-50/50 sticky top-0">
-                                        <tr>
-                                            <th className="p-2 w-16">Row #</th>
-                                            <th className="p-2">Path Attempted</th>
-                                            <th className="p-2 text-red-600">Error Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {validationReport.errors.slice(0, 50).map((err, i) => (
-                                            <tr key={i} className="border-b border-red-50 hover:bg-red-50/30">
-                                                <td className="p-2 font-mono text-gray-500">{err.row}</td>
-                                                <td className="p-2 font-mono text-gray-700">{err.path}</td>
-                                                <td className="p-2 text-red-600">{err.msg}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                    {validationReport.warnings?.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                            <h4 className="text-sm font-bold text-amber-800 flex items-center gap-2 mb-2">
+                                <AlertTriangle size={16} /> Math Validation Warnings
+                            </h4>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                                {validationReport.warnings.map((w, i) => (
+                                    <div key={i} className="text-xs text-amber-700 font-medium">• {w}</div>
+                                ))}
                             </div>
                         </div>
                     )}
 
-                    {validationReport.errors.length === 0 && (
-                        <div className="p-4 bg-green-50 border border-green-200 rounded text-center text-green-800">
-                            <div className="font-bold">All clear!</div>
-                            <p className="text-sm">Structure matched successfully. Ready to import.</p>
+                    {validationReport.errors?.length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                            <h4 className="text-sm font-bold text-red-800 flex items-center gap-2 mb-2">
+                                <X size={16} /> Blocked: Structural Mismatches
+                            </h4>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                                {validationReport.errors.map((e, i) => (
+                                    <div key={i} className="text-xs text-red-700 font-medium">• {e}</div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {!hasCriticalErrors && (
+                        <div className="bg-emerald-50 border border-emerald-200 p-8 rounded-xl text-center">
+                            <CheckCircle size={32} className="text-emerald-500 mx-auto mb-2" />
+                            <h4 className="font-bold text-emerald-900 text-lg">System Verification Success</h4>
+                            <p className="text-sm text-emerald-700">All locations mapped. Structure is symmetrical.</p>
                         </div>
                     )}
                 </div>
             );
         }
 
-        // Mode B: Legacy Value Mapping
         return (
             <div className="space-y-6">
                 <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                     <CheckCircle size={18} className="text-blue-500" />
                     Map EPS Values
                 </h3>
-                <p className="text-sm text-slate-500">
-                    Found {uniqueValues.length} unique locations in column <b>"{mapping['epsName']}"</b>.
-                    Map each value to a system Location.
-                </p>
-
                 <div className="bg-slate-50 border border-slate-200 rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
                         <thead className="bg-slate-100 text-slate-600 font-medium">
@@ -642,7 +581,7 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
                                             value={valueMap[val] || ''}
                                             onChange={(e) => setValueMap(prev => ({ ...prev, [val]: e.target.value }))}
                                         >
-                                            <option value="">-- Start Typing or Select --</option>
+                                            <option value="">-- Select --</option>
                                             <option value="SKIP">(Skip Rows)</option>
                                             {localNodes?.map(node => (
                                                 <option key={node.id} value={node.id}>{node.name}</option>
@@ -662,21 +601,23 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="p-6 border-b flex items-center justify-between bg-slate-50 rounded-t-xl">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                            <FileText className="text-blue-600" />
-                            Import {mode === 'BOQ_ITEM' ? 'BOQ Items' : (mode === 'RESOURCE_MASTER' ? 'Global Resources' : 'Measurements')}
-                        </h2>
-                        <p className="text-sm text-slate-500">
-                            {mode === 'BOQ_ITEM' ? 'Bulk import commercial items' : (mode === 'RESOURCE_MASTER' ? 'Bulk import resource master data' : 'Bulk import technical take-offs')}
-                        </p>
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
+                            <FileText size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-900">
+                                Import {mode === 'BOQ_ITEM' ? 'BOQ Items' : (mode === 'RESOURCE_MASTER' ? 'Global Resources' : 'Measurements')}
+                            </h2>
+                            <p className="text-xs text-slate-500">Step {step} of 3 • {step === 1 ? 'File Selection' : (step === 2 ? 'Column Mapping' : 'Critical Review')}</p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
                         <X size={20} className="text-slate-500" />
                     </button>
                 </div>
 
-                <div className="flex-1 p-6 overflow-y-auto">
+                <div className="flex-1 p-6 overflow-y-auto bg-white">
                     {step === 1 && renderStep1()}
                     {step === 2 && renderStep2()}
                     {step === 3 && renderStep3()}
@@ -684,7 +625,7 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
 
                 <div className="p-6 border-t bg-slate-50 rounded-b-xl flex justify-between items-center">
                     {step === 1 && (
-                        <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:text-slate-900">Cancel</button>
+                        <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium">Cancel</button>
                     )}
                     {step === 2 && (
                         <>
@@ -705,7 +646,7 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
                                         ${!isMappingValid() ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow'}
                                     `}
                                 >
-                                    {mode === 'RESOURCE_MASTER' ? 'Next: Review Import' : 'Next: Map Values'} <ArrowRight size={16} />
+                                    {mode === 'BOQ_ITEM' ? 'Run Analysis' : 'Next: Map Values'} <ArrowRight size={16} />
                                 </button>
                             </div>
                         </>
@@ -716,24 +657,21 @@ export const ImportWizard: React.FC<Props> = ({ projectId, mode, boqItemId, boqS
                                 onClick={() => setStep(2)}
                                 className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium"
                             >
-                                Back
+                                Back to Mapping
                             </button>
                             <button
                                 onClick={handleImport}
-                                disabled={uploading}
-                                className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 shadow-md flex items-center gap-2"
+                                disabled={uploading || !!(validationReport && ((validationReport.errorCount || 0) > 0 || (validationReport.errors && validationReport.errors.length > 0)))}
+                                className={`px-6 py-2 rounded-lg font-medium shadow-md flex items-center gap-2 transition-all
+                                    ${uploading || !!(validationReport && ((validationReport.errorCount || 0) > 0 || (validationReport.errors && validationReport.errors.length > 0)))
+                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                        : 'bg-emerald-600 text-white hover:bg-emerald-700'}
+                                `}
                             >
                                 {uploading ? 'Importing...' : 'Finish & Import'}
                             </button>
                         </>
                     )}
-                </div>
-                {/* Debug Footer */}
-                <div className="p-4 bg-gray-100 text-xs font-mono border-t max-h-32 overflow-auto mb-4 mx-4 rounded-md">
-                    <strong>DEBUG INFO:</strong><br />
-                    ProjectID: {projectId}<br />
-                    Nodes Count: {localNodes?.length || 0}<br />
-                    Nodes Data: {JSON.stringify(localNodes?.slice(0, 3) || [])}
                 </div>
             </div>
         </div>

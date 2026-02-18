@@ -8,6 +8,7 @@ import {
   HttpException,
 } from '@nestjs/common';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
 
 @Catch(NotFoundException)
 export class SpaFallbackFilter implements ExceptionFilter {
@@ -33,6 +34,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
   app.enableCors();
+
+  // Increase body limits for large payloads (e.g. for BOQ/WorkOrder imports)
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ limit: '50mb', extended: true }));
 
   // Use SPA Filter
   app.useGlobalFilters(new SpaFallbackFilter());

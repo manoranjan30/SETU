@@ -8,6 +8,7 @@ export declare class BoqSubItem {
     uom: string;
     rate: number;
     qty: number;
+    executedQty: number;
     amount: number;
     measurements: MeasurementElement[];
     analysisTemplateId: number;

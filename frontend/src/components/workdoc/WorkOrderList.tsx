@@ -171,6 +171,7 @@ const WorkOrderList: React.FC = () => {
                 isOpen={isDetailModalOpen}
                 onClose={() => setIsDetailModalOpen(false)}
                 workOrder={selectedWO}
+                onRefresh={fetchWorkOrders}
             />
         </div>
     );

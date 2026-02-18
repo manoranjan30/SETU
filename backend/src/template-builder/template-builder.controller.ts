@@ -17,7 +17,7 @@ import {
   ImportTemplateDto,
 } from './dto/template.dto';
 
-@Controller('api/pdf-templates')
+@Controller('pdf-templates')
 export class TemplateBuilderController {
   constructor(private readonly templateService: TemplateBuilderService) {}
 

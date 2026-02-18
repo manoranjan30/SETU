@@ -6,5 +6,8 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     include: ['ag-grid-react', 'ag-grid-community', 'react-pdf', 'pdfjs-dist']
+  },
+  server: {
+    allowedHosts: true
   }
 })
