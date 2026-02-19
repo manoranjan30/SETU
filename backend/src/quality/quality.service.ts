@@ -1,14 +1,28 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { QualityInspection } from './entities/quality-inspection.entity';
+import {
+  QualityInspection,
+  InspectionStatus,
+} from './entities/quality-inspection.entity';
 import { QualityMaterialTest } from './entities/quality-material-test.entity';
 import { QualityObservationNcr } from './entities/quality-observation-ncr.entity';
 import { QualityChecklist } from './entities/quality-checklist.entity';
-import { QualityItem, QualityStatus, QualityType } from './entities/quality-item.entity';
+import {
+  QualityItem,
+  QualityStatus,
+  QualityType,
+} from './entities/quality-item.entity';
 import { QualityAudit } from './entities/quality-audit.entity';
 import { QualityDocument } from './entities/quality-document.entity';
-import { QualitySnagPhoto, SnagPhotoType } from './entities/quality-snag-photo.entity';
+import {
+  QualitySnagPhoto,
+  SnagPhotoType,
+} from './entities/quality-snag-photo.entity';
 import { QualityHistory } from './entities/quality-history.entity';
 import { QualityWorkflowService } from './quality-workflow.service';
 
@@ -34,7 +48,7 @@ export class QualityService {
     @InjectRepository(QualitySnagPhoto)
     private readonly photoRepo: Repository<QualitySnagPhoto>,
     private readonly workflowService: QualityWorkflowService,
-  ) { }
+  ) {}
 
   async getSummary(projectId: number) {
     // Summary data for the overview dashboard
@@ -57,16 +71,16 @@ export class QualityService {
       (o) => o.type === 'Observation' && o.status === 'Open',
     ).length;
     const pendingInspections = inspections.filter(
-      (i) => i.status === 'Pending' || i.status === 'In Progress',
+      (i) => i.status === InspectionStatus.PENDING,
     ).length;
     const failedTests = materialTests.filter((t) => t.result === 'Fail').length;
 
     // Calculate a basic quality score (percent of passed inspections)
     const totalClosedInspections = inspections.filter((i) =>
-      ['Pass', 'Fail'].includes(i.status),
+      [InspectionStatus.APPROVED, InspectionStatus.REJECTED].includes(i.status),
     ).length;
     const passedInspections = inspections.filter(
-      (i) => i.status === 'Pass',
+      (i) => i.status === InspectionStatus.APPROVED,
     ).length;
     const qualityScore =
       totalClosedInspections > 0
@@ -79,17 +93,19 @@ export class QualityService {
       pendingInspections,
       failedTests,
       qualityScore: Math.round(qualityScore),
-      snagsCount: defaults.filter((s) => s.type === QualityType.SNAG && s.status !== QualityStatus.CLOSED).length,
+      snagsCount: defaults.filter(
+        (s) => s.type === QualityType.SNAG && s.status !== QualityStatus.CLOSED,
+      ).length,
       totalInspections: inspections.length,
       checklistsCount: checklists.length,
     };
   }
 
-  // Inspections
+  // Inspections (Legacy)
   async getInspections(projectId: number) {
     return this.inspectionRepo.find({
       where: { projectId },
-      order: { scheduledDate: 'DESC' },
+      order: { requestDate: 'DESC' },
     });
   }
   async createInspection(data: any) {
@@ -169,9 +185,9 @@ export class QualityService {
       relations: ['photos'],
     });
     // Map for frontend compatibility
-    return items.map(item => ({
+    return items.map((item) => ({
       ...item,
-      defectDescription: item.description
+      defectDescription: item.description,
     }));
   }
 
@@ -182,7 +198,7 @@ export class QualityService {
       type: QualityType.SNAG,
       status: QualityStatus.OPEN,
       pendingActionRole: 'SITE_ENGINEER', // Default
-      description: data.defectDescription || data.description // Handle mismatch
+      description: data.defectDescription || data.description, // Handle mismatch
     }) as unknown as QualityItem;
 
     // Map DTO fields to new Entity fields if mismatch exists
@@ -196,7 +212,7 @@ export class QualityService {
       fromStatus: 'VOID',
       toStatus: QualityStatus.OPEN,
       actionBy: 'User', // TODO: Context
-      remarks: 'Created Snag'
+      remarks: 'Created Snag',
     });
 
     // 3. Save Photo
@@ -209,7 +225,10 @@ export class QualityService {
       });
     }
 
-    return this.itemRepo.findOne({ where: { id: saved.id }, relations: ['photos'] });
+    return this.itemRepo.findOne({
+      where: { id: saved.id },
+      relations: ['photos'],
+    });
   }
 
   async updateSnag(id: number, data: any, file?: any) {
@@ -218,7 +237,10 @@ export class QualityService {
 
     // 1. Validate Transition
     if (data.status && data.status !== item.status) {
-      this.workflowService.validateTransition(item, data.status as QualityStatus);
+      this.workflowService.validateTransition(
+        item,
+        data.status as QualityStatus,
+      );
 
       // 2. Capture History
       await this.historyRepo.save({
@@ -226,15 +248,18 @@ export class QualityService {
         fromStatus: item.status,
         toStatus: data.status,
         actionBy: 'User',
-        remarks: data.remarks || 'Status update'
+        remarks: data.remarks || 'Status update',
       });
 
       // 3. Update Status & Pending Role
       item.status = data.status;
-      item.pendingActionRole = this.workflowService.getPendingActionRole(data.status);
+      item.pendingActionRole = this.workflowService.getPendingActionRole(
+        data.status,
+      );
 
       // 4. Update Timestamps
-      if (item.status === QualityStatus.RECTIFIED) item.rectifiedAt = new Date();
+      if (item.status === QualityStatus.RECTIFIED)
+        item.rectifiedAt = new Date();
       if (item.status === QualityStatus.VERIFIED) item.verifiedAt = new Date();
       if (item.status === QualityStatus.CLOSED) item.closedAt = new Date();
     }
@@ -247,8 +272,10 @@ export class QualityService {
     // 6. Handle File Upload (Evidence)
     if (file) {
       let type = SnagPhotoType.INITIAL;
-      if (item.status === QualityStatus.RECTIFIED) type = SnagPhotoType.RECTIFIED;
-      else if (item.status === QualityStatus.VERIFIED) type = SnagPhotoType.VERIFIED;
+      if (item.status === QualityStatus.RECTIFIED)
+        type = SnagPhotoType.RECTIFIED;
+      else if (item.status === QualityStatus.VERIFIED)
+        type = SnagPhotoType.VERIFIED;
 
       await this.photoRepo.save({
         snagId: id,

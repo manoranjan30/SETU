@@ -7,6 +7,7 @@ Activities represent the smallest units of work execution attached to a specific
 1.  **Ownership**: Every Activity MUST belong to exactly one WBS Node.
 2.  **Scope**: Activities inherit the Project Context of their parent WBS Node.
 3.  **Scheduling**: Dates and Logic (Predecessors) are explicitly **EXCLUDED** from this module (reserved for Schedule Module).
+4.  **Physical Context (EPS)**: While WBS defines the work type, the **Schedule Mapper** provides the physical location (EPS Node). Activities can be distributed across multiple EPS nodes. 
 
 ## Data Model
 

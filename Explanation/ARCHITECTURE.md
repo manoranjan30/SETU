@@ -21,7 +21,9 @@ SETU is a high-performance **Enterprise Project Management (EPM)** system tailor
 | Module | Description | Documentation |
 | :--- | :--- | :--- |
 | **Scope (BOQ)** | Cost estimation, Measurements, Tender management. | [MODULE_SCOPE.md](./MODULE_SCOPE.md) |
+| **Schedule Mapper** | Linking Master Schedule to EPS Locations. | [SCHEDULE_MAPPER_MATRIX.md](./SCHEDULE_MAPPER_MATRIX.md) |
 | **Planning** | CPM Scheduling, Gantt Charts, Resource Loading. | [MODULE_PLANNING.md](./MODULE_PLANNING.md) |
+| **Micro Schedule** | Daily task breakdown, Site logs, Quantity tracking. | [MODULE_MICRO_SCHEDULE.md](./MODULE_MICRO_SCHEDULE.md) |
 | **Execution** | Site Progress, DPR, Bill Certification. | [MODULE_EXECUTION.md](./MODULE_EXECUTION.md) |
 | **Quality** | Inspections, Testing, NCRs, Audits. | [MODULE_QUALITY.md](./MODULE_QUALITY.md) |
 | **EHS** | Safety Incidents, Manhours, Environment stats. | [MODULE_EHS.md](./MODULE_EHS.md) |

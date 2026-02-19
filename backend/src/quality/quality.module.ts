@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MulterModule } from '@nestjs/platform-express';
 import { QualityService } from './quality.service';
 import { QualityStructureService } from './quality-structure.service';
 import { QualityController } from './quality.controller';
@@ -15,14 +16,22 @@ import { QualityUnitTemplate } from './entities/quality-unit-template.entity';
 import { QualitySnagPhoto } from './entities/quality-snag-photo.entity';
 import { QualityWorkflowService } from './quality-workflow.service';
 import { EpsNode } from '../eps/eps.entity';
+// NEW: Activity List module
+import { QualityActivityList } from './entities/quality-activity-list.entity';
+import { QualityActivity } from './entities/quality-activity.entity';
+import { QualityActivityService } from './quality-activity.service';
+import { QualityActivityController } from './quality-activity.controller';
+
+import { QualityInspectionService } from './quality-inspection.service';
+import { QualityInspectionController } from './quality-inspection.controller';
 
 @Module({
   imports: [
+    MulterModule.register({ dest: './uploads/quality-csv' }),
     TypeOrmModule.forFeature([
       QualityInspection,
       QualityMaterialTest,
       QualityObservationNcr,
-      QualityChecklist,
       QualityChecklist,
       QualityItem,
       QualityHistory,
@@ -31,11 +40,29 @@ import { EpsNode } from '../eps/eps.entity';
       QualityUnitTemplate,
       QualitySnagPhoto,
       EpsNode,
-      EpsNode,
+      // NEW
+      QualityActivityList,
+      QualityActivity,
     ]),
   ],
-  controllers: [QualityController],
-  providers: [QualityService, QualityStructureService, QualityWorkflowService],
-  exports: [QualityService, QualityStructureService, QualityWorkflowService],
+  controllers: [
+    QualityController,
+    QualityActivityController,
+    QualityInspectionController,
+  ],
+  providers: [
+    QualityService,
+    QualityStructureService,
+    QualityWorkflowService,
+    QualityActivityService,
+    QualityInspectionService, // Added
+  ],
+  exports: [
+    QualityService,
+    QualityStructureService,
+    QualityWorkflowService,
+    QualityActivityService,
+    QualityInspectionService, // Added
+  ],
 })
-export class QualityModule { }
+export class QualityModule {}

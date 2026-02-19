@@ -4,7 +4,19 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { QualityActivity } from './quality-activity.entity';
+import { QualityActivityList } from './quality-activity-list.entity';
+import { EpsNode } from '../../eps/eps.entity';
+
+export enum InspectionStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CANCELED = 'CANCELED',
+}
 
 @Entity('quality_inspections')
 export class QualityInspection {
@@ -14,35 +26,48 @@ export class QualityInspection {
   @Column()
   projectId: number;
 
-  @Column()
-  inspectionType: string; // ITP, WIR
-
-  @Column()
-  description: string;
-
   @Column({ nullable: true })
-  location: string; // Floor, Zone, Unit
+  epsNodeId: number;
 
-  @Column({ nullable: true })
-  trade: string; // Civil, MEP, Finishes
+  @ManyToOne(() => EpsNode, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'epsNodeId' })
+  epsNode: EpsNode;
 
-  @Column({ default: 'Pending' })
-  status: string; // Pending, In Progress, Pass, Fail, Conditional
+  @Column()
+  listId: number;
 
-  @Column({ type: 'date' })
-  scheduledDate: string;
+  @ManyToOne(() => QualityActivityList, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'listId' })
+  list: QualityActivityList;
+
+  @Column()
+  activityId: number;
+
+  @ManyToOne(() => QualityActivity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'activityId' })
+  activity: QualityActivity;
+
+  @Column({ type: 'int', default: 0 })
+  sequence: number; // Snapshot of sequence at creation
+
+  @Column({
+    type: 'enum',
+    enum: InspectionStatus,
+    default: InspectionStatus.PENDING,
+  })
+  status: InspectionStatus;
+
+  @Column({ type: 'date', default: () => 'CURRENT_DATE' })
+  requestDate: string;
 
   @Column({ type: 'date', nullable: true })
-  inspectedDate: string;
+  inspectionDate: string;
 
   @Column({ nullable: true })
-  inspectedBy: string;
+  inspectedBy: string; // User ID or Name
 
   @Column({ type: 'text', nullable: true })
-  remarks: string;
-
-  @Column({ nullable: true })
-  attachmentUrl: string;
+  comments: string;
 
   @CreateDateColumn()
   createdAt: Date;

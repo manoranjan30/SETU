@@ -2,28 +2,44 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { MENU_CONFIG, type MenuItem } from '../../config/menu';
-import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText } from 'lucide-react';
+import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, Clipboard } from 'lucide-react';
 
 const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?: number; isCollapsed: boolean }) => {
     const location = useLocation();
     const { hasPermission } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
 
-    // Check visibility
-    if (item.permission && !hasPermission(item.permission)) {
-        return null;
+    // 1. Check strict denial (if item has a permission and user doesn't have it)
+    // BUT we relax this for parents with children -> we check that later
+    const hasItemPermission = !item.permission || hasPermission(item.permission);
+
+    // 2. Check children visibility - only show if not collapsed
+    // Recursively check if children are visible based on THEIR permissions
+    const visibleChildren = item.children?.filter(child =>
+        !child.permission || hasPermission(child.permission)
+    ) || [];
+
+    const hasVisibleChildren = visibleChildren.length > 0;
+
+    // 3. Final Visibility Decision
+    if (item.children) {
+        // If it's a parent/group, it is visible ONLY if it has visible children
+        // regardless of its own permission (since we treat parents as containers)
+        if (!hasVisibleChildren) return null;
+    } else {
+        // High-level check: access denied if permission exists and user lacks it
+        if (!hasItemPermission) return null;
     }
 
-    // Check children visibility - only show if not collapsed
-    const visibleChildren = !isCollapsed ? item.children?.filter(child =>
-        !child.permission || hasPermission(child.permission)
-    ) : [];
-    const hasChildren = visibleChildren && visibleChildren.length > 0;
+    // Double check (redundant but safe)
+    if (item.permission && !hasPermission(item.permission)) return null;
 
     const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
     const paddingLeft = isCollapsed ? 0 : (depth * 16 + 24); // Base padding 24px
 
-    if (hasChildren) {
+    if (hasVisibleChildren) {
+        // Render as Parent with Dropdown
+        // Note: We use visibleChildren for rendering the dropdown content to ensure hidden children stay hidden
         return (
             <div>
                 <button
@@ -194,6 +210,22 @@ const Sidebar = () => {
                                     label: 'Quality Control',
                                     path: `/dashboard/projects/${activeProjectId}/quality`,
                                     icon: CheckCircle
+                                }}
+                            />
+                            <SidebarItem
+                                isCollapsed={isCollapsed}
+                                item={{
+                                    label: 'Site Inspections',
+                                    path: `/dashboard/projects/${activeProjectId}/quality/inspections`,
+                                    icon: ShieldAlert
+                                }}
+                            />
+                            <SidebarItem
+                                isCollapsed={isCollapsed}
+                                item={{
+                                    label: 'Activity Lists',
+                                    path: `/dashboard/projects/${activeProjectId}/quality/activity-lists`,
+                                    icon: Clipboard
                                 }}
                             />
                             <SidebarItem

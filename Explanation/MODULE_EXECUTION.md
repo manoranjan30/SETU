@@ -9,6 +9,7 @@ The Execution module captures the actual physical work done on site. It bridges 
 - **Granularity**: Progress can be logged against:
   - **BOQ Quantities**: (e.g., "Poured 10 cum of concrete").
   - **Schedule Activities**: (e.g., "Activity 40% complete").
+  - **Micro Schedule Logs**: Granular daily logs for sub-activities (e.g., "Rebar fixing done").
 - **Location Context**: All progress is tagged to an **EPS Node** (e.g., Block A > Floor 1 > Unit 101).
 
 ### 2. Daily Progress Report (DPR)

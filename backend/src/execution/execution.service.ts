@@ -31,6 +31,7 @@ export class ExecutionService {
     projectId: number,
     entries: any[],
     userId: number,
+    autoApprove: boolean = false, // If true (Admin/PM), status = APPROVED immediately
   ) {
     return await this.dataSource.transaction(async (manager) => {
       const results: MeasurementProgress[] = [];
@@ -47,60 +48,67 @@ export class ExecutionService {
           continue; // Skip invalid
         }
 
-        // 2. Find or Create "Site Execution" Measurement Holder for THIS Plan (unique per activity+boqItem+plan+location)
+        // 2. Find or Create "Site Execution" Measurement Holder
         const epsNodeId = entry.wbsNodeId || boqItem.epsNodeId || projectId;
+        const microSuffix = entry.microActivityId
+          ? `-MICRO-${entry.microActivityId}`
+          : '';
+
         let siteMeas = await manager.findOne(MeasurementElement, {
           where: {
             boqItemId: entry.boqItemId,
             activityId: entry.activityId || null,
-            // FIX: Include epsNodeId in elementId lookup to ensure per-plan+location tracking
-            elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}`,
+            microActivityId: entry.microActivityId || null,
+            elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}`,
           },
         });
 
         if (!siteMeas) {
-          // FIX: Use the EPS Node (Location) passed from the frontend for THIS specific execution
-          // This ensures "Slab on 3rd Floor" is different from "Slab on 4th Floor"
           const epsNodeId = entry.wbsNodeId || boqItem.epsNodeId || projectId;
-
           siteMeas = manager.create(MeasurementElement, {
             projectId,
             boqItemId: entry.boqItemId,
             epsNodeId: epsNodeId,
             activityId: entry.activityId || null,
-            elementName: 'Site Execution',
+            microActivityId: entry.microActivityId || null,
+            elementName: entry.microActivityId
+              ? 'Micro Execution'
+              : 'Site Execution',
             qty: 0,
-            // FIX: Include epsNodeId in elementId for unique per-location tracking
-            elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}`,
+            elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}`,
           });
           siteMeas = await manager.save(MeasurementElement, siteMeas);
         }
 
         // 3. Create Progress Log
-        // Now we have the ID, so no null error
-        const progress = manager.create(MeasurementProgress, {
-          measurementElementId: siteMeas.id,
-          executedQty: entry.executedQty,
-          date: new Date(entry.date),
-          updatedBy: userId.toString(),
-        });
+        const status = autoApprove ? 'APPROVED' : 'PENDING';
+
+        const progress = new MeasurementProgress();
+        progress.measurementElement = siteMeas;
+        progress.executedQty = entry.executedQty;
+        progress.date = new Date(entry.date);
+        progress.updatedBy = userId.toString();
+        progress.status = status;
+        progress.reviewedBy = autoApprove ? userId.toString() : null;
+        progress.reviewedAt = autoApprove ? new Date() : null;
 
         await manager.save(MeasurementProgress, progress);
-
-        // 4. Update Aggregates
-        siteMeas.executedQty =
-          Number(siteMeas.executedQty || 0) + Number(entry.executedQty);
-        await manager.save(MeasurementElement, siteMeas);
-
-        // BoqItem Update
-        boqItem.consumedQty =
-          Number(boqItem.consumedQty || 0) + Number(entry.executedQty);
-        await manager.save(BoqItem, boqItem);
-
         results.push(progress);
 
-        // 5. Trigger Schedule Update (The Core Logic)
-        await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
+        // 4. Update Aggregates & Sync Schedule (ONLY IF APPROVED)
+        if (status === 'APPROVED') {
+          siteMeas.executedQty =
+            Number(siteMeas.executedQty || 0) + Number(entry.executedQty);
+          await manager.save(MeasurementElement, siteMeas);
+
+          // BoqItem Update
+          boqItem.consumedQty =
+            Number(boqItem.consumedQty || 0) + Number(entry.executedQty);
+          await manager.save(BoqItem, boqItem);
+
+          // Trigger Schedule Update
+          await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
+        }
       }
 
       return results;
@@ -293,11 +301,12 @@ export class ExecutionService {
       .leftJoinAndSelect('me.boqItem', 'boq')
       .leftJoinAndSelect('me.activity', 'act')
       .where('me.projectId = :projectId', { projectId })
+      .andWhere('progress.status = :status', { status: 'APPROVED' })
       .orderBy('progress.loggedOn', 'DESC')
       .getMany();
 
     this.logger.log(
-      `Found ${logs.length} progress logs for project ${projectId}`,
+      `Found ${logs.length} APPROVED progress logs for project ${projectId}`,
     );
     return logs;
   }
@@ -371,5 +380,85 @@ export class ExecutionService {
 
       return { success: true };
     });
+  }
+
+  async getPendingProgressLogs(projectId: number) {
+    return await this.progressRepo
+      .createQueryBuilder('progress')
+      .innerJoinAndSelect('progress.measurementElement', 'me')
+      .leftJoinAndSelect('me.boqItem', 'boq')
+      .leftJoinAndSelect('me.activity', 'act')
+      .leftJoinAndSelect('me.epsNode', 'loc') // location context
+      .where('me.projectId = :projectId', { projectId })
+      .andWhere('progress.status = :status', { status: 'PENDING' })
+      .orderBy('progress.loggedOn', 'DESC')
+      .getMany();
+  }
+
+  async approveProgress(logIds: number[], userId: number) {
+    return await this.dataSource.transaction(async (manager) => {
+      // Fetch only PENDING items to avoid double-counting
+      const logs = await manager.find(MeasurementProgress, {
+        where: {
+          id: In(logIds),
+          status: 'PENDING',
+        },
+        relations: ['measurementElement', 'measurementElement.boqItem'],
+      });
+
+      if (!logs.length)
+        return {
+          success: true,
+          count: 0,
+          message: 'No pending logs found to approve',
+        };
+
+      for (const progress of logs) {
+        // 1. Mark Approved
+        progress.status = 'APPROVED';
+        progress.reviewedBy = userId.toString();
+        progress.reviewedAt = new Date();
+        await manager.save(MeasurementProgress, progress);
+
+        // 2. Perform Adjustments (Deferred Logic)
+        const me = progress.measurementElement;
+
+        if (!me) continue; // Should not happen
+
+        const boqItem = me.boqItem;
+        const qty = Number(progress.executedQty);
+
+        // Update Aggregate
+        me.executedQty = Number(me.executedQty || 0) + qty;
+        await manager.save(MeasurementElement, me);
+
+        // Update BOQ
+        if (boqItem) {
+          boqItem.consumedQty = Number(boqItem.consumedQty || 0) + qty;
+          await manager.save(BoqItem, boqItem);
+
+          // Trigger Schedule Sync
+          await this.syncSchedule(boqItem.id, manager, me.activityId);
+        }
+      }
+
+      this.logger.log(`Approved ${logs.length} progress entries`);
+      return { success: true, count: logs.length };
+    });
+  }
+
+  async rejectProgress(logIds: number[], userId: number, reason: string) {
+    // Just update status, do NOT touch aggregates
+    const result = await this.dataSource.manager.update(
+      MeasurementProgress,
+      { id: In(logIds), status: 'PENDING' },
+      {
+        status: 'REJECTED',
+        reviewedBy: userId.toString(),
+        reviewedAt: new Date(),
+        rejectionReason: reason,
+      },
+    );
+    return { success: true, affected: result.affected };
   }
 }

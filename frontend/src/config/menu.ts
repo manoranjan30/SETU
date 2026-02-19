@@ -21,41 +21,37 @@ export const MENU_CONFIG: MenuItem[] = [
         label: 'Projects',
         path: '/dashboard/eps',
         icon: Database,
-        permission: PermissionCode.VIEW_PROJECTS
-    },
-    {
-        label: 'Admin',
-        path: '/dashboard/admin', // Dummy parent path
-        icon: Settings,
-        permission: PermissionCode.MANAGE_USERS,
-        children: [
-            {
-                label: 'Users',
-                path: '/dashboard/users',
-                permission: PermissionCode.MANAGE_USERS
-            },
-            {
-                label: 'Roles',
-                path: '/dashboard/roles',
-                permission: PermissionCode.MANAGE_ROLES
-            },
-            {
-                label: 'Permissions',
-                path: '/dashboard/permissions',
-                permission: PermissionCode.MANAGE_ROLES
-            },
-            {
-                label: 'System Settings',
-                path: '/dashboard/admin/settings',
-                permission: PermissionCode.MANAGE_USERS
-            }
-        ]
+        permission: PermissionCode.MANAGE_EPS // Basic access to see project list
     },
     {
         label: 'Site Execution',
         path: '/dashboard/execution',
         icon: ClipboardList,
-        permission: PermissionCode.VIEW_PROJECTS // Reuse project permission for now
+        // No permission here - let the children or page decide access, or use a basic read permission
+        permission: PermissionCode.EXECUTION_READ
+    },
+    {
+        label: 'Admin',
+        path: '/dashboard/admin', // Dummy parent path
+        icon: Settings,
+        // REMOVED PARENT PERMISSION to allow access if ANY child is visible
+        children: [
+            {
+                label: 'User Management',
+                path: '/dashboard/users',
+                permission: PermissionCode.USER_READ
+            },
+            {
+                label: 'Role Management',
+                path: '/dashboard/roles',
+                permission: PermissionCode.ROLE_READ
+            },
+            {
+                label: 'System Permissions',
+                path: '/dashboard/permissions',
+                permission: PermissionCode.ROLE_UPDATE // Viewing permissions usually requires role management rights
+            }
+        ]
     },
     {
         label: 'External Tools',

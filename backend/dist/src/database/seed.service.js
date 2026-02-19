@@ -78,60 +78,7 @@ let SeedService = SeedService_1 = class SeedService {
         await this.seedTemplates();
     }
     async seedPermissions() {
-        const PERMISSIONS = [
-            { code: 'VIEW_DASHBOARD', name: 'View Dashboard', module: 'CORE' },
-            { code: 'VIEW_PROJECTS', name: 'View Projects List', module: 'CORE' },
-            { code: 'MANAGE_USERS', name: 'Manage System Users', module: 'ADMIN' },
-            { code: 'MANAGE_ROLES', name: 'Manage System Roles', module: 'ADMIN' },
-            { code: 'MANAGE_EPS', name: 'Manage EPS Structure', module: 'EPS' },
-            { code: 'DESIGN.READ', name: 'View Drawings', module: 'DESIGN' },
-            { code: 'DESIGN.UPLOAD', name: 'Upload Drawings', module: 'DESIGN' },
-            {
-                code: 'DESIGN.APPROVE',
-                name: 'Approve Drawings (GFC)',
-                module: 'DESIGN',
-            },
-            { code: 'PLANNING.READ', name: 'View Schedule', module: 'PLANNING' },
-            { code: 'PLANNING.EDIT', name: 'Edit Schedule/WBS', module: 'PLANNING' },
-            {
-                code: 'PLANNING.BASELINE',
-                name: 'Manage Baselines',
-                module: 'PLANNING',
-            },
-            { code: 'BOQ.READ', name: 'View BOQ', module: 'BOQ' },
-            { code: 'BOQ.MANAGE', name: 'Manage BOQ', module: 'BOQ' },
-            { code: 'EXECUTION.READ', name: 'View Progress', module: 'EXECUTION' },
-            {
-                code: 'EXECUTION.UPDATE',
-                name: 'Update Daily Progress',
-                module: 'EXECUTION',
-            },
-            { code: 'QUALITY.READ', name: 'View Quality Records', module: 'QUALITY' },
-            {
-                code: 'QUALITY.MANAGE',
-                name: 'Manage Quality Records',
-                module: 'QUALITY',
-            },
-            { code: 'EHS.READ', name: 'View Safety Records', module: 'EHS' },
-            { code: 'EHS.MANAGE', name: 'Manage Safety Records', module: 'EHS' },
-            { code: 'LABOR.READ', name: 'View Labor Records', module: 'LABOR' },
-            { code: 'LABOR.MANAGE', name: 'Manage Labor Records', module: 'LABOR' },
-        ];
-        for (const p of PERMISSIONS) {
-            const exists = await this.permissionRepo.findOneBy({
-                permissionCode: p.code,
-            });
-            if (!exists) {
-                await this.permissionRepo.save(this.permissionRepo.create({
-                    permissionCode: p.code,
-                    permissionName: p.name,
-                    moduleName: p.module,
-                    description: p.name,
-                    isSystem: true,
-                }));
-                this.logger.log(`Seeded permission: ${p.code}`);
-            }
-        }
+        this.logger.log('Permissions seeding handled by PermissionsService');
     }
     async seedDefaultRoles() {
         let adminRole = await this.roleRepo.findOne({
@@ -145,12 +92,12 @@ let SeedService = SeedService_1 = class SeedService {
                 description: 'System Administrator',
                 permissions: allPermissions,
             }));
-            this.logger.log('Seeded Admin Role');
+            this.logger.log('Seeded Admin Role with ALL permissions');
         }
         else {
             adminRole.permissions = allPermissions;
             await this.roleRepo.save(adminRole);
-            this.logger.log('Updated Admin Role Permissions');
+            this.logger.log('Updated Admin Role with latest permissions');
         }
         let userRole = await this.roleRepo.findOne({
             where: { name: 'User' },

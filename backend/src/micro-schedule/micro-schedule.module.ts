@@ -15,34 +15,36 @@ import { MicroActivityService } from './micro-activity.service';
 import { MicroDailyLogService } from './micro-daily-log.service';
 import { MicroLedgerService } from './micro-ledger.service';
 import { MicroScheduleController } from './micro-schedule.controller';
+import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([
-            MicroSchedule,
-            MicroScheduleActivity,
-            MicroDailyLog,
-            MicroQuantityLedger,
-            DelayReason,
-            Activity,
-            BoqItem,
-            WorkOrder,
-            EpsNode,
-            User,
-        ]),
-    ],
-    controllers: [MicroScheduleController],
-    providers: [
-        MicroScheduleService,
-        MicroActivityService,
-        MicroDailyLogService,
-        MicroLedgerService,
-    ],
-    exports: [
-        MicroScheduleService,
-        MicroActivityService,
-        MicroDailyLogService,
-        MicroLedgerService,
-    ],
+  imports: [
+    TypeOrmModule.forFeature([
+      MicroSchedule,
+      MicroScheduleActivity,
+      MicroDailyLog,
+      MicroQuantityLedger,
+      DelayReason,
+      Activity,
+      BoqItem,
+      WorkOrder,
+      EpsNode,
+      User,
+      BoqActivityPlan,
+    ]),
+  ],
+  controllers: [MicroScheduleController],
+  providers: [
+    MicroScheduleService,
+    MicroActivityService,
+    MicroDailyLogService,
+    MicroLedgerService,
+  ],
+  exports: [
+    MicroScheduleService,
+    MicroActivityService,
+    MicroDailyLogService,
+    MicroLedgerService,
+  ],
 })
-export class MicroScheduleModule { }
+export class MicroScheduleModule {}

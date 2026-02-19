@@ -11,6 +11,8 @@ export interface PlanningActivity {
     wbsNodeId: number;
     uom?: string;
     quantity?: number;
+    boqItems?: any[]; // BOQ items linked to this activity
+    wbsNode?: { id: number; wbsCode?: string; wbsName?: string; }; // Populated WBS node
     // ... other fields
 }
 
@@ -23,6 +25,16 @@ export const planningService = {
 
     getWbsNodes: async (projectId: number): Promise<any[]> => {
         const response = await api.get(`/projects/${projectId}/wbs`);
+        return response.data;
+    },
+
+    getProjectEps: async (projectId: number): Promise<any[]> => {
+        const response = await api.get(`/eps/${projectId}/tree`);
+        return response.data;
+    },
+
+    getDistributionMatrix: async (projectId: number): Promise<Record<string, number[]>> => {
+        const response = await api.get(`/planning/${projectId}/distribution-matrix`);
         return response.data;
     }
 };

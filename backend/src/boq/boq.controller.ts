@@ -39,7 +39,7 @@ export class BoqController {
   constructor(
     private readonly boqService: BoqService,
     private readonly boqImportService: BoqImportService,
-  ) { }
+  ) {}
 
   @Get('template')
   @ApiOperation({ summary: 'Download BOQ Import Excel Template' })
@@ -56,7 +56,10 @@ export class BoqController {
 
   @Get('export/:projectId')
   @ApiOperation({ summary: 'Export BOQ to CSV' })
-  async exportBoq(@Param('projectId', ParseIntPipe) projectId: number, @Res() res: Response) {
+  async exportBoq(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Res() res: Response,
+  ) {
     const buffer = await this.boqImportService.exportBoqToCsv(projectId);
     res.set({
       'Content-Type': 'text/csv',
@@ -93,13 +96,13 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     const defaultEpsId = defaultEpsIdStr
       ? parseInt(defaultEpsIdStr, 10)
@@ -149,19 +152,19 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     let valueMap = undefined;
     if (valueMapStr) {
       try {
         valueMap = JSON.parse(valueMapStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
 
     const defaultEpsId = defaultEpsIdStr

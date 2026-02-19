@@ -77,7 +77,7 @@ export class WorkDocService {
     private templateRepo: Repository<WorkDocTemplate>,
     private readonly httpService: HttpService,
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   // --- Vendors ---
   async getAllVendors(search?: string) {
@@ -531,7 +531,7 @@ export class WorkDocService {
         );
         throw new BadRequestException(
           'Coordinate Extraction Failed: ' +
-          (error.response?.data?.detail || error.message),
+            (error.response?.data?.detail || error.message),
         );
       }
     }
@@ -1100,7 +1100,7 @@ export class WorkDocService {
     } catch (error) {
       console.error('Excel Parse Error:', error);
       throw new BadRequestException(
-        'Failed to process Excel file: ' + (error as any).message,
+        'Failed to process Excel file: ' + error.message,
       );
     } finally {
       if (file && file.path && fs.existsSync(file.path)) {
@@ -1148,7 +1148,6 @@ export class WorkDocService {
       }
     }
   }
-
 
   // --- Intelligent Mapping & Fuzzy Logic ---
 

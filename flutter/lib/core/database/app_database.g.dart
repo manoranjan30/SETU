@@ -1,0 +1,4895 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'app_database.dart';
+
+// ignore_for_file: type=lint
+class $ProgressEntriesTable extends ProgressEntries
+    with TableInfo<$ProgressEntriesTable, ProgressEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProgressEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _serverIdMeta =
+      const VerificationMeta('serverId');
+  @override
+  late final GeneratedColumn<int> serverId = GeneratedColumn<int>(
+      'server_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _activityIdMeta =
+      const VerificationMeta('activityId');
+  @override
+  late final GeneratedColumn<int> activityId = GeneratedColumn<int>(
+      'activity_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _epsNodeIdMeta =
+      const VerificationMeta('epsNodeId');
+  @override
+  late final GeneratedColumn<int> epsNodeId = GeneratedColumn<int>(
+      'eps_node_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _boqItemIdMeta =
+      const VerificationMeta('boqItemId');
+  @override
+  late final GeneratedColumn<int> boqItemId = GeneratedColumn<int>(
+      'boq_item_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _microActivityIdMeta =
+      const VerificationMeta('microActivityId');
+  @override
+  late final GeneratedColumn<int> microActivityId = GeneratedColumn<int>(
+      'micro_activity_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _quantityMeta =
+      const VerificationMeta('quantity');
+  @override
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
+      'quantity', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<String> date = GeneratedColumn<String>(
+      'date', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _remarksMeta =
+      const VerificationMeta('remarks');
+  @override
+  late final GeneratedColumn<String> remarks = GeneratedColumn<String>(
+      'remarks', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _photoPathsMeta =
+      const VerificationMeta('photoPaths');
+  @override
+  late final GeneratedColumn<String> photoPaths = GeneratedColumn<String>(
+      'photo_paths', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncStatusMeta =
+      const VerificationMeta('syncStatus');
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+      'sync_status', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _syncedAtMeta =
+      const VerificationMeta('syncedAt');
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+      'synced_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _syncErrorMeta =
+      const VerificationMeta('syncError');
+  @override
+  late final GeneratedColumn<String> syncError = GeneratedColumn<String>(
+      'sync_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        serverId,
+        projectId,
+        activityId,
+        epsNodeId,
+        boqItemId,
+        microActivityId,
+        quantity,
+        date,
+        remarks,
+        photoPaths,
+        syncStatus,
+        createdAt,
+        syncedAt,
+        syncError,
+        retryCount
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'progress_entries';
+  @override
+  VerificationContext validateIntegrity(Insertable<ProgressEntry> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(_serverIdMeta,
+          serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta));
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('activity_id')) {
+      context.handle(
+          _activityIdMeta,
+          activityId.isAcceptableOrUnknown(
+              data['activity_id']!, _activityIdMeta));
+    } else if (isInserting) {
+      context.missing(_activityIdMeta);
+    }
+    if (data.containsKey('eps_node_id')) {
+      context.handle(
+          _epsNodeIdMeta,
+          epsNodeId.isAcceptableOrUnknown(
+              data['eps_node_id']!, _epsNodeIdMeta));
+    } else if (isInserting) {
+      context.missing(_epsNodeIdMeta);
+    }
+    if (data.containsKey('boq_item_id')) {
+      context.handle(
+          _boqItemIdMeta,
+          boqItemId.isAcceptableOrUnknown(
+              data['boq_item_id']!, _boqItemIdMeta));
+    } else if (isInserting) {
+      context.missing(_boqItemIdMeta);
+    }
+    if (data.containsKey('micro_activity_id')) {
+      context.handle(
+          _microActivityIdMeta,
+          microActivityId.isAcceptableOrUnknown(
+              data['micro_activity_id']!, _microActivityIdMeta));
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(_quantityMeta,
+          quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta));
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+          _dateMeta, date.isAcceptableOrUnknown(data['date']!, _dateMeta));
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('remarks')) {
+      context.handle(_remarksMeta,
+          remarks.isAcceptableOrUnknown(data['remarks']!, _remarksMeta));
+    }
+    if (data.containsKey('photo_paths')) {
+      context.handle(
+          _photoPathsMeta,
+          photoPaths.isAcceptableOrUnknown(
+              data['photo_paths']!, _photoPathsMeta));
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+          _syncStatusMeta,
+          syncStatus.isAcceptableOrUnknown(
+              data['sync_status']!, _syncStatusMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(_syncedAtMeta,
+          syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
+    }
+    if (data.containsKey('sync_error')) {
+      context.handle(_syncErrorMeta,
+          syncError.isAcceptableOrUnknown(data['sync_error']!, _syncErrorMeta));
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProgressEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProgressEntry(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      serverId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}server_id']),
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      activityId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}activity_id'])!,
+      epsNodeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}eps_node_id'])!,
+      boqItemId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}boq_item_id'])!,
+      microActivityId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}micro_activity_id']),
+      quantity: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}quantity'])!,
+      date: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}date'])!,
+      remarks: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}remarks']),
+      photoPaths: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}photo_paths']),
+      syncStatus: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sync_status'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      syncedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at']),
+      syncError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_error']),
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+    );
+  }
+
+  @override
+  $ProgressEntriesTable createAlias(String alias) {
+    return $ProgressEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
+  final int id;
+  final int? serverId;
+  final int projectId;
+  final int activityId;
+  final int epsNodeId;
+  final int boqItemId;
+  final int? microActivityId;
+  final double quantity;
+  final String date;
+  final String? remarks;
+  final String? photoPaths;
+  final int syncStatus;
+  final DateTime createdAt;
+  final DateTime? syncedAt;
+  final String? syncError;
+  final int retryCount;
+  const ProgressEntry(
+      {required this.id,
+      this.serverId,
+      required this.projectId,
+      required this.activityId,
+      required this.epsNodeId,
+      required this.boqItemId,
+      this.microActivityId,
+      required this.quantity,
+      required this.date,
+      this.remarks,
+      this.photoPaths,
+      required this.syncStatus,
+      required this.createdAt,
+      this.syncedAt,
+      this.syncError,
+      required this.retryCount});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<int>(serverId);
+    }
+    map['project_id'] = Variable<int>(projectId);
+    map['activity_id'] = Variable<int>(activityId);
+    map['eps_node_id'] = Variable<int>(epsNodeId);
+    map['boq_item_id'] = Variable<int>(boqItemId);
+    if (!nullToAbsent || microActivityId != null) {
+      map['micro_activity_id'] = Variable<int>(microActivityId);
+    }
+    map['quantity'] = Variable<double>(quantity);
+    map['date'] = Variable<String>(date);
+    if (!nullToAbsent || remarks != null) {
+      map['remarks'] = Variable<String>(remarks);
+    }
+    if (!nullToAbsent || photoPaths != null) {
+      map['photo_paths'] = Variable<String>(photoPaths);
+    }
+    map['sync_status'] = Variable<int>(syncStatus);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || syncedAt != null) {
+      map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || syncError != null) {
+      map['sync_error'] = Variable<String>(syncError);
+    }
+    map['retry_count'] = Variable<int>(retryCount);
+    return map;
+  }
+
+  ProgressEntriesCompanion toCompanion(bool nullToAbsent) {
+    return ProgressEntriesCompanion(
+      id: Value(id),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      projectId: Value(projectId),
+      activityId: Value(activityId),
+      epsNodeId: Value(epsNodeId),
+      boqItemId: Value(boqItemId),
+      microActivityId: microActivityId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(microActivityId),
+      quantity: Value(quantity),
+      date: Value(date),
+      remarks: remarks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remarks),
+      photoPaths: photoPaths == null && nullToAbsent
+          ? const Value.absent()
+          : Value(photoPaths),
+      syncStatus: Value(syncStatus),
+      createdAt: Value(createdAt),
+      syncedAt: syncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncedAt),
+      syncError: syncError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncError),
+      retryCount: Value(retryCount),
+    );
+  }
+
+  factory ProgressEntry.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProgressEntry(
+      id: serializer.fromJson<int>(json['id']),
+      serverId: serializer.fromJson<int?>(json['serverId']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      activityId: serializer.fromJson<int>(json['activityId']),
+      epsNodeId: serializer.fromJson<int>(json['epsNodeId']),
+      boqItemId: serializer.fromJson<int>(json['boqItemId']),
+      microActivityId: serializer.fromJson<int?>(json['microActivityId']),
+      quantity: serializer.fromJson<double>(json['quantity']),
+      date: serializer.fromJson<String>(json['date']),
+      remarks: serializer.fromJson<String?>(json['remarks']),
+      photoPaths: serializer.fromJson<String?>(json['photoPaths']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      syncError: serializer.fromJson<String?>(json['syncError']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'serverId': serializer.toJson<int?>(serverId),
+      'projectId': serializer.toJson<int>(projectId),
+      'activityId': serializer.toJson<int>(activityId),
+      'epsNodeId': serializer.toJson<int>(epsNodeId),
+      'boqItemId': serializer.toJson<int>(boqItemId),
+      'microActivityId': serializer.toJson<int?>(microActivityId),
+      'quantity': serializer.toJson<double>(quantity),
+      'date': serializer.toJson<String>(date),
+      'remarks': serializer.toJson<String?>(remarks),
+      'photoPaths': serializer.toJson<String?>(photoPaths),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'syncError': serializer.toJson<String?>(syncError),
+      'retryCount': serializer.toJson<int>(retryCount),
+    };
+  }
+
+  ProgressEntry copyWith(
+          {int? id,
+          Value<int?> serverId = const Value.absent(),
+          int? projectId,
+          int? activityId,
+          int? epsNodeId,
+          int? boqItemId,
+          Value<int?> microActivityId = const Value.absent(),
+          double? quantity,
+          String? date,
+          Value<String?> remarks = const Value.absent(),
+          Value<String?> photoPaths = const Value.absent(),
+          int? syncStatus,
+          DateTime? createdAt,
+          Value<DateTime?> syncedAt = const Value.absent(),
+          Value<String?> syncError = const Value.absent(),
+          int? retryCount}) =>
+      ProgressEntry(
+        id: id ?? this.id,
+        serverId: serverId.present ? serverId.value : this.serverId,
+        projectId: projectId ?? this.projectId,
+        activityId: activityId ?? this.activityId,
+        epsNodeId: epsNodeId ?? this.epsNodeId,
+        boqItemId: boqItemId ?? this.boqItemId,
+        microActivityId: microActivityId.present
+            ? microActivityId.value
+            : this.microActivityId,
+        quantity: quantity ?? this.quantity,
+        date: date ?? this.date,
+        remarks: remarks.present ? remarks.value : this.remarks,
+        photoPaths: photoPaths.present ? photoPaths.value : this.photoPaths,
+        syncStatus: syncStatus ?? this.syncStatus,
+        createdAt: createdAt ?? this.createdAt,
+        syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+        syncError: syncError.present ? syncError.value : this.syncError,
+        retryCount: retryCount ?? this.retryCount,
+      );
+  ProgressEntry copyWithCompanion(ProgressEntriesCompanion data) {
+    return ProgressEntry(
+      id: data.id.present ? data.id.value : this.id,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      activityId:
+          data.activityId.present ? data.activityId.value : this.activityId,
+      epsNodeId: data.epsNodeId.present ? data.epsNodeId.value : this.epsNodeId,
+      boqItemId: data.boqItemId.present ? data.boqItemId.value : this.boqItemId,
+      microActivityId: data.microActivityId.present
+          ? data.microActivityId.value
+          : this.microActivityId,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      date: data.date.present ? data.date.value : this.date,
+      remarks: data.remarks.present ? data.remarks.value : this.remarks,
+      photoPaths:
+          data.photoPaths.present ? data.photoPaths.value : this.photoPaths,
+      syncStatus:
+          data.syncStatus.present ? data.syncStatus.value : this.syncStatus,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      syncError: data.syncError.present ? data.syncError.value : this.syncError,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProgressEntry(')
+          ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('projectId: $projectId, ')
+          ..write('activityId: $activityId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('boqItemId: $boqItemId, ')
+          ..write('microActivityId: $microActivityId, ')
+          ..write('quantity: $quantity, ')
+          ..write('date: $date, ')
+          ..write('remarks: $remarks, ')
+          ..write('photoPaths: $photoPaths, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('syncError: $syncError, ')
+          ..write('retryCount: $retryCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      serverId,
+      projectId,
+      activityId,
+      epsNodeId,
+      boqItemId,
+      microActivityId,
+      quantity,
+      date,
+      remarks,
+      photoPaths,
+      syncStatus,
+      createdAt,
+      syncedAt,
+      syncError,
+      retryCount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProgressEntry &&
+          other.id == this.id &&
+          other.serverId == this.serverId &&
+          other.projectId == this.projectId &&
+          other.activityId == this.activityId &&
+          other.epsNodeId == this.epsNodeId &&
+          other.boqItemId == this.boqItemId &&
+          other.microActivityId == this.microActivityId &&
+          other.quantity == this.quantity &&
+          other.date == this.date &&
+          other.remarks == this.remarks &&
+          other.photoPaths == this.photoPaths &&
+          other.syncStatus == this.syncStatus &&
+          other.createdAt == this.createdAt &&
+          other.syncedAt == this.syncedAt &&
+          other.syncError == this.syncError &&
+          other.retryCount == this.retryCount);
+}
+
+class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
+  final Value<int> id;
+  final Value<int?> serverId;
+  final Value<int> projectId;
+  final Value<int> activityId;
+  final Value<int> epsNodeId;
+  final Value<int> boqItemId;
+  final Value<int?> microActivityId;
+  final Value<double> quantity;
+  final Value<String> date;
+  final Value<String?> remarks;
+  final Value<String?> photoPaths;
+  final Value<int> syncStatus;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> syncedAt;
+  final Value<String?> syncError;
+  final Value<int> retryCount;
+  const ProgressEntriesCompanion({
+    this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.activityId = const Value.absent(),
+    this.epsNodeId = const Value.absent(),
+    this.boqItemId = const Value.absent(),
+    this.microActivityId = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.date = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.photoPaths = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.retryCount = const Value.absent(),
+  });
+  ProgressEntriesCompanion.insert({
+    this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    required int projectId,
+    required int activityId,
+    required int epsNodeId,
+    required int boqItemId,
+    this.microActivityId = const Value.absent(),
+    required double quantity,
+    required String date,
+    this.remarks = const Value.absent(),
+    this.photoPaths = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.retryCount = const Value.absent(),
+  })  : projectId = Value(projectId),
+        activityId = Value(activityId),
+        epsNodeId = Value(epsNodeId),
+        boqItemId = Value(boqItemId),
+        quantity = Value(quantity),
+        date = Value(date);
+  static Insertable<ProgressEntry> custom({
+    Expression<int>? id,
+    Expression<int>? serverId,
+    Expression<int>? projectId,
+    Expression<int>? activityId,
+    Expression<int>? epsNodeId,
+    Expression<int>? boqItemId,
+    Expression<int>? microActivityId,
+    Expression<double>? quantity,
+    Expression<String>? date,
+    Expression<String>? remarks,
+    Expression<String>? photoPaths,
+    Expression<int>? syncStatus,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? syncedAt,
+    Expression<String>? syncError,
+    Expression<int>? retryCount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (serverId != null) 'server_id': serverId,
+      if (projectId != null) 'project_id': projectId,
+      if (activityId != null) 'activity_id': activityId,
+      if (epsNodeId != null) 'eps_node_id': epsNodeId,
+      if (boqItemId != null) 'boq_item_id': boqItemId,
+      if (microActivityId != null) 'micro_activity_id': microActivityId,
+      if (quantity != null) 'quantity': quantity,
+      if (date != null) 'date': date,
+      if (remarks != null) 'remarks': remarks,
+      if (photoPaths != null) 'photo_paths': photoPaths,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (createdAt != null) 'created_at': createdAt,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (syncError != null) 'sync_error': syncError,
+      if (retryCount != null) 'retry_count': retryCount,
+    });
+  }
+
+  ProgressEntriesCompanion copyWith(
+      {Value<int>? id,
+      Value<int?>? serverId,
+      Value<int>? projectId,
+      Value<int>? activityId,
+      Value<int>? epsNodeId,
+      Value<int>? boqItemId,
+      Value<int?>? microActivityId,
+      Value<double>? quantity,
+      Value<String>? date,
+      Value<String?>? remarks,
+      Value<String?>? photoPaths,
+      Value<int>? syncStatus,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? syncedAt,
+      Value<String?>? syncError,
+      Value<int>? retryCount}) {
+    return ProgressEntriesCompanion(
+      id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
+      projectId: projectId ?? this.projectId,
+      activityId: activityId ?? this.activityId,
+      epsNodeId: epsNodeId ?? this.epsNodeId,
+      boqItemId: boqItemId ?? this.boqItemId,
+      microActivityId: microActivityId ?? this.microActivityId,
+      quantity: quantity ?? this.quantity,
+      date: date ?? this.date,
+      remarks: remarks ?? this.remarks,
+      photoPaths: photoPaths ?? this.photoPaths,
+      syncStatus: syncStatus ?? this.syncStatus,
+      createdAt: createdAt ?? this.createdAt,
+      syncedAt: syncedAt ?? this.syncedAt,
+      syncError: syncError ?? this.syncError,
+      retryCount: retryCount ?? this.retryCount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<int>(serverId.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (activityId.present) {
+      map['activity_id'] = Variable<int>(activityId.value);
+    }
+    if (epsNodeId.present) {
+      map['eps_node_id'] = Variable<int>(epsNodeId.value);
+    }
+    if (boqItemId.present) {
+      map['boq_item_id'] = Variable<int>(boqItemId.value);
+    }
+    if (microActivityId.present) {
+      map['micro_activity_id'] = Variable<int>(microActivityId.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<double>(quantity.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<String>(date.value);
+    }
+    if (remarks.present) {
+      map['remarks'] = Variable<String>(remarks.value);
+    }
+    if (photoPaths.present) {
+      map['photo_paths'] = Variable<String>(photoPaths.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (syncError.present) {
+      map['sync_error'] = Variable<String>(syncError.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProgressEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('projectId: $projectId, ')
+          ..write('activityId: $activityId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('boqItemId: $boqItemId, ')
+          ..write('microActivityId: $microActivityId, ')
+          ..write('quantity: $quantity, ')
+          ..write('date: $date, ')
+          ..write('remarks: $remarks, ')
+          ..write('photoPaths: $photoPaths, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('syncError: $syncError, ')
+          ..write('retryCount: $retryCount')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DailyLogsTable extends DailyLogs
+    with TableInfo<$DailyLogsTable, DailyLog> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DailyLogsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _serverIdMeta =
+      const VerificationMeta('serverId');
+  @override
+  late final GeneratedColumn<int> serverId = GeneratedColumn<int>(
+      'server_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _microActivityIdMeta =
+      const VerificationMeta('microActivityId');
+  @override
+  late final GeneratedColumn<int> microActivityId = GeneratedColumn<int>(
+      'micro_activity_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _logDateMeta =
+      const VerificationMeta('logDate');
+  @override
+  late final GeneratedColumn<String> logDate = GeneratedColumn<String>(
+      'log_date', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _plannedQtyMeta =
+      const VerificationMeta('plannedQty');
+  @override
+  late final GeneratedColumn<double> plannedQty = GeneratedColumn<double>(
+      'planned_qty', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _actualQtyMeta =
+      const VerificationMeta('actualQty');
+  @override
+  late final GeneratedColumn<double> actualQty = GeneratedColumn<double>(
+      'actual_qty', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _laborCountMeta =
+      const VerificationMeta('laborCount');
+  @override
+  late final GeneratedColumn<int> laborCount = GeneratedColumn<int>(
+      'labor_count', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _delayReasonIdMeta =
+      const VerificationMeta('delayReasonId');
+  @override
+  late final GeneratedColumn<int> delayReasonId = GeneratedColumn<int>(
+      'delay_reason_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _delayNotesMeta =
+      const VerificationMeta('delayNotes');
+  @override
+  late final GeneratedColumn<String> delayNotes = GeneratedColumn<String>(
+      'delay_notes', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _remarksMeta =
+      const VerificationMeta('remarks');
+  @override
+  late final GeneratedColumn<String> remarks = GeneratedColumn<String>(
+      'remarks', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _syncStatusMeta =
+      const VerificationMeta('syncStatus');
+  @override
+  late final GeneratedColumn<int> syncStatus = GeneratedColumn<int>(
+      'sync_status', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _syncedAtMeta =
+      const VerificationMeta('syncedAt');
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+      'synced_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _syncErrorMeta =
+      const VerificationMeta('syncError');
+  @override
+  late final GeneratedColumn<String> syncError = GeneratedColumn<String>(
+      'sync_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        serverId,
+        microActivityId,
+        logDate,
+        plannedQty,
+        actualQty,
+        laborCount,
+        delayReasonId,
+        delayNotes,
+        remarks,
+        syncStatus,
+        createdAt,
+        syncedAt,
+        syncError,
+        retryCount
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'daily_logs';
+  @override
+  VerificationContext validateIntegrity(Insertable<DailyLog> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(_serverIdMeta,
+          serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta));
+    }
+    if (data.containsKey('micro_activity_id')) {
+      context.handle(
+          _microActivityIdMeta,
+          microActivityId.isAcceptableOrUnknown(
+              data['micro_activity_id']!, _microActivityIdMeta));
+    } else if (isInserting) {
+      context.missing(_microActivityIdMeta);
+    }
+    if (data.containsKey('log_date')) {
+      context.handle(_logDateMeta,
+          logDate.isAcceptableOrUnknown(data['log_date']!, _logDateMeta));
+    } else if (isInserting) {
+      context.missing(_logDateMeta);
+    }
+    if (data.containsKey('planned_qty')) {
+      context.handle(
+          _plannedQtyMeta,
+          plannedQty.isAcceptableOrUnknown(
+              data['planned_qty']!, _plannedQtyMeta));
+    } else if (isInserting) {
+      context.missing(_plannedQtyMeta);
+    }
+    if (data.containsKey('actual_qty')) {
+      context.handle(_actualQtyMeta,
+          actualQty.isAcceptableOrUnknown(data['actual_qty']!, _actualQtyMeta));
+    } else if (isInserting) {
+      context.missing(_actualQtyMeta);
+    }
+    if (data.containsKey('labor_count')) {
+      context.handle(
+          _laborCountMeta,
+          laborCount.isAcceptableOrUnknown(
+              data['labor_count']!, _laborCountMeta));
+    }
+    if (data.containsKey('delay_reason_id')) {
+      context.handle(
+          _delayReasonIdMeta,
+          delayReasonId.isAcceptableOrUnknown(
+              data['delay_reason_id']!, _delayReasonIdMeta));
+    }
+    if (data.containsKey('delay_notes')) {
+      context.handle(
+          _delayNotesMeta,
+          delayNotes.isAcceptableOrUnknown(
+              data['delay_notes']!, _delayNotesMeta));
+    }
+    if (data.containsKey('remarks')) {
+      context.handle(_remarksMeta,
+          remarks.isAcceptableOrUnknown(data['remarks']!, _remarksMeta));
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+          _syncStatusMeta,
+          syncStatus.isAcceptableOrUnknown(
+              data['sync_status']!, _syncStatusMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(_syncedAtMeta,
+          syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
+    }
+    if (data.containsKey('sync_error')) {
+      context.handle(_syncErrorMeta,
+          syncError.isAcceptableOrUnknown(data['sync_error']!, _syncErrorMeta));
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DailyLog map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DailyLog(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      serverId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}server_id']),
+      microActivityId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}micro_activity_id'])!,
+      logDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}log_date'])!,
+      plannedQty: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}planned_qty'])!,
+      actualQty: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}actual_qty'])!,
+      laborCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}labor_count']),
+      delayReasonId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}delay_reason_id']),
+      delayNotes: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}delay_notes']),
+      remarks: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}remarks']),
+      syncStatus: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sync_status'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      syncedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at']),
+      syncError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_error']),
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+    );
+  }
+
+  @override
+  $DailyLogsTable createAlias(String alias) {
+    return $DailyLogsTable(attachedDatabase, alias);
+  }
+}
+
+class DailyLog extends DataClass implements Insertable<DailyLog> {
+  final int id;
+  final int? serverId;
+  final int microActivityId;
+  final String logDate;
+  final double plannedQty;
+  final double actualQty;
+  final int? laborCount;
+  final int? delayReasonId;
+  final String? delayNotes;
+  final String? remarks;
+  final int syncStatus;
+  final DateTime createdAt;
+  final DateTime? syncedAt;
+  final String? syncError;
+  final int retryCount;
+  const DailyLog(
+      {required this.id,
+      this.serverId,
+      required this.microActivityId,
+      required this.logDate,
+      required this.plannedQty,
+      required this.actualQty,
+      this.laborCount,
+      this.delayReasonId,
+      this.delayNotes,
+      this.remarks,
+      required this.syncStatus,
+      required this.createdAt,
+      this.syncedAt,
+      this.syncError,
+      required this.retryCount});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<int>(serverId);
+    }
+    map['micro_activity_id'] = Variable<int>(microActivityId);
+    map['log_date'] = Variable<String>(logDate);
+    map['planned_qty'] = Variable<double>(plannedQty);
+    map['actual_qty'] = Variable<double>(actualQty);
+    if (!nullToAbsent || laborCount != null) {
+      map['labor_count'] = Variable<int>(laborCount);
+    }
+    if (!nullToAbsent || delayReasonId != null) {
+      map['delay_reason_id'] = Variable<int>(delayReasonId);
+    }
+    if (!nullToAbsent || delayNotes != null) {
+      map['delay_notes'] = Variable<String>(delayNotes);
+    }
+    if (!nullToAbsent || remarks != null) {
+      map['remarks'] = Variable<String>(remarks);
+    }
+    map['sync_status'] = Variable<int>(syncStatus);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || syncedAt != null) {
+      map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || syncError != null) {
+      map['sync_error'] = Variable<String>(syncError);
+    }
+    map['retry_count'] = Variable<int>(retryCount);
+    return map;
+  }
+
+  DailyLogsCompanion toCompanion(bool nullToAbsent) {
+    return DailyLogsCompanion(
+      id: Value(id),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
+      microActivityId: Value(microActivityId),
+      logDate: Value(logDate),
+      plannedQty: Value(plannedQty),
+      actualQty: Value(actualQty),
+      laborCount: laborCount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(laborCount),
+      delayReasonId: delayReasonId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(delayReasonId),
+      delayNotes: delayNotes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(delayNotes),
+      remarks: remarks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remarks),
+      syncStatus: Value(syncStatus),
+      createdAt: Value(createdAt),
+      syncedAt: syncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncedAt),
+      syncError: syncError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncError),
+      retryCount: Value(retryCount),
+    );
+  }
+
+  factory DailyLog.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DailyLog(
+      id: serializer.fromJson<int>(json['id']),
+      serverId: serializer.fromJson<int?>(json['serverId']),
+      microActivityId: serializer.fromJson<int>(json['microActivityId']),
+      logDate: serializer.fromJson<String>(json['logDate']),
+      plannedQty: serializer.fromJson<double>(json['plannedQty']),
+      actualQty: serializer.fromJson<double>(json['actualQty']),
+      laborCount: serializer.fromJson<int?>(json['laborCount']),
+      delayReasonId: serializer.fromJson<int?>(json['delayReasonId']),
+      delayNotes: serializer.fromJson<String?>(json['delayNotes']),
+      remarks: serializer.fromJson<String?>(json['remarks']),
+      syncStatus: serializer.fromJson<int>(json['syncStatus']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      syncError: serializer.fromJson<String?>(json['syncError']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'serverId': serializer.toJson<int?>(serverId),
+      'microActivityId': serializer.toJson<int>(microActivityId),
+      'logDate': serializer.toJson<String>(logDate),
+      'plannedQty': serializer.toJson<double>(plannedQty),
+      'actualQty': serializer.toJson<double>(actualQty),
+      'laborCount': serializer.toJson<int?>(laborCount),
+      'delayReasonId': serializer.toJson<int?>(delayReasonId),
+      'delayNotes': serializer.toJson<String?>(delayNotes),
+      'remarks': serializer.toJson<String?>(remarks),
+      'syncStatus': serializer.toJson<int>(syncStatus),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'syncError': serializer.toJson<String?>(syncError),
+      'retryCount': serializer.toJson<int>(retryCount),
+    };
+  }
+
+  DailyLog copyWith(
+          {int? id,
+          Value<int?> serverId = const Value.absent(),
+          int? microActivityId,
+          String? logDate,
+          double? plannedQty,
+          double? actualQty,
+          Value<int?> laborCount = const Value.absent(),
+          Value<int?> delayReasonId = const Value.absent(),
+          Value<String?> delayNotes = const Value.absent(),
+          Value<String?> remarks = const Value.absent(),
+          int? syncStatus,
+          DateTime? createdAt,
+          Value<DateTime?> syncedAt = const Value.absent(),
+          Value<String?> syncError = const Value.absent(),
+          int? retryCount}) =>
+      DailyLog(
+        id: id ?? this.id,
+        serverId: serverId.present ? serverId.value : this.serverId,
+        microActivityId: microActivityId ?? this.microActivityId,
+        logDate: logDate ?? this.logDate,
+        plannedQty: plannedQty ?? this.plannedQty,
+        actualQty: actualQty ?? this.actualQty,
+        laborCount: laborCount.present ? laborCount.value : this.laborCount,
+        delayReasonId:
+            delayReasonId.present ? delayReasonId.value : this.delayReasonId,
+        delayNotes: delayNotes.present ? delayNotes.value : this.delayNotes,
+        remarks: remarks.present ? remarks.value : this.remarks,
+        syncStatus: syncStatus ?? this.syncStatus,
+        createdAt: createdAt ?? this.createdAt,
+        syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+        syncError: syncError.present ? syncError.value : this.syncError,
+        retryCount: retryCount ?? this.retryCount,
+      );
+  DailyLog copyWithCompanion(DailyLogsCompanion data) {
+    return DailyLog(
+      id: data.id.present ? data.id.value : this.id,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
+      microActivityId: data.microActivityId.present
+          ? data.microActivityId.value
+          : this.microActivityId,
+      logDate: data.logDate.present ? data.logDate.value : this.logDate,
+      plannedQty:
+          data.plannedQty.present ? data.plannedQty.value : this.plannedQty,
+      actualQty: data.actualQty.present ? data.actualQty.value : this.actualQty,
+      laborCount:
+          data.laborCount.present ? data.laborCount.value : this.laborCount,
+      delayReasonId: data.delayReasonId.present
+          ? data.delayReasonId.value
+          : this.delayReasonId,
+      delayNotes:
+          data.delayNotes.present ? data.delayNotes.value : this.delayNotes,
+      remarks: data.remarks.present ? data.remarks.value : this.remarks,
+      syncStatus:
+          data.syncStatus.present ? data.syncStatus.value : this.syncStatus,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      syncError: data.syncError.present ? data.syncError.value : this.syncError,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DailyLog(')
+          ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('microActivityId: $microActivityId, ')
+          ..write('logDate: $logDate, ')
+          ..write('plannedQty: $plannedQty, ')
+          ..write('actualQty: $actualQty, ')
+          ..write('laborCount: $laborCount, ')
+          ..write('delayReasonId: $delayReasonId, ')
+          ..write('delayNotes: $delayNotes, ')
+          ..write('remarks: $remarks, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('syncError: $syncError, ')
+          ..write('retryCount: $retryCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      serverId,
+      microActivityId,
+      logDate,
+      plannedQty,
+      actualQty,
+      laborCount,
+      delayReasonId,
+      delayNotes,
+      remarks,
+      syncStatus,
+      createdAt,
+      syncedAt,
+      syncError,
+      retryCount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DailyLog &&
+          other.id == this.id &&
+          other.serverId == this.serverId &&
+          other.microActivityId == this.microActivityId &&
+          other.logDate == this.logDate &&
+          other.plannedQty == this.plannedQty &&
+          other.actualQty == this.actualQty &&
+          other.laborCount == this.laborCount &&
+          other.delayReasonId == this.delayReasonId &&
+          other.delayNotes == this.delayNotes &&
+          other.remarks == this.remarks &&
+          other.syncStatus == this.syncStatus &&
+          other.createdAt == this.createdAt &&
+          other.syncedAt == this.syncedAt &&
+          other.syncError == this.syncError &&
+          other.retryCount == this.retryCount);
+}
+
+class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
+  final Value<int> id;
+  final Value<int?> serverId;
+  final Value<int> microActivityId;
+  final Value<String> logDate;
+  final Value<double> plannedQty;
+  final Value<double> actualQty;
+  final Value<int?> laborCount;
+  final Value<int?> delayReasonId;
+  final Value<String?> delayNotes;
+  final Value<String?> remarks;
+  final Value<int> syncStatus;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> syncedAt;
+  final Value<String?> syncError;
+  final Value<int> retryCount;
+  const DailyLogsCompanion({
+    this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    this.microActivityId = const Value.absent(),
+    this.logDate = const Value.absent(),
+    this.plannedQty = const Value.absent(),
+    this.actualQty = const Value.absent(),
+    this.laborCount = const Value.absent(),
+    this.delayReasonId = const Value.absent(),
+    this.delayNotes = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.retryCount = const Value.absent(),
+  });
+  DailyLogsCompanion.insert({
+    this.id = const Value.absent(),
+    this.serverId = const Value.absent(),
+    required int microActivityId,
+    required String logDate,
+    required double plannedQty,
+    required double actualQty,
+    this.laborCount = const Value.absent(),
+    this.delayReasonId = const Value.absent(),
+    this.delayNotes = const Value.absent(),
+    this.remarks = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.retryCount = const Value.absent(),
+  })  : microActivityId = Value(microActivityId),
+        logDate = Value(logDate),
+        plannedQty = Value(plannedQty),
+        actualQty = Value(actualQty);
+  static Insertable<DailyLog> custom({
+    Expression<int>? id,
+    Expression<int>? serverId,
+    Expression<int>? microActivityId,
+    Expression<String>? logDate,
+    Expression<double>? plannedQty,
+    Expression<double>? actualQty,
+    Expression<int>? laborCount,
+    Expression<int>? delayReasonId,
+    Expression<String>? delayNotes,
+    Expression<String>? remarks,
+    Expression<int>? syncStatus,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? syncedAt,
+    Expression<String>? syncError,
+    Expression<int>? retryCount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (serverId != null) 'server_id': serverId,
+      if (microActivityId != null) 'micro_activity_id': microActivityId,
+      if (logDate != null) 'log_date': logDate,
+      if (plannedQty != null) 'planned_qty': plannedQty,
+      if (actualQty != null) 'actual_qty': actualQty,
+      if (laborCount != null) 'labor_count': laborCount,
+      if (delayReasonId != null) 'delay_reason_id': delayReasonId,
+      if (delayNotes != null) 'delay_notes': delayNotes,
+      if (remarks != null) 'remarks': remarks,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (createdAt != null) 'created_at': createdAt,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (syncError != null) 'sync_error': syncError,
+      if (retryCount != null) 'retry_count': retryCount,
+    });
+  }
+
+  DailyLogsCompanion copyWith(
+      {Value<int>? id,
+      Value<int?>? serverId,
+      Value<int>? microActivityId,
+      Value<String>? logDate,
+      Value<double>? plannedQty,
+      Value<double>? actualQty,
+      Value<int?>? laborCount,
+      Value<int?>? delayReasonId,
+      Value<String?>? delayNotes,
+      Value<String?>? remarks,
+      Value<int>? syncStatus,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? syncedAt,
+      Value<String?>? syncError,
+      Value<int>? retryCount}) {
+    return DailyLogsCompanion(
+      id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
+      microActivityId: microActivityId ?? this.microActivityId,
+      logDate: logDate ?? this.logDate,
+      plannedQty: plannedQty ?? this.plannedQty,
+      actualQty: actualQty ?? this.actualQty,
+      laborCount: laborCount ?? this.laborCount,
+      delayReasonId: delayReasonId ?? this.delayReasonId,
+      delayNotes: delayNotes ?? this.delayNotes,
+      remarks: remarks ?? this.remarks,
+      syncStatus: syncStatus ?? this.syncStatus,
+      createdAt: createdAt ?? this.createdAt,
+      syncedAt: syncedAt ?? this.syncedAt,
+      syncError: syncError ?? this.syncError,
+      retryCount: retryCount ?? this.retryCount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<int>(serverId.value);
+    }
+    if (microActivityId.present) {
+      map['micro_activity_id'] = Variable<int>(microActivityId.value);
+    }
+    if (logDate.present) {
+      map['log_date'] = Variable<String>(logDate.value);
+    }
+    if (plannedQty.present) {
+      map['planned_qty'] = Variable<double>(plannedQty.value);
+    }
+    if (actualQty.present) {
+      map['actual_qty'] = Variable<double>(actualQty.value);
+    }
+    if (laborCount.present) {
+      map['labor_count'] = Variable<int>(laborCount.value);
+    }
+    if (delayReasonId.present) {
+      map['delay_reason_id'] = Variable<int>(delayReasonId.value);
+    }
+    if (delayNotes.present) {
+      map['delay_notes'] = Variable<String>(delayNotes.value);
+    }
+    if (remarks.present) {
+      map['remarks'] = Variable<String>(remarks.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<int>(syncStatus.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (syncError.present) {
+      map['sync_error'] = Variable<String>(syncError.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DailyLogsCompanion(')
+          ..write('id: $id, ')
+          ..write('serverId: $serverId, ')
+          ..write('microActivityId: $microActivityId, ')
+          ..write('logDate: $logDate, ')
+          ..write('plannedQty: $plannedQty, ')
+          ..write('actualQty: $actualQty, ')
+          ..write('laborCount: $laborCount, ')
+          ..write('delayReasonId: $delayReasonId, ')
+          ..write('delayNotes: $delayNotes, ')
+          ..write('remarks: $remarks, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('syncError: $syncError, ')
+          ..write('retryCount: $retryCount')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SyncQueueTable extends SyncQueue
+    with TableInfo<$SyncQueueTable, SyncQueueData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncQueueTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _entityTypeMeta =
+      const VerificationMeta('entityType');
+  @override
+  late final GeneratedColumn<String> entityType = GeneratedColumn<String>(
+      'entity_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _entityIdMeta =
+      const VerificationMeta('entityId');
+  @override
+  late final GeneratedColumn<int> entityId = GeneratedColumn<int>(
+      'entity_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _operationMeta =
+      const VerificationMeta('operation');
+  @override
+  late final GeneratedColumn<String> operation = GeneratedColumn<String>(
+      'operation', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _payloadMeta =
+      const VerificationMeta('payload');
+  @override
+  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
+      'payload', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _lastAttemptAtMeta =
+      const VerificationMeta('lastAttemptAt');
+  @override
+  late final GeneratedColumn<DateTime> lastAttemptAt =
+      GeneratedColumn<DateTime>('last_attempt_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _priorityMeta =
+      const VerificationMeta('priority');
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+      'priority', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        entityType,
+        entityId,
+        operation,
+        payload,
+        retryCount,
+        createdAt,
+        lastAttemptAt,
+        lastError,
+        priority
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_queue';
+  @override
+  VerificationContext validateIntegrity(Insertable<SyncQueueData> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('entity_type')) {
+      context.handle(
+          _entityTypeMeta,
+          entityType.isAcceptableOrUnknown(
+              data['entity_type']!, _entityTypeMeta));
+    } else if (isInserting) {
+      context.missing(_entityTypeMeta);
+    }
+    if (data.containsKey('entity_id')) {
+      context.handle(_entityIdMeta,
+          entityId.isAcceptableOrUnknown(data['entity_id']!, _entityIdMeta));
+    } else if (isInserting) {
+      context.missing(_entityIdMeta);
+    }
+    if (data.containsKey('operation')) {
+      context.handle(_operationMeta,
+          operation.isAcceptableOrUnknown(data['operation']!, _operationMeta));
+    } else if (isInserting) {
+      context.missing(_operationMeta);
+    }
+    if (data.containsKey('payload')) {
+      context.handle(_payloadMeta,
+          payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta));
+    } else if (isInserting) {
+      context.missing(_payloadMeta);
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('last_attempt_at')) {
+      context.handle(
+          _lastAttemptAtMeta,
+          lastAttemptAt.isAcceptableOrUnknown(
+              data['last_attempt_at']!, _lastAttemptAtMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
+    if (data.containsKey('priority')) {
+      context.handle(_priorityMeta,
+          priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncQueueData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncQueueData(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      entityType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}entity_type'])!,
+      entityId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}entity_id'])!,
+      operation: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}operation'])!,
+      payload: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}payload'])!,
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      lastAttemptAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_attempt_at']),
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
+      priority: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}priority'])!,
+    );
+  }
+
+  @override
+  $SyncQueueTable createAlias(String alias) {
+    return $SyncQueueTable(attachedDatabase, alias);
+  }
+}
+
+class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
+  final int id;
+  final String entityType;
+  final int entityId;
+  final String operation;
+  final String payload;
+  final int retryCount;
+  final DateTime createdAt;
+  final DateTime? lastAttemptAt;
+  final String? lastError;
+  final int priority;
+  const SyncQueueData(
+      {required this.id,
+      required this.entityType,
+      required this.entityId,
+      required this.operation,
+      required this.payload,
+      required this.retryCount,
+      required this.createdAt,
+      this.lastAttemptAt,
+      this.lastError,
+      required this.priority});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['entity_type'] = Variable<String>(entityType);
+    map['entity_id'] = Variable<int>(entityId);
+    map['operation'] = Variable<String>(operation);
+    map['payload'] = Variable<String>(payload);
+    map['retry_count'] = Variable<int>(retryCount);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || lastAttemptAt != null) {
+      map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    map['priority'] = Variable<int>(priority);
+    return map;
+  }
+
+  SyncQueueCompanion toCompanion(bool nullToAbsent) {
+    return SyncQueueCompanion(
+      id: Value(id),
+      entityType: Value(entityType),
+      entityId: Value(entityId),
+      operation: Value(operation),
+      payload: Value(payload),
+      retryCount: Value(retryCount),
+      createdAt: Value(createdAt),
+      lastAttemptAt: lastAttemptAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAttemptAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      priority: Value(priority),
+    );
+  }
+
+  factory SyncQueueData.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncQueueData(
+      id: serializer.fromJson<int>(json['id']),
+      entityType: serializer.fromJson<String>(json['entityType']),
+      entityId: serializer.fromJson<int>(json['entityId']),
+      operation: serializer.fromJson<String>(json['operation']),
+      payload: serializer.fromJson<String>(json['payload']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      lastAttemptAt: serializer.fromJson<DateTime?>(json['lastAttemptAt']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      priority: serializer.fromJson<int>(json['priority']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'entityType': serializer.toJson<String>(entityType),
+      'entityId': serializer.toJson<int>(entityId),
+      'operation': serializer.toJson<String>(operation),
+      'payload': serializer.toJson<String>(payload),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'lastAttemptAt': serializer.toJson<DateTime?>(lastAttemptAt),
+      'lastError': serializer.toJson<String?>(lastError),
+      'priority': serializer.toJson<int>(priority),
+    };
+  }
+
+  SyncQueueData copyWith(
+          {int? id,
+          String? entityType,
+          int? entityId,
+          String? operation,
+          String? payload,
+          int? retryCount,
+          DateTime? createdAt,
+          Value<DateTime?> lastAttemptAt = const Value.absent(),
+          Value<String?> lastError = const Value.absent(),
+          int? priority}) =>
+      SyncQueueData(
+        id: id ?? this.id,
+        entityType: entityType ?? this.entityType,
+        entityId: entityId ?? this.entityId,
+        operation: operation ?? this.operation,
+        payload: payload ?? this.payload,
+        retryCount: retryCount ?? this.retryCount,
+        createdAt: createdAt ?? this.createdAt,
+        lastAttemptAt:
+            lastAttemptAt.present ? lastAttemptAt.value : this.lastAttemptAt,
+        lastError: lastError.present ? lastError.value : this.lastError,
+        priority: priority ?? this.priority,
+      );
+  SyncQueueData copyWithCompanion(SyncQueueCompanion data) {
+    return SyncQueueData(
+      id: data.id.present ? data.id.value : this.id,
+      entityType:
+          data.entityType.present ? data.entityType.value : this.entityType,
+      entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      operation: data.operation.present ? data.operation.value : this.operation,
+      payload: data.payload.present ? data.payload.value : this.payload,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      lastAttemptAt: data.lastAttemptAt.present
+          ? data.lastAttemptAt.value
+          : this.lastAttemptAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      priority: data.priority.present ? data.priority.value : this.priority,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQueueData(')
+          ..write('id: $id, ')
+          ..write('entityType: $entityType, ')
+          ..write('entityId: $entityId, ')
+          ..write('operation: $operation, ')
+          ..write('payload: $payload, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('priority: $priority')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, entityType, entityId, operation, payload,
+      retryCount, createdAt, lastAttemptAt, lastError, priority);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncQueueData &&
+          other.id == this.id &&
+          other.entityType == this.entityType &&
+          other.entityId == this.entityId &&
+          other.operation == this.operation &&
+          other.payload == this.payload &&
+          other.retryCount == this.retryCount &&
+          other.createdAt == this.createdAt &&
+          other.lastAttemptAt == this.lastAttemptAt &&
+          other.lastError == this.lastError &&
+          other.priority == this.priority);
+}
+
+class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
+  final Value<int> id;
+  final Value<String> entityType;
+  final Value<int> entityId;
+  final Value<String> operation;
+  final Value<String> payload;
+  final Value<int> retryCount;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> lastAttemptAt;
+  final Value<String?> lastError;
+  final Value<int> priority;
+  const SyncQueueCompanion({
+    this.id = const Value.absent(),
+    this.entityType = const Value.absent(),
+    this.entityId = const Value.absent(),
+    this.operation = const Value.absent(),
+    this.payload = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.lastAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.priority = const Value.absent(),
+  });
+  SyncQueueCompanion.insert({
+    this.id = const Value.absent(),
+    required String entityType,
+    required int entityId,
+    required String operation,
+    required String payload,
+    this.retryCount = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.lastAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.priority = const Value.absent(),
+  })  : entityType = Value(entityType),
+        entityId = Value(entityId),
+        operation = Value(operation),
+        payload = Value(payload);
+  static Insertable<SyncQueueData> custom({
+    Expression<int>? id,
+    Expression<String>? entityType,
+    Expression<int>? entityId,
+    Expression<String>? operation,
+    Expression<String>? payload,
+    Expression<int>? retryCount,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? lastAttemptAt,
+    Expression<String>? lastError,
+    Expression<int>? priority,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entityType != null) 'entity_type': entityType,
+      if (entityId != null) 'entity_id': entityId,
+      if (operation != null) 'operation': operation,
+      if (payload != null) 'payload': payload,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (createdAt != null) 'created_at': createdAt,
+      if (lastAttemptAt != null) 'last_attempt_at': lastAttemptAt,
+      if (lastError != null) 'last_error': lastError,
+      if (priority != null) 'priority': priority,
+    });
+  }
+
+  SyncQueueCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? entityType,
+      Value<int>? entityId,
+      Value<String>? operation,
+      Value<String>? payload,
+      Value<int>? retryCount,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? lastAttemptAt,
+      Value<String?>? lastError,
+      Value<int>? priority}) {
+    return SyncQueueCompanion(
+      id: id ?? this.id,
+      entityType: entityType ?? this.entityType,
+      entityId: entityId ?? this.entityId,
+      operation: operation ?? this.operation,
+      payload: payload ?? this.payload,
+      retryCount: retryCount ?? this.retryCount,
+      createdAt: createdAt ?? this.createdAt,
+      lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+      lastError: lastError ?? this.lastError,
+      priority: priority ?? this.priority,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (entityType.present) {
+      map['entity_type'] = Variable<String>(entityType.value);
+    }
+    if (entityId.present) {
+      map['entity_id'] = Variable<int>(entityId.value);
+    }
+    if (operation.present) {
+      map['operation'] = Variable<String>(operation.value);
+    }
+    if (payload.present) {
+      map['payload'] = Variable<String>(payload.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (lastAttemptAt.present) {
+      map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQueueCompanion(')
+          ..write('id: $id, ')
+          ..write('entityType: $entityType, ')
+          ..write('entityId: $entityId, ')
+          ..write('operation: $operation, ')
+          ..write('payload: $payload, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('priority: $priority')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedProjectsTable extends CachedProjects
+    with TableInfo<$CachedProjectsTable, CachedProject> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedProjectsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+      'code', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _startDateMeta =
+      const VerificationMeta('startDate');
+  @override
+  late final GeneratedColumn<String> startDate = GeneratedColumn<String>(
+      'start_date', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _endDateMeta =
+      const VerificationMeta('endDate');
+  @override
+  late final GeneratedColumn<String> endDate = GeneratedColumn<String>(
+      'end_date', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, name, code, status, startDate, endDate, rawData, cachedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_projects';
+  @override
+  VerificationContext validateIntegrity(Insertable<CachedProject> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+          _codeMeta, code.isAcceptableOrUnknown(data['code']!, _codeMeta));
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(_startDateMeta,
+          startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta));
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(_endDateMeta,
+          endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedProject map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedProject(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      code: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}code']),
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status']),
+      startDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}start_date']),
+      endDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}end_date']),
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedProjectsTable createAlias(String alias) {
+    return $CachedProjectsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedProject extends DataClass implements Insertable<CachedProject> {
+  final int id;
+  final String name;
+  final String? code;
+  final String? status;
+  final String? startDate;
+  final String? endDate;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedProject(
+      {required this.id,
+      required this.name,
+      this.code,
+      this.status,
+      this.startDate,
+      this.endDate,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || code != null) {
+      map['code'] = Variable<String>(code);
+    }
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || startDate != null) {
+      map['start_date'] = Variable<String>(startDate);
+    }
+    if (!nullToAbsent || endDate != null) {
+      map['end_date'] = Variable<String>(endDate);
+    }
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedProjectsCompanion toCompanion(bool nullToAbsent) {
+    return CachedProjectsCompanion(
+      id: Value(id),
+      name: Value(name),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      status:
+          status == null && nullToAbsent ? const Value.absent() : Value(status),
+      startDate: startDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startDate),
+      endDate: endDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endDate),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedProject.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedProject(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      code: serializer.fromJson<String?>(json['code']),
+      status: serializer.fromJson<String?>(json['status']),
+      startDate: serializer.fromJson<String?>(json['startDate']),
+      endDate: serializer.fromJson<String?>(json['endDate']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'code': serializer.toJson<String?>(code),
+      'status': serializer.toJson<String?>(status),
+      'startDate': serializer.toJson<String?>(startDate),
+      'endDate': serializer.toJson<String?>(endDate),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedProject copyWith(
+          {int? id,
+          String? name,
+          Value<String?> code = const Value.absent(),
+          Value<String?> status = const Value.absent(),
+          Value<String?> startDate = const Value.absent(),
+          Value<String?> endDate = const Value.absent(),
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedProject(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        code: code.present ? code.value : this.code,
+        status: status.present ? status.value : this.status,
+        startDate: startDate.present ? startDate.value : this.startDate,
+        endDate: endDate.present ? endDate.value : this.endDate,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedProject copyWithCompanion(CachedProjectsCompanion data) {
+    return CachedProject(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      code: data.code.present ? data.code.value : this.code,
+      status: data.status.present ? data.status.value : this.status,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedProject(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('code: $code, ')
+          ..write('status: $status, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, name, code, status, startDate, endDate, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedProject &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.code == this.code &&
+          other.status == this.status &&
+          other.startDate == this.startDate &&
+          other.endDate == this.endDate &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedProjectsCompanion extends UpdateCompanion<CachedProject> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> code;
+  final Value<String?> status;
+  final Value<String?> startDate;
+  final Value<String?> endDate;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  const CachedProjectsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.code = const Value.absent(),
+    this.status = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+  });
+  CachedProjectsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.code = const Value.absent(),
+    this.status = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+  })  : name = Value(name),
+        rawData = Value(rawData);
+  static Insertable<CachedProject> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? code,
+    Expression<String>? status,
+    Expression<String>? startDate,
+    Expression<String>? endDate,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (code != null) 'code': code,
+      if (status != null) 'status': status,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+    });
+  }
+
+  CachedProjectsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? name,
+      Value<String?>? code,
+      Value<String?>? status,
+      Value<String?>? startDate,
+      Value<String?>? endDate,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt}) {
+    return CachedProjectsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      code: code ?? this.code,
+      status: status ?? this.status,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<String>(startDate.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<String>(endDate.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedProjectsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('code: $code, ')
+          ..write('status: $status, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedActivitiesTable extends CachedActivities
+    with TableInfo<$CachedActivitiesTable, CachedActivity> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedActivitiesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _epsNodeIdMeta =
+      const VerificationMeta('epsNodeId');
+  @override
+  late final GeneratedColumn<int> epsNodeId = GeneratedColumn<int>(
+      'eps_node_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _startDateMeta =
+      const VerificationMeta('startDate');
+  @override
+  late final GeneratedColumn<String> startDate = GeneratedColumn<String>(
+      'start_date', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _endDateMeta =
+      const VerificationMeta('endDate');
+  @override
+  late final GeneratedColumn<String> endDate = GeneratedColumn<String>(
+      'end_date', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _progressMeta =
+      const VerificationMeta('progress');
+  @override
+  late final GeneratedColumn<double> progress = GeneratedColumn<double>(
+      'progress', aliasedName, false,
+      type: DriftSqlType.double,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        projectId,
+        epsNodeId,
+        name,
+        status,
+        startDate,
+        endDate,
+        progress,
+        rawData,
+        cachedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_activities';
+  @override
+  VerificationContext validateIntegrity(Insertable<CachedActivity> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('eps_node_id')) {
+      context.handle(
+          _epsNodeIdMeta,
+          epsNodeId.isAcceptableOrUnknown(
+              data['eps_node_id']!, _epsNodeIdMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(_startDateMeta,
+          startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta));
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(_endDateMeta,
+          endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta));
+    }
+    if (data.containsKey('progress')) {
+      context.handle(_progressMeta,
+          progress.isAcceptableOrUnknown(data['progress']!, _progressMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedActivity map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedActivity(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      epsNodeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}eps_node_id']),
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status']),
+      startDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}start_date']),
+      endDate: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}end_date']),
+      progress: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}progress'])!,
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedActivitiesTable createAlias(String alias) {
+    return $CachedActivitiesTable(attachedDatabase, alias);
+  }
+}
+
+class CachedActivity extends DataClass implements Insertable<CachedActivity> {
+  final int id;
+  final int projectId;
+  final int? epsNodeId;
+  final String name;
+  final String? status;
+  final String? startDate;
+  final String? endDate;
+  final double progress;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedActivity(
+      {required this.id,
+      required this.projectId,
+      this.epsNodeId,
+      required this.name,
+      this.status,
+      this.startDate,
+      this.endDate,
+      required this.progress,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['project_id'] = Variable<int>(projectId);
+    if (!nullToAbsent || epsNodeId != null) {
+      map['eps_node_id'] = Variable<int>(epsNodeId);
+    }
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || startDate != null) {
+      map['start_date'] = Variable<String>(startDate);
+    }
+    if (!nullToAbsent || endDate != null) {
+      map['end_date'] = Variable<String>(endDate);
+    }
+    map['progress'] = Variable<double>(progress);
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedActivitiesCompanion toCompanion(bool nullToAbsent) {
+    return CachedActivitiesCompanion(
+      id: Value(id),
+      projectId: Value(projectId),
+      epsNodeId: epsNodeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(epsNodeId),
+      name: Value(name),
+      status:
+          status == null && nullToAbsent ? const Value.absent() : Value(status),
+      startDate: startDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startDate),
+      endDate: endDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endDate),
+      progress: Value(progress),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedActivity.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedActivity(
+      id: serializer.fromJson<int>(json['id']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      epsNodeId: serializer.fromJson<int?>(json['epsNodeId']),
+      name: serializer.fromJson<String>(json['name']),
+      status: serializer.fromJson<String?>(json['status']),
+      startDate: serializer.fromJson<String?>(json['startDate']),
+      endDate: serializer.fromJson<String?>(json['endDate']),
+      progress: serializer.fromJson<double>(json['progress']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'projectId': serializer.toJson<int>(projectId),
+      'epsNodeId': serializer.toJson<int?>(epsNodeId),
+      'name': serializer.toJson<String>(name),
+      'status': serializer.toJson<String?>(status),
+      'startDate': serializer.toJson<String?>(startDate),
+      'endDate': serializer.toJson<String?>(endDate),
+      'progress': serializer.toJson<double>(progress),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedActivity copyWith(
+          {int? id,
+          int? projectId,
+          Value<int?> epsNodeId = const Value.absent(),
+          String? name,
+          Value<String?> status = const Value.absent(),
+          Value<String?> startDate = const Value.absent(),
+          Value<String?> endDate = const Value.absent(),
+          double? progress,
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedActivity(
+        id: id ?? this.id,
+        projectId: projectId ?? this.projectId,
+        epsNodeId: epsNodeId.present ? epsNodeId.value : this.epsNodeId,
+        name: name ?? this.name,
+        status: status.present ? status.value : this.status,
+        startDate: startDate.present ? startDate.value : this.startDate,
+        endDate: endDate.present ? endDate.value : this.endDate,
+        progress: progress ?? this.progress,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedActivity copyWithCompanion(CachedActivitiesCompanion data) {
+    return CachedActivity(
+      id: data.id.present ? data.id.value : this.id,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      epsNodeId: data.epsNodeId.present ? data.epsNodeId.value : this.epsNodeId,
+      name: data.name.present ? data.name.value : this.name,
+      status: data.status.present ? data.status.value : this.status,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      progress: data.progress.present ? data.progress.value : this.progress,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedActivity(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('name: $name, ')
+          ..write('status: $status, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('progress: $progress, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, projectId, epsNodeId, name, status,
+      startDate, endDate, progress, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedActivity &&
+          other.id == this.id &&
+          other.projectId == this.projectId &&
+          other.epsNodeId == this.epsNodeId &&
+          other.name == this.name &&
+          other.status == this.status &&
+          other.startDate == this.startDate &&
+          other.endDate == this.endDate &&
+          other.progress == this.progress &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedActivitiesCompanion extends UpdateCompanion<CachedActivity> {
+  final Value<int> id;
+  final Value<int> projectId;
+  final Value<int?> epsNodeId;
+  final Value<String> name;
+  final Value<String?> status;
+  final Value<String?> startDate;
+  final Value<String?> endDate;
+  final Value<double> progress;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  const CachedActivitiesCompanion({
+    this.id = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.epsNodeId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.status = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.progress = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+  });
+  CachedActivitiesCompanion.insert({
+    this.id = const Value.absent(),
+    required int projectId,
+    this.epsNodeId = const Value.absent(),
+    required String name,
+    this.status = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.progress = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+  })  : projectId = Value(projectId),
+        name = Value(name),
+        rawData = Value(rawData);
+  static Insertable<CachedActivity> custom({
+    Expression<int>? id,
+    Expression<int>? projectId,
+    Expression<int>? epsNodeId,
+    Expression<String>? name,
+    Expression<String>? status,
+    Expression<String>? startDate,
+    Expression<String>? endDate,
+    Expression<double>? progress,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (projectId != null) 'project_id': projectId,
+      if (epsNodeId != null) 'eps_node_id': epsNodeId,
+      if (name != null) 'name': name,
+      if (status != null) 'status': status,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
+      if (progress != null) 'progress': progress,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+    });
+  }
+
+  CachedActivitiesCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? projectId,
+      Value<int?>? epsNodeId,
+      Value<String>? name,
+      Value<String?>? status,
+      Value<String?>? startDate,
+      Value<String?>? endDate,
+      Value<double>? progress,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt}) {
+    return CachedActivitiesCompanion(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      epsNodeId: epsNodeId ?? this.epsNodeId,
+      name: name ?? this.name,
+      status: status ?? this.status,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      progress: progress ?? this.progress,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (epsNodeId.present) {
+      map['eps_node_id'] = Variable<int>(epsNodeId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<String>(startDate.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<String>(endDate.value);
+    }
+    if (progress.present) {
+      map['progress'] = Variable<double>(progress.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedActivitiesCompanion(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('name: $name, ')
+          ..write('status: $status, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('progress: $progress, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedBoqItemsTable extends CachedBoqItems
+    with TableInfo<$CachedBoqItemsTable, CachedBoqItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedBoqItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+      'unit', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _quantityMeta =
+      const VerificationMeta('quantity');
+  @override
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
+      'quantity', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _rateMeta = const VerificationMeta('rate');
+  @override
+  late final GeneratedColumn<double> rate = GeneratedColumn<double>(
+      'rate', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, projectId, name, unit, quantity, rate, rawData, cachedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_boq_items';
+  @override
+  VerificationContext validateIntegrity(Insertable<CachedBoqItem> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+          _unitMeta, unit.isAcceptableOrUnknown(data['unit']!, _unitMeta));
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(_quantityMeta,
+          quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta));
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
+    }
+    if (data.containsKey('rate')) {
+      context.handle(
+          _rateMeta, rate.isAcceptableOrUnknown(data['rate']!, _rateMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedBoqItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedBoqItem(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      unit: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}unit']),
+      quantity: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}quantity'])!,
+      rate: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}rate']),
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedBoqItemsTable createAlias(String alias) {
+    return $CachedBoqItemsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedBoqItem extends DataClass implements Insertable<CachedBoqItem> {
+  final int id;
+  final int projectId;
+  final String name;
+  final String? unit;
+  final double quantity;
+  final double? rate;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedBoqItem(
+      {required this.id,
+      required this.projectId,
+      required this.name,
+      this.unit,
+      required this.quantity,
+      this.rate,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['project_id'] = Variable<int>(projectId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || unit != null) {
+      map['unit'] = Variable<String>(unit);
+    }
+    map['quantity'] = Variable<double>(quantity);
+    if (!nullToAbsent || rate != null) {
+      map['rate'] = Variable<double>(rate);
+    }
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedBoqItemsCompanion toCompanion(bool nullToAbsent) {
+    return CachedBoqItemsCompanion(
+      id: Value(id),
+      projectId: Value(projectId),
+      name: Value(name),
+      unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+      quantity: Value(quantity),
+      rate: rate == null && nullToAbsent ? const Value.absent() : Value(rate),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedBoqItem.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedBoqItem(
+      id: serializer.fromJson<int>(json['id']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      name: serializer.fromJson<String>(json['name']),
+      unit: serializer.fromJson<String?>(json['unit']),
+      quantity: serializer.fromJson<double>(json['quantity']),
+      rate: serializer.fromJson<double?>(json['rate']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'projectId': serializer.toJson<int>(projectId),
+      'name': serializer.toJson<String>(name),
+      'unit': serializer.toJson<String?>(unit),
+      'quantity': serializer.toJson<double>(quantity),
+      'rate': serializer.toJson<double?>(rate),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedBoqItem copyWith(
+          {int? id,
+          int? projectId,
+          String? name,
+          Value<String?> unit = const Value.absent(),
+          double? quantity,
+          Value<double?> rate = const Value.absent(),
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedBoqItem(
+        id: id ?? this.id,
+        projectId: projectId ?? this.projectId,
+        name: name ?? this.name,
+        unit: unit.present ? unit.value : this.unit,
+        quantity: quantity ?? this.quantity,
+        rate: rate.present ? rate.value : this.rate,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedBoqItem copyWithCompanion(CachedBoqItemsCompanion data) {
+    return CachedBoqItem(
+      id: data.id.present ? data.id.value : this.id,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      name: data.name.present ? data.name.value : this.name,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      rate: data.rate.present ? data.rate.value : this.rate,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedBoqItem(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('name: $name, ')
+          ..write('unit: $unit, ')
+          ..write('quantity: $quantity, ')
+          ..write('rate: $rate, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, projectId, name, unit, quantity, rate, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedBoqItem &&
+          other.id == this.id &&
+          other.projectId == this.projectId &&
+          other.name == this.name &&
+          other.unit == this.unit &&
+          other.quantity == this.quantity &&
+          other.rate == this.rate &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedBoqItemsCompanion extends UpdateCompanion<CachedBoqItem> {
+  final Value<int> id;
+  final Value<int> projectId;
+  final Value<String> name;
+  final Value<String?> unit;
+  final Value<double> quantity;
+  final Value<double?> rate;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  const CachedBoqItemsCompanion({
+    this.id = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.rate = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+  });
+  CachedBoqItemsCompanion.insert({
+    this.id = const Value.absent(),
+    required int projectId,
+    required String name,
+    this.unit = const Value.absent(),
+    required double quantity,
+    this.rate = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+  })  : projectId = Value(projectId),
+        name = Value(name),
+        quantity = Value(quantity),
+        rawData = Value(rawData);
+  static Insertable<CachedBoqItem> custom({
+    Expression<int>? id,
+    Expression<int>? projectId,
+    Expression<String>? name,
+    Expression<String>? unit,
+    Expression<double>? quantity,
+    Expression<double>? rate,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (projectId != null) 'project_id': projectId,
+      if (name != null) 'name': name,
+      if (unit != null) 'unit': unit,
+      if (quantity != null) 'quantity': quantity,
+      if (rate != null) 'rate': rate,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+    });
+  }
+
+  CachedBoqItemsCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? projectId,
+      Value<String>? name,
+      Value<String?>? unit,
+      Value<double>? quantity,
+      Value<double?>? rate,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt}) {
+    return CachedBoqItemsCompanion(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      name: name ?? this.name,
+      unit: unit ?? this.unit,
+      quantity: quantity ?? this.quantity,
+      rate: rate ?? this.rate,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<double>(quantity.value);
+    }
+    if (rate.present) {
+      map['rate'] = Variable<double>(rate.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedBoqItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('name: $name, ')
+          ..write('unit: $unit, ')
+          ..write('quantity: $quantity, ')
+          ..write('rate: $rate, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+abstract class _$AppDatabase extends GeneratedDatabase {
+  _$AppDatabase(QueryExecutor e) : super(e);
+  $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $ProgressEntriesTable progressEntries =
+      $ProgressEntriesTable(this);
+  late final $DailyLogsTable dailyLogs = $DailyLogsTable(this);
+  late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
+  late final $CachedProjectsTable cachedProjects = $CachedProjectsTable(this);
+  late final $CachedActivitiesTable cachedActivities =
+      $CachedActivitiesTable(this);
+  late final $CachedBoqItemsTable cachedBoqItems = $CachedBoqItemsTable(this);
+  @override
+  Iterable<TableInfo<Table, Object?>> get allTables =>
+      allSchemaEntities.whereType<TableInfo<Table, Object?>>();
+  @override
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        progressEntries,
+        dailyLogs,
+        syncQueue,
+        cachedProjects,
+        cachedActivities,
+        cachedBoqItems
+      ];
+}
+
+typedef $$ProgressEntriesTableCreateCompanionBuilder = ProgressEntriesCompanion
+    Function({
+  Value<int> id,
+  Value<int?> serverId,
+  required int projectId,
+  required int activityId,
+  required int epsNodeId,
+  required int boqItemId,
+  Value<int?> microActivityId,
+  required double quantity,
+  required String date,
+  Value<String?> remarks,
+  Value<String?> photoPaths,
+  Value<int> syncStatus,
+  Value<DateTime> createdAt,
+  Value<DateTime?> syncedAt,
+  Value<String?> syncError,
+  Value<int> retryCount,
+});
+typedef $$ProgressEntriesTableUpdateCompanionBuilder = ProgressEntriesCompanion
+    Function({
+  Value<int> id,
+  Value<int?> serverId,
+  Value<int> projectId,
+  Value<int> activityId,
+  Value<int> epsNodeId,
+  Value<int> boqItemId,
+  Value<int?> microActivityId,
+  Value<double> quantity,
+  Value<String> date,
+  Value<String?> remarks,
+  Value<String?> photoPaths,
+  Value<int> syncStatus,
+  Value<DateTime> createdAt,
+  Value<DateTime?> syncedAt,
+  Value<String?> syncError,
+  Value<int> retryCount,
+});
+
+class $$ProgressEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $ProgressEntriesTable> {
+  $$ProgressEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get serverId => $composableBuilder(
+      column: $table.serverId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get activityId => $composableBuilder(
+      column: $table.activityId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get boqItemId => $composableBuilder(
+      column: $table.boqItemId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get microActivityId => $composableBuilder(
+      column: $table.microActivityId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get quantity => $composableBuilder(
+      column: $table.quantity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get remarks => $composableBuilder(
+      column: $table.remarks, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get photoPaths => $composableBuilder(
+      column: $table.photoPaths, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncError => $composableBuilder(
+      column: $table.syncError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+}
+
+class $$ProgressEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ProgressEntriesTable> {
+  $$ProgressEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get serverId => $composableBuilder(
+      column: $table.serverId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get activityId => $composableBuilder(
+      column: $table.activityId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get boqItemId => $composableBuilder(
+      column: $table.boqItemId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get microActivityId => $composableBuilder(
+      column: $table.microActivityId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get quantity => $composableBuilder(
+      column: $table.quantity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get remarks => $composableBuilder(
+      column: $table.remarks, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get photoPaths => $composableBuilder(
+      column: $table.photoPaths, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncError => $composableBuilder(
+      column: $table.syncError, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ProgressEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ProgressEntriesTable> {
+  $$ProgressEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<int> get activityId => $composableBuilder(
+      column: $table.activityId, builder: (column) => column);
+
+  GeneratedColumn<int> get epsNodeId =>
+      $composableBuilder(column: $table.epsNodeId, builder: (column) => column);
+
+  GeneratedColumn<int> get boqItemId =>
+      $composableBuilder(column: $table.boqItemId, builder: (column) => column);
+
+  GeneratedColumn<int> get microActivityId => $composableBuilder(
+      column: $table.microActivityId, builder: (column) => column);
+
+  GeneratedColumn<double> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<String> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get remarks =>
+      $composableBuilder(column: $table.remarks, builder: (column) => column);
+
+  GeneratedColumn<String> get photoPaths => $composableBuilder(
+      column: $table.photoPaths, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncError =>
+      $composableBuilder(column: $table.syncError, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+}
+
+class $$ProgressEntriesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ProgressEntriesTable,
+    ProgressEntry,
+    $$ProgressEntriesTableFilterComposer,
+    $$ProgressEntriesTableOrderingComposer,
+    $$ProgressEntriesTableAnnotationComposer,
+    $$ProgressEntriesTableCreateCompanionBuilder,
+    $$ProgressEntriesTableUpdateCompanionBuilder,
+    (
+      ProgressEntry,
+      BaseReferences<_$AppDatabase, $ProgressEntriesTable, ProgressEntry>
+    ),
+    ProgressEntry,
+    PrefetchHooks Function()> {
+  $$ProgressEntriesTableTableManager(
+      _$AppDatabase db, $ProgressEntriesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProgressEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProgressEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProgressEntriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int?> serverId = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<int> activityId = const Value.absent(),
+            Value<int> epsNodeId = const Value.absent(),
+            Value<int> boqItemId = const Value.absent(),
+            Value<int?> microActivityId = const Value.absent(),
+            Value<double> quantity = const Value.absent(),
+            Value<String> date = const Value.absent(),
+            Value<String?> remarks = const Value.absent(),
+            Value<String?> photoPaths = const Value.absent(),
+            Value<int> syncStatus = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> syncError = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+          }) =>
+              ProgressEntriesCompanion(
+            id: id,
+            serverId: serverId,
+            projectId: projectId,
+            activityId: activityId,
+            epsNodeId: epsNodeId,
+            boqItemId: boqItemId,
+            microActivityId: microActivityId,
+            quantity: quantity,
+            date: date,
+            remarks: remarks,
+            photoPaths: photoPaths,
+            syncStatus: syncStatus,
+            createdAt: createdAt,
+            syncedAt: syncedAt,
+            syncError: syncError,
+            retryCount: retryCount,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int?> serverId = const Value.absent(),
+            required int projectId,
+            required int activityId,
+            required int epsNodeId,
+            required int boqItemId,
+            Value<int?> microActivityId = const Value.absent(),
+            required double quantity,
+            required String date,
+            Value<String?> remarks = const Value.absent(),
+            Value<String?> photoPaths = const Value.absent(),
+            Value<int> syncStatus = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> syncError = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+          }) =>
+              ProgressEntriesCompanion.insert(
+            id: id,
+            serverId: serverId,
+            projectId: projectId,
+            activityId: activityId,
+            epsNodeId: epsNodeId,
+            boqItemId: boqItemId,
+            microActivityId: microActivityId,
+            quantity: quantity,
+            date: date,
+            remarks: remarks,
+            photoPaths: photoPaths,
+            syncStatus: syncStatus,
+            createdAt: createdAt,
+            syncedAt: syncedAt,
+            syncError: syncError,
+            retryCount: retryCount,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ProgressEntriesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ProgressEntriesTable,
+    ProgressEntry,
+    $$ProgressEntriesTableFilterComposer,
+    $$ProgressEntriesTableOrderingComposer,
+    $$ProgressEntriesTableAnnotationComposer,
+    $$ProgressEntriesTableCreateCompanionBuilder,
+    $$ProgressEntriesTableUpdateCompanionBuilder,
+    (
+      ProgressEntry,
+      BaseReferences<_$AppDatabase, $ProgressEntriesTable, ProgressEntry>
+    ),
+    ProgressEntry,
+    PrefetchHooks Function()>;
+typedef $$DailyLogsTableCreateCompanionBuilder = DailyLogsCompanion Function({
+  Value<int> id,
+  Value<int?> serverId,
+  required int microActivityId,
+  required String logDate,
+  required double plannedQty,
+  required double actualQty,
+  Value<int?> laborCount,
+  Value<int?> delayReasonId,
+  Value<String?> delayNotes,
+  Value<String?> remarks,
+  Value<int> syncStatus,
+  Value<DateTime> createdAt,
+  Value<DateTime?> syncedAt,
+  Value<String?> syncError,
+  Value<int> retryCount,
+});
+typedef $$DailyLogsTableUpdateCompanionBuilder = DailyLogsCompanion Function({
+  Value<int> id,
+  Value<int?> serverId,
+  Value<int> microActivityId,
+  Value<String> logDate,
+  Value<double> plannedQty,
+  Value<double> actualQty,
+  Value<int?> laborCount,
+  Value<int?> delayReasonId,
+  Value<String?> delayNotes,
+  Value<String?> remarks,
+  Value<int> syncStatus,
+  Value<DateTime> createdAt,
+  Value<DateTime?> syncedAt,
+  Value<String?> syncError,
+  Value<int> retryCount,
+});
+
+class $$DailyLogsTableFilterComposer
+    extends Composer<_$AppDatabase, $DailyLogsTable> {
+  $$DailyLogsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get serverId => $composableBuilder(
+      column: $table.serverId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get microActivityId => $composableBuilder(
+      column: $table.microActivityId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get logDate => $composableBuilder(
+      column: $table.logDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get plannedQty => $composableBuilder(
+      column: $table.plannedQty, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get actualQty => $composableBuilder(
+      column: $table.actualQty, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get laborCount => $composableBuilder(
+      column: $table.laborCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get delayReasonId => $composableBuilder(
+      column: $table.delayReasonId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get delayNotes => $composableBuilder(
+      column: $table.delayNotes, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get remarks => $composableBuilder(
+      column: $table.remarks, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncError => $composableBuilder(
+      column: $table.syncError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+}
+
+class $$DailyLogsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DailyLogsTable> {
+  $$DailyLogsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get serverId => $composableBuilder(
+      column: $table.serverId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get microActivityId => $composableBuilder(
+      column: $table.microActivityId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get logDate => $composableBuilder(
+      column: $table.logDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get plannedQty => $composableBuilder(
+      column: $table.plannedQty, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get actualQty => $composableBuilder(
+      column: $table.actualQty, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get laborCount => $composableBuilder(
+      column: $table.laborCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get delayReasonId => $composableBuilder(
+      column: $table.delayReasonId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get delayNotes => $composableBuilder(
+      column: $table.delayNotes, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get remarks => $composableBuilder(
+      column: $table.remarks, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncError => $composableBuilder(
+      column: $table.syncError, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DailyLogsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DailyLogsTable> {
+  $$DailyLogsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
+
+  GeneratedColumn<int> get microActivityId => $composableBuilder(
+      column: $table.microActivityId, builder: (column) => column);
+
+  GeneratedColumn<String> get logDate =>
+      $composableBuilder(column: $table.logDate, builder: (column) => column);
+
+  GeneratedColumn<double> get plannedQty => $composableBuilder(
+      column: $table.plannedQty, builder: (column) => column);
+
+  GeneratedColumn<double> get actualQty =>
+      $composableBuilder(column: $table.actualQty, builder: (column) => column);
+
+  GeneratedColumn<int> get laborCount => $composableBuilder(
+      column: $table.laborCount, builder: (column) => column);
+
+  GeneratedColumn<int> get delayReasonId => $composableBuilder(
+      column: $table.delayReasonId, builder: (column) => column);
+
+  GeneratedColumn<String> get delayNotes => $composableBuilder(
+      column: $table.delayNotes, builder: (column) => column);
+
+  GeneratedColumn<String> get remarks =>
+      $composableBuilder(column: $table.remarks, builder: (column) => column);
+
+  GeneratedColumn<int> get syncStatus => $composableBuilder(
+      column: $table.syncStatus, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncError =>
+      $composableBuilder(column: $table.syncError, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+}
+
+class $$DailyLogsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DailyLogsTable,
+    DailyLog,
+    $$DailyLogsTableFilterComposer,
+    $$DailyLogsTableOrderingComposer,
+    $$DailyLogsTableAnnotationComposer,
+    $$DailyLogsTableCreateCompanionBuilder,
+    $$DailyLogsTableUpdateCompanionBuilder,
+    (DailyLog, BaseReferences<_$AppDatabase, $DailyLogsTable, DailyLog>),
+    DailyLog,
+    PrefetchHooks Function()> {
+  $$DailyLogsTableTableManager(_$AppDatabase db, $DailyLogsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DailyLogsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DailyLogsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DailyLogsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int?> serverId = const Value.absent(),
+            Value<int> microActivityId = const Value.absent(),
+            Value<String> logDate = const Value.absent(),
+            Value<double> plannedQty = const Value.absent(),
+            Value<double> actualQty = const Value.absent(),
+            Value<int?> laborCount = const Value.absent(),
+            Value<int?> delayReasonId = const Value.absent(),
+            Value<String?> delayNotes = const Value.absent(),
+            Value<String?> remarks = const Value.absent(),
+            Value<int> syncStatus = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> syncError = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+          }) =>
+              DailyLogsCompanion(
+            id: id,
+            serverId: serverId,
+            microActivityId: microActivityId,
+            logDate: logDate,
+            plannedQty: plannedQty,
+            actualQty: actualQty,
+            laborCount: laborCount,
+            delayReasonId: delayReasonId,
+            delayNotes: delayNotes,
+            remarks: remarks,
+            syncStatus: syncStatus,
+            createdAt: createdAt,
+            syncedAt: syncedAt,
+            syncError: syncError,
+            retryCount: retryCount,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int?> serverId = const Value.absent(),
+            required int microActivityId,
+            required String logDate,
+            required double plannedQty,
+            required double actualQty,
+            Value<int?> laborCount = const Value.absent(),
+            Value<int?> delayReasonId = const Value.absent(),
+            Value<String?> delayNotes = const Value.absent(),
+            Value<String?> remarks = const Value.absent(),
+            Value<int> syncStatus = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> syncedAt = const Value.absent(),
+            Value<String?> syncError = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+          }) =>
+              DailyLogsCompanion.insert(
+            id: id,
+            serverId: serverId,
+            microActivityId: microActivityId,
+            logDate: logDate,
+            plannedQty: plannedQty,
+            actualQty: actualQty,
+            laborCount: laborCount,
+            delayReasonId: delayReasonId,
+            delayNotes: delayNotes,
+            remarks: remarks,
+            syncStatus: syncStatus,
+            createdAt: createdAt,
+            syncedAt: syncedAt,
+            syncError: syncError,
+            retryCount: retryCount,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DailyLogsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DailyLogsTable,
+    DailyLog,
+    $$DailyLogsTableFilterComposer,
+    $$DailyLogsTableOrderingComposer,
+    $$DailyLogsTableAnnotationComposer,
+    $$DailyLogsTableCreateCompanionBuilder,
+    $$DailyLogsTableUpdateCompanionBuilder,
+    (DailyLog, BaseReferences<_$AppDatabase, $DailyLogsTable, DailyLog>),
+    DailyLog,
+    PrefetchHooks Function()>;
+typedef $$SyncQueueTableCreateCompanionBuilder = SyncQueueCompanion Function({
+  Value<int> id,
+  required String entityType,
+  required int entityId,
+  required String operation,
+  required String payload,
+  Value<int> retryCount,
+  Value<DateTime> createdAt,
+  Value<DateTime?> lastAttemptAt,
+  Value<String?> lastError,
+  Value<int> priority,
+});
+typedef $$SyncQueueTableUpdateCompanionBuilder = SyncQueueCompanion Function({
+  Value<int> id,
+  Value<String> entityType,
+  Value<int> entityId,
+  Value<String> operation,
+  Value<String> payload,
+  Value<int> retryCount,
+  Value<DateTime> createdAt,
+  Value<DateTime?> lastAttemptAt,
+  Value<String?> lastError,
+  Value<int> priority,
+});
+
+class $$SyncQueueTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get entityType => $composableBuilder(
+      column: $table.entityType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get entityId => $composableBuilder(
+      column: $table.entityId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get operation => $composableBuilder(
+      column: $table.operation, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get payload => $composableBuilder(
+      column: $table.payload, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastAttemptAt => $composableBuilder(
+      column: $table.lastAttemptAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get priority => $composableBuilder(
+      column: $table.priority, builder: (column) => ColumnFilters(column));
+}
+
+class $$SyncQueueTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get entityType => $composableBuilder(
+      column: $table.entityType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get entityId => $composableBuilder(
+      column: $table.entityId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get operation => $composableBuilder(
+      column: $table.operation, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get payload => $composableBuilder(
+      column: $table.payload, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastAttemptAt => $composableBuilder(
+      column: $table.lastAttemptAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get priority => $composableBuilder(
+      column: $table.priority, builder: (column) => ColumnOrderings(column));
+}
+
+class $$SyncQueueTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get entityType => $composableBuilder(
+      column: $table.entityType, builder: (column) => column);
+
+  GeneratedColumn<int> get entityId =>
+      $composableBuilder(column: $table.entityId, builder: (column) => column);
+
+  GeneratedColumn<String> get operation =>
+      $composableBuilder(column: $table.operation, builder: (column) => column);
+
+  GeneratedColumn<String> get payload =>
+      $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastAttemptAt => $composableBuilder(
+      column: $table.lastAttemptAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+}
+
+class $$SyncQueueTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $SyncQueueTable,
+    SyncQueueData,
+    $$SyncQueueTableFilterComposer,
+    $$SyncQueueTableOrderingComposer,
+    $$SyncQueueTableAnnotationComposer,
+    $$SyncQueueTableCreateCompanionBuilder,
+    $$SyncQueueTableUpdateCompanionBuilder,
+    (
+      SyncQueueData,
+      BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>
+    ),
+    SyncQueueData,
+    PrefetchHooks Function()> {
+  $$SyncQueueTableTableManager(_$AppDatabase db, $SyncQueueTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncQueueTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncQueueTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncQueueTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> entityType = const Value.absent(),
+            Value<int> entityId = const Value.absent(),
+            Value<String> operation = const Value.absent(),
+            Value<String> payload = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> lastAttemptAt = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<int> priority = const Value.absent(),
+          }) =>
+              SyncQueueCompanion(
+            id: id,
+            entityType: entityType,
+            entityId: entityId,
+            operation: operation,
+            payload: payload,
+            retryCount: retryCount,
+            createdAt: createdAt,
+            lastAttemptAt: lastAttemptAt,
+            lastError: lastError,
+            priority: priority,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String entityType,
+            required int entityId,
+            required String operation,
+            required String payload,
+            Value<int> retryCount = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> lastAttemptAt = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<int> priority = const Value.absent(),
+          }) =>
+              SyncQueueCompanion.insert(
+            id: id,
+            entityType: entityType,
+            entityId: entityId,
+            operation: operation,
+            payload: payload,
+            retryCount: retryCount,
+            createdAt: createdAt,
+            lastAttemptAt: lastAttemptAt,
+            lastError: lastError,
+            priority: priority,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$SyncQueueTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $SyncQueueTable,
+    SyncQueueData,
+    $$SyncQueueTableFilterComposer,
+    $$SyncQueueTableOrderingComposer,
+    $$SyncQueueTableAnnotationComposer,
+    $$SyncQueueTableCreateCompanionBuilder,
+    $$SyncQueueTableUpdateCompanionBuilder,
+    (
+      SyncQueueData,
+      BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>
+    ),
+    SyncQueueData,
+    PrefetchHooks Function()>;
+typedef $$CachedProjectsTableCreateCompanionBuilder = CachedProjectsCompanion
+    Function({
+  Value<int> id,
+  required String name,
+  Value<String?> code,
+  Value<String?> status,
+  Value<String?> startDate,
+  Value<String?> endDate,
+  required String rawData,
+  Value<DateTime> cachedAt,
+});
+typedef $$CachedProjectsTableUpdateCompanionBuilder = CachedProjectsCompanion
+    Function({
+  Value<int> id,
+  Value<String> name,
+  Value<String?> code,
+  Value<String?> status,
+  Value<String?> startDate,
+  Value<String?> endDate,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+});
+
+class $$CachedProjectsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedProjectsTable> {
+  $$CachedProjectsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get startDate => $composableBuilder(
+      column: $table.startDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get endDate => $composableBuilder(
+      column: $table.endDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedProjectsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedProjectsTable> {
+  $$CachedProjectsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get startDate => $composableBuilder(
+      column: $table.startDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get endDate => $composableBuilder(
+      column: $table.endDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedProjectsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedProjectsTable> {
+  $$CachedProjectsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<String> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedProjectsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedProjectsTable,
+    CachedProject,
+    $$CachedProjectsTableFilterComposer,
+    $$CachedProjectsTableOrderingComposer,
+    $$CachedProjectsTableAnnotationComposer,
+    $$CachedProjectsTableCreateCompanionBuilder,
+    $$CachedProjectsTableUpdateCompanionBuilder,
+    (
+      CachedProject,
+      BaseReferences<_$AppDatabase, $CachedProjectsTable, CachedProject>
+    ),
+    CachedProject,
+    PrefetchHooks Function()> {
+  $$CachedProjectsTableTableManager(
+      _$AppDatabase db, $CachedProjectsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedProjectsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedProjectsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedProjectsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> code = const Value.absent(),
+            Value<String?> status = const Value.absent(),
+            Value<String?> startDate = const Value.absent(),
+            Value<String?> endDate = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedProjectsCompanion(
+            id: id,
+            name: name,
+            code: code,
+            status: status,
+            startDate: startDate,
+            endDate: endDate,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String name,
+            Value<String?> code = const Value.absent(),
+            Value<String?> status = const Value.absent(),
+            Value<String?> startDate = const Value.absent(),
+            Value<String?> endDate = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedProjectsCompanion.insert(
+            id: id,
+            name: name,
+            code: code,
+            status: status,
+            startDate: startDate,
+            endDate: endDate,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedProjectsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $CachedProjectsTable,
+    CachedProject,
+    $$CachedProjectsTableFilterComposer,
+    $$CachedProjectsTableOrderingComposer,
+    $$CachedProjectsTableAnnotationComposer,
+    $$CachedProjectsTableCreateCompanionBuilder,
+    $$CachedProjectsTableUpdateCompanionBuilder,
+    (
+      CachedProject,
+      BaseReferences<_$AppDatabase, $CachedProjectsTable, CachedProject>
+    ),
+    CachedProject,
+    PrefetchHooks Function()>;
+typedef $$CachedActivitiesTableCreateCompanionBuilder
+    = CachedActivitiesCompanion Function({
+  Value<int> id,
+  required int projectId,
+  Value<int?> epsNodeId,
+  required String name,
+  Value<String?> status,
+  Value<String?> startDate,
+  Value<String?> endDate,
+  Value<double> progress,
+  required String rawData,
+  Value<DateTime> cachedAt,
+});
+typedef $$CachedActivitiesTableUpdateCompanionBuilder
+    = CachedActivitiesCompanion Function({
+  Value<int> id,
+  Value<int> projectId,
+  Value<int?> epsNodeId,
+  Value<String> name,
+  Value<String?> status,
+  Value<String?> startDate,
+  Value<String?> endDate,
+  Value<double> progress,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+});
+
+class $$CachedActivitiesTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedActivitiesTable> {
+  $$CachedActivitiesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get startDate => $composableBuilder(
+      column: $table.startDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get endDate => $composableBuilder(
+      column: $table.endDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedActivitiesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedActivitiesTable> {
+  $$CachedActivitiesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get startDate => $composableBuilder(
+      column: $table.startDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get endDate => $composableBuilder(
+      column: $table.endDate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedActivitiesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedActivitiesTable> {
+  $$CachedActivitiesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<int> get epsNodeId =>
+      $composableBuilder(column: $table.epsNodeId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<String> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<double> get progress =>
+      $composableBuilder(column: $table.progress, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedActivitiesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedActivitiesTable,
+    CachedActivity,
+    $$CachedActivitiesTableFilterComposer,
+    $$CachedActivitiesTableOrderingComposer,
+    $$CachedActivitiesTableAnnotationComposer,
+    $$CachedActivitiesTableCreateCompanionBuilder,
+    $$CachedActivitiesTableUpdateCompanionBuilder,
+    (
+      CachedActivity,
+      BaseReferences<_$AppDatabase, $CachedActivitiesTable, CachedActivity>
+    ),
+    CachedActivity,
+    PrefetchHooks Function()> {
+  $$CachedActivitiesTableTableManager(
+      _$AppDatabase db, $CachedActivitiesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedActivitiesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedActivitiesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedActivitiesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<int?> epsNodeId = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> status = const Value.absent(),
+            Value<String?> startDate = const Value.absent(),
+            Value<String?> endDate = const Value.absent(),
+            Value<double> progress = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedActivitiesCompanion(
+            id: id,
+            projectId: projectId,
+            epsNodeId: epsNodeId,
+            name: name,
+            status: status,
+            startDate: startDate,
+            endDate: endDate,
+            progress: progress,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int projectId,
+            Value<int?> epsNodeId = const Value.absent(),
+            required String name,
+            Value<String?> status = const Value.absent(),
+            Value<String?> startDate = const Value.absent(),
+            Value<String?> endDate = const Value.absent(),
+            Value<double> progress = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedActivitiesCompanion.insert(
+            id: id,
+            projectId: projectId,
+            epsNodeId: epsNodeId,
+            name: name,
+            status: status,
+            startDate: startDate,
+            endDate: endDate,
+            progress: progress,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedActivitiesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $CachedActivitiesTable,
+    CachedActivity,
+    $$CachedActivitiesTableFilterComposer,
+    $$CachedActivitiesTableOrderingComposer,
+    $$CachedActivitiesTableAnnotationComposer,
+    $$CachedActivitiesTableCreateCompanionBuilder,
+    $$CachedActivitiesTableUpdateCompanionBuilder,
+    (
+      CachedActivity,
+      BaseReferences<_$AppDatabase, $CachedActivitiesTable, CachedActivity>
+    ),
+    CachedActivity,
+    PrefetchHooks Function()>;
+typedef $$CachedBoqItemsTableCreateCompanionBuilder = CachedBoqItemsCompanion
+    Function({
+  Value<int> id,
+  required int projectId,
+  required String name,
+  Value<String?> unit,
+  required double quantity,
+  Value<double?> rate,
+  required String rawData,
+  Value<DateTime> cachedAt,
+});
+typedef $$CachedBoqItemsTableUpdateCompanionBuilder = CachedBoqItemsCompanion
+    Function({
+  Value<int> id,
+  Value<int> projectId,
+  Value<String> name,
+  Value<String?> unit,
+  Value<double> quantity,
+  Value<double?> rate,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+});
+
+class $$CachedBoqItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedBoqItemsTable> {
+  $$CachedBoqItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get unit => $composableBuilder(
+      column: $table.unit, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get quantity => $composableBuilder(
+      column: $table.quantity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get rate => $composableBuilder(
+      column: $table.rate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedBoqItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedBoqItemsTable> {
+  $$CachedBoqItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+      column: $table.unit, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get quantity => $composableBuilder(
+      column: $table.quantity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get rate => $composableBuilder(
+      column: $table.rate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedBoqItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedBoqItemsTable> {
+  $$CachedBoqItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<double> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<double> get rate =>
+      $composableBuilder(column: $table.rate, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedBoqItemsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedBoqItemsTable,
+    CachedBoqItem,
+    $$CachedBoqItemsTableFilterComposer,
+    $$CachedBoqItemsTableOrderingComposer,
+    $$CachedBoqItemsTableAnnotationComposer,
+    $$CachedBoqItemsTableCreateCompanionBuilder,
+    $$CachedBoqItemsTableUpdateCompanionBuilder,
+    (
+      CachedBoqItem,
+      BaseReferences<_$AppDatabase, $CachedBoqItemsTable, CachedBoqItem>
+    ),
+    CachedBoqItem,
+    PrefetchHooks Function()> {
+  $$CachedBoqItemsTableTableManager(
+      _$AppDatabase db, $CachedBoqItemsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedBoqItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedBoqItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedBoqItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> unit = const Value.absent(),
+            Value<double> quantity = const Value.absent(),
+            Value<double?> rate = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedBoqItemsCompanion(
+            id: id,
+            projectId: projectId,
+            name: name,
+            unit: unit,
+            quantity: quantity,
+            rate: rate,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int projectId,
+            required String name,
+            Value<String?> unit = const Value.absent(),
+            required double quantity,
+            Value<double?> rate = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedBoqItemsCompanion.insert(
+            id: id,
+            projectId: projectId,
+            name: name,
+            unit: unit,
+            quantity: quantity,
+            rate: rate,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedBoqItemsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $CachedBoqItemsTable,
+    CachedBoqItem,
+    $$CachedBoqItemsTableFilterComposer,
+    $$CachedBoqItemsTableOrderingComposer,
+    $$CachedBoqItemsTableAnnotationComposer,
+    $$CachedBoqItemsTableCreateCompanionBuilder,
+    $$CachedBoqItemsTableUpdateCompanionBuilder,
+    (
+      CachedBoqItem,
+      BaseReferences<_$AppDatabase, $CachedBoqItemsTable, CachedBoqItem>
+    ),
+    CachedBoqItem,
+    PrefetchHooks Function()>;
+
+class $AppDatabaseManager {
+  final _$AppDatabase _db;
+  $AppDatabaseManager(this._db);
+  $$ProgressEntriesTableTableManager get progressEntries =>
+      $$ProgressEntriesTableTableManager(_db, _db.progressEntries);
+  $$DailyLogsTableTableManager get dailyLogs =>
+      $$DailyLogsTableTableManager(_db, _db.dailyLogs);
+  $$SyncQueueTableTableManager get syncQueue =>
+      $$SyncQueueTableTableManager(_db, _db.syncQueue);
+  $$CachedProjectsTableTableManager get cachedProjects =>
+      $$CachedProjectsTableTableManager(_db, _db.cachedProjects);
+  $$CachedActivitiesTableTableManager get cachedActivities =>
+      $$CachedActivitiesTableTableManager(_db, _db.cachedActivities);
+  $$CachedBoqItemsTableTableManager get cachedBoqItems =>
+      $$CachedBoqItemsTableTableManager(_db, _db.cachedBoqItems);
+}

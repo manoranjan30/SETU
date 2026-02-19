@@ -4,9 +4,12 @@ import {
     AlertTriangle,
     Search,
     Filter,
-    Plus
+    Plus,
+    Edit2,
+    Trash2
 } from 'lucide-react';
 import microScheduleService, { type MicroSchedule, MicroScheduleStatus } from '../../services/micro-schedule.service';
+import DeleteConfirmationDialog from './DeleteConfirmationDialog';
 
 interface MicroScheduleListProps {
     projectId: number;
@@ -35,10 +38,24 @@ const MicroScheduleList: React.FC<MicroScheduleListProps> = ({
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
+    const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [scheduleToDelete, setScheduleToDelete] = useState<MicroSchedule | null>(null);
 
     useEffect(() => {
         loadSchedules();
     }, [projectId]);
+
+    useEffect(() => {
+        const handleClickOutside = () => {
+            if (openMenuId !== null) {
+                setOpenMenuId(null);
+            }
+        };
+
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [openMenuId]);
 
     const loadSchedules = async () => {
         try {
@@ -50,6 +67,32 @@ const MicroScheduleList: React.FC<MicroScheduleListProps> = ({
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDeleteClick = (schedule: MicroSchedule, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setScheduleToDelete(schedule);
+        setDeleteDialogOpen(true);
+        setOpenMenuId(null);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (!scheduleToDelete) return;
+
+        try {
+            await microScheduleService.deleteMicroSchedule(scheduleToDelete.id);
+            setDeleteDialogOpen(false);
+            setScheduleToDelete(null);
+            loadSchedules(); // Reload the list
+        } catch (error) {
+            console.error('Error deleting micro schedule:', error);
+            alert('Failed to delete micro schedule. Check console for details.');
+        }
+    };
+
+    const handleDeleteCancel = () => {
+        setDeleteDialogOpen(false);
+        setScheduleToDelete(null);
     };
 
     const getStatusColor = (status: string) => {
@@ -216,15 +259,41 @@ const MicroScheduleList: React.FC<MicroScheduleListProps> = ({
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <button
-                                            className="text-gray-400 hover:text-gray-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onEdit(schedule);
-                                            }}
-                                        >
-                                            <MoreVertical size={18} />
-                                        </button>
+                                        <div className="relative">
+                                            <button
+                                                className="text-gray-400 hover:text-gray-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenMenuId(openMenuId === schedule.id ? null : schedule.id);
+                                                }}
+                                            >
+                                                <MoreVertical size={18} />
+                                            </button>
+
+                                            {/* Dropdown Menu */}
+                                            {openMenuId === schedule.id && (
+                                                <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-20">
+                                                    <button
+                                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenMenuId(null);
+                                                            onEdit(schedule);
+                                                        }}
+                                                    >
+                                                        <Edit2 size={14} />
+                                                        Edit Schedule
+                                                    </button>
+                                                    <button
+                                                        className="w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50 flex items-center gap-2 border-t"
+                                                        onClick={(e) => handleDeleteClick(schedule, e)}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                        Delete Schedule
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))
@@ -232,6 +301,16 @@ const MicroScheduleList: React.FC<MicroScheduleListProps> = ({
                     </tbody>
                 </table>
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <DeleteConfirmationDialog
+                isOpen={deleteDialogOpen}
+                scheduleName={scheduleToDelete?.name || ''}
+                activityCount={scheduleToDelete?.activities?.length || 0}
+                hasProgress={(scheduleToDelete?.totalActualQty || 0) > 0}
+                onConfirm={handleDeleteConfirm}
+                onCancel={handleDeleteCancel}
+            />
         </div>
     );
 };

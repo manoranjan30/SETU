@@ -21,10 +21,13 @@ const multerOptions = {
   storage: diskStorage({
     destination: './uploads',
     filename: (req, file, cb) => {
-      const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+      const randomName = Array(32)
+        .fill(null)
+        .map(() => Math.round(Math.random() * 16).toString(16))
+        .join('');
       return cb(null, `${randomName}${extname(file.originalname)}`);
-    }
-  })
+    },
+  }),
 };
 
 @Controller('quality')
@@ -33,7 +36,7 @@ export class QualityController {
   constructor(
     private readonly qualityService: QualityService,
     private readonly structureService: QualityStructureService,
-  ) { }
+  ) {}
 
   // ... (Existing endpoints omitted for brevity, keeping all existing methods via replace_file logic) ...
   // Wait, I cannot use "..." in replacement unless I use multi_replace or target specific chunks.
@@ -48,22 +51,23 @@ export class QualityController {
   }
 
   // Inspections
-  @Get(':projectId/inspections')
-  getInspections(@Param('projectId') projectId: number) {
-    return this.qualityService.getInspections(projectId);
-  }
-  @Post('inspections')
-  createInspection(@Body() data: any) {
-    return this.qualityService.createInspection(data);
-  }
-  @Put('inspections/:id')
-  updateInspection(@Param('id') id: number, @Body() data: any) {
-    return this.qualityService.updateInspection(id, data);
-  }
-  @Delete('inspections/:id')
-  deleteInspection(@Param('id') id: number) {
-    return this.qualityService.deleteInspection(id);
-  }
+  // Inspections - MOVED TO QualityInspectionController
+  // @Get(':projectId/inspections')
+  // getInspections(@Param('projectId') projectId: number) {
+  //   return this.qualityService.getInspections(projectId);
+  // }
+  // @Post('inspections')
+  // createInspection(@Body() data: any) {
+  //   return this.qualityService.createInspection(data);
+  // }
+  // @Put('inspections/:id')
+  // updateInspection(@Param('id') id: number, @Body() data: any) {
+  //   return this.qualityService.updateInspection(id, data);
+  // }
+  // @Delete('inspections/:id')
+  // deleteInspection(@Param('id') id: number) {
+  //   return this.qualityService.deleteInspection(id);
+  // }
 
   // Material Tests
   @Get(':projectId/material-tests')
@@ -132,7 +136,11 @@ export class QualityController {
 
   @Put('snags/:id')
   @UseInterceptors(FileInterceptor('file', multerOptions))
-  updateSnag(@Param('id') id: number, @Body() data: any, @UploadedFile() file?: Express.Multer.File) {
+  updateSnag(
+    @Param('id') id: number,
+    @Body() data: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     return this.qualityService.updateSnag(id, data, file);
   }
   @Delete('snags/:id')
@@ -180,7 +188,11 @@ export class QualityController {
 
   @Post(':projectId/structure/templates')
   createTemplate(@Param('projectId') projectId: number, @Body() data: any) {
-    return this.structureService.createTemplate(projectId, data.name, data.rooms);
+    return this.structureService.createTemplate(
+      projectId,
+      data.name,
+      data.rooms,
+    );
   }
 
   @Get(':projectId/structure/templates')

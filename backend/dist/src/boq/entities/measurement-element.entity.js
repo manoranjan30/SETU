@@ -26,6 +26,8 @@ let MeasurementElement = class MeasurementElement {
     epsNodeId;
     activity;
     activityId;
+    microActivity;
+    microActivityId;
     elementId;
     elementName;
     elementCategory;
@@ -101,6 +103,19 @@ __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Number)
 ], MeasurementElement.prototype, "activityId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)('MicroScheduleActivity', {
+        onDelete: 'SET NULL',
+        nullable: true,
+        createForeignKeyConstraints: false,
+    }),
+    (0, typeorm_1.JoinColumn)({ name: 'microActivityId' }),
+    __metadata("design:type", Object)
+], MeasurementElement.prototype, "microActivity", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], MeasurementElement.prototype, "microActivityId", void 0);
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)

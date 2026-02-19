@@ -15,12 +15,26 @@ export declare class ExecutionService {
     private measurementRepo;
     private readonly logger;
     constructor(dataSource: DataSource, boqService: BoqService, activityRepo: Repository<Activity>, planRepo: Repository<BoqActivityPlan>, boqRepo: Repository<BoqItem>, progressRepo: Repository<MeasurementProgress>, measurementRepo: Repository<MeasurementElement>);
-    batchSaveMeasurements(projectId: number, entries: any[], userId: number): Promise<MeasurementProgress[]>;
+    batchSaveMeasurements(projectId: number, entries: any[], userId: number, autoApprove?: boolean): Promise<MeasurementProgress[]>;
     private syncSchedule;
     private recalculateActivityProgress;
     getProjectProgressLogs(projectId: number): Promise<MeasurementProgress[]>;
     updateProgressLog(logId: number, newQty: number, userId: number): Promise<MeasurementProgress>;
     deleteProgressLog(logId: number): Promise<{
         success: boolean;
+    }>;
+    getPendingProgressLogs(projectId: number): Promise<MeasurementProgress[]>;
+    approveProgress(logIds: number[], userId: number): Promise<{
+        success: boolean;
+        count: number;
+        message: string;
+    } | {
+        success: boolean;
+        count: number;
+        message?: undefined;
+    }>;
+    rejectProgress(logIds: number[], userId: number, reason: string): Promise<{
+        success: boolean;
+        affected: number | undefined;
     }>;
 }

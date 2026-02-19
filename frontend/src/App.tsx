@@ -24,10 +24,14 @@ import LaborCountView from './views/labor/LaborCountView';
 import ManagementDashboard from './views/dashboard/ManagementDashboard';
 import EhsProjectDashboard from './views/ehs/EhsProjectDashboard';
 import QualityProjectDashboard from './views/quality/QualityProjectDashboard';
+import ActivityListsPage from './views/quality/ActivityListsPage';
+import SequenceManagerPage from './views/quality/SequenceManagerPage';
+import InspectionRequestPage from './views/quality/InspectionRequestPage';
 import DesignDashboard from './views/design/DesignDashboard';
 import SystemSettings from './views/admin/SystemSettings';
 import TemplateBuilder from './views/admin/TemplateBuilder';
 import VendorMappingPage from './pages/VendorMappingPage';
+import ApprovalsPage from './pages/execution/ApprovalsPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -162,6 +166,21 @@ const AppRoutes = () => {
             <QualityProjectDashboard />
           </ProtectedRoute>
         } />
+        <Route path="projects/:projectId/quality/activity-lists" element={
+          <ProtectedRoute permission="VIEW_PROJECTS">
+            <ActivityListsPage />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/quality/inspections" element={
+          <ProtectedRoute permission="VIEW_PROJECTS">
+            <InspectionRequestPage />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/quality/activity-lists/:listId/sequence" element={
+          <ProtectedRoute permission="VIEW_PROJECTS">
+            <SequenceManagerPage />
+          </ProtectedRoute>
+        } />
         <Route path="projects/:projectId/design" element={
           <ProtectedRoute permission="VIEW_PROJECTS">
             <DesignDashboard />
@@ -170,6 +189,11 @@ const AppRoutes = () => {
         <Route path="projects/:projectId/vendor-mapping" element={
           <ProtectedRoute permission="WBS.READ">
             <VendorMappingPage />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/approvals" element={
+          <ProtectedRoute permission="Execution.Entry.Approve">
+            <ApprovalsPage />
           </ProtectedRoute>
         } />
       </Route>

@@ -7,5 +7,9 @@ export declare class MeasurementProgress {
     date: Date;
     updatedBy: string;
     customAttributes: any;
+    status: string;
+    reviewedBy: string | null;
+    reviewedAt: Date | null;
+    rejectionReason: string;
     loggedOn: Date;
 }
