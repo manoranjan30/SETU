@@ -57,7 +57,7 @@ Refactor the navigation flow to allow drill-down:
 
 ---
 
-## 4. detailed UI/UX Specifications
+## 4. Detailed UI/UX Specifications
 
 ### **A. Visual Design & Layout**
 
@@ -123,7 +123,56 @@ We need to manage the "Current Scope".
 
 ---
 
-## 6. Action Plan for Implementation
+## 6. Robust Offline-Sync Mechanism (CRITICAL)
+
+**Requirement:** The app must be "Break-Proof" and fully functional offline. Progress data MUST NOT get lost if network fails.
+
+### **A. Core Principles**
+1.  **Local First:** ALL writes go to Local DB (`progress_entries` with `sync_status = 'pending'`) FIRST. Never write to API directly.
+2.  **Background Sync:** A background service monitors network connectivity (using `internet_connection_checker` or `connectivity_plus`).
+3.  **Queue Management:** Sync jobs are processed sequentially (FIFO) to ensure data integrity.
+
+### **B. The Sync Workflow**
+1.  **Offline Input:**
+    *   User enters 50m of concrete work.
+    *   App saves to `ProgressEntriesTable` with `status: PENDING`.
+    *   UI shows success toaster: "Saved to Device (Pending Sync)".
+    *   Item in list shows a **Clock Icon 🕒** (orange).
+
+2.  **Network Detected (Auto-Sync):**
+    *   `SyncQueueWatcher` detects valid internet.
+    *   Fetches all `PENDING` items ordered by `timestamp ASC`.
+    *   **Loop:**
+        *   Pick Item 1.
+        *   Send POST to Backend.
+        *   **If Success (200 OK):**
+            *   Update Local DB: `status: SYNCED`, `server_id: X`.
+            *   UI updates to **Checkmark Icon ✅** (green).
+        *   **If Fail (500/Timeout):**
+            *   Mark Local DB: `status: FAILED` (optional: `error_msg`).
+            *   Stop queue processing (or retry 3 times with exponential backoff).
+            *   **Notification:** Trigger local notification "Sync Failed: 3 items remaining."
+
+### **C. Conflict & Error Handling**
+-   **Partial Sync:** If 5 items are offline, and only 3 sync before network drops, specific status must track this.
+    -   Item 1, 2, 3: **Synced ✅**
+    -   Item 4, 5: **Pending 🕒**
+-   **Permanent Failure:**
+    -   If an item fails validation (e.g., "Quantity > Budget"), the backend returns 400.
+    -   App must mark item as `ERROR ❌` (red).
+    -   **Actionable UI:** User sees red icon -> Taps item -> Sees specific error ("Quantity exceeds BOQ limits") -> Can Edit & Resubmit.
+
+### **D. User Visibility**
+-   **Sync Status Bar:** Small indicator in AppBar (Cloud icon).
+    -   Cloud with Check: All Synced.
+    -   Cloud with Spinner: Syncing...
+    -   Cloud with Slash: Offline.
+    -   Cloud with Exclamation: Sync Errors.
+-   **History Log:** A specific "Sync Log" page where users can see all their uploads and retry manually if needed.
+
+---
+
+## 7. Action Plan for Implementation
 
 ### **Phase 1: Data Layer**
 1.  **Update `SetuApiClient`:** Ensure generic `getProjectActivities` is optimized OR add `getActivitiesByEps`.
@@ -138,7 +187,116 @@ We need to manage the "Current Scope".
 2.  Create `EpsExplorerPage` (The new main view).
 3.  Modify `ProjectsListPage` to route to `EpsExplorerPage`.
 
-### **Phase 4: Testing**
+### **Phase 4: Sync Mechanism**
+1.  Implement `ConnectivityService`.
+2.  Update `SyncService` to handle `retry` logic and `exponential backoff`.
+3.  Add `SyncStatusIndicator` widget to the global `Layout`.
+
+### **Phase 5: Testing**
 1.  **Hierarchy Check:** Verify 3-level depth (Project -> Tower -> Floor).
-2.  **Data Check:** Verify activities are correctly filtered (Activity for Floor 1 should NOT show on Floor 2).
-3.  **Nav Check:** Verify Back button works step-by-step.
+2.  **Data Check:** Verify activities are correctly filtered.
+3.  **Offline Test:** Turn off WiFi -> Add Progress -> Turn on WiFi -> Watch it turn green automatically.
+
+---
+
+## 8. AI Execution Blueprint (Seamless Extension)
+
+This section translates the above strategy into an execution sequence that another AI model can implement with minimal ambiguity.
+
+### **A. Discovery & Baseline (Do First)**
+1. Trace current route from `ProjectsListPage` to flat activities list.
+2. Confirm existing `ProjectBloc`, `ProgressBloc`, repository contracts, and Drift schema.
+3. Verify backend payload contracts for EPS tree, planning activities, and progress APIs.
+4. Produce a short "As-Is" note before coding.
+
+### **B. Target State (Define Before Coding)**
+1. Navigation model: `Project -> EPS Node -> ... -> Activities`.
+2. State model:
+   - `currentPath: List<EpsNode>`
+   - `currentNodeId`
+   - `childrenAtCurrentNode`
+   - `activitiesAtCurrentNode`
+   - `activityIndexByEpsNodeId`
+3. Sync model:
+   - local-first writes
+   - queue states (`pending/syncing/synced/error`)
+   - retry/backoff
+   - idempotency-safe submission.
+
+### **C. Build Order (Strict Sequence)**
+1. Data model + Drift migration updates.
+2. Repository and datasource updates.
+3. BLoC event/state updates for EPS navigation.
+4. `EpsExplorerPage` + `BreadcrumbWidget` UI.
+5. Local-first progress queue.
+6. Connectivity-triggered sync worker.
+7. Sync status indicators + error recovery UX.
+8. Unit/widget/integration tests.
+
+### **D. Scale & Safety Controls**
+1. Use in-memory index `Map<epsNodeId, List<Activity>>` for fast filtering.
+2. Add threshold guard: if project activity volume is too high, fallback to server-side filtered fetch (`getActivitiesByEps`).
+3. Ensure every queued progress entry carries an `idempotency_key` to prevent duplicate server writes during retry.
+4. Define deterministic conflict policy for edited unsynced records.
+
+---
+
+## 9. File-Level Task Mapping (Flutter)
+
+### **A. Presentation Layer**
+1. `ProjectBloc`: add `LoadProjectHierarchy`, `SelectEpsNode`, `NavigateToPathIndex`, `RefreshCurrentNode`.
+2. Create `EpsExplorerPage` as the main post-project screen.
+3. Create `BreadcrumbWidget` with clickable hierarchy segments.
+4. Update `ProjectsListPage` routing to open `EpsExplorerPage` instead of flat activities.
+
+### **B. Domain/Data Layer**
+1. Ensure `EpsNode` supports recursive hierarchy and parent linkage.
+2. Ensure `Activity` includes stable `epsNodeId` mapping.
+3. Extend repository APIs for EPS-tree + activities loading strategy.
+4. Build local activity index by EPS node ID.
+
+### **C. Offline/Sync Layer**
+1. Extend `progress_entries` with `sync_status`, `retry_count`, `last_error`, `idempotency_key`.
+2. Implement FIFO sync worker in `SyncService`.
+3. Retry policy:
+   - 5xx/timeout: retry with exponential backoff
+   - 4xx validation: mark `error`, require user correction.
+4. Add top-level sync indicator (all-synced/syncing/offline/error).
+
+---
+
+## 10. Environment and API Configuration Guardrail
+
+1. Move away from hardcoded local IP base URL.
+2. Use environment/flavor-driven configuration for `dev/staging/prod`.
+3. Keep endpoint constants stable while switching host by flavor.
+
+---
+
+## 11. Test Strategy (Mandatory)
+
+### **A. Unit Tests**
+1. Path navigation and breadcrumb jump behavior.
+2. EPS-based activity filtering correctness.
+3. Sync queue state transitions (`pending -> synced/error`).
+
+### **B. Widget Tests**
+1. Mixed folder/activity list rendering.
+2. Empty/loading/error states.
+3. Sync status indicator state rendering.
+
+### **C. Integration Tests**
+1. Offline progress entry -> reconnect -> autosync success.
+2. Partial sync interruption and safe resume.
+3. Validation error flow with actionable retry/edit behavior.
+
+---
+
+## 12. Definition of Done (Release Gate)
+
+1. Flat activity list is replaced by EPS drill-down flow.
+2. User can navigate location hierarchy and log progress at target node.
+3. Offline writes are always preserved locally and visibly tracked.
+4. Reconnect sync is reliable, idempotent, and recoverable after failures.
+5. Critical tests for hierarchy/filtering/sync all pass.
+

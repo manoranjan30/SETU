@@ -71,7 +71,7 @@ void initDependencies({
 
   // BLoCs
   sl.registerFactory(() => AuthBloc(authService: sl()));
-  sl.registerFactory(() => ProjectBloc(apiClient: sl()));
+  sl.registerFactory(() => ProjectBloc(apiClient: sl(), database: sl()));
   sl.registerFactory(() => ProgressBloc(
         apiClient: sl(),
         database: sl(),

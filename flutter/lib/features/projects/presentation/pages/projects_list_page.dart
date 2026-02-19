@@ -5,8 +5,7 @@ import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
-import 'package:setu_mobile/features/progress/presentation/pages/progress_entry_page.dart';
-import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
+import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 class ProjectsListPage extends StatefulWidget {
@@ -67,13 +66,6 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             return _buildProjectsList(state.projects);
           }
 
-          if (state is ActivitiesLoaded) {
-            return _buildActivitiesList(
-              state.activities,
-              state.selectedProject,
-            );
-          }
-
           return _buildEmptyState();
         },
       ),
@@ -129,7 +121,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       margin: const EdgeInsets.only(bottom: AppDimensions.marginMD),
       child: InkWell(
         onTap: () {
-          context.read<ProjectBloc>().add(LoadActivities(project.id));
+          _navigateToEpsExplorer(project);
         },
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
         child: Padding(
@@ -194,6 +186,16 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                   ],
                 ),
               ],
+              // Show EPS structure preview
+              if (project.children.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${project.children.length} zones',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+              ],
             ],
           ),
         ),
@@ -234,109 +236,13 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
-  Widget _buildActivitiesList(List<Activity> activities, Project project) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(AppDimensions.paddingMD),
-          color: AppColors.primary.withOpacity(0.05),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  context.read<ProjectBloc>().add(LoadProjects());
-                },
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      project.name,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(
-                      '${activities.length} activities',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(AppDimensions.paddingMD),
-            itemCount: activities.length,
-            itemBuilder: (context, index) {
-              return _buildActivityTile(activities[index], project);
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActivityTile(Activity activity, Project project) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: AppDimensions.marginSM),
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: activity.hasMicroSchedule
-                ? AppColors.success.withOpacity(0.1)
-                : AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            activity.hasMicroSchedule ? Icons.task_alt : Icons.assignment,
-            color: activity.hasMicroSchedule ? AppColors.success : AppColors.primary,
-            size: 20,
-          ),
-        ),
-        title: Text(activity.name),
-        subtitle: activity.status != null
-            ? Text(
-                activity.status!,
-                style: Theme.of(context).textTheme.bodySmall,
-              )
-            : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (activity.actualProgress != null)
-              Text(
-                '${(activity.actualProgress! * 100).toStringAsFixed(0)}%',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: AppColors.primary,
-                    ),
-              ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-        onTap: () {
-          _navigateToProgressEntry(activity, project);
-        },
-      ),
-    );
-  }
-
-  void _navigateToProgressEntry(Activity activity, Project project) {
+  void _navigateToEpsExplorer(Project project) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => BlocProvider(
-          create: (context) => sl<ProgressBloc>(),
-          child: ProgressEntryPage(
-            activity: activity,
-            project: project,
-          ),
+          create: (context) => sl<ProjectBloc>(),
+          child: EpsExplorerPage(project: project),
         ),
       ),
     );
