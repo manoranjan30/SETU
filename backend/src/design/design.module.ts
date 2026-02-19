@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DesignController } from './design.controller';
@@ -11,17 +10,17 @@ import { User } from '../users/user.entity';
 import { CommonModule } from '../common/common.module';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([
-            DrawingCategory,
-            DrawingRegister,
-            DrawingRevision,
-            User // Needed to validate users
-        ]),
-        CommonModule
-    ],
-    controllers: [DesignController],
-    providers: [DesignService],
-    exports: [DesignService]
+  imports: [
+    TypeOrmModule.forFeature([
+      DrawingCategory,
+      DrawingRegister,
+      DrawingRevision,
+      User, // Needed to validate users
+    ]),
+    CommonModule,
+  ],
+  controllers: [DesignController],
+  providers: [DesignService],
+  exports: [DesignService],
 })
-export class DesignModule { }
+export class DesignModule {}

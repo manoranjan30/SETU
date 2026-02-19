@@ -192,78 +192,208 @@ export class PermissionsService implements OnModuleInit {
         actionType: PermissionAction.DELETE,
       },
 
-      // Resources
+      // BOQ (Granular)
       {
-        permissionCode: 'RESOURCES.MASTER.CREATE',
-        permissionName: 'Create Resource',
-        moduleName: 'RESOURCES',
+        permissionCode: 'BOQ.Item.Create',
+        permissionName: 'Create BOQ Item',
+        moduleName: 'BOQ',
         actionType: PermissionAction.CREATE,
       },
       {
-        permissionCode: 'RESOURCES.MASTER.READ',
-        permissionName: 'Read Resource',
-        moduleName: 'RESOURCES',
+        permissionCode: 'BOQ.Item.Read',
+        permissionName: 'Read BOQ Item',
+        moduleName: 'BOQ',
         actionType: PermissionAction.READ,
       },
       {
-        permissionCode: 'RESOURCES.MASTER.UPDATE',
-        permissionName: 'Update Resource',
-        moduleName: 'RESOURCES',
+        permissionCode: 'BOQ.Item.Update',
+        permissionName: 'Update BOQ Item',
+        moduleName: 'BOQ',
         actionType: PermissionAction.UPDATE,
       },
       {
-        permissionCode: 'RESOURCES.MASTER.DELETE',
-        permissionName: 'Delete Resource',
-        moduleName: 'RESOURCES',
+        permissionCode: 'BOQ.Item.Delete',
+        permissionName: 'Delete BOQ Item',
+        moduleName: 'BOQ',
+        actionType: PermissionAction.DELETE,
+      },
+      {
+        permissionCode: 'BOQ.Import',
+        permissionName: 'Import BOQ',
+        moduleName: 'BOQ',
+        actionType: PermissionAction.CREATE,
+      },
+
+      // Execution (Progres Entry)
+      {
+        permissionCode: 'Execution.Entry.Create',
+        permissionName: 'Log Daily Progress',
+        moduleName: 'EXECUTION',
+        actionType: PermissionAction.CREATE,
+      },
+      {
+        permissionCode: 'Execution.Entry.Read',
+        permissionName: 'View Progress',
+        moduleName: 'EXECUTION',
+        actionType: PermissionAction.READ,
+      },
+      {
+        permissionCode: 'Execution.Entry.Update',
+        permissionName: 'Edit Daily Progress',
+        moduleName: 'EXECUTION',
+        actionType: PermissionAction.UPDATE,
+      },
+      {
+        permissionCode: 'Execution.Entry.Approve',
+        permissionName: 'Approve Progress',
+        moduleName: 'EXECUTION',
+        actionType: PermissionAction.SPECIAL,
+      },
+
+      // Labor Management
+      {
+        permissionCode: 'Labor.Entry.Create',
+        permissionName: 'Log Attendance',
+        moduleName: 'LABOR',
+        actionType: PermissionAction.CREATE,
+      },
+      {
+        permissionCode: 'Labor.Entry.Read',
+        permissionName: 'View Attendance',
+        moduleName: 'LABOR',
+        actionType: PermissionAction.READ,
+      },
+      {
+        permissionCode: 'Labor.Category.Manage',
+        permissionName: 'Manage Labor Categories',
+        moduleName: 'LABOR',
+        actionType: PermissionAction.SPECIAL,
+      },
+
+      // EHS (Safety)
+      {
+        permissionCode: 'EHS.Incident.Create',
+        permissionName: 'Log Incident',
+        moduleName: 'EHS',
+        actionType: PermissionAction.CREATE,
+      },
+      {
+        permissionCode: 'EHS.Inspection.Create',
+        permissionName: 'Perform Inspection',
+        moduleName: 'EHS',
+        actionType: PermissionAction.CREATE,
+      },
+      {
+        permissionCode: 'EHS.Compliance.Manage',
+        permissionName: 'Manage Compliance',
+        moduleName: 'EHS',
+        actionType: PermissionAction.SPECIAL,
+      },
+      {
+        permissionCode: 'EHS.Read',
+        permissionName: 'View Safety Records',
+        moduleName: 'EHS',
+        actionType: PermissionAction.READ,
+      },
+
+      // Quality (QA/QC)
+      {
+        permissionCode: 'Quality.Inspection.Raise',
+        permissionName: 'Raise Inspection (RFI)',
+        moduleName: 'QUALITY',
+        actionType: PermissionAction.CREATE,
+      },
+      {
+        permissionCode: 'Quality.Inspection.Approve',
+        permissionName: 'Approve Inspection',
+        moduleName: 'QUALITY',
+        actionType: PermissionAction.SPECIAL,
+      },
+      {
+        permissionCode: 'Quality.Test.Manage',
+        permissionName: 'Manage Material Tests',
+        moduleName: 'QUALITY',
+        actionType: PermissionAction.SPECIAL,
+      },
+      {
+        permissionCode: 'Quality.Read',
+        permissionName: 'View Quality Records',
+        moduleName: 'QUALITY',
+        actionType: PermissionAction.READ,
+      },
+
+      // Design
+      {
+        permissionCode: 'Design.Drawing.Read',
+        permissionName: 'View Drawings',
+        moduleName: 'DESIGN',
+        actionType: PermissionAction.READ,
+      },
+      {
+        permissionCode: 'Design.Drawing.Upload',
+        permissionName: 'Upload Drawing',
+        moduleName: 'DESIGN',
+        actionType: PermissionAction.CREATE,
+      },
+      {
+        permissionCode: 'Design.Drawing.Approve',
+        permissionName: 'Approve Drawing (GFC)',
+        moduleName: 'DESIGN',
+        actionType: PermissionAction.SPECIAL,
+      },
+      {
+        permissionCode: 'Design.Drawing.Delete',
+        permissionName: 'Delete Drawing',
+        moduleName: 'DESIGN',
         actionType: PermissionAction.DELETE,
       },
 
       // User & Roles
       {
-        permissionCode: 'USER.MANAGEMENT.CREATE',
+        permissionCode: 'User.Management.Create',
         permissionName: 'Create User',
         moduleName: 'ADMIN',
         actionType: PermissionAction.CREATE,
       },
       {
-        permissionCode: 'USER.MANAGEMENT.READ',
+        permissionCode: 'User.Management.Read',
         permissionName: 'Read Users',
         moduleName: 'ADMIN',
         actionType: PermissionAction.READ,
       },
       {
-        permissionCode: 'USER.MANAGEMENT.UPDATE',
+        permissionCode: 'User.Management.Update',
         permissionName: 'Update User',
         moduleName: 'ADMIN',
         actionType: PermissionAction.UPDATE,
       },
       {
-        permissionCode: 'USER.MANAGEMENT.DELETE',
+        permissionCode: 'User.Management.Delete',
         permissionName: 'Delete User',
         moduleName: 'ADMIN',
         actionType: PermissionAction.DELETE,
       },
 
       {
-        permissionCode: 'ROLE.MANAGEMENT.CREATE',
+        permissionCode: 'Role.Management.Create',
         permissionName: 'Create Role',
         moduleName: 'ADMIN',
         actionType: PermissionAction.CREATE,
       },
       {
-        permissionCode: 'ROLE.MANAGEMENT.READ',
+        permissionCode: 'Role.Management.Read',
         permissionName: 'Read Roles',
         moduleName: 'ADMIN',
         actionType: PermissionAction.READ,
       },
       {
-        permissionCode: 'ROLE.MANAGEMENT.UPDATE',
+        permissionCode: 'Role.Management.Update',
         permissionName: 'Update Role',
         moduleName: 'ADMIN',
         actionType: PermissionAction.UPDATE,
       },
       {
-        permissionCode: 'ROLE.MANAGEMENT.DELETE',
+        permissionCode: 'Role.Management.Delete',
         permissionName: 'Delete Role',
         moduleName: 'ADMIN',
         actionType: PermissionAction.DELETE,

@@ -25,6 +25,7 @@ const typeorm_3 = require("typeorm");
 const eps_entity_1 = require("../eps/eps.entity");
 const audit_service_1 = require("../audit/audit.service");
 const planning_service_1 = require("../planning/planning.service");
+const workdoc_service_1 = require("../workdoc/workdoc.service");
 const common_2 = require("@nestjs/common");
 let BoqService = class BoqService {
     boqRepo;
@@ -36,7 +37,8 @@ let BoqService = class BoqService {
     dataSource;
     auditService;
     planningService;
-    constructor(boqRepo, boqItemRepo, boqSubItemRepo, measurementRepo, progressRepo, epsRepo, dataSource, auditService, planningService) {
+    workDocService;
+    constructor(boqRepo, boqItemRepo, boqSubItemRepo, measurementRepo, progressRepo, epsRepo, dataSource, auditService, planningService, workDocService) {
         this.boqRepo = boqRepo;
         this.boqItemRepo = boqItemRepo;
         this.boqSubItemRepo = boqSubItemRepo;
@@ -46,6 +48,7 @@ let BoqService = class BoqService {
         this.dataSource = dataSource;
         this.auditService = auditService;
         this.planningService = planningService;
+        this.workDocService = workDocService;
     }
     async create(dto) {
         const boq = this.boqRepo.create(dto);
@@ -128,8 +131,17 @@ let BoqService = class BoqService {
                     Number(boqItem.consumedQty || 0) + Number(data.executedQty);
                 await manager.save(boq_item_entity_1.BoqItem, boqItem);
             }
+            if (measurement.boqSubItem) {
+                const subItem = measurement.boqSubItem;
+                subItem.executedQty =
+                    Number(subItem.executedQty || 0) + Number(data.executedQty);
+                await manager.save(boq_sub_item_entity_1.BoqSubItem, subItem);
+            }
             if (measurement.boqItemId) {
                 await this.planningService.updateActivitiesByBoqItem(measurement.boqItemId);
+            }
+            if (measurement.boqItemId || measurement.boqSubItemId) {
+                await this.workDocService.syncWorkOrderProgress();
             }
             return savedProgress;
         });
@@ -338,6 +350,7 @@ exports.BoqService = BoqService = __decorate([
     __param(4, (0, typeorm_1.InjectRepository)(measurement_progress_entity_1.MeasurementProgress)),
     __param(5, (0, typeorm_1.InjectRepository)(eps_entity_1.EpsNode)),
     __param(8, (0, common_2.Inject)((0, common_2.forwardRef)(() => planning_service_1.PlanningService))),
+    __param(9, (0, common_2.Inject)((0, common_2.forwardRef)(() => workdoc_service_1.WorkDocService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
@@ -346,6 +359,7 @@ exports.BoqService = BoqService = __decorate([
         typeorm_2.Repository,
         typeorm_3.DataSource,
         audit_service_1.AuditService,
-        planning_service_1.PlanningService])
+        planning_service_1.PlanningService,
+        workdoc_service_1.WorkDocService])
 ], BoqService);
 //# sourceMappingURL=boq.service.js.map

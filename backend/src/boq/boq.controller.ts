@@ -54,6 +54,21 @@ export class BoqController {
     res.end(buffer);
   }
 
+  @Get('export/:projectId')
+  @ApiOperation({ summary: 'Export BOQ to CSV' })
+  async exportBoq(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.boqImportService.exportBoqToCsv(projectId);
+    res.set({
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename=BOQ_Export.csv',
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
   @Post('import/:projectId')
   @ApiOperation({ summary: 'Import BOQ from Excel File' })
   @ApiConsumes('multipart/form-data')
@@ -75,6 +90,7 @@ export class BoqController {
     @Body('mapping') mappingStr?: string,
     @Body('defaultEpsId') defaultEpsIdStr?: string,
     @Body('hierarchyMapping') hierarchyMappingStr?: string,
+    @Body('dryRun') dryRunStr?: string,
   ) {
     let mapping = null;
     if (mappingStr) {
@@ -91,12 +107,16 @@ export class BoqController {
     const defaultEpsId = defaultEpsIdStr
       ? parseInt(defaultEpsIdStr, 10)
       : undefined;
+
+    const dryRun = dryRunStr === 'true' || dryRunStr === '1';
+
     return await this.boqImportService.importBoq(
       projectId,
       file.buffer,
       mapping,
       defaultEpsId,
       hierarchyMapping,
+      dryRun,
     );
   }
 

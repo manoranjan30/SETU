@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
@@ -81,9 +80,14 @@ import { QualityInspection } from './quality/entities/quality-inspection.entity'
 import { QualityMaterialTest } from './quality/entities/quality-material-test.entity';
 import { QualityObservationNcr } from './quality/entities/quality-observation-ncr.entity';
 import { QualityChecklist } from './quality/entities/quality-checklist.entity';
-import { QualitySnagList } from './quality/entities/quality-snag-list.entity';
+import { QualityItem } from './quality/entities/quality-item.entity';
+import { QualityHistory } from './quality/entities/quality-history.entity';
 import { QualityAudit } from './quality/entities/quality-audit.entity';
 import { QualityDocument } from './quality/entities/quality-document.entity';
+import { QualitySnagPhoto } from './quality/entities/quality-snag-photo.entity';
+import { QualityUnitTemplate } from './quality/entities/quality-unit-template.entity';
+import { QualityActivityList } from './quality/entities/quality-activity-list.entity';
+import { QualityActivity } from './quality/entities/quality-activity.entity';
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
@@ -93,6 +97,15 @@ import { Vendor } from './workdoc/entities/vendor.entity';
 import { WorkOrder } from './workdoc/entities/work-order.entity';
 import { WorkOrderItem } from './workdoc/entities/work-order-item.entity';
 import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
+import { WorkDocTemplate } from './workdoc/entities/work-doc-template.entity';
+import { TemplateBuilderModule } from './template-builder/template-builder.module';
+import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
+import { MicroScheduleModule } from './micro-schedule/micro-schedule.module';
+import { MicroSchedule } from './micro-schedule/entities/micro-schedule.entity';
+import { MicroScheduleActivity } from './micro-schedule/entities/micro-schedule-activity.entity';
+import { MicroDailyLog } from './micro-schedule/entities/micro-daily-log.entity';
+import { MicroQuantityLedger } from './micro-schedule/entities/micro-quantity-ledger.entity';
+import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
 
 @Module({
   imports: [
@@ -158,9 +171,14 @@ import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
         QualityMaterialTest,
         QualityObservationNcr,
         QualityChecklist,
-        QualitySnagList,
+        QualityItem,
+        QualityHistory,
         QualityAudit,
         QualityDocument,
+        QualitySnagPhoto,
+        QualityUnitTemplate,
+        QualityActivityList,
+        QualityActivity,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -171,11 +189,26 @@ import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
         WorkOrder,
         WorkOrderItem,
         WorkOrderBoqMap,
+        WorkDocTemplate,
+        // Template Builder
+        PdfTemplate,
+        // Micro Schedule
+        MicroSchedule,
+        MicroScheduleActivity,
+        MicroDailyLog,
+        MicroQuantityLedger,
+        DelayReason,
+        QuantityProgressRecord,
+        UserRoleNodeAssignment,
       ],
       synchronize: true,
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'client'),
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
     }),
     UsersModule,
     RolesModule,
@@ -196,14 +229,17 @@ import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
     QualityModule,
     DesignModule,
     WorkDocModule,
+    TemplateBuilderModule,
+    MicroScheduleModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,
       User,
-      DrawingCategory
+      DrawingCategory,
+      WorkDocTemplate,
     ]),
   ],
   controllers: [AppController],
   providers: [AppService, SeedService],
 })
-export class AppModule { }
+export class AppModule {}

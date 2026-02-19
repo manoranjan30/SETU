@@ -5,11 +5,11 @@ import { UpdateProjectProfileDto } from './dto/update-project-profile.dto';
 export declare class EpsController {
     private readonly epsService;
     constructor(epsService: EpsService);
-    getProfile(id: string): Promise<import("./project-profile.entity").ProjectProfile | null>;
-    updateProfile(id: string, updateProfileDto: UpdateProjectProfileDto, req: any): Promise<import("./project-profile.entity").ProjectProfile>;
+    getProfile(id: number): Promise<import("./project-profile.entity").ProjectProfile | null>;
+    updateProfile(id: number, updateProfileDto: UpdateProjectProfileDto, req: any): Promise<import("./project-profile.entity").ProjectProfile>;
     uploadFile(file: Express.Multer.File, req: any): Promise<any>;
     create(createEpsDto: CreateEpsNodeDto, req: any): Promise<import("./eps.entity").EpsNode>;
-    getProjectTree(id: string): Promise<any[]>;
+    getProjectTree(id: number): Promise<any[]>;
     findAll(req: any): Promise<import("./eps.entity").EpsNode[] | {
         id: number;
         name: string;
@@ -17,7 +17,7 @@ export declare class EpsController {
         parentId: null;
         order: number;
     }[]>;
-    findOne(id: string): Promise<import("./eps.entity").EpsNode | null>;
-    update(id: string, updateEpsDto: UpdateEpsNodeDto, req: any): Promise<import("./eps.entity").EpsNode | null>;
-    remove(id: string, req: any): Promise<void>;
+    findOne(id: number): Promise<import("./eps.entity").EpsNode | null>;
+    update(id: number, updateEpsDto: UpdateEpsNodeDto, req: any): Promise<import("./eps.entity").EpsNode | null>;
+    remove(id: number, req: any): Promise<void>;
 }

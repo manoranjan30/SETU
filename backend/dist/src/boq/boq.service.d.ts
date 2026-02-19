@@ -9,6 +9,7 @@ import { DataSource } from 'typeorm';
 import { EpsNode } from '../eps/eps.entity';
 import { AuditService } from '../audit/audit.service';
 import { PlanningService } from '../planning/planning.service';
+import { WorkDocService } from '../workdoc/workdoc.service';
 export declare class BoqService {
     private readonly boqRepo;
     private readonly boqItemRepo;
@@ -19,7 +20,8 @@ export declare class BoqService {
     private readonly dataSource;
     private readonly auditService;
     private readonly planningService;
-    constructor(boqRepo: Repository<BoqElement>, boqItemRepo: Repository<BoqItem>, boqSubItemRepo: Repository<BoqSubItem>, measurementRepo: Repository<MeasurementElement>, progressRepo: Repository<MeasurementProgress>, epsRepo: Repository<EpsNode>, dataSource: DataSource, auditService: AuditService, planningService: PlanningService);
+    private readonly workDocService;
+    constructor(boqRepo: Repository<BoqElement>, boqItemRepo: Repository<BoqItem>, boqSubItemRepo: Repository<BoqSubItem>, measurementRepo: Repository<MeasurementElement>, progressRepo: Repository<MeasurementProgress>, epsRepo: Repository<EpsNode>, dataSource: DataSource, auditService: AuditService, planningService: PlanningService, workDocService: WorkDocService);
     create(dto: CreateBoqElementDto): Promise<BoqElement>;
     createBoqItem(data: Partial<BoqItem>, userId?: number): Promise<BoqItem>;
     getProjectBoq(projectId: number): Promise<BoqItem[]>;

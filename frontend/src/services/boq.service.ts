@@ -98,6 +98,20 @@ export const boqService = {
         link.remove();
     },
 
+    // Export BOQ (CSV)
+    exportBoqCsv: async (projectId: number) => {
+        const response = await api.get(`/boq/export/${projectId}`, {
+            responseType: 'blob',
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `BOQ_Export_${projectId}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    },
+
     // Import BOQ
     importBoq: async (formData: FormData) => {
         const projectId = formData.get('projectId');

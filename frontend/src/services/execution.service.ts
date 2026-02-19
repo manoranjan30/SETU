@@ -28,6 +28,31 @@ export interface UpdateProgressDto {
     status?: string;
 }
 
+// NEW: Micro Schedule Breakdown Types
+export interface ExecutionBreakdownItem {
+    type: 'MICRO' | 'BALANCE';
+    id: number | null;
+    name: string;
+    allocatedQty: number;
+    executedQty: number;
+    balanceQty: number;
+}
+
+export interface ExecutionBreakdown {
+    activityId: number;
+    activity: any;
+    epsNodeId: number;
+    boqBreakdown: {
+        boqItem: any;
+        scope: {
+            total: number;
+            allocated: number;
+            balance: number;
+        };
+        items: ExecutionBreakdownItem[];
+    }[];
+}
+
 export const executionService = {
     // Create Mapping
     create: async (data: CreateContextDto) => {
@@ -43,5 +68,23 @@ export const executionService = {
     // Update Progress
     updateProgress: async (id: number, data: UpdateProgressDto) => {
         return await api.patch(`/execution-context/${id}/progress`, data);
+    },
+
+    // NEW: Check if activity has micro schedule
+    hasMicroSchedule: async (activityId: number): Promise<boolean> => {
+        try {
+            const res = await api.get(`/execution/has-micro/${activityId}`);
+            return res.data.hasMicro || false;
+        } catch {
+            return false;
+        }
+    },
+
+    // NEW: Get execution breakdown (Micro + Balance)
+    getBreakdown: async (activityId: number, epsNodeId: number): Promise<ExecutionBreakdown> => {
+        const res = await api.get('/execution/breakdown', {
+            params: { activityId, epsNodeId }
+        });
+        return res.data;
     }
 };

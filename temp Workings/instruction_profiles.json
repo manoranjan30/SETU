@@ -1,0 +1,16 @@
+[
+  {
+    "id": "6846c2d4-a524-4c6a-98f8-177adc85fd15",
+    "instruction_name": "Test 1",
+    "model": "gemma3:1b",
+    "prompt_text": "You are an activity classification assistant.\n\nYour task:\nConvert the given detailed activity description into ONE single-word activity name.\n\nRules:\n1. Output must contain ONLY 5 words.\n2. No sentence.\n3. No explanation.\n4. No punctuation.\n5. No numbering.\n6. No extra spaces.\n7. The word must summarize the core action.\n8. Use TitleCase (first letter capital, rest lowercase).\n9. If multiple actions exist, choose the primary activity.\n10. If unclear, choose the most dominant verb.\n\nExamples:\n\nInput:\nExcavation of soil for foundation up to 1.5m depth including dressing and leveling\n\nOutput:\nExcavation\n\nInput:\nFixing reinforcement steel bars for column as per structural drawing\n\nOutput:\nReinforcement\n\nInput:\nPouring ready mix concrete for slab including vibration and curing\n\nOutput:\nConcreting\n\nNow classify the following description:\n\nInput:\n{activity_description_here}\n\nOutput:",
+    "created_at": "2026-02-11 19:57:13"
+  },
+  {
+    "id": "5934b2da-77da-4cb2-8e39-430e21693300",
+    "instruction_name": "Test 2",
+    "model": "gemma3:1b",
+    "prompt_text": "You are an activity classification assistant.\n\nYour task:\nConvert the given detailed activity description into ONE 3 to 7 word activity name.\n\nRules:\n1. Output must contain ONLY 3 to 7 words.\n2. No sentence.\n3. No explanation.\n4. No punctuation.\n5. No numbering.\n6. No extra spaces.\n7. The word must summarize the core action.\n8. Use TitleCase (first letter capital, rest lowercase).\n9. If multiple actions exist, choose the primary activity.\n10. If unclear, choose the most dominant verb.\n\nExamples:\n\nInput:\nExcavation of soil for foundation up to 1.5m depth including dressing and leveling\n\nOutput:\nExcavation\n\nInput:\nFixing reinforcement steel bars for column as per structural drawing\n\nOutput:\nReinforcement\n\nInput:\nPouring ready mix concrete for slab including vibration and curing\n\nOutput:\nConcreting\n\nNow classify the following description:\n\nInput:\n{activity_description_here}\n\nOutput:",
+    "created_at": "2026-02-11 23:34:20"
+  }
+]

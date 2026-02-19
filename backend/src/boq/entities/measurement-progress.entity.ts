@@ -32,6 +32,22 @@ export class MeasurementProgress {
   @Column({ type: 'json', nullable: true })
   customAttributes: any;
 
+  @Column({
+    type: 'enum',
+    enum: ['PENDING', 'APPROVED', 'REJECTED'],
+    default: 'APPROVED',
+  })
+  status: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewedBy: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  reviewedAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  rejectionReason: string;
+
   @CreateDateColumn()
   loggedOn: Date;
 }

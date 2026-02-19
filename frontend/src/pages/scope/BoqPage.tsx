@@ -32,6 +32,8 @@ const BoqPage = () => {
     // Editing
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editForm, setEditForm] = useState<Partial<BoqItem>>({});
+    const [editingSubItemId, setEditingSubItemId] = useState<number | null>(null);
+    const [editSubItemForm, setEditSubItemForm] = useState<Partial<BoqSubItem>>({});
 
     // Deletion
     const [deleteItem, setDeleteItem] = useState<{ id: number, type: 'ITEM' | 'SUBITEM' } | null>(null);
@@ -132,6 +134,26 @@ const BoqPage = () => {
         }
     };
 
+    const startSubItemEdit = (subItem: BoqSubItem) => {
+        setEditingSubItemId(subItem.id);
+        setEditSubItemForm({ ...subItem });
+    };
+
+    const saveSubItemEdit = async () => {
+        if (!editingSubItemId) return;
+        try {
+            await boqService.updateSubItem(editingSubItemId, {
+                description: editSubItemForm.description,
+                uom: editSubItemForm.uom,
+                rate: Number(editSubItemForm.rate)
+            });
+            setEditingSubItemId(null);
+            fetchItems();
+        } catch (error) {
+            alert('Failed to update sub-item');
+        }
+    };
+
     const confirmDelete = async () => {
         if (!deleteItem) return;
         try {
@@ -176,6 +198,9 @@ const BoqPage = () => {
                         <div className="flex gap-2">
                             <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 shadow-sm">
                                 <Download className="w-4 h-4" /> Template
+                            </button>
+                            <button onClick={() => projectId && boqService.exportBoqCsv(Number(projectId))} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 shadow-sm">
+                                <FileSpreadsheet className="w-4 h-4 text-green-600" /> Export CSV
                             </button>
                             <button onClick={() => setIsImportWizardOpen(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm">
                                 <Upload className="w-4 h-4" /> Import CSV
@@ -293,24 +318,60 @@ const BoqPage = () => {
                                                             <tbody className="divide-y divide-gray-100 bg-white shadow-sm rounded-lg overflow-hidden border border-gray-100">
                                                                 {item.subItems && item.subItems.length > 0 ? item.subItems.map(si => (
                                                                     <tr key={si.id} className="hover:bg-blue-50/20">
-                                                                        <td className="px-4 py-3 text-gray-700">{si.description}</td>
-                                                                        <td className="px-4 py-3 text-right font-mono">{formatIndianNumber(si.qty, 3)}</td>
-                                                                        <td className="px-4 py-3 text-center text-gray-500">{si.uom}</td>
-                                                                        <td className="px-4 py-3 text-right text-gray-600">{formatIndianNumber(si.rate)}</td>
-                                                                        <td className="px-4 py-3 text-right font-bold text-gray-900">{formatIndianNumber(si.amount)}</td>
-                                                                        <td className="px-4 py-3 text-center flex justify-center gap-3">
-                                                                            <button
-                                                                                onClick={() => setSelectedMeasurement({ item, subItem: si })}
-                                                                                className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium"
-                                                                                title="Manage Measurements"
-                                                                            >
-                                                                                <Calculator className="w-4 h-4" />
-                                                                                <span className="text-xs">Sheet</span>
-                                                                            </button>
-                                                                            <button onClick={() => setDeleteItem({ id: si.id, type: 'SUBITEM' })} className="text-red-400 hover:text-red-600">
-                                                                                <Trash2 className="w-3 h-3" />
-                                                                            </button>
-                                                                        </td>
+                                                                        {editingSubItemId === si.id ? (
+                                                                            <>
+                                                                                <td className="px-4 py-3">
+                                                                                    <input
+                                                                                        className="w-full border rounded p-1 text-sm"
+                                                                                        value={editSubItemForm.description}
+                                                                                        onChange={e => setEditSubItemForm({ ...editSubItemForm, description: e.target.value })}
+                                                                                    />
+                                                                                </td>
+                                                                                <td className="px-4 py-3 text-right font-mono text-gray-500">{formatIndianNumber(si.qty, 3)}</td>
+                                                                                <td className="px-4 py-3 text-center">
+                                                                                    <input
+                                                                                        className="w-full border rounded p-1 text-center text-sm"
+                                                                                        value={editSubItemForm.uom}
+                                                                                        onChange={e => setEditSubItemForm({ ...editSubItemForm, uom: e.target.value })}
+                                                                                    />
+                                                                                </td>
+                                                                                <td className="px-4 py-3 text-right">
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        className="w-full border rounded p-1 text-right text-sm"
+                                                                                        value={editSubItemForm.rate}
+                                                                                        onChange={e => setEditSubItemForm({ ...editSubItemForm, rate: Number(e.target.value) })}
+                                                                                    />
+                                                                                </td>
+                                                                                <td className="px-4 py-3 text-right font-bold text-gray-900">{formatIndianNumber((si.qty || 0) * (Number(editSubItemForm.rate) || 0))}</td>
+                                                                                <td className="px-4 py-3 text-center flex justify-center gap-3">
+                                                                                    <button onClick={saveSubItemEdit} className="text-green-600 hover:text-green-800"><Check className="w-4 h-4" /></button>
+                                                                                    <button onClick={() => setEditingSubItemId(null)} className="text-gray-600 hover:text-gray-800"><X className="w-4 h-4" /></button>
+                                                                                </td>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <td className="px-4 py-3 text-gray-700">{si.description}</td>
+                                                                                <td className="px-4 py-3 text-right font-mono">{formatIndianNumber(si.qty, 3)}</td>
+                                                                                <td className="px-4 py-3 text-center text-gray-500">{si.uom}</td>
+                                                                                <td className="px-4 py-3 text-right text-gray-600">{formatIndianNumber(si.rate)}</td>
+                                                                                <td className="px-4 py-3 text-right font-bold text-gray-900">{formatIndianNumber(si.amount)}</td>
+                                                                                <td className="px-4 py-3 text-center flex justify-center gap-3">
+                                                                                    <button onClick={() => startSubItemEdit(si)} className="text-blue-600 hover:text-blue-800" title="Edit Sub Item"><Edit2 className="w-4 h-4" /></button>
+                                                                                    <button
+                                                                                        onClick={() => setSelectedMeasurement({ item, subItem: si })}
+                                                                                        className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium"
+                                                                                        title="Manage Measurements"
+                                                                                    >
+                                                                                        <Calculator className="w-4 h-4" />
+                                                                                        <span className="text-xs">Sheet</span>
+                                                                                    </button>
+                                                                                    <button onClick={() => setDeleteItem({ id: si.id, type: 'SUBITEM' })} className="text-red-400 hover:text-red-600">
+                                                                                        <Trash2 className="w-3 h-3" />
+                                                                                    </button>
+                                                                                </td>
+                                                                            </>
+                                                                        )}
                                                                     </tr>
                                                                 )) : (
                                                                     <tr>

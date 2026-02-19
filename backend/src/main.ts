@@ -8,6 +8,9 @@ import {
   HttpException,
 } from '@nestjs/common';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
+
+import { existsSync } from 'fs';
 
 @Catch(NotFoundException)
 export class SpaFallbackFilter implements ExceptionFilter {
@@ -24,7 +27,16 @@ export class SpaFallbackFilter implements ExceptionFilter {
       });
     } else {
       // Frontend 404 -> Serve index.html (SPA)
-      response.sendFile(join(__dirname, '..', 'client', 'index.html'));
+      const indexPath = join(__dirname, '..', 'client', 'index.html');
+      if (existsSync(indexPath)) {
+        response.sendFile(indexPath);
+      } else {
+        response.status(404).json({
+          statusCode: 404,
+          message: 'Frontend not found and API endpoint does not exist. Did you forget the /api prefix?',
+          path: request.url,
+        });
+      }
     }
   }
 }
@@ -34,9 +46,13 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors();
 
+  // Increase body limits for large payloads (e.g. for BOQ/WorkOrder imports)
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ limit: '50mb', extended: true }));
+
   // Use SPA Filter
   app.useGlobalFilters(new SpaFallbackFilter());
 
-  await app.listen(3000);
+  await app.listen(3000, '0.0.0.0');
 }
 bootstrap();

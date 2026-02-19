@@ -36,6 +36,9 @@ export class BoqSubItem {
   @Column('decimal', { precision: 12, scale: 3, default: 0 })
   qty: number;
 
+  @Column('decimal', { precision: 12, scale: 3, default: 0 })
+  executedQty: number;
+
   // Derived: qty * rate
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   amount: number;

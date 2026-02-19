@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Table, CheckSquare, Layers, Split, FileText } from 'lucide-react';
+import { Calendar, Table, CheckSquare, Layers, Split, FileText, ListChecks } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface PlanningDashboardProps {
@@ -14,6 +14,11 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ children, current
             key: 'schedule',
             icon: <Calendar size={18} />,
             label: 'Master Schedule',
+        },
+        {
+            key: 'micro_schedule',
+            icon: <ListChecks size={18} />,
+            label: 'Micro Schedule',
         },
         {
             key: 'matrix',
@@ -80,7 +85,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ children, current
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-                {['schedule', 'mapper', 'matrix', 'schedules', 'gantt_version', 'lookahead'].includes(currentView) ? (
+                {['schedule', 'micro_schedule', 'mapper', 'matrix', 'schedules', 'gantt_version', 'lookahead'].includes(currentView) ? (
                     children
                 ) : (
                     <div className="flex-1 overflow-auto p-6">

@@ -41,7 +41,7 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
         this.progressRepo = progressRepo;
         this.measurementRepo = measurementRepo;
     }
-    async batchSaveMeasurements(projectId, entries, userId) {
+    async batchSaveMeasurements(projectId, entries, userId, autoApprove = false) {
         return await this.dataSource.transaction(async (manager) => {
             const results = [];
             for (const entry of entries) {
@@ -53,11 +53,15 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
                     continue;
                 }
                 const epsNodeId = entry.wbsNodeId || boqItem.epsNodeId || projectId;
+                const microSuffix = entry.microActivityId
+                    ? `-MICRO-${entry.microActivityId}`
+                    : '';
                 let siteMeas = await manager.findOne(measurement_element_entity_1.MeasurementElement, {
                     where: {
                         boqItemId: entry.boqItemId,
                         activityId: entry.activityId || null,
-                        elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}`,
+                        microActivityId: entry.microActivityId || null,
+                        elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}`,
                     },
                 });
                 if (!siteMeas) {
@@ -67,27 +71,35 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
                         boqItemId: entry.boqItemId,
                         epsNodeId: epsNodeId,
                         activityId: entry.activityId || null,
-                        elementName: 'Site Execution',
+                        microActivityId: entry.microActivityId || null,
+                        elementName: entry.microActivityId
+                            ? 'Micro Execution'
+                            : 'Site Execution',
                         qty: 0,
-                        elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}`,
+                        elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}`,
                     });
                     siteMeas = await manager.save(measurement_element_entity_1.MeasurementElement, siteMeas);
                 }
-                const progress = manager.create(measurement_progress_entity_1.MeasurementProgress, {
-                    measurementElementId: siteMeas.id,
-                    executedQty: entry.executedQty,
-                    date: new Date(entry.date),
-                    updatedBy: userId.toString(),
-                });
+                const status = autoApprove ? 'APPROVED' : 'PENDING';
+                const progress = new measurement_progress_entity_1.MeasurementProgress();
+                progress.measurementElement = siteMeas;
+                progress.executedQty = entry.executedQty;
+                progress.date = new Date(entry.date);
+                progress.updatedBy = userId.toString();
+                progress.status = status;
+                progress.reviewedBy = autoApprove ? userId.toString() : null;
+                progress.reviewedAt = autoApprove ? new Date() : null;
                 await manager.save(measurement_progress_entity_1.MeasurementProgress, progress);
-                siteMeas.executedQty =
-                    Number(siteMeas.executedQty || 0) + Number(entry.executedQty);
-                await manager.save(measurement_element_entity_1.MeasurementElement, siteMeas);
-                boqItem.consumedQty =
-                    Number(boqItem.consumedQty || 0) + Number(entry.executedQty);
-                await manager.save(boq_item_entity_1.BoqItem, boqItem);
                 results.push(progress);
-                await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
+                if (status === 'APPROVED') {
+                    siteMeas.executedQty =
+                        Number(siteMeas.executedQty || 0) + Number(entry.executedQty);
+                    await manager.save(measurement_element_entity_1.MeasurementElement, siteMeas);
+                    boqItem.consumedQty =
+                        Number(boqItem.consumedQty || 0) + Number(entry.executedQty);
+                    await manager.save(boq_item_entity_1.BoqItem, boqItem);
+                    await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
+                }
             }
             return results;
         });
@@ -210,9 +222,10 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
             .leftJoinAndSelect('me.boqItem', 'boq')
             .leftJoinAndSelect('me.activity', 'act')
             .where('me.projectId = :projectId', { projectId })
+            .andWhere('progress.status = :status', { status: 'APPROVED' })
             .orderBy('progress.loggedOn', 'DESC')
             .getMany();
-        this.logger.log(`Found ${logs.length} progress logs for project ${projectId}`);
+        this.logger.log(`Found ${logs.length} APPROVED progress logs for project ${projectId}`);
         return logs;
     }
     async updateProgressLog(logId, newQty, userId) {
@@ -264,6 +277,64 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
             }
             return { success: true };
         });
+    }
+    async getPendingProgressLogs(projectId) {
+        return await this.progressRepo
+            .createQueryBuilder('progress')
+            .innerJoinAndSelect('progress.measurementElement', 'me')
+            .leftJoinAndSelect('me.boqItem', 'boq')
+            .leftJoinAndSelect('me.activity', 'act')
+            .leftJoinAndSelect('me.epsNode', 'loc')
+            .where('me.projectId = :projectId', { projectId })
+            .andWhere('progress.status = :status', { status: 'PENDING' })
+            .orderBy('progress.loggedOn', 'DESC')
+            .getMany();
+    }
+    async approveProgress(logIds, userId) {
+        return await this.dataSource.transaction(async (manager) => {
+            const logs = await manager.find(measurement_progress_entity_1.MeasurementProgress, {
+                where: {
+                    id: (0, typeorm_2.In)(logIds),
+                    status: 'PENDING',
+                },
+                relations: ['measurementElement', 'measurementElement.boqItem'],
+            });
+            if (!logs.length)
+                return {
+                    success: true,
+                    count: 0,
+                    message: 'No pending logs found to approve',
+                };
+            for (const progress of logs) {
+                progress.status = 'APPROVED';
+                progress.reviewedBy = userId.toString();
+                progress.reviewedAt = new Date();
+                await manager.save(measurement_progress_entity_1.MeasurementProgress, progress);
+                const me = progress.measurementElement;
+                if (!me)
+                    continue;
+                const boqItem = me.boqItem;
+                const qty = Number(progress.executedQty);
+                me.executedQty = Number(me.executedQty || 0) + qty;
+                await manager.save(measurement_element_entity_1.MeasurementElement, me);
+                if (boqItem) {
+                    boqItem.consumedQty = Number(boqItem.consumedQty || 0) + qty;
+                    await manager.save(boq_item_entity_1.BoqItem, boqItem);
+                    await this.syncSchedule(boqItem.id, manager, me.activityId);
+                }
+            }
+            this.logger.log(`Approved ${logs.length} progress entries`);
+            return { success: true, count: logs.length };
+        });
+    }
+    async rejectProgress(logIds, userId, reason) {
+        const result = await this.dataSource.manager.update(measurement_progress_entity_1.MeasurementProgress, { id: (0, typeorm_2.In)(logIds), status: 'PENDING' }, {
+            status: 'REJECTED',
+            reviewedBy: userId.toString(),
+            reviewedAt: new Date(),
+            rejectionReason: reason,
+        });
+        return { success: true, affected: result.affected };
     }
 };
 exports.ExecutionService = ExecutionService;

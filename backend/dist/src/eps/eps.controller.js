@@ -28,10 +28,10 @@ let EpsController = class EpsController {
         this.epsService = epsService;
     }
     getProfile(id) {
-        return this.epsService.getProfile(+id);
+        return this.epsService.getProfile(id);
     }
     updateProfile(id, updateProfileDto, req) {
-        return this.epsService.updateProfile(+id, updateProfileDto, req.user);
+        return this.epsService.updateProfile(id, updateProfileDto, req.user);
     }
     uploadFile(file, req) {
         return this.epsService.importCsv(file.buffer, req.user);
@@ -40,7 +40,7 @@ let EpsController = class EpsController {
         return this.epsService.create(createEpsDto, req.user);
     }
     getProjectTree(id) {
-        return this.epsService.getProjectTree(+id);
+        return this.epsService.getProjectTree(id);
     }
     async findAll(req) {
         try {
@@ -64,31 +64,31 @@ let EpsController = class EpsController {
         }
     }
     findOne(id) {
-        return this.epsService.findOne(+id);
+        return this.epsService.findOne(id);
     }
     update(id, updateEpsDto, req) {
-        return this.epsService.update(+id, updateEpsDto, req.user);
+        return this.epsService.update(id, updateEpsDto, req.user);
     }
     remove(id, req) {
-        return this.epsService.remove(+id, req.user);
+        return this.epsService.remove(id, req.user);
     }
 };
 exports.EpsController = EpsController;
 __decorate([
     (0, common_1.Get)(':id/profile'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], EpsController.prototype, "getProfile", null);
 __decorate([
     (0, common_1.Patch)(':id/profile'),
     (0, roles_decorator_1.Roles)('Admin'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, update_project_profile_dto_1.UpdateProjectProfileDto, Object]),
+    __metadata("design:paramtypes", [Number, update_project_profile_dto_1.UpdateProjectProfileDto, Object]),
     __metadata("design:returntype", void 0)
 ], EpsController.prototype, "updateProfile", null);
 __decorate([
@@ -112,9 +112,9 @@ __decorate([
 ], EpsController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(':id/tree'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], EpsController.prototype, "getProjectTree", null);
 __decorate([
@@ -126,28 +126,28 @@ __decorate([
 ], EpsController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)(':id'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], EpsController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, roles_decorator_1.Roles)('Admin'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, update_eps_node_dto_1.UpdateEpsNodeDto, Object]),
+    __metadata("design:paramtypes", [Number, update_eps_node_dto_1.UpdateEpsNodeDto, Object]),
     __metadata("design:returntype", void 0)
 ], EpsController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
     (0, roles_decorator_1.Roles)('Admin'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", void 0)
 ], EpsController.prototype, "remove", null);
 exports.EpsController = EpsController = __decorate([

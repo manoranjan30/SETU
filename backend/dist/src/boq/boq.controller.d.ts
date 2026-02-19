@@ -8,7 +8,15 @@ export declare class BoqController {
     private readonly boqImportService;
     constructor(boqService: BoqService, boqImportService: BoqImportService);
     downloadTemplate(res: Response): Promise<void>;
-    importBoq(projectId: number, file: Express.Multer.File, mappingStr?: string, defaultEpsIdStr?: string, hierarchyMappingStr?: string): Promise<number>;
+    exportBoq(projectId: number, res: Response): Promise<void>;
+    importBoq(projectId: number, file: Express.Multer.File, mappingStr?: string, defaultEpsIdStr?: string, hierarchyMappingStr?: string, dryRunStr?: string): Promise<{
+        newCount: number;
+        updateCount: number;
+        errorCount: number;
+        errors: string[];
+        warnings: string[];
+        preview: any[];
+    }>;
     downloadMeasurementTemplate(res: Response): Promise<void>;
     importMeasurements(projectId: number, boqItemId: number, file: Express.Multer.File, mappingStr?: string, defaultEpsIdStr?: string, valueMapStr?: string, hierarchyMappingStr?: string, boqSubItemIdStr?: string): Promise<{
         count: number;

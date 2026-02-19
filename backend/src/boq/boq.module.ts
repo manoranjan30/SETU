@@ -13,6 +13,7 @@ import { BoqSubItem } from './entities/boq-sub-item.entity';
 
 import { AuditModule } from '../audit/audit.module';
 import { PlanningModule } from '../planning/planning.module';
+import { WorkDocModule } from '../workdoc/workdoc.module';
 import { forwardRef } from '@nestjs/common';
 
 @Module({
@@ -27,6 +28,7 @@ import { forwardRef } from '@nestjs/common';
     ]),
     AuditModule,
     forwardRef(() => PlanningModule),
+    forwardRef(() => WorkDocModule),
   ],
   controllers: [BoqController],
   providers: [BoqService, BoqImportService],

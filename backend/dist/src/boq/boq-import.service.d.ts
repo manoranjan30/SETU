@@ -12,7 +12,15 @@ export declare class BoqImportService {
     getMeasurementTemplate(): Buffer;
     importMeasurements(projectId: number, boqItemId: number, fileBuffer: Buffer, mapping?: any, defaultEpsId?: number, valueMap?: Record<string, number | string>, hierarchyMapping?: any, boqSubItemId?: number): Promise<number>;
     getTemplateBuffer(): Buffer;
-    importBoq(projectId: number, fileBuffer: Buffer, mapping?: any, defaultEpsId?: number, hierarchyMapping?: any): Promise<number>;
+    importBoq(projectId: number, fileBuffer: Buffer, mapping?: any, defaultEpsId?: number, hierarchyMapping?: any, dryRun?: boolean): Promise<{
+        newCount: number;
+        updateCount: number;
+        errorCount: number;
+        errors: string[];
+        warnings: string[];
+        preview: any[];
+    }>;
     private resolveEpsPath;
+    exportBoqToCsv(projectId: number): Promise<Buffer>;
     private tryParseJson;
 }

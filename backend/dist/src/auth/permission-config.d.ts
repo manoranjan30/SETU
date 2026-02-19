@@ -21,6 +21,6 @@ export declare const PermissionCode: {
     readonly LABOR_READ: "LABOR.READ";
     readonly LABOR_MANAGE: "LABOR.MANAGE";
 };
-export type Permission = typeof PermissionCode[keyof typeof PermissionCode];
+export type Permission = (typeof PermissionCode)[keyof typeof PermissionCode];
 export declare const PERMISSION_DEPENDENCIES: Record<string, string[]>;
 export declare function expandPermissions(directPermissions: string[]): string[];

@@ -58,6 +58,18 @@ export class MeasurementElement {
   @Column({ nullable: true })
   activityId: number;
 
+  // Link to Micro Activity (For Micro Schedule Progress Tracking)
+  @ManyToOne('MicroScheduleActivity', {
+    onDelete: 'SET NULL',
+    nullable: true,
+    createForeignKeyConstraints: false,
+  })
+  @JoinColumn({ name: 'microActivityId' })
+  microActivity: any;
+
+  @Column({ nullable: true })
+  microActivityId: number;
+
   // Technical Data
   @Column({ nullable: true })
   elementId: string; // ID from source (CAD/BIM handle)

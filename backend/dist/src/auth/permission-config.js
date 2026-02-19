@@ -27,21 +27,48 @@ exports.PermissionCode = {
 };
 exports.PERMISSION_DEPENDENCIES = {
     [exports.PermissionCode.DESIGN_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.DESIGN_UPLOAD]: [exports.PermissionCode.DESIGN_READ, exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.DESIGN_APPROVE]: [exports.PermissionCode.DESIGN_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.DESIGN_UPLOAD]: [
+        exports.PermissionCode.DESIGN_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
+    [exports.PermissionCode.DESIGN_APPROVE]: [
+        exports.PermissionCode.DESIGN_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
     [exports.PermissionCode.PLANNING_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.PLANNING_EDIT]: [exports.PermissionCode.PLANNING_READ, exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.PLANNING_BASELINE]: [exports.PermissionCode.PLANNING_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.PLANNING_EDIT]: [
+        exports.PermissionCode.PLANNING_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
+    [exports.PermissionCode.PLANNING_BASELINE]: [
+        exports.PermissionCode.PLANNING_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
     [exports.PermissionCode.BOQ_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.BOQ_MANAGE]: [exports.PermissionCode.BOQ_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.BOQ_MANAGE]: [
+        exports.PermissionCode.BOQ_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
     [exports.PermissionCode.EXECUTION_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.EXECUTION_UPDATE]: [exports.PermissionCode.EXECUTION_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.EXECUTION_UPDATE]: [
+        exports.PermissionCode.EXECUTION_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
     [exports.PermissionCode.QUALITY_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.QUALITY_MANAGE]: [exports.PermissionCode.QUALITY_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.QUALITY_MANAGE]: [
+        exports.PermissionCode.QUALITY_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
     [exports.PermissionCode.EHS_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.EHS_MANAGE]: [exports.PermissionCode.EHS_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.EHS_MANAGE]: [
+        exports.PermissionCode.EHS_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
     [exports.PermissionCode.LABOR_READ]: [exports.PermissionCode.VIEW_PROJECTS],
-    [exports.PermissionCode.LABOR_MANAGE]: [exports.PermissionCode.LABOR_READ, exports.PermissionCode.VIEW_PROJECTS],
+    [exports.PermissionCode.LABOR_MANAGE]: [
+        exports.PermissionCode.LABOR_READ,
+        exports.PermissionCode.VIEW_PROJECTS,
+    ],
 };
 function expandPermissions(directPermissions) {
     const expanded = new Set(directPermissions);
@@ -52,7 +79,7 @@ function expandPermissions(directPermissions) {
         for (const perm of expanded) {
             const implied = exports.PERMISSION_DEPENDENCIES[perm];
             if (implied) {
-                implied.forEach(p => expanded.add(p));
+                implied.forEach((p) => expanded.add(p));
             }
         }
         if (expanded.size > currentSize) {

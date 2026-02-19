@@ -16,6 +16,7 @@ services:
       DATABASE_PASSWORD: password
       DATABASE_NAME: setu_db
       JWT_SECRET: supersecretkey
+      PDF_TOOL_URL: http://pdf-tool:8002
     volumes:
       - ./backend:/app/backend
       - /app/backend/node_modules
@@ -40,6 +41,17 @@ services:
     depends_on:
       - backend
 
-  # DISABLE ORIGINAL 'APP' SERVICE IN DEV MODE
+  pdf-tool:
+    build:
+      context: ./tools/pdf_processor
+      dockerfile: Dockerfile
+    container_name: setu_pdf_tool_dev
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./tools/pdf_processor:/app
+    command: uvicorn app:app --host 0.0.0.0 --port 8001 --reload
+
+  # disable original app
   app:
     profiles: [ "donotstart" ]

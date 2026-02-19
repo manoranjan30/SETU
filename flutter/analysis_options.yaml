@@ -1,0 +1,48 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Avoid print statements in production code
+    avoid_print: true
+    
+    # Prefer const constructors
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_const_literals_to_create_immutables: true
+    
+    # Code style
+    prefer_single_quotes: true
+    sort_child_properties_last: true
+    use_key_in_widget_constructors: true
+    
+    # Avoid unnecessary code
+    unnecessary_brace_in_string_interps: true
+    unnecessary_const: true
+    unnecessary_new: true
+    unnecessary_this: true
+    
+    # Prefer final
+    prefer_final_fields: true
+    prefer_final_locals: true
+    
+    # Documentation
+    public_member_api_docs: false
+    
+    # Type safety
+    always_declare_return_types: true
+    avoid_dynamic_calls: false
+    
+    # Error handling
+    avoid_empty_else: true
+    
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "build/**"
+    - ".dart_tool/**"
+  
+  errors:
+    invalid_annotation_target: ignore
+    missing_required_param: error
+    missing_return: error

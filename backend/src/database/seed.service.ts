@@ -5,6 +5,7 @@ import { Permission } from '../permissions/permission.entity';
 import { Role } from '../roles/role.entity';
 import { User } from '../users/user.entity';
 import { DrawingCategory } from '../design/entities/drawing-category.entity';
+import { WorkDocTemplate } from '../workdoc/entities/work-doc-template.entity';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -20,85 +21,32 @@ export class SeedService implements OnApplicationBootstrap {
     private userRepo: Repository<User>,
     @InjectRepository(DrawingCategory)
     private categoryRepo: Repository<DrawingCategory>,
-  ) { }
+    @InjectRepository(WorkDocTemplate)
+    private templateRepo: Repository<WorkDocTemplate>,
+  ) {}
 
   async onApplicationBootstrap() {
     await this.seedPermissions();
     await this.seedDefaultRoles();
     await this.seedDefaultUser();
     await this.seedCategories();
+    await this.seedTemplates();
   }
 
   private async seedPermissions() {
-    const PERMISSIONS = [
-      // Core
-      { code: 'VIEW_DASHBOARD', name: 'View Dashboard', module: 'CORE' },
-      { code: 'VIEW_PROJECTS', name: 'View Projects List', module: 'CORE' },
-
-      // Admin
-      { code: 'MANAGE_USERS', name: 'Manage System Users', module: 'ADMIN' },
-      { code: 'MANAGE_ROLES', name: 'Manage System Roles', module: 'ADMIN' },
-
-      // EPS
-      { code: 'MANAGE_EPS', name: 'Manage EPS Structure', module: 'EPS' },
-
-      // Design
-      { code: 'DESIGN.READ', name: 'View Drawings', module: 'DESIGN' },
-      { code: 'DESIGN.UPLOAD', name: 'Upload Drawings', module: 'DESIGN' },
-      { code: 'DESIGN.APPROVE', name: 'Approve Drawings (GFC)', module: 'DESIGN' },
-
-      // Planning
-      { code: 'PLANNING.READ', name: 'View Schedule', module: 'PLANNING' },
-      { code: 'PLANNING.EDIT', name: 'Edit Schedule/WBS', module: 'PLANNING' },
-      { code: 'PLANNING.BASELINE', name: 'Manage Baselines', module: 'PLANNING' },
-
-      // BOQ
-      { code: 'BOQ.READ', name: 'View BOQ', module: 'BOQ' },
-      { code: 'BOQ.MANAGE', name: 'Manage BOQ', module: 'BOQ' },
-
-      // Execution
-      { code: 'EXECUTION.READ', name: 'View Progress', module: 'EXECUTION' },
-      { code: 'EXECUTION.UPDATE', name: 'Update Daily Progress', module: 'EXECUTION' },
-
-      // Quality
-      { code: 'QUALITY.READ', name: 'View Quality Records', module: 'QUALITY' },
-      { code: 'QUALITY.MANAGE', name: 'Manage Quality Records', module: 'QUALITY' },
-
-      // EHS
-      { code: 'EHS.READ', name: 'View Safety Records', module: 'EHS' },
-      { code: 'EHS.MANAGE', name: 'Manage Safety Records', module: 'EHS' },
-
-      // Labor
-      { code: 'LABOR.READ', name: 'View Labor Records', module: 'LABOR' },
-      { code: 'LABOR.MANAGE', name: 'Manage Labor Records', module: 'LABOR' },
-    ];
-
-    for (const p of PERMISSIONS) {
-      const exists = await this.permissionRepo.findOneBy({
-        permissionCode: p.code,
-      });
-      if (!exists) {
-        // Must provide all required columns: permissionCode, permissionName, moduleName, scopeLevel(default), actionType(default)
-        await this.permissionRepo.save(
-          this.permissionRepo.create({
-            permissionCode: p.code,
-            permissionName: p.name,
-            moduleName: p.module,
-            description: p.name,
-            isSystem: true,
-          }),
-        );
-        this.logger.log(`Seeded permission: ${p.code}`);
-      }
-    }
+    // Permissions are now handled by PermissionsService on module init
+    // This function is kept for backward compatibility if needed, or can be removed.
+    this.logger.log('Permissions seeding handled by PermissionsService');
   }
 
   private async seedDefaultRoles() {
-    // Ensure Admin role exists
+    // Ensure Admin role exists and has ALL permissions
     let adminRole = await this.roleRepo.findOne({
       where: { name: 'Admin' },
       relations: ['permissions'],
     });
+
+    // Re-fetch all permissions from DB to ensure we have the seed ones
     const allPermissions = await this.permissionRepo.find();
 
     if (!adminRole) {
@@ -109,11 +57,12 @@ export class SeedService implements OnApplicationBootstrap {
           permissions: allPermissions,
         }),
       );
-      this.logger.log('Seeded Admin Role');
+      this.logger.log('Seeded Admin Role with ALL permissions');
     } else {
+      // Always update Admin to have ALL permissions (auto-grant new ones)
       adminRole.permissions = allPermissions;
       await this.roleRepo.save(adminRole);
-      this.logger.log('Updated Admin Role Permissions');
+      this.logger.log('Updated Admin Role with latest permissions');
     }
 
     // Ensure Standard User role exists
@@ -124,9 +73,13 @@ export class SeedService implements OnApplicationBootstrap {
     if (!userRole) {
       // Assign basic permissions
       const userPermissions = allPermissions.filter((p) =>
-        ['VIEW_DASHBOARD', 'VIEW_PROJECTS', 'EXECUTION.READ', 'PLANNING.READ', 'BOQ.READ'].includes(
-          p.permissionCode,
-        ),
+        [
+          'VIEW_DASHBOARD',
+          'VIEW_PROJECTS',
+          'EXECUTION.READ',
+          'PLANNING.READ',
+          'BOQ.READ',
+        ].includes(p.permissionCode),
       );
       userRole = await this.roleRepo.save(
         this.roleRepo.create({
@@ -139,9 +92,13 @@ export class SeedService implements OnApplicationBootstrap {
     } else {
       // UPDATE existing User role permissions
       const userPermissions = allPermissions.filter((p) =>
-        ['VIEW_DASHBOARD', 'VIEW_PROJECTS', 'EXECUTION.READ', 'PLANNING.READ', 'BOQ.READ'].includes(
-          p.permissionCode,
-        ),
+        [
+          'VIEW_DASHBOARD',
+          'VIEW_PROJECTS',
+          'EXECUTION.READ',
+          'PLANNING.READ',
+          'BOQ.READ',
+        ].includes(p.permissionCode),
       );
       userRole.permissions = userPermissions;
       await this.roleRepo.save(userRole);
@@ -205,10 +162,51 @@ export class SeedService implements OnApplicationBootstrap {
     ];
 
     for (const cat of CATEGORIES) {
-      const exists = await this.categoryRepo.findOne({ where: { code: cat.code } });
+      const exists = await this.categoryRepo.findOne({
+        where: { code: cat.code },
+      });
       if (!exists) {
         await this.categoryRepo.save(this.categoryRepo.create(cat));
         this.logger.log(`Seeded Category: ${cat.name}`);
+      }
+    }
+  }
+
+  private async seedTemplates() {
+    const TEMPLATES = [
+      {
+        name: 'Starworth SAP Standard',
+        description:
+          'Standard layout for Starworth Infrastructure Work Orders (SAP format)',
+        config: {
+          vendorRegex: 'Vendor\\s*[:#]?\\s*(\\d+)',
+          woNumberRegex: 'Order\\s*No\\.?\\s*[:]?\\s*(\\d{10})',
+          dateRegex: 'Date\\s*[:]?\\s*(\\d{2}[./-]\\d{2}[./-]\\d{4})',
+          tableConfig: {
+            startMarker: 'ITEM DETAILS',
+            rowRegex:
+              '^\\s*(\\d+\\.\\d+|\\d+)\\s+([\\d/ ]+)\\s+(.+?)\\s+([\\d,.]+)\\s+([a-zA-Z]{2,4})\\s+([\\d,.]+)\\s+([\\d,.]+)',
+            columnMapping: {
+              itemNo: 1,
+              code: 2,
+              description: 3,
+              qty: 4,
+              uom: 5,
+              rate: 6,
+              amount: 7,
+            },
+          },
+        },
+      },
+    ];
+
+    for (const t of TEMPLATES) {
+      const exists = await this.templateRepo.findOne({
+        where: { name: t.name },
+      });
+      if (!exists) {
+        await this.templateRepo.save(this.templateRepo.create(t));
+        this.logger.log(`Seeded Template: ${t.name}`);
       }
     }
   }

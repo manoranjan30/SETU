@@ -1,38 +1,49 @@
-
 import React, { useState } from 'react';
+import clsx from 'clsx';
 import VendorList from './VendorList';
 import WorkOrderList from './WorkOrderList';
+import WorkDocTemplateList from './WorkDocTemplateList';
+import GlobalMappingBoard from './GlobalMappingBoard';
 
-const WorkDocManager: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'orders' | 'vendors'>('orders');
+interface Props {
+    projectId: number;
+}
+
+const WorkDocManager: React.FC<Props> = ({ projectId }) => {
+    const [activeTab, setActiveTab] = useState<'orders' | 'vendors' | 'templates' | 'onboarding'>('orders');
 
     return (
-        <div className="h-full flex flex-col p-4 bg-white shadow rounded-lg overflow-hidden">
-            <div className="border-b border-gray-200 mb-4">
-                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                    <button
-                        onClick={() => setActiveTab('orders')}
-                        className={`${activeTab === 'orders'
-                            ? 'border-blue-500 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                    >
-                        Work Orders
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('vendors')}
-                        className={`${activeTab === 'vendors'
-                            ? 'border-blue-500 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                    >
-                        Vendors
-                    </button>
+        <div className="h-full flex flex-col bg-white shadow rounded-lg overflow-hidden">
+            <div className="bg-slate-50 border-b border-slate-200 px-8 py-4 flex items-center justify-between">
+                <h2 className="text-xl font-black text-slate-800 tracking-tight">Contract Management</h2>
+                <nav className="flex bg-slate-200 p-1 rounded-xl border border-slate-300 shadow-inner" aria-label="Tabs">
+                    {[
+                        { id: 'orders', label: 'Work Orders' },
+                        { id: 'vendors', label: 'Vendors' },
+                        { id: 'onboarding', label: 'Vendor Onboarding' },
+                        { id: 'templates', label: 'Parsing Templates' }
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={clsx(
+                                "whitespace-nowrap py-2 px-6 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
+                                activeTab === tab.id
+                                    ? 'bg-white text-blue-600 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-700'
+                            )}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </nav>
             </div>
 
-            <div className="flex-1 overflow-hidden relative">
-                {activeTab === 'orders' ? <WorkOrderList /> : <VendorList />}
+            <div className="flex-1 overflow-auto relative bg-white">
+                {activeTab === 'orders' && <WorkOrderList />}
+                {activeTab === 'vendors' && <VendorList />}
+                {activeTab === 'templates' && <WorkDocTemplateList />}
+                {activeTab === 'onboarding' && <GlobalMappingBoard projectId={projectId} />}
             </div>
         </div>
     );

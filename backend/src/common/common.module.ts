@@ -13,4 +13,4 @@ import { SystemSettingsController } from './system-settings.controller';
   controllers: [TableViewController, SystemSettingsController],
   exports: [TableViewService, SystemSettingsService],
 })
-export class CommonModule { }
+export class CommonModule {}

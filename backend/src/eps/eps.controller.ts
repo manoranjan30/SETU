@@ -10,6 +10,7 @@ import {
   Request,
   UseInterceptors,
   UploadedFile,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { EpsService } from './eps.service';
@@ -26,18 +27,18 @@ export class EpsController {
   constructor(private readonly epsService: EpsService) {}
 
   @Get(':id/profile')
-  getProfile(@Param('id') id: string) {
-    return this.epsService.getProfile(+id);
+  getProfile(@Param('id', ParseIntPipe) id: number) {
+    return this.epsService.getProfile(id);
   }
 
   @Patch(':id/profile')
   @Roles('Admin') // Or Project Manager
   updateProfile(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateProfileDto: UpdateProjectProfileDto,
     @Request() req,
   ) {
-    return this.epsService.updateProfile(+id, updateProfileDto, req.user);
+    return this.epsService.updateProfile(id, updateProfileDto, req.user);
   }
 
   @Post('import')
@@ -55,8 +56,8 @@ export class EpsController {
 
   // New Endpoint for Tree
   @Get(':id/tree')
-  getProjectTree(@Param('id') id: string) {
-    return this.epsService.getProjectTree(+id);
+  getProjectTree(@Param('id', ParseIntPipe) id: number) {
+    return this.epsService.getProjectTree(id);
   }
 
   @Get()
@@ -82,23 +83,23 @@ export class EpsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.epsService.findOne(+id);
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.epsService.findOne(id);
   }
 
   @Patch(':id')
   @Roles('Admin')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateEpsDto: UpdateEpsNodeDto,
     @Request() req,
   ) {
-    return this.epsService.update(+id, updateEpsDto, req.user);
+    return this.epsService.update(id, updateEpsDto, req.user);
   }
 
   @Delete(':id')
   @Roles('Admin')
-  remove(@Param('id') id: string, @Request() req) {
-    return this.epsService.remove(+id, req.user);
+  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.epsService.remove(id, req.user);
   }
 }

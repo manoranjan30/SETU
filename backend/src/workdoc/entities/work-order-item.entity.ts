@@ -1,47 +1,83 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+} from 'typeorm';
 import { WorkOrder } from './work-order.entity';
 
 @Entity('work_order_items')
 export class WorkOrderItem {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-    @ManyToOne(() => WorkOrder, (wo) => wo.items, { onDelete: 'CASCADE' })
-    workOrder: WorkOrder;
+  @ManyToOne(() => WorkOrder, (wo) => wo.items, { onDelete: 'CASCADE' })
+  workOrder: WorkOrder;
 
-    @Column()
-    materialCode: string; // SAP Material/Service Code
+  @Column({ nullable: true })
+  serialNumber: string; // Hierarchical serial: 10, 10.1, 10.2, 20, 20.1, etc.
 
-    @Column()
-    shortText: string; // Description
+  @Column({ nullable: true })
+  parentSerialNumber: string; // Parent's serial number (e.g., "10" for "10.1")
 
-    @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })
-    quantity: number;
+  @Column({ default: 0 })
+  level: number; // 0 for parent items, 1+ for children
 
-    @Column()
-    uom: string; // Unit
+  @Column({ default: false })
+  isParent: boolean; // True for group/parent items (amount only, no qty*rate)
 
-    @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-    rate: number;
+  @Column()
+  materialCode: string; // SAP Material/Service Code
 
-    @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-    amount: number;
+  @Column()
+  shortText: string; // Description
 
-    @Column({ nullable: true })
-    longText: string; // Additional spec
+  @Column({ type: 'text', nullable: true })
+  longText: string; // Additional spec / Detail description
 
-    @Column({
-        type: 'decimal',
-        precision: 15,
-        scale: 3,
-        default: 0,
-        comment: 'Cumulative rolled up execution from mapped BOQ items'
-    })
-    executedQuantity: number;
+  @Column()
+  uom: string; // Unit
 
-    @CreateDateColumn()
-    createdAt: Date;
+  @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })
+  quantity: number;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  rate: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  amount: number; // Imported amount from file
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  calculatedAmount: number; // qty * rate (for children) or sum of children (for parents)
+
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 3,
+    default: 0,
+    comment: 'Cumulative rolled up execution from mapped BOQ items',
+  })
+  executedQuantity: number;
+
+  // --- BOQ Mapping Fields ---
+  @Column({ nullable: true })
+  boqItemId: number;
+
+  @ManyToOne('BoqItem', { nullable: true })
+  boqItem: any; // Using 'any' to avoid strict circular dependency issues if needed, or better use explicit type if possible
+
+  @Column({
+    type: 'enum',
+    enum: ['PENDING', 'AUTO_CODE', 'AUTO_DESC', 'MANUAL'],
+    default: 'PENDING',
+  })
+  mappingStatus: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

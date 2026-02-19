@@ -8,6 +8,8 @@ import { themeQuartz } from 'ag-grid-community';
 import { Tree, type TreeNodeData } from '../../components/common/Tree';
 import ExecutionLogTable from './ExecutionLogTable';
 import ActivityLaborAllocation from '../../components/labor/ActivityLaborAllocation';
+import { ExecutionBreakdownModal } from '../../components/execution/ExecutionBreakdownModal';
+import { executionService } from '../../services/execution.service';
 
 // ---------------------------------------------------------------------------
 // External Components (Stable References)
@@ -105,6 +107,25 @@ const ProgressEntry = () => {
     // Tab State
     const [activeTab, setActiveTab] = useState<'entry' | 'log' | 'labor'>('entry');
     const [laborCategories, setLaborCategories] = useState<any[]>([]);
+
+    // Micro Schedule Modal State
+    const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
+
+    useEffect(() => {
+        const checkMicro = async () => {
+            if (selectedActivityId && activeTab === 'entry') {
+                try {
+                    const hasMicro = await executionService.hasMicroSchedule(selectedActivityId);
+                    setIsBreakdownModalOpen(hasMicro);
+                } catch (e) {
+                    console.error("Failed to check micro schedule", e);
+                }
+            } else {
+                setIsBreakdownModalOpen(false);
+            }
+        };
+        checkMicro();
+    }, [selectedActivityId, activeTab]);
 
     useEffect(() => {
         if (activeTab === 'labor' && projectId) {
@@ -765,6 +786,17 @@ const ProgressEntry = () => {
                     </div>
                 )}
             </div>
+            {isBreakdownModalOpen && selectedActivityId && (
+                <ExecutionBreakdownModal
+                    activityId={selectedActivityId}
+                    activityName={activities.find(a => a.id === selectedActivityId)?.activityName || ''}
+                    epsNodeId={selectedEpsIds[0]}
+                    onClose={() => setIsBreakdownModalOpen(false)}
+                    onProgressLogged={() => {
+                        if (selectedEpsIds.length > 0) fetchActivities(selectedEpsIds);
+                    }}
+                />
+            )}
         </div>
     );
 };

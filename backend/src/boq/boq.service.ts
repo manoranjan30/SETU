@@ -12,6 +12,7 @@ import { EpsNode } from '../eps/eps.entity'; // Added Import
 
 import { AuditService } from '../audit/audit.service';
 import { PlanningService } from '../planning/planning.service';
+import { WorkDocService } from '../workdoc/workdoc.service';
 import { forwardRef, Inject } from '@nestjs/common';
 
 @Injectable()
@@ -33,6 +34,8 @@ export class BoqService {
     private readonly auditService: AuditService,
     @Inject(forwardRef(() => PlanningService))
     private readonly planningService: PlanningService,
+    @Inject(forwardRef(() => WorkDocService))
+    private readonly workDocService: WorkDocService,
   ) {}
 
   // --- Legacy / Compatibility ---
@@ -146,11 +149,23 @@ export class BoqService {
         await manager.save(BoqItem, boqItem);
       }
 
+      if (measurement.boqSubItem) {
+        const subItem = measurement.boqSubItem;
+        subItem.executedQty =
+          Number(subItem.executedQty || 0) + Number(data.executedQty);
+        await manager.save(BoqSubItem, subItem);
+      }
+
       // Trigger Financial Update in Schedule
       if (measurement.boqItemId) {
         await this.planningService.updateActivitiesByBoqItem(
           measurement.boqItemId,
         );
+      }
+
+      // NEW: Sync Work Order progress
+      if (measurement.boqItemId || measurement.boqSubItemId) {
+        await this.workDocService.syncWorkOrderProgress();
       }
 
       return savedProgress;

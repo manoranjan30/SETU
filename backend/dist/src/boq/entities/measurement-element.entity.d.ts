@@ -13,6 +13,8 @@ export declare class MeasurementElement {
     epsNodeId: number;
     activity: Activity;
     activityId: number;
+    microActivity: any;
+    microActivityId: number;
     elementId: string;
     elementName: string;
     elementCategory: string;

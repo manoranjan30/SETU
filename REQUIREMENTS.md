@@ -24,6 +24,11 @@ To successfully run and develop the SETU application, ensure your environment me
 - **Python:** v3.8+ (for running utility scripts if any)
 - **Visual Studio Code:** Recommended IDE
 
+### Mobile Development
+- **Flutter SDK:** v3.19.0 or higher
+- **Dart SDK:** v3.3.0 or higher
+- **Android Studio / Xcode:** For Android/iOS native builds
+
 ## 3. Environment Configuration
 
 You must configure the `.env` files for both backend and frontend.

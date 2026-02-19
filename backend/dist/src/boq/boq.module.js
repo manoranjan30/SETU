@@ -20,6 +20,7 @@ const boq_import_service_1 = require("./boq-import.service");
 const boq_sub_item_entity_1 = require("./entities/boq-sub-item.entity");
 const audit_module_1 = require("../audit/audit.module");
 const planning_module_1 = require("../planning/planning.module");
+const workdoc_module_1 = require("../workdoc/workdoc.module");
 const common_2 = require("@nestjs/common");
 let BoqModule = class BoqModule {
 };
@@ -37,6 +38,7 @@ exports.BoqModule = BoqModule = __decorate([
             ]),
             audit_module_1.AuditModule,
             (0, common_2.forwardRef)(() => planning_module_1.PlanningModule),
+            (0, common_2.forwardRef)(() => workdoc_module_1.WorkDocModule),
         ],
         controllers: [boq_controller_1.BoqController],
         providers: [boq_service_1.BoqService, boq_import_service_1.BoqImportService],

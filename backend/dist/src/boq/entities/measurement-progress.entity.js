@@ -20,6 +20,10 @@ let MeasurementProgress = class MeasurementProgress {
     date;
     updatedBy;
     customAttributes;
+    status;
+    reviewedBy;
+    reviewedAt;
+    rejectionReason;
     loggedOn;
 };
 exports.MeasurementProgress = MeasurementProgress;
@@ -51,6 +55,26 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'json', nullable: true }),
     __metadata("design:type", Object)
 ], MeasurementProgress.prototype, "customAttributes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: 'enum',
+        enum: ['PENDING', 'APPROVED', 'REJECTED'],
+        default: 'APPROVED',
+    }),
+    __metadata("design:type", String)
+], MeasurementProgress.prototype, "status", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], MeasurementProgress.prototype, "reviewedBy", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], MeasurementProgress.prototype, "reviewedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], MeasurementProgress.prototype, "rejectionReason", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)

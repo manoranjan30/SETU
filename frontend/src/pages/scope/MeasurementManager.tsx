@@ -25,30 +25,32 @@ interface ColumnConfig {
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
     { id: 'select', label: '', visible: true, width: 40 },
-    { id: 'elementRef', label: 'Element Ref', visible: true, width: 100 },
-    { id: 'elementName', label: 'Element Name', visible: true, width: 200 },
+    { id: 'elementRef', label: 'ID', visible: true, width: 80 }, // Shortened label
+    { id: 'description', label: 'Description', visible: true, width: 250 }, // Added Description
+    { id: 'elementName', label: 'Measurement Name', visible: false, width: 150 }, // Hide Name by default if desc is main
     { id: 'category', label: 'Category', visible: true, width: 100 },
     { id: 'grid', label: 'Grid', visible: true, width: 80 },
-    { id: 'location', label: 'Location (EPS)', visible: true, width: 200 },
+    { id: 'location', label: 'Location (EPS)', visible: true, width: 250 }, // Increased width
     { id: 'l', label: 'L', visible: true, align: 'right', width: 60 },
     { id: 'b', label: 'B', visible: true, align: 'right', width: 60 },
     { id: 'd', label: 'D', visible: true, align: 'right', width: 60 },
     { id: 'levels', label: 'Levels', visible: true, align: 'right', width: 100 },
-    { id: 'bottomLevel', label: 'Bot Level', visible: false, align: 'right', width: 80 },
-    { id: 'topLevel', label: 'Top Level', visible: false, align: 'right', width: 80 },
-    { id: 'height', label: 'Height', visible: false, align: 'right', width: 60 },
-    { id: 'perimeter', label: 'Perimeter', visible: false, align: 'right', width: 80 },
-    { id: 'baseArea', label: 'Base Area', visible: false, align: 'right', width: 80 },
-    { id: 'baseCoordinates', label: 'Base Coords', visible: false, width: 150 },
-    { id: 'plineAllLengths', label: 'Pline Lengths', visible: false, width: 150 },
-    { id: 'elementType', label: 'Element Type', visible: false, width: 100 },
-    { id: 'linkingElement', label: 'Linking Ref', visible: false, width: 100 },
-    { id: 'importedOn', label: 'Imported On', visible: false, width: 120 },
+    { id: 'qty', label: 'Qty', visible: true, align: 'right', width: 90 }, // Slightly wider
+    { id: 'executed', label: 'Exec', visible: true, align: 'right', width: 90 },
+    { id: 'bal', label: 'Bal', visible: true, align: 'right', width: 90 },
     { id: 'uom', label: 'UOM', visible: true, align: 'center', width: 60 },
-    { id: 'qty', label: 'Qty', visible: true, align: 'right', width: 80 },
-    { id: 'executed', label: 'Executed', visible: true, align: 'right', width: 80 },
-    { id: 'bal', label: 'Bal', visible: true, align: 'right', width: 80 },
-    { id: 'customAttributes', label: 'Attributes', visible: false, width: 150 }
+    // Hidden by default details
+    { id: 'bottomLevel', label: 'Bot Lvl', visible: false, align: 'right', width: 80 },
+    { id: 'topLevel', label: 'Top Lvl', visible: false, align: 'right', width: 80 },
+    { id: 'height', label: 'Height', visible: false, align: 'right', width: 60 },
+    { id: 'perimeter', label: 'Perim.', visible: false, align: 'right', width: 80 },
+    { id: 'baseArea', label: 'Area', visible: false, align: 'right', width: 80 },
+    { id: 'baseCoordinates', label: 'Coords', visible: false, width: 150 },
+    { id: 'plineAllLengths', label: 'P-Lines', visible: false, width: 150 },
+    { id: 'elementType', label: 'Type', visible: false, width: 100 },
+    { id: 'linkingElement', label: 'Link Ref', visible: false, width: 100 },
+    { id: 'importedOn', label: 'Import Date', visible: false, width: 120 },
+    { id: 'customAttributes', label: 'Attrs', visible: false, width: 150 }
 ];
 
 export const MeasurementManager: React.FC<MeasurementManagerProps> = ({ projectId, boqItem, subItem, onClose, onUpdate, epsNodes }) => {
@@ -185,16 +187,15 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({ projectI
     const resolveEpsPath = (nodeId: number | string) => {
         if (!nodeId) return '-';
         let current = epsNodeMap.get(Number(nodeId));
-        if (!current) return String(nodeId);
+        if (!current) return 'Unknown Node (' + nodeId + ')'; // Better debugging info
 
         const path = [current.name];
         let parentId = current.parentId;
-        let visited = new Set([current.id]); // Prevent circular loops
+        let visited = new Set([current.id]);
 
         while (parentId && !visited.has(parentId)) {
             const parent = epsNodeMap.get(parentId);
             if (parent) {
-                // Show EVERYTHING in hierarchy as requested
                 path.unshift(parent.name);
                 visited.add(parent.id);
                 parentId = parent.parentId;
@@ -635,14 +636,21 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({ projectI
                                                             </td>
                                                         );
                                                         case 'elementRef': return <td key={col.id} className="p-3 border-b text-gray-400 font-mono text-xs truncate">{m.elementId?.substring(0, 8) || '-'}</td>;
-                                                        case 'elementName': return <td key={col.id} className="p-3 border-b font-medium text-gray-700 truncate" title={m.elementName}>{m.elementName}</td>;
+                                                        case 'description': return <td key={col.id} className="p-3 border-b font-medium text-gray-800 truncate" title={m.elementName}>{m.elementName}</td>;
+                                                        case 'elementName': return <td key={col.id} className="p-3 border-b text-gray-600 truncate" title={m.elementName}>{m.elementName}</td>;
                                                         case 'category': return <td key={col.id} className="p-3 border-b text-xs text-gray-500 truncate">{m.elementCategory || '-'}</td>;
                                                         case 'grid': return <td key={col.id} className="p-3 border-b text-xs text-gray-500 font-mono truncate">{m.grid || '-'}</td>;
-                                                        case 'location': return <td key={col.id} className="p-3 border-b text-gray-800 font-medium text-xs truncate" title={resolveEpsPath(m.epsNodeId)}>{resolveEpsPath(m.epsNodeId)}</td>;
+                                                        case 'location': return <td key={col.id} className="p-3 border-b text-blue-900 font-medium text-xs truncate" title={resolveEpsPath(m.epsNodeId)}>{resolveEpsPath(m.epsNodeId)}</td>;
                                                         case 'l': return <td key={col.id} className="p-3 border-b text-right text-gray-600 font-mono bg-gray-50/30">{m.length}</td>;
                                                         case 'b': return <td key={col.id} className="p-3 border-b text-right text-gray-600 font-mono bg-gray-50/30">{m.breadth}</td>;
                                                         case 'd': return <td key={col.id} className="p-3 border-b text-right text-gray-600 font-mono bg-gray-50/30">{m.depth}</td>;
                                                         case 'levels': return <td key={col.id} className="p-3 border-b text-right text-xs text-gray-400 font-mono">{m.bottomLevel || m.topLevel ? `${m.bottomLevel} / ${m.topLevel}` : '-'}</td>;
+                                                        case 'qty': return <td key={col.id} className="p-3 border-b text-right font-bold text-blue-700 bg-blue-50/10 font-mono">{formatIndianNumber(m.qty, 3)}</td>;
+                                                        case 'executed': return <td key={col.id} className="p-3 border-b text-right text-xs text-green-700">{formatIndianNumber(m.executedQty, 3)}</td>;
+                                                        case 'bal': return <td key={col.id} className="p-3 border-b text-right text-xs text-gray-400">{formatIndianNumber((m.qty - (m.executedQty || 0)), 3)}</td>;
+                                                        case 'uom': return <td key={col.id} className="p-3 border-b text-center text-xs text-gray-500">{m.uom || ''}</td>;
+
+                                                        // Hidden By Default
                                                         case 'bottomLevel': return <td key={col.id} className="p-3 border-b text-right text-xs text-gray-400 font-mono">{m.bottomLevel || '-'}</td>;
                                                         case 'topLevel': return <td key={col.id} className="p-3 border-b text-right text-xs text-gray-400 font-mono">{m.topLevel || '-'}</td>;
                                                         case 'height': return <td key={col.id} className="p-3 border-b text-right text-gray-600 font-mono bg-gray-50/30">{m.height}</td>;
@@ -653,10 +661,6 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({ projectI
                                                         case 'elementType': return <td key={col.id} className="p-3 border-b text-xs text-gray-500 truncate">{m.elementType || '-'}</td>;
                                                         case 'linkingElement': return <td key={col.id} className="p-3 border-b text-xs text-gray-500 truncate">{m.linkingElement || '-'}</td>;
                                                         case 'importedOn': return <td key={col.id} className="p-3 border-b text-xs text-gray-400">{m.importedOn ? new Date(m.importedOn).toLocaleDateString() : '-'}</td>;
-                                                        case 'uom': return <td key={col.id} className="p-3 border-b text-center text-xs text-gray-500">{m.uom || ''}</td>;
-                                                        case 'qty': return <td key={col.id} className="p-3 border-b text-right font-bold text-blue-700 bg-blue-50/10 font-mono">{formatIndianNumber(m.qty, 3)}</td>;
-                                                        case 'executed': return <td key={col.id} className="p-3 border-b text-right font-bold text-green-700">{formatIndianNumber(m.executedQty, 3)}</td>;
-                                                        case 'bal': return <td key={col.id} className="p-3 border-b text-right text-gray-400">{formatIndianNumber((m.qty - (m.executedQty || 0)), 3)}</td>;
                                                         case 'customAttributes': return <td key={col.id} className="p-3 border-b text-xs text-gray-400 truncate max-w-[150px]">{JSON.stringify(m.customAttributes || {})}</td>;
                                                         default: return <td key={col.id} className="p-3 border-b">-</td>;
                                                     }
