@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -15,13 +16,14 @@ part 'app_database.g.dart';
     CachedProjects,
     CachedActivities,
     CachedBoqItems,
+    CachedEpsNodes,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
@@ -30,7 +32,10 @@ class AppDatabase extends _$AppDatabase {
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Handle future migrations here
+        // Handle migrations for version 2
+        if (from < 2) {
+          await m.createTable(cachedEpsNodes);
+        }
       },
     );
   }
@@ -43,6 +48,104 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedProjects).go();
     await delete(cachedActivities).go();
     await delete(cachedBoqItems).go();
+    await delete(cachedEpsNodes).go();
+  }
+
+  // ==================== EPS NODE QUERIES ====================
+
+  /// Get EPS nodes by parent ID (for hierarchical navigation)
+  Future<List<CachedEpsNode>> getEpsNodesByParent(int? parentId) async {
+    if (parentId == null) {
+      // Get root nodes (no parent)
+      return (select(cachedEpsNodes)..where((t) => t.parentId.isNull())).get();
+    }
+    return (select(cachedEpsNodes)..where((t) => t.parentId.equals(parentId))).get();
+  }
+
+  /// Get all EPS nodes for a project
+  Future<List<CachedEpsNode>> getEpsNodesForProject(int projectId) async {
+    return (select(cachedEpsNodes)..where((t) => t.projectId.equals(projectId))).get();
+  }
+
+  /// Cache EPS nodes from API response
+  Future<void> cacheEpsNodes(List<Map<String, dynamic>> nodes, int projectId) async {
+    await batch((batch) {
+      for (final node in nodes) {
+        batch.insert(
+          cachedEpsNodes,
+          CachedEpsNodesCompanion.insert(
+            id: Value(node['id'] as int),
+            projectId: projectId,
+            name: node['name'] as String,
+            code: Value(node['code'] as String?),
+            type: node['type'] as String? ?? 'unknown',
+            parentId: Value(node['parentId'] as int? ?? node['parent_id'] as int?),
+            rawData: jsonEncode(node),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  // ==================== ACTIVITY QUERIES ====================
+
+  /// Get activities by EPS node ID
+  Future<List<CachedActivity>> getActivitiesByEpsNode(int epsNodeId) async {
+    return (select(cachedActivities)..where((t) => t.epsNodeId.equals(epsNodeId))).get();
+  }
+
+  /// Get all activities for a project
+  Future<List<CachedActivity>> getActivitiesForProject(int projectId) async {
+    return (select(cachedActivities)..where((t) => t.projectId.equals(projectId))).get();
+  }
+
+  /// Cache activities from API response
+  Future<void> cacheActivities(List<Map<String, dynamic>> activities, int projectId) async {
+    await batch((batch) {
+      for (final activity in activities) {
+        batch.insert(
+          cachedActivities,
+          CachedActivitiesCompanion.insert(
+            id: Value(activity['id'] as int),
+            projectId: projectId,
+            name: activity['name'] as String,
+            epsNodeId: Value(activity['epsNodeId'] as int? ?? activity['eps_node_id'] as int?),
+            status: Value(activity['status'] as String?),
+            startDate: Value(activity['startDate'] as String? ?? activity['start_date'] as String?),
+            endDate: Value(activity['endDate'] as String? ?? activity['end_date'] as String?),
+            progress: Value((activity['actualProgress'] as num?)?.toDouble() ?? 
+                           (activity['actual_progress'] as num?)?.toDouble() ?? 0.0),
+            rawData: jsonEncode(activity),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  // ==================== SYNC STATUS QUERIES ====================
+
+  /// Get pending progress entries count
+  Future<int> getPendingProgressCount() async {
+    final query = selectOnly(progressEntries)
+      ..addColumns([progressEntries.id.count()])
+      ..where(progressEntries.syncStatus.equals(SyncStatus.pending.value));
+    final result = await query.getSingle();
+    return result.read(progressEntries.id.count()) ?? 0;
+  }
+
+  /// Get sync status summary
+  Future<Map<SyncStatus, int>> getSyncStatusSummary() async {
+    final result = <SyncStatus, int>{};
+    for (final status in SyncStatus.values) {
+      final query = selectOnly(progressEntries)
+        ..addColumns([progressEntries.id.count()])
+        ..where(progressEntries.syncStatus.equals(status.value));
+      final row = await query.getSingle();
+      result[status] = row.read(progressEntries.id.count()) ?? 0;
+    }
+    return result;
   }
 }
 
@@ -70,11 +173,12 @@ class ProgressEntries extends Table {
   TextColumn get date => text()();
   TextColumn get remarks => text().nullable()();
   TextColumn get photoPaths => text().nullable()(); // JSON array of local paths
-  IntColumn get syncStatus => integer().withDefault(const Constant(0))(); // 0=pending, 1=synced, 2=failed
+  IntColumn get syncStatus => integer().withDefault(const Constant(0))(); // 0=pending, 1=synced, 2=failed, 3=error
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get syncedAt => dateTime().nullable()();
   TextColumn get syncError => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  TextColumn get idempotencyKey => text().nullable()(); // For safe retry
 }
 
 /// Daily logs table for offline storage
@@ -94,6 +198,7 @@ class DailyLogs extends Table {
   DateTimeColumn get syncedAt => dateTime().nullable()();
   TextColumn get syncError => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  TextColumn get idempotencyKey => text().nullable()();
 }
 
 /// Sync queue for tracking pending uploads
@@ -157,12 +262,30 @@ class CachedBoqItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Cached EPS nodes for hierarchical navigation
+class CachedEpsNodes extends Table {
+  IntColumn get id => integer()();
+  IntColumn get projectId => integer()();
+  IntColumn get parentId => integer().nullable()();
+  TextColumn get name => text()();
+  TextColumn get code => text().nullable()();
+  TextColumn get type => text()(); // 'project', 'phase', 'building', 'floor', etc.
+  RealColumn get progress => real().withDefault(const Constant(0))();
+  TextColumn get rawData => text()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ==================== SYNC STATUS ENUM ====================
 
 enum SyncStatus {
   pending(0),
-  synced(1),
-  failed(2);
+  syncing(1),
+  synced(2),
+  failed(3),
+  error(4); // Permanent error - requires user action
 
   final int value;
   const SyncStatus(this.value);

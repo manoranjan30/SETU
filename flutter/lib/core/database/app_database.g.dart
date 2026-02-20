@@ -113,6 +113,12 @@ class $ProgressEntriesTable extends ProgressEntries
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _idempotencyKeyMeta =
+      const VerificationMeta('idempotencyKey');
+  @override
+  late final GeneratedColumn<String> idempotencyKey = GeneratedColumn<String>(
+      'idempotency_key', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -130,7 +136,8 @@ class $ProgressEntriesTable extends ProgressEntries
         createdAt,
         syncedAt,
         syncError,
-        retryCount
+        retryCount,
+        idempotencyKey
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -231,6 +238,12 @@ class $ProgressEntriesTable extends ProgressEntries
           retryCount.isAcceptableOrUnknown(
               data['retry_count']!, _retryCountMeta));
     }
+    if (data.containsKey('idempotency_key')) {
+      context.handle(
+          _idempotencyKeyMeta,
+          idempotencyKey.isAcceptableOrUnknown(
+              data['idempotency_key']!, _idempotencyKeyMeta));
+    }
     return context;
   }
 
@@ -272,6 +285,8 @@ class $ProgressEntriesTable extends ProgressEntries
           .read(DriftSqlType.string, data['${effectivePrefix}sync_error']),
       retryCount: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      idempotencyKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}idempotency_key']),
     );
   }
 
@@ -298,6 +313,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
   final DateTime? syncedAt;
   final String? syncError;
   final int retryCount;
+  final String? idempotencyKey;
   const ProgressEntry(
       {required this.id,
       this.serverId,
@@ -314,7 +330,8 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       required this.createdAt,
       this.syncedAt,
       this.syncError,
-      required this.retryCount});
+      required this.retryCount,
+      this.idempotencyKey});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -346,6 +363,9 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       map['sync_error'] = Variable<String>(syncError);
     }
     map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || idempotencyKey != null) {
+      map['idempotency_key'] = Variable<String>(idempotencyKey);
+    }
     return map;
   }
 
@@ -379,6 +399,9 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           ? const Value.absent()
           : Value(syncError),
       retryCount: Value(retryCount),
+      idempotencyKey: idempotencyKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(idempotencyKey),
     );
   }
 
@@ -402,6 +425,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
       syncError: serializer.fromJson<String?>(json['syncError']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
+      idempotencyKey: serializer.fromJson<String?>(json['idempotencyKey']),
     );
   }
   @override
@@ -424,6 +448,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
       'syncError': serializer.toJson<String?>(syncError),
       'retryCount': serializer.toJson<int>(retryCount),
+      'idempotencyKey': serializer.toJson<String?>(idempotencyKey),
     };
   }
 
@@ -443,7 +468,8 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           DateTime? createdAt,
           Value<DateTime?> syncedAt = const Value.absent(),
           Value<String?> syncError = const Value.absent(),
-          int? retryCount}) =>
+          int? retryCount,
+          Value<String?> idempotencyKey = const Value.absent()}) =>
       ProgressEntry(
         id: id ?? this.id,
         serverId: serverId.present ? serverId.value : this.serverId,
@@ -463,6 +489,8 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
         syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
         syncError: syncError.present ? syncError.value : this.syncError,
         retryCount: retryCount ?? this.retryCount,
+        idempotencyKey:
+            idempotencyKey.present ? idempotencyKey.value : this.idempotencyKey,
       );
   ProgressEntry copyWithCompanion(ProgressEntriesCompanion data) {
     return ProgressEntry(
@@ -488,6 +516,9 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       syncError: data.syncError.present ? data.syncError.value : this.syncError,
       retryCount:
           data.retryCount.present ? data.retryCount.value : this.retryCount,
+      idempotencyKey: data.idempotencyKey.present
+          ? data.idempotencyKey.value
+          : this.idempotencyKey,
     );
   }
 
@@ -509,7 +540,8 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
-          ..write('retryCount: $retryCount')
+          ..write('retryCount: $retryCount, ')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -531,7 +563,8 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       createdAt,
       syncedAt,
       syncError,
-      retryCount);
+      retryCount,
+      idempotencyKey);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -551,7 +584,8 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           other.createdAt == this.createdAt &&
           other.syncedAt == this.syncedAt &&
           other.syncError == this.syncError &&
-          other.retryCount == this.retryCount);
+          other.retryCount == this.retryCount &&
+          other.idempotencyKey == this.idempotencyKey);
 }
 
 class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
@@ -571,6 +605,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
   final Value<DateTime?> syncedAt;
   final Value<String?> syncError;
   final Value<int> retryCount;
+  final Value<String?> idempotencyKey;
   const ProgressEntriesCompanion({
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
@@ -588,6 +623,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     this.syncedAt = const Value.absent(),
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
+    this.idempotencyKey = const Value.absent(),
   });
   ProgressEntriesCompanion.insert({
     this.id = const Value.absent(),
@@ -606,6 +642,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     this.syncedAt = const Value.absent(),
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
+    this.idempotencyKey = const Value.absent(),
   })  : projectId = Value(projectId),
         activityId = Value(activityId),
         epsNodeId = Value(epsNodeId),
@@ -629,6 +666,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     Expression<DateTime>? syncedAt,
     Expression<String>? syncError,
     Expression<int>? retryCount,
+    Expression<String>? idempotencyKey,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -647,6 +685,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
       if (syncedAt != null) 'synced_at': syncedAt,
       if (syncError != null) 'sync_error': syncError,
       if (retryCount != null) 'retry_count': retryCount,
+      if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
     });
   }
 
@@ -666,7 +705,8 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
       Value<DateTime>? createdAt,
       Value<DateTime?>? syncedAt,
       Value<String?>? syncError,
-      Value<int>? retryCount}) {
+      Value<int>? retryCount,
+      Value<String?>? idempotencyKey}) {
     return ProgressEntriesCompanion(
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
@@ -684,6 +724,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
       syncedAt: syncedAt ?? this.syncedAt,
       syncError: syncError ?? this.syncError,
       retryCount: retryCount ?? this.retryCount,
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey,
     );
   }
 
@@ -738,6 +779,9 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     if (retryCount.present) {
       map['retry_count'] = Variable<int>(retryCount.value);
     }
+    if (idempotencyKey.present) {
+      map['idempotency_key'] = Variable<String>(idempotencyKey.value);
+    }
     return map;
   }
 
@@ -759,7 +803,8 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
-          ..write('retryCount: $retryCount')
+          ..write('retryCount: $retryCount, ')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -870,6 +915,12 @@ class $DailyLogsTable extends DailyLogs
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _idempotencyKeyMeta =
+      const VerificationMeta('idempotencyKey');
+  @override
+  late final GeneratedColumn<String> idempotencyKey = GeneratedColumn<String>(
+      'idempotency_key', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -886,7 +937,8 @@ class $DailyLogsTable extends DailyLogs
         createdAt,
         syncedAt,
         syncError,
-        retryCount
+        retryCount,
+        idempotencyKey
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -979,6 +1031,12 @@ class $DailyLogsTable extends DailyLogs
           retryCount.isAcceptableOrUnknown(
               data['retry_count']!, _retryCountMeta));
     }
+    if (data.containsKey('idempotency_key')) {
+      context.handle(
+          _idempotencyKeyMeta,
+          idempotencyKey.isAcceptableOrUnknown(
+              data['idempotency_key']!, _idempotencyKeyMeta));
+    }
     return context;
   }
 
@@ -1018,6 +1076,8 @@ class $DailyLogsTable extends DailyLogs
           .read(DriftSqlType.string, data['${effectivePrefix}sync_error']),
       retryCount: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      idempotencyKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}idempotency_key']),
     );
   }
 
@@ -1043,6 +1103,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
   final DateTime? syncedAt;
   final String? syncError;
   final int retryCount;
+  final String? idempotencyKey;
   const DailyLog(
       {required this.id,
       this.serverId,
@@ -1058,7 +1119,8 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       required this.createdAt,
       this.syncedAt,
       this.syncError,
-      required this.retryCount});
+      required this.retryCount,
+      this.idempotencyKey});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1091,6 +1153,9 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       map['sync_error'] = Variable<String>(syncError);
     }
     map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || idempotencyKey != null) {
+      map['idempotency_key'] = Variable<String>(idempotencyKey);
+    }
     return map;
   }
 
@@ -1125,6 +1190,9 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           ? const Value.absent()
           : Value(syncError),
       retryCount: Value(retryCount),
+      idempotencyKey: idempotencyKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(idempotencyKey),
     );
   }
 
@@ -1147,6 +1215,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
       syncError: serializer.fromJson<String?>(json['syncError']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
+      idempotencyKey: serializer.fromJson<String?>(json['idempotencyKey']),
     );
   }
   @override
@@ -1168,6 +1237,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
       'syncError': serializer.toJson<String?>(syncError),
       'retryCount': serializer.toJson<int>(retryCount),
+      'idempotencyKey': serializer.toJson<String?>(idempotencyKey),
     };
   }
 
@@ -1186,7 +1256,8 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           DateTime? createdAt,
           Value<DateTime?> syncedAt = const Value.absent(),
           Value<String?> syncError = const Value.absent(),
-          int? retryCount}) =>
+          int? retryCount,
+          Value<String?> idempotencyKey = const Value.absent()}) =>
       DailyLog(
         id: id ?? this.id,
         serverId: serverId.present ? serverId.value : this.serverId,
@@ -1204,6 +1275,8 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
         syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
         syncError: syncError.present ? syncError.value : this.syncError,
         retryCount: retryCount ?? this.retryCount,
+        idempotencyKey:
+            idempotencyKey.present ? idempotencyKey.value : this.idempotencyKey,
       );
   DailyLog copyWithCompanion(DailyLogsCompanion data) {
     return DailyLog(
@@ -1231,6 +1304,9 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       syncError: data.syncError.present ? data.syncError.value : this.syncError,
       retryCount:
           data.retryCount.present ? data.retryCount.value : this.retryCount,
+      idempotencyKey: data.idempotencyKey.present
+          ? data.idempotencyKey.value
+          : this.idempotencyKey,
     );
   }
 
@@ -1251,7 +1327,8 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
-          ..write('retryCount: $retryCount')
+          ..write('retryCount: $retryCount, ')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -1272,7 +1349,8 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       createdAt,
       syncedAt,
       syncError,
-      retryCount);
+      retryCount,
+      idempotencyKey);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1291,7 +1369,8 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           other.createdAt == this.createdAt &&
           other.syncedAt == this.syncedAt &&
           other.syncError == this.syncError &&
-          other.retryCount == this.retryCount);
+          other.retryCount == this.retryCount &&
+          other.idempotencyKey == this.idempotencyKey);
 }
 
 class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
@@ -1310,6 +1389,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
   final Value<DateTime?> syncedAt;
   final Value<String?> syncError;
   final Value<int> retryCount;
+  final Value<String?> idempotencyKey;
   const DailyLogsCompanion({
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
@@ -1326,6 +1406,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     this.syncedAt = const Value.absent(),
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
+    this.idempotencyKey = const Value.absent(),
   });
   DailyLogsCompanion.insert({
     this.id = const Value.absent(),
@@ -1343,6 +1424,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     this.syncedAt = const Value.absent(),
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
+    this.idempotencyKey = const Value.absent(),
   })  : microActivityId = Value(microActivityId),
         logDate = Value(logDate),
         plannedQty = Value(plannedQty),
@@ -1363,6 +1445,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     Expression<DateTime>? syncedAt,
     Expression<String>? syncError,
     Expression<int>? retryCount,
+    Expression<String>? idempotencyKey,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1380,6 +1463,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
       if (syncedAt != null) 'synced_at': syncedAt,
       if (syncError != null) 'sync_error': syncError,
       if (retryCount != null) 'retry_count': retryCount,
+      if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
     });
   }
 
@@ -1398,7 +1482,8 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
       Value<DateTime>? createdAt,
       Value<DateTime?>? syncedAt,
       Value<String?>? syncError,
-      Value<int>? retryCount}) {
+      Value<int>? retryCount,
+      Value<String?>? idempotencyKey}) {
     return DailyLogsCompanion(
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
@@ -1415,6 +1500,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
       syncedAt: syncedAt ?? this.syncedAt,
       syncError: syncError ?? this.syncError,
       retryCount: retryCount ?? this.retryCount,
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey,
     );
   }
 
@@ -1466,6 +1552,9 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     if (retryCount.present) {
       map['retry_count'] = Variable<int>(retryCount.value);
     }
+    if (idempotencyKey.present) {
+      map['idempotency_key'] = Variable<String>(idempotencyKey.value);
+    }
     return map;
   }
 
@@ -1486,7 +1575,8 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
-          ..write('retryCount: $retryCount')
+          ..write('retryCount: $retryCount, ')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -3294,6 +3384,445 @@ class CachedBoqItemsCompanion extends UpdateCompanion<CachedBoqItem> {
   }
 }
 
+class $CachedEpsNodesTable extends CachedEpsNodes
+    with TableInfo<$CachedEpsNodesTable, CachedEpsNode> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedEpsNodesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _parentIdMeta =
+      const VerificationMeta('parentId');
+  @override
+  late final GeneratedColumn<int> parentId = GeneratedColumn<int>(
+      'parent_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+      'code', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+      'type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _progressMeta =
+      const VerificationMeta('progress');
+  @override
+  late final GeneratedColumn<double> progress = GeneratedColumn<double>(
+      'progress', aliasedName, false,
+      type: DriftSqlType.double,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, projectId, parentId, name, code, type, progress, rawData, cachedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_eps_nodes';
+  @override
+  VerificationContext validateIntegrity(Insertable<CachedEpsNode> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(_parentIdMeta,
+          parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+          _codeMeta, code.isAcceptableOrUnknown(data['code']!, _codeMeta));
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('progress')) {
+      context.handle(_progressMeta,
+          progress.isAcceptableOrUnknown(data['progress']!, _progressMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedEpsNode map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedEpsNode(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      parentId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}parent_id']),
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      code: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}code']),
+      type: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
+      progress: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}progress'])!,
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedEpsNodesTable createAlias(String alias) {
+    return $CachedEpsNodesTable(attachedDatabase, alias);
+  }
+}
+
+class CachedEpsNode extends DataClass implements Insertable<CachedEpsNode> {
+  final int id;
+  final int projectId;
+  final int? parentId;
+  final String name;
+  final String? code;
+  final String type;
+  final double progress;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedEpsNode(
+      {required this.id,
+      required this.projectId,
+      this.parentId,
+      required this.name,
+      this.code,
+      required this.type,
+      required this.progress,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['project_id'] = Variable<int>(projectId);
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<int>(parentId);
+    }
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || code != null) {
+      map['code'] = Variable<String>(code);
+    }
+    map['type'] = Variable<String>(type);
+    map['progress'] = Variable<double>(progress);
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedEpsNodesCompanion toCompanion(bool nullToAbsent) {
+    return CachedEpsNodesCompanion(
+      id: Value(id),
+      projectId: Value(projectId),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
+      name: Value(name),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      type: Value(type),
+      progress: Value(progress),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedEpsNode.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedEpsNode(
+      id: serializer.fromJson<int>(json['id']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      parentId: serializer.fromJson<int?>(json['parentId']),
+      name: serializer.fromJson<String>(json['name']),
+      code: serializer.fromJson<String?>(json['code']),
+      type: serializer.fromJson<String>(json['type']),
+      progress: serializer.fromJson<double>(json['progress']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'projectId': serializer.toJson<int>(projectId),
+      'parentId': serializer.toJson<int?>(parentId),
+      'name': serializer.toJson<String>(name),
+      'code': serializer.toJson<String?>(code),
+      'type': serializer.toJson<String>(type),
+      'progress': serializer.toJson<double>(progress),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedEpsNode copyWith(
+          {int? id,
+          int? projectId,
+          Value<int?> parentId = const Value.absent(),
+          String? name,
+          Value<String?> code = const Value.absent(),
+          String? type,
+          double? progress,
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedEpsNode(
+        id: id ?? this.id,
+        projectId: projectId ?? this.projectId,
+        parentId: parentId.present ? parentId.value : this.parentId,
+        name: name ?? this.name,
+        code: code.present ? code.value : this.code,
+        type: type ?? this.type,
+        progress: progress ?? this.progress,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedEpsNode copyWithCompanion(CachedEpsNodesCompanion data) {
+    return CachedEpsNode(
+      id: data.id.present ? data.id.value : this.id,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
+      name: data.name.present ? data.name.value : this.name,
+      code: data.code.present ? data.code.value : this.code,
+      type: data.type.present ? data.type.value : this.type,
+      progress: data.progress.present ? data.progress.value : this.progress,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedEpsNode(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('parentId: $parentId, ')
+          ..write('name: $name, ')
+          ..write('code: $code, ')
+          ..write('type: $type, ')
+          ..write('progress: $progress, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, projectId, parentId, name, code, type, progress, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedEpsNode &&
+          other.id == this.id &&
+          other.projectId == this.projectId &&
+          other.parentId == this.parentId &&
+          other.name == this.name &&
+          other.code == this.code &&
+          other.type == this.type &&
+          other.progress == this.progress &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedEpsNodesCompanion extends UpdateCompanion<CachedEpsNode> {
+  final Value<int> id;
+  final Value<int> projectId;
+  final Value<int?> parentId;
+  final Value<String> name;
+  final Value<String?> code;
+  final Value<String> type;
+  final Value<double> progress;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  const CachedEpsNodesCompanion({
+    this.id = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.parentId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.code = const Value.absent(),
+    this.type = const Value.absent(),
+    this.progress = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+  });
+  CachedEpsNodesCompanion.insert({
+    this.id = const Value.absent(),
+    required int projectId,
+    this.parentId = const Value.absent(),
+    required String name,
+    this.code = const Value.absent(),
+    required String type,
+    this.progress = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+  })  : projectId = Value(projectId),
+        name = Value(name),
+        type = Value(type),
+        rawData = Value(rawData);
+  static Insertable<CachedEpsNode> custom({
+    Expression<int>? id,
+    Expression<int>? projectId,
+    Expression<int>? parentId,
+    Expression<String>? name,
+    Expression<String>? code,
+    Expression<String>? type,
+    Expression<double>? progress,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (projectId != null) 'project_id': projectId,
+      if (parentId != null) 'parent_id': parentId,
+      if (name != null) 'name': name,
+      if (code != null) 'code': code,
+      if (type != null) 'type': type,
+      if (progress != null) 'progress': progress,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+    });
+  }
+
+  CachedEpsNodesCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? projectId,
+      Value<int?>? parentId,
+      Value<String>? name,
+      Value<String?>? code,
+      Value<String>? type,
+      Value<double>? progress,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt}) {
+    return CachedEpsNodesCompanion(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      parentId: parentId ?? this.parentId,
+      name: name ?? this.name,
+      code: code ?? this.code,
+      type: type ?? this.type,
+      progress: progress ?? this.progress,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<int>(parentId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (progress.present) {
+      map['progress'] = Variable<double>(progress.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedEpsNodesCompanion(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('parentId: $parentId, ')
+          ..write('name: $name, ')
+          ..write('code: $code, ')
+          ..write('type: $type, ')
+          ..write('progress: $progress, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3305,6 +3834,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CachedActivitiesTable cachedActivities =
       $CachedActivitiesTable(this);
   late final $CachedBoqItemsTable cachedBoqItems = $CachedBoqItemsTable(this);
+  late final $CachedEpsNodesTable cachedEpsNodes = $CachedEpsNodesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3315,7 +3845,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         syncQueue,
         cachedProjects,
         cachedActivities,
-        cachedBoqItems
+        cachedBoqItems,
+        cachedEpsNodes
       ];
 }
 
@@ -3337,6 +3868,7 @@ typedef $$ProgressEntriesTableCreateCompanionBuilder = ProgressEntriesCompanion
   Value<DateTime?> syncedAt,
   Value<String?> syncError,
   Value<int> retryCount,
+  Value<String?> idempotencyKey,
 });
 typedef $$ProgressEntriesTableUpdateCompanionBuilder = ProgressEntriesCompanion
     Function({
@@ -3356,6 +3888,7 @@ typedef $$ProgressEntriesTableUpdateCompanionBuilder = ProgressEntriesCompanion
   Value<DateTime?> syncedAt,
   Value<String?> syncError,
   Value<int> retryCount,
+  Value<String?> idempotencyKey,
 });
 
 class $$ProgressEntriesTableFilterComposer
@@ -3415,6 +3948,10 @@ class $$ProgressEntriesTableFilterComposer
 
   ColumnFilters<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get idempotencyKey => $composableBuilder(
+      column: $table.idempotencyKey,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$ProgressEntriesTableOrderingComposer
@@ -3474,6 +4011,10 @@ class $$ProgressEntriesTableOrderingComposer
 
   ColumnOrderings<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get idempotencyKey => $composableBuilder(
+      column: $table.idempotencyKey,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$ProgressEntriesTableAnnotationComposer
@@ -3532,6 +4073,9 @@ class $$ProgressEntriesTableAnnotationComposer
 
   GeneratedColumn<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<String> get idempotencyKey => $composableBuilder(
+      column: $table.idempotencyKey, builder: (column) => column);
 }
 
 class $$ProgressEntriesTableTableManager extends RootTableManager<
@@ -3577,6 +4121,7 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
+            Value<String?> idempotencyKey = const Value.absent(),
           }) =>
               ProgressEntriesCompanion(
             id: id,
@@ -3595,6 +4140,7 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             syncedAt: syncedAt,
             syncError: syncError,
             retryCount: retryCount,
+            idempotencyKey: idempotencyKey,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -3613,6 +4159,7 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
+            Value<String?> idempotencyKey = const Value.absent(),
           }) =>
               ProgressEntriesCompanion.insert(
             id: id,
@@ -3631,6 +4178,7 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             syncedAt: syncedAt,
             syncError: syncError,
             retryCount: retryCount,
+            idempotencyKey: idempotencyKey,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -3670,6 +4218,7 @@ typedef $$DailyLogsTableCreateCompanionBuilder = DailyLogsCompanion Function({
   Value<DateTime?> syncedAt,
   Value<String?> syncError,
   Value<int> retryCount,
+  Value<String?> idempotencyKey,
 });
 typedef $$DailyLogsTableUpdateCompanionBuilder = DailyLogsCompanion Function({
   Value<int> id,
@@ -3687,6 +4236,7 @@ typedef $$DailyLogsTableUpdateCompanionBuilder = DailyLogsCompanion Function({
   Value<DateTime?> syncedAt,
   Value<String?> syncError,
   Value<int> retryCount,
+  Value<String?> idempotencyKey,
 });
 
 class $$DailyLogsTableFilterComposer
@@ -3743,6 +4293,10 @@ class $$DailyLogsTableFilterComposer
 
   ColumnFilters<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get idempotencyKey => $composableBuilder(
+      column: $table.idempotencyKey,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$DailyLogsTableOrderingComposer
@@ -3800,6 +4354,10 @@ class $$DailyLogsTableOrderingComposer
 
   ColumnOrderings<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get idempotencyKey => $composableBuilder(
+      column: $table.idempotencyKey,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$DailyLogsTableAnnotationComposer
@@ -3855,6 +4413,9 @@ class $$DailyLogsTableAnnotationComposer
 
   GeneratedColumn<int> get retryCount => $composableBuilder(
       column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<String> get idempotencyKey => $composableBuilder(
+      column: $table.idempotencyKey, builder: (column) => column);
 }
 
 class $$DailyLogsTableTableManager extends RootTableManager<
@@ -3895,6 +4456,7 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
+            Value<String?> idempotencyKey = const Value.absent(),
           }) =>
               DailyLogsCompanion(
             id: id,
@@ -3912,6 +4474,7 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             syncedAt: syncedAt,
             syncError: syncError,
             retryCount: retryCount,
+            idempotencyKey: idempotencyKey,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -3929,6 +4492,7 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
+            Value<String?> idempotencyKey = const Value.absent(),
           }) =>
               DailyLogsCompanion.insert(
             id: id,
@@ -3946,6 +4510,7 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             syncedAt: syncedAt,
             syncError: syncError,
             retryCount: retryCount,
+            idempotencyKey: idempotencyKey,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -4876,6 +5441,234 @@ typedef $$CachedBoqItemsTableProcessedTableManager = ProcessedTableManager<
     ),
     CachedBoqItem,
     PrefetchHooks Function()>;
+typedef $$CachedEpsNodesTableCreateCompanionBuilder = CachedEpsNodesCompanion
+    Function({
+  Value<int> id,
+  required int projectId,
+  Value<int?> parentId,
+  required String name,
+  Value<String?> code,
+  required String type,
+  Value<double> progress,
+  required String rawData,
+  Value<DateTime> cachedAt,
+});
+typedef $$CachedEpsNodesTableUpdateCompanionBuilder = CachedEpsNodesCompanion
+    Function({
+  Value<int> id,
+  Value<int> projectId,
+  Value<int?> parentId,
+  Value<String> name,
+  Value<String?> code,
+  Value<String> type,
+  Value<double> progress,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+});
+
+class $$CachedEpsNodesTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedEpsNodesTable> {
+  $$CachedEpsNodesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get parentId => $composableBuilder(
+      column: $table.parentId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedEpsNodesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedEpsNodesTable> {
+  $$CachedEpsNodesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get parentId => $composableBuilder(
+      column: $table.parentId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedEpsNodesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedEpsNodesTable> {
+  $$CachedEpsNodesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<int> get parentId =>
+      $composableBuilder(column: $table.parentId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<double> get progress =>
+      $composableBuilder(column: $table.progress, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedEpsNodesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedEpsNodesTable,
+    CachedEpsNode,
+    $$CachedEpsNodesTableFilterComposer,
+    $$CachedEpsNodesTableOrderingComposer,
+    $$CachedEpsNodesTableAnnotationComposer,
+    $$CachedEpsNodesTableCreateCompanionBuilder,
+    $$CachedEpsNodesTableUpdateCompanionBuilder,
+    (
+      CachedEpsNode,
+      BaseReferences<_$AppDatabase, $CachedEpsNodesTable, CachedEpsNode>
+    ),
+    CachedEpsNode,
+    PrefetchHooks Function()> {
+  $$CachedEpsNodesTableTableManager(
+      _$AppDatabase db, $CachedEpsNodesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedEpsNodesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedEpsNodesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedEpsNodesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<int?> parentId = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> code = const Value.absent(),
+            Value<String> type = const Value.absent(),
+            Value<double> progress = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedEpsNodesCompanion(
+            id: id,
+            projectId: projectId,
+            parentId: parentId,
+            name: name,
+            code: code,
+            type: type,
+            progress: progress,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int projectId,
+            Value<int?> parentId = const Value.absent(),
+            required String name,
+            Value<String?> code = const Value.absent(),
+            required String type,
+            Value<double> progress = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedEpsNodesCompanion.insert(
+            id: id,
+            projectId: projectId,
+            parentId: parentId,
+            name: name,
+            code: code,
+            type: type,
+            progress: progress,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedEpsNodesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $CachedEpsNodesTable,
+    CachedEpsNode,
+    $$CachedEpsNodesTableFilterComposer,
+    $$CachedEpsNodesTableOrderingComposer,
+    $$CachedEpsNodesTableAnnotationComposer,
+    $$CachedEpsNodesTableCreateCompanionBuilder,
+    $$CachedEpsNodesTableUpdateCompanionBuilder,
+    (
+      CachedEpsNode,
+      BaseReferences<_$AppDatabase, $CachedEpsNodesTable, CachedEpsNode>
+    ),
+    CachedEpsNode,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4892,4 +5685,6 @@ class $AppDatabaseManager {
       $$CachedActivitiesTableTableManager(_db, _db.cachedActivities);
   $$CachedBoqItemsTableTableManager get cachedBoqItems =>
       $$CachedBoqItemsTableTableManager(_db, _db.cachedBoqItems);
+  $$CachedEpsNodesTableTableManager get cachedEpsNodes =>
+      $$CachedEpsNodesTableTableManager(_db, _db.cachedEpsNodes);
 }
