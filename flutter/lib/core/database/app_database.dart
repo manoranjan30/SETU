@@ -59,16 +59,19 @@ class AppDatabase extends _$AppDatabase {
       // Get root nodes (no parent)
       return (select(cachedEpsNodes)..where((t) => t.parentId.isNull())).get();
     }
-    return (select(cachedEpsNodes)..where((t) => t.parentId.equals(parentId))).get();
+    return (select(cachedEpsNodes)..where((t) => t.parentId.equals(parentId)))
+        .get();
   }
 
   /// Get all EPS nodes for a project
   Future<List<CachedEpsNode>> getEpsNodesForProject(int projectId) async {
-    return (select(cachedEpsNodes)..where((t) => t.projectId.equals(projectId))).get();
+    return (select(cachedEpsNodes)..where((t) => t.projectId.equals(projectId)))
+        .get();
   }
 
   /// Cache EPS nodes from API response
-  Future<void> cacheEpsNodes(List<Map<String, dynamic>> nodes, int projectId) async {
+  Future<void> cacheEpsNodes(
+      List<Map<String, dynamic>> nodes, int projectId) async {
     await batch((batch) {
       for (final node in nodes) {
         batch.insert(
@@ -79,7 +82,8 @@ class AppDatabase extends _$AppDatabase {
             name: node['name'] as String,
             code: Value(node['code'] as String?),
             type: node['type'] as String? ?? 'unknown',
-            parentId: Value(node['parentId'] as int? ?? node['parent_id'] as int?),
+            parentId:
+                Value(node['parentId'] as int? ?? node['parent_id'] as int?),
             rawData: jsonEncode(node),
           ),
           mode: InsertMode.insertOrReplace,
@@ -92,30 +96,52 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get activities by EPS node ID
   Future<List<CachedActivity>> getActivitiesByEpsNode(int epsNodeId) async {
-    return (select(cachedActivities)..where((t) => t.epsNodeId.equals(epsNodeId))).get();
+    return (select(cachedActivities)
+          ..where((t) => t.epsNodeId.equals(epsNodeId)))
+        .get();
   }
 
   /// Get all activities for a project
   Future<List<CachedActivity>> getActivitiesForProject(int projectId) async {
-    return (select(cachedActivities)..where((t) => t.projectId.equals(projectId))).get();
+    return (select(cachedActivities)
+          ..where((t) => t.projectId.equals(projectId)))
+        .get();
   }
 
   /// Cache activities from API response
-  Future<void> cacheActivities(List<Map<String, dynamic>> activities, int projectId) async {
+  Future<void> cacheActivities(
+      List<Map<String, dynamic>> activities, int projectId) async {
+    int? readInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value);
+      return null;
+    }
+
     await batch((batch) {
       for (final activity in activities) {
+        final epsNode = activity['epsNode'] ?? activity['eps_node'];
+        final epsNodeId = readInt(activity['epsNodeId']) ??
+            readInt(activity['eps_node_id']) ??
+            readInt(activity['floorId']) ??
+            readInt(activity['floor_id']) ??
+            (epsNode is Map<String, dynamic> ? readInt(epsNode['id']) : null);
+
         batch.insert(
           cachedActivities,
           CachedActivitiesCompanion.insert(
             id: Value(activity['id'] as int),
             projectId: projectId,
             name: activity['name'] as String,
-            epsNodeId: Value(activity['epsNodeId'] as int? ?? activity['eps_node_id'] as int?),
+            epsNodeId: Value(epsNodeId),
             status: Value(activity['status'] as String?),
-            startDate: Value(activity['startDate'] as String? ?? activity['start_date'] as String?),
-            endDate: Value(activity['endDate'] as String? ?? activity['end_date'] as String?),
-            progress: Value((activity['actualProgress'] as num?)?.toDouble() ?? 
-                           (activity['actual_progress'] as num?)?.toDouble() ?? 0.0),
+            startDate: Value(activity['startDate'] as String? ??
+                activity['start_date'] as String?),
+            endDate: Value(activity['endDate'] as String? ??
+                activity['end_date'] as String?),
+            progress: Value((activity['actualProgress'] as num?)?.toDouble() ??
+                (activity['actual_progress'] as num?)?.toDouble() ??
+                0.0),
             rawData: jsonEncode(activity),
           ),
           mode: InsertMode.insertOrReplace,
@@ -173,7 +199,8 @@ class ProgressEntries extends Table {
   TextColumn get date => text()();
   TextColumn get remarks => text().nullable()();
   TextColumn get photoPaths => text().nullable()(); // JSON array of local paths
-  IntColumn get syncStatus => integer().withDefault(const Constant(0))(); // 0=pending, 1=synced, 2=failed, 3=error
+  IntColumn get syncStatus =>
+      integer().withDefault(const Constant(0))(); // See SyncStatus enum below
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get syncedAt => dateTime().nullable()();
   TextColumn get syncError => text().nullable()();
@@ -212,7 +239,8 @@ class SyncQueue extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
   TextColumn get lastError => text().nullable()();
-  IntColumn get priority => integer().withDefault(const Constant(0))(); // Higher = more important
+  IntColumn get priority =>
+      integer().withDefault(const Constant(0))(); // Higher = more important
 }
 
 /// Cached projects for offline viewing
@@ -225,7 +253,7 @@ class CachedProjects extends Table {
   TextColumn get endDate => text().nullable()();
   TextColumn get rawData => text()(); // Full JSON for flexibility
   DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
-  
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -242,7 +270,7 @@ class CachedActivities extends Table {
   RealColumn get progress => real().withDefault(const Constant(0))();
   TextColumn get rawData => text()();
   DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
-  
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -257,7 +285,7 @@ class CachedBoqItems extends Table {
   RealColumn get rate => real().nullable()();
   TextColumn get rawData => text()();
   DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
-  
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -269,11 +297,12 @@ class CachedEpsNodes extends Table {
   IntColumn get parentId => integer().nullable()();
   TextColumn get name => text()();
   TextColumn get code => text().nullable()();
-  TextColumn get type => text()(); // 'project', 'phase', 'building', 'floor', etc.
+  TextColumn get type =>
+      text()(); // 'project', 'phase', 'building', 'floor', etc.
   RealColumn get progress => real().withDefault(const Constant(0))();
   TextColumn get rawData => text()();
   DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
-  
+
   @override
   Set<Column> get primaryKey => {id};
 }

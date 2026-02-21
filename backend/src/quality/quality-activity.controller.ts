@@ -67,6 +67,14 @@ export class QualityActivityController {
     return this.service.deleteList(id);
   }
 
+  @Post('activity-lists/:id/clone')
+  cloneList(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('targetProjectId', ParseIntPipe) targetProjectId: number,
+  ) {
+    return this.service.cloneList(id, targetProjectId);
+  }
+
   // ── Activities ─────────────────────────────────────────────────────────
 
   @Get('activity-lists/:listId/activities')

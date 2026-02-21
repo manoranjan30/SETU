@@ -88,6 +88,7 @@ import { QualitySnagPhoto } from './quality/entities/quality-snag-photo.entity';
 import { QualityUnitTemplate } from './quality/entities/quality-unit-template.entity';
 import { QualityActivityList } from './quality/entities/quality-activity-list.entity';
 import { QualityActivity } from './quality/entities/quality-activity.entity';
+import { QualitySequenceEdge } from './quality/entities/quality-sequence-edge.entity';
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
@@ -179,6 +180,7 @@ import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
         QualityUnitTemplate,
         QualityActivityList,
         QualityActivity,
+        QualitySequenceEdge,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -242,4 +244,4 @@ import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
   controllers: [AppController],
   providers: [AppService, SeedService],
 })
-export class AppModule {}
+export class AppModule { }

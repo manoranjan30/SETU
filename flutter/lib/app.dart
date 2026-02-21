@@ -37,9 +37,7 @@ class SETUMobileApp extends StatelessWidget {
   }
 
   Widget _buildHome(AuthState authState) {
-    print('[App] _buildHome called with state: $authState');
     if (authState is AuthAuthenticated) {
-      print('[App] User authenticated: ${authState.user.username}');
       return const ProjectsListPage();
     } else if (authState is AuthLoading) {
       return const Scaffold(

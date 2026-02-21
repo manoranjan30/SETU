@@ -31,7 +31,7 @@ Future<Map<String, dynamic>?> testHttpClientLogin(String username, String passwo
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 10);
     
-    final uri = Uri.parse('http://192.168.0.101:3000/api/auth/login');
+    final uri = Uri.parse('${ApiEndpoints.baseUrl}${ApiEndpoints.login}');
     final request = await client.postUrl(uri);
     request.headers.contentType = ContentType.json;
     request.write('{"username":"$username","password":"$password"}');
@@ -404,7 +404,7 @@ class _ErrorInterceptor extends Interceptor {
         final underlyingError = err.error;
         print('[ErrorInterceptor] - Underlying error: $underlyingError');
         if (underlyingError is SocketException) {
-          final socketError = underlyingError as SocketException;
+          final socketError = underlyingError;
           print('[ErrorInterceptor] - SocketException message: ${socketError.message}');
           print('[ErrorInterceptor] - SocketException OS error: ${socketError.osError}');
         }

@@ -11,6 +11,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
+      fontFamily: 'Segoe UI',
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
@@ -18,15 +19,16 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.background,
       appBarTheme: AppBarTheme(
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         titleTextStyle: AppTextStyles.titleLarge.copyWith(color: Colors.white),
       ),
       cardTheme: CardThemeData(
-        elevation: 2,
+        elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+          side: const BorderSide(color: AppColors.outline),
         ),
         color: Colors.white,
       ),
@@ -84,6 +86,21 @@ class AppTheme {
         labelStyle: AppTextStyles.bodyMedium,
         hintStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.hint),
       ),
+      chipTheme: ChipThemeData(
+        backgroundColor: AppColors.accentSoft,
+        selectedColor: AppColors.primary.withOpacity(0.15),
+        checkmarkColor: AppColors.primary,
+        labelStyle: AppTextStyles.labelMedium,
+        side: const BorderSide(color: AppColors.outline),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(999),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.primaryDark,
+        contentTextStyle: AppTextStyles.bodyMedium.copyWith(color: Colors.white),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
@@ -99,7 +116,7 @@ class AppTheme {
         thickness: 1,
         color: AppColors.divider,
       ),
-      textTheme: TextTheme(
+      textTheme: const TextTheme(
         displayLarge: AppTextStyles.displayLarge,
         displayMedium: AppTextStyles.displayMedium,
         displaySmall: AppTextStyles.displaySmall,
@@ -124,6 +141,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      fontFamily: 'Segoe UI',
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,

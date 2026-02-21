@@ -3,9 +3,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityActivity } from './entities/quality-activity.entity';
+import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +27,8 @@ export interface UpdateListDto {
 export interface CreateActivityDto {
   activityName: string;
   description?: string;
-  previousActivityId?: number;
+  previousActivityId?: number; // Legacy single predecessor
+  predecessorIds?: number[];    // Multi-predecessor support
   holdPoint?: boolean;
   witnessPoint?: boolean;
   responsibleParty?: string;
@@ -61,6 +63,8 @@ export class QualityActivityService {
     private readonly listRepo: Repository<QualityActivityList>,
     @InjectRepository(QualityActivity)
     private readonly activityRepo: Repository<QualityActivity>,
+    @InjectRepository(QualitySequenceEdge)
+    private readonly edgeRepo: Repository<QualitySequenceEdge>,
     private readonly dataSource: DataSource,
   ) { }
 
@@ -116,6 +120,7 @@ export class QualityActivityService {
   async getActivities(listId: number): Promise<QualityActivity[]> {
     return this.activityRepo.find({
       where: { listId },
+      relations: ['incomingEdges', 'incomingEdges.source'],
       order: { sequence: 'ASC' },
     });
   }
@@ -132,16 +137,22 @@ export class QualityActivityService {
       .createQueryBuilder('a')
       .select('MAX(a.sequence)', 'max')
       .where('a.listId = :listId', { listId })
-      .getRawOne<{ max: number | null }>();
+      .getRawOne<{ max: number | string | null }>();
 
-    const nextSeq = (maxSeq?.max ?? 0) + 1;
+    const nextSeq = (Number(maxSeq?.max) || 0) + 1;
 
     const activity = this.activityRepo.create({
       ...dto,
       listId,
       sequence: nextSeq,
     });
-    return this.activityRepo.save(activity);
+    const saved = await this.activityRepo.save(activity);
+
+    if (dto.predecessorIds) {
+      await this.syncEdges(saved.id, dto.predecessorIds);
+    }
+
+    return saved;
   }
 
   async updateActivity(
@@ -150,8 +161,39 @@ export class QualityActivityService {
   ): Promise<QualityActivity> {
     const activity = await this.activityRepo.findOne({ where: { id } });
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
     Object.assign(activity, dto);
-    return this.activityRepo.save(activity);
+    const saved = await this.activityRepo.save(activity);
+
+    if (dto.predecessorIds) {
+      await this.syncEdges(id, dto.predecessorIds);
+    }
+
+    return saved;
+  }
+
+  private async syncEdges(targetId: number, predecessorIds: number[]) {
+    // Delete existing edges for this target
+    await this.edgeRepo.delete({ targetId });
+
+    // Create new edges
+    if (predecessorIds.length > 0) {
+      const edges = predecessorIds.map(sourceId => this.edgeRepo.create({
+        sourceId: Number(sourceId),
+        targetId,
+        constraintType: 'HARD'
+      }));
+      await this.edgeRepo.save(edges);
+
+      // Legacy sync: set previousActivityId to the first predecessor
+      await this.activityRepo.update(targetId, {
+        previousActivityId: Number(predecessorIds[0])
+      });
+    } else {
+      await this.activityRepo.update(targetId, {
+        previousActivityId: null as any
+      });
+    }
   }
 
   async deleteActivity(id: number): Promise<void> {
@@ -188,7 +230,6 @@ export class QualityActivityService {
       for (let i = 0; i < orderedIds.length; i++) {
         await manager.update(QualityActivity, orderedIds[i], {
           sequence: i + 1,
-          previousActivityId: i === 0 ? undefined : orderedIds[i - 1],
         });
       }
     });
@@ -238,6 +279,81 @@ export class QualityActivityService {
     }
 
     return this.getActivities(listId);
+  }
+
+  /** Clone an existing list to a target project */
+  async cloneList(sourceListId: number, targetProjectId: number): Promise<QualityActivityList> {
+    const sourceList = await this.listRepo.findOne({
+      where: { id: sourceListId },
+      relations: ['activities'],
+    });
+    if (!sourceList) throw new NotFoundException(`Source list #${sourceListId} not found`);
+
+    // 1. Create newList object
+    const newList = this.listRepo.create({
+      name: `${sourceList.name} (Copy)`,
+      description: sourceList.description,
+      projectId: targetProjectId,
+    });
+    const savedList = await this.listRepo.save(newList);
+
+    // 2. Clone Activities
+    const oldToNewMap = new Map<number, number>();
+    for (const act of sourceList.activities) {
+      const newAct = this.activityRepo.create({
+        listId: savedList.id,
+        sequence: act.sequence,
+        activityName: act.activityName,
+        description: act.description,
+        holdPoint: act.holdPoint,
+        witnessPoint: act.witnessPoint,
+        responsibleParty: act.responsibleParty,
+        allowBreak: act.allowBreak,
+        position: act.position,
+        status: 'ACTIVE',
+      });
+      const savedAct = await this.activityRepo.save(newAct);
+      oldToNewMap.set(act.id, savedAct.id);
+    }
+
+    // 3. Clone Sequence Edges
+    const oldIds = Array.from(oldToNewMap.keys());
+    if (oldIds.length > 0) {
+      const sourceEdges = await this.edgeRepo.find({
+        where: { sourceId: In(oldIds) },
+      });
+
+      const newEdges = sourceEdges.map(edge => {
+        const newSourceId = oldToNewMap.get(edge.sourceId);
+        const newTargetId = oldToNewMap.get(edge.targetId);
+        if (newSourceId && newTargetId) {
+          return this.edgeRepo.create({
+            sourceId: newSourceId,
+            targetId: newTargetId,
+            constraintType: edge.constraintType,
+            lagMinutes: edge.lagMinutes,
+          });
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (newEdges.length > 0) {
+        await this.edgeRepo.save(newEdges as QualitySequenceEdge[]);
+      }
+    }
+
+    // 4. Update legacy previousActivityId
+    for (const act of sourceList.activities) {
+      if (act.previousActivityId) {
+        const newId = oldToNewMap.get(act.id);
+        const newPrevId = oldToNewMap.get(act.previousActivityId);
+        if (newId && newPrevId) {
+          await this.activityRepo.update(newId, { previousActivityId: newPrevId });
+        }
+      }
+    }
+
+    return savedList;
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────

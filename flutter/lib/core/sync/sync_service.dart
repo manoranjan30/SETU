@@ -246,7 +246,7 @@ class SyncService {
         ProgressEntriesCompanion(
           syncStatus: Value(SyncStatus.failed.value),
           syncError: Value(error.toString()),
-          retryCount: Value(1), // Increment will be handled by query
+          retryCount: const Value(1), // Increment will be handled by query
         ),
       );
     } else {

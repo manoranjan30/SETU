@@ -55,7 +55,8 @@ class Project extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, code, status, startDate, endDate, progress, children];
+  List<Object?> get props =>
+      [id, name, code, status, startDate, endDate, progress, children];
 }
 
 /// EPS Node model for project hierarchy
@@ -112,7 +113,8 @@ class EpsNode extends Equatable {
   bool get hasChildren => children.isNotEmpty;
 
   @override
-  List<Object?> get props => [id, name, code, type, status, progress, children, parentId];
+  List<Object?> get props =>
+      [id, name, code, type, status, progress, children, parentId];
 }
 
 /// Activity model for project activities
@@ -150,18 +152,36 @@ class Activity extends Equatable {
   });
 
   factory Activity.fromJson(Map<String, dynamic> json) {
+    int? readInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value);
+      return null;
+    }
+
+    final nestedEps = json['epsNode'] ?? json['eps_node'];
+    final nestedProject = json['project'];
+
     return Activity(
-      id: json['id'] as int? ?? 0,
+      id: readInt(json['id']) ?? 0,
       name: json['name'] as String? ?? '',
       code: json['code'] as String?,
-      projectId: json['projectId'] as int? ?? json['project_id'] as int? ?? 0,
-      epsNodeId: json['epsNodeId'] as int? ?? json['eps_node_id'] as int?,
+      projectId: readInt(json['projectId']) ??
+          readInt(json['project_id']) ??
+          (nestedProject is Map<String, dynamic>
+              ? readInt(nestedProject['id'])
+              : null) ??
+          0,
+      epsNodeId: readInt(json['epsNodeId']) ??
+          readInt(json['eps_node_id']) ??
+          (nestedEps is Map<String, dynamic> ? readInt(nestedEps['id']) : null),
       status: json['status'] as String?,
       startDate: json['startDate'] != null
-          ? DateTime.tryParse(json['startDate'])
+          ? DateTime.tryParse(json['startDate'].toString())
           : null,
-      endDate:
-          json['endDate'] != null ? DateTime.tryParse(json['endDate']) : null,
+      endDate: json['endDate'] != null
+          ? DateTime.tryParse(json['endDate'].toString())
+          : null,
       plannedProgress: (json['plannedProgress'] as num?)?.toDouble() ??
           (json['planned_progress'] as num?)?.toDouble(),
       actualProgress: (json['actualProgress'] as num?)?.toDouble() ??

@@ -305,7 +305,7 @@ class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
     Emitter<ProgressState> emit,
   ) async {
     final pendingCount = await _syncService.getPendingSyncCount();
-    
+
     emit(ProgressSyncing(current: 0, total: pendingCount));
 
     try {
@@ -333,6 +333,8 @@ class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
             microActivityId: Value(entry.microActivityId),
             remarks: Value(entry.remarks),
             photoPaths: Value(entry.photoPaths?.join(',')),
+            syncStatus: Value(db.SyncStatus.pending.value),
+            idempotencyKey: Value(SyncService.generateIdempotencyKey()),
           ),
         );
   }

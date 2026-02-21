@@ -7,9 +7,14 @@ import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dar
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart';
 import 'package:setu_mobile/features/progress/presentation/pages/progress_entry_page.dart';
 import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
+import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:shimmer/shimmer.dart';
 
 /// EPS Explorer Page - Hierarchical navigation through project structure
+/// 
+/// This page implements the "Site Level" navigation flow as per the requirements:
+/// Project -> Zone -> Floor -> Activities
 class EpsExplorerPage extends StatefulWidget {
   final Project project;
 
@@ -32,40 +37,73 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Project Structure'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              context.read<ProjectBloc>().add(RefreshCurrentNode());
+    return WillPopScope(
+      onWillPop: _handleBackPress,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: _handleBackTap,
+            onLongPress: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
             },
+            tooltip: 'Back (long press to projects)',
           ),
-        ],
-      ),
-      body: BlocConsumer<ProjectBloc, ProjectState>(
-        listener: (context, state) {
-          if (state is ProjectError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: AppColors.error,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Project Structure'),
+              Text(
+                widget.project.name,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white.withOpacity(0.8),
+                    ),
               ),
-            );
-          }
-        },
-        builder: (context, state) {
-          if (state is ProjectLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+            ],
+          ),
+          actions: [
+            LiveSyncStatusIndicator(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SyncLogPage()),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                context.read<ProjectBloc>().add(RefreshCurrentNode());
+              },
+              tooltip: 'Refresh',
+            ),
+          ],
+        ),
+        body: BlocConsumer<ProjectBloc, ProjectState>(
+          listener: (context, state) {
+            if (state is ProjectError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.message),
+                  backgroundColor: AppColors.error,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+          builder: (context, state) {
+            if (state is ProjectLoading) {
+              return _buildLoadingShimmer();
+            }
 
-          if (state is EpsExplorerState) {
-            return _buildExplorerContent(state);
-          }
+            if (state is EpsExplorerState) {
+              return _buildExplorerContent(state);
+            }
 
-          return _buildLoadingState();
-        },
+            return _buildLoadingShimmer();
+          },
+        ),
       ),
     );
   }
@@ -73,7 +111,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
   Widget _buildExplorerContent(EpsExplorerState state) {
     return Column(
       children: [
-        // Breadcrumb navigation
+        // Breadcrumb navigation - sticky at top
         BreadcrumbWidget(
           path: state.currentPath,
           onNavigateToIndex: (index) {
@@ -83,24 +121,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
 
         // Offline indicator
         if (state.isOffline)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: AppColors.warning.withOpacity(0.1),
-            child: Row(
-              children: [
-                Icon(Icons.cloud_off, size: 16, color: AppColors.warning),
-                const SizedBox(width: 8),
-                Text(
-                  'Offline - showing cached data',
-                  style: TextStyle(
-                    color: AppColors.warning,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _buildOfflineBanner(),
 
         // Loading indicator for children
         if (state.isLoadingChildren)
@@ -116,22 +137,92 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  Widget _buildOfflineBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: AppColors.warning.withOpacity(0.15),
+      child: const Row(
+        children: [
+          Icon(Icons.cloud_off, size: 18, color: AppColors.warning),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Offline - showing cached data',
+              style: TextStyle(
+                color: AppColors.warning,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildItemsList(EpsExplorerState state) {
-    final items = <Widget>[];
-
-    // Add folder items (EPS nodes)
-    for (final node in state.childNodes) {
-      items.add(_buildFolderItem(node, state));
-    }
-
-    // Add activity items
-    for (final activity in state.activities) {
-      items.add(_buildActivityItem(activity, state));
-    }
-
     return ListView(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),
-      children: items,
+      children: [
+        // Folder items (EPS nodes) section
+        if (state.childNodes.isNotEmpty) ...[
+          _buildSectionHeader(
+            'Zones',
+            state.childNodes.length,
+            Icons.folder_outlined,
+          ),
+          const SizedBox(height: 8),
+          ...state.childNodes.map((node) => _buildFolderItem(node, state)),
+        ],
+
+        // Activity items section
+        if (state.activities.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildSectionHeader(
+            'Activities',
+            state.activities.length,
+            Icons.assignment_outlined,
+          ),
+          const SizedBox(height: 8),
+          ...state.activities.map((activity) => _buildActivityItem(activity, state)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, int count, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppColors.textSecondary),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -144,96 +235,199 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginSM),
-      child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: Colors.amber.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(
-            Icons.folder,
-            color: Colors.amber,
-            size: 24,
-          ),
-        ),
-        title: Text(
-          node.name,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        subtitle: Text(
-          '$childCount sub-zones${activityCount > 0 ? ', $activityCount activities' : ''}',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 12,
-          ),
-        ),
-        trailing: const Icon(Icons.chevron_right),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        side: const BorderSide(color: AppColors.divider, width: 1),
+      ),
+      child: InkWell(
         onTap: () {
           context.read<ProjectBloc>().add(NavigateToNode(node));
         },
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Folder icon with background
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.folder_rounded,
+                  color: Colors.amber,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      node.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _buildFolderSubtitle(childCount, activityCount),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Chevron
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+                size: 24,
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  String _buildFolderSubtitle(int childCount, int activityCount) {
+    final parts = <String>[];
+    if (childCount > 0) {
+      parts.add('$childCount sub-zone${childCount > 1 ? 's' : ''}');
+    }
+    if (activityCount > 0) {
+      parts.add('$activityCount activit${activityCount > 1 ? 'ies' : 'y'}');
+    }
+    if (parts.isEmpty) {
+      return 'Empty';
+    }
+    return parts.join(' | ');
   }
 
   Widget _buildActivityItem(Activity activity, EpsExplorerState state) {
     final progress = activity.progress;
     final progressPercent = (progress * 100).toStringAsFixed(0);
+    final isCompleted = progress >= 1.0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginSM),
-      child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            activity.hasMicroSchedule ? Icons.task_alt : Icons.assignment,
-            color: activity.hasMicroSchedule ? AppColors.success : AppColors.primary,
-            size: 22,
-          ),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        side: BorderSide(
+          color: isCompleted 
+              ? AppColors.success.withOpacity(0.3)
+              : AppColors.divider,
+          width: 1,
         ),
-        title: Text(activity.name),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            // Progress bar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                backgroundColor: AppColors.divider,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  progress >= 1.0 ? AppColors.success : AppColors.primary,
-                ),
-                minHeight: 6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$progressPercent% Complete',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildStatusChip(activity.status),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
+      ),
+      child: InkWell(
         onTap: () {
           _navigateToProgressEntry(activity, state);
         },
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Activity icon with background
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isCompleted
+                      ? AppColors.success.withOpacity(0.12)
+                      : AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  activity.hasMicroSchedule 
+                      ? Icons.task_alt_rounded 
+                      : Icons.assignment_rounded,
+                  color: isCompleted 
+                      ? AppColors.success 
+                      : AppColors.primary,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            activity.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        _buildStatusChip(activity.status),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: AppColors.divider,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isCompleted ? AppColors.success : AppColors.primary,
+                        ),
+                        minHeight: 6,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '$progressPercent% Complete',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (activity.unit != null && activity.plannedQuantity != null)
+                          Text(
+                            '${activity.actualQuantity?.toStringAsFixed(1) ?? '0'} / ${activity.plannedQuantity!.toStringAsFixed(1)} ${activity.unit}',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Chevron
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+                size: 24,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -267,7 +461,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: chipColor.withOpacity(0.1),
+        color: chipColor.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -283,67 +477,102 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.folder_open_outlined,
-            size: 64,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No work packages defined',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'This location has no sub-zones or activities',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.folder_open_outlined,
+                size: 40,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No work packages defined',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This location has no sub-zones or activities assigned.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildLoadingShimmer() {
     return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),
-      itemCount: 5,
-      itemBuilder: (context, index) => _buildSkeletonTile(),
+      itemCount: 6,
+      itemBuilder: (context, index) => _buildShimmerTile(),
     );
   }
 
-  Widget _buildSkeletonTile() {
-    return Card(
+  Widget _buildShimmerTile() {
+    return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginSM),
-      child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.divider,
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        title: Container(
-          height: 16,
-          decoration: BoxDecoration(
-            color: AppColors.divider,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        subtitle: Container(
-          height: 12,
-          margin: const EdgeInsets.only(top: 8),
-          decoration: BoxDecoration(
-            color: AppColors.divider,
-            borderRadius: BorderRadius.circular(4),
-          ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 16,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 12,
+                    width: 150,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -363,4 +592,22 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
       ),
     );
   }
+
+  Future<bool> _handleBackPress() async {
+    final projectState = context.read<ProjectBloc>().state;
+    if (projectState is EpsExplorerState && projectState.currentPath.length > 1) {
+      context.read<ProjectBloc>().add(NavigateBack());
+      return false;
+    }
+    return true;
+  }
+
+  void _handleBackTap() {
+    _handleBackPress().then((shouldPop) {
+      if (shouldPop && mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
 }
+

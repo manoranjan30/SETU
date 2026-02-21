@@ -16,6 +16,7 @@ interface QualityActivity {
     witnessPoint: boolean;
     allowBreak: boolean;
     previousActivityId?: number;
+    incomingEdges?: { sourceId: number; source: Partial<QualityActivity> }[];
 }
 
 interface QualityInspection {
@@ -105,9 +106,21 @@ export default function InspectionRequestPage() {
             const insp = inspMap.get(act.id);
             let state: 'LOCKED' | 'READY' | 'PENDING' | 'APPROVED' | 'REJECTED' = 'LOCKED';
 
-            // Check predecessor
+            // Check predecessors (Multi-dependency support)
             let predecessorDone = true;
-            if (act.previousActivityId) {
+
+            // Check edges if available
+            if (act.incomingEdges && act.incomingEdges.length > 0) {
+                for (const edge of act.incomingEdges) {
+                    const prevInsp = inspMap.get(edge.sourceId);
+                    if (!prevInsp || prevInsp.status !== 'APPROVED') {
+                        predecessorDone = false;
+                        break;
+                    }
+                }
+            }
+            // Fallback for legacy data/cache
+            else if (act.previousActivityId) {
                 const prevInsp = inspMap.get(act.previousActivityId);
                 if (!prevInsp || prevInsp.status !== 'APPROVED') {
                     predecessorDone = false;

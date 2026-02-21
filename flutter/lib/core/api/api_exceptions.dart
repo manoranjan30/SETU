@@ -80,12 +80,10 @@ class SyncException implements Exception {
 
 class ConflictException extends SyncException {
   const ConflictException({
-    String? entityType,
-    int? entityId,
+    super.entityType,
+    super.entityId,
   }) : super(
           message: 'Data conflict detected',
-          entityId: entityId,
-          entityType: entityType,
         );
 }
 

@@ -25,6 +25,11 @@ import { QualityActivityController } from './quality-activity.controller';
 import { QualityInspectionService } from './quality-inspection.service';
 import { QualityInspectionController } from './quality-inspection.controller';
 
+// Sequencer
+import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
+import { QualitySequencerService } from './quality-sequencer.service';
+import { QualitySequencerController } from './quality-sequencer.controller';
+
 @Module({
   imports: [
     MulterModule.register({ dest: './uploads/quality-csv' }),
@@ -43,12 +48,14 @@ import { QualityInspectionController } from './quality-inspection.controller';
       // NEW
       QualityActivityList,
       QualityActivity,
+      QualitySequenceEdge,
     ]),
   ],
   controllers: [
     QualityController,
     QualityActivityController,
     QualityInspectionController,
+    QualitySequencerController,
   ],
   providers: [
     QualityService,
@@ -56,6 +63,7 @@ import { QualityInspectionController } from './quality-inspection.controller';
     QualityWorkflowService,
     QualityActivityService,
     QualityInspectionService, // Added
+    QualitySequencerService,
   ],
   exports: [
     QualityService,
@@ -63,6 +71,7 @@ import { QualityInspectionController } from './quality-inspection.controller';
     QualityWorkflowService,
     QualityActivityService,
     QualityInspectionService, // Added
+    QualitySequencerService,
   ],
 })
-export class QualityModule {}
+export class QualityModule { }

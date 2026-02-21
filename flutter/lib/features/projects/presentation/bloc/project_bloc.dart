@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:drift/drift.dart' as drift;
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
@@ -253,6 +256,8 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
           .map<Project>((json) => Project.fromJson(json))
           .firstWhere((p) => p.id == event.projectId);
 
+      await _cacheProjects([project]);
+
       // Fetch all activities for the project
       final activitiesResponse = await _apiClient.getProjectActivities(event.projectId);
       final allActivities = activitiesResponse
@@ -290,7 +295,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
         currentPath: [projectRootNode],
         currentNode: projectRootNode,
         childNodes: rootNodes,
-        activities: [], // No activities at project root
+        activities: const [], // No activities at project root
         activityIndexByEpsNode: activityIndex,
       ));
     } catch (e) {
@@ -440,9 +445,25 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   // ==================== HELPER METHODS ====================
 
   Future<void> _cacheProjects(List<Project> projects) async {
-    // Projects are cached via the EPS nodes
+    await _database.batch((batch) {
+      for (final project in projects) {
+        batch.insert(
+          _database.cachedProjects,
+          CachedProjectsCompanion.insert(
+            id: project.id,
+            name: project.name,
+            code: drift.Value(project.code),
+            status: drift.Value(project.status),
+            startDate: drift.Value(project.startDate?.toIso8601String()),
+            endDate: drift.Value(project.endDate?.toIso8601String()),
+            rawData: jsonEncode(project.toJson()),
+          ),
+          mode: drift.InsertMode.insertOrReplace,
+        );
+      }
+    });
+
     for (final project in projects) {
-      // Cache EPS nodes recursively
       await _cacheEpsNodesRecursive(project.children, project.id);
     }
   }
@@ -466,14 +487,96 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   }
 
   Future<List<Project>> _loadCachedProjects() async {
-    // For now, return empty list
-    // In a full implementation, we would reconstruct projects from cached EPS nodes
-    return [];
+    final cached = await _database.select(_database.cachedProjects).get();
+    if (cached.isEmpty) return [];
+
+    return cached.map((row) {
+      final json = jsonDecode(row.rawData) as Map<String, dynamic>;
+      return Project.fromJson(json);
+    }).toList();
   }
 
   Future<EpsExplorerState?> _loadCachedHierarchy(int projectId) async {
-    // For now, return null
-    // In a full implementation, we would reconstruct the hierarchy from cache
-    return null;
+    final cachedProject = await (_database.select(_database.cachedProjects)
+          ..where((t) => t.id.equals(projectId))
+          ..limit(1))
+        .getSingleOrNull();
+
+    if (cachedProject == null) {
+      return null;
+    }
+
+    final cachedNodes = await _database.getEpsNodesForProject(projectId);
+    final cachedActivities = await _database.getActivitiesForProject(projectId);
+    final projectJson = jsonDecode(cachedProject.rawData) as Map<String, dynamic>;
+
+    final nodeById = <int, CachedEpsNode>{for (final node in cachedNodes) node.id: node};
+    final childIdsByParent = <int?, List<int>>{};
+    for (final node in cachedNodes) {
+      childIdsByParent.putIfAbsent(node.parentId, () => []).add(node.id);
+    }
+
+    EpsNode buildNode(int nodeId) {
+      final cachedNode = nodeById[nodeId]!;
+      final children = (childIdsByParent[nodeId] ?? <int>[])
+          .map(buildNode)
+          .toList(growable: false);
+
+      return EpsNode(
+        id: cachedNode.id,
+        name: cachedNode.name,
+        code: cachedNode.code,
+        type: cachedNode.type,
+        progress: cachedNode.progress,
+        parentId: cachedNode.parentId,
+        children: children,
+      );
+    }
+
+    final rootNodes = (childIdsByParent[null] ?? <int>[])
+        .map(buildNode)
+        .toList(growable: false);
+
+    final project = Project(
+      id: projectId,
+      name: projectJson['name'] as String? ?? cachedProject.name,
+      code: projectJson['code'] as String?,
+      status: projectJson['status'] as String?,
+      startDate: projectJson['startDate'] != null
+          ? DateTime.tryParse(projectJson['startDate'] as String)
+          : null,
+      endDate: projectJson['endDate'] != null
+          ? DateTime.tryParse(projectJson['endDate'] as String)
+          : null,
+      progress: (projectJson['progress'] as num?)?.toDouble(),
+      children: rootNodes,
+    );
+
+    final activityIndex = <int, List<Activity>>{};
+    for (final cachedActivity in cachedActivities) {
+      final activityJson = jsonDecode(cachedActivity.rawData) as Map<String, dynamic>;
+      final activity = Activity.fromJson(activityJson);
+      final epsNodeId = activity.epsNodeId;
+      if (epsNodeId != null) {
+        activityIndex.putIfAbsent(epsNodeId, () => <Activity>[]).add(activity);
+      }
+    }
+
+    final projectRootNode = EpsNode(
+      id: -project.id,
+      name: project.name,
+      type: 'project',
+      children: rootNodes,
+    );
+
+    return EpsExplorerState(
+      project: project,
+      currentPath: [projectRootNode],
+      currentNode: projectRootNode,
+      childNodes: rootNodes,
+      activities: const [],
+      activityIndexByEpsNode: activityIndex,
+      isOffline: true,
+    );
   }
 }

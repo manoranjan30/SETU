@@ -20,7 +20,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
     GripVertical, Plus, Edit2, Trash2, Check,
     ArrowLeft, AlertCircle, ShieldAlert, Eye, Scissors,
-    Save, ChevronRight
+    Save, ChevronRight, List, Network
 } from 'lucide-react';
 import api from '../../api/axios';
 
@@ -32,6 +32,8 @@ interface Activity {
     activityName: string;
     description: string;
     previousActivityId: number | null;
+    incomingEdges?: { sourceId: number; source: Partial<Activity> }[];
+    predecessorIds?: number[];
     holdPoint: boolean;
     witnessPoint: boolean;
     responsibleParty: string;
@@ -72,9 +74,11 @@ const SortableRow = ({
         zIndex: isDragging ? 10 : undefined,
     };
 
-    const predecessor = activity.previousActivityId
-        ? allActivities.find(a => a.id === activity.previousActivityId)
-        : null;
+    const predecessors = activity.incomingEdges?.length
+        ? activity.incomingEdges.map(e => allActivities.find(a => a.id === e.sourceId)).filter(Boolean)
+        : activity.previousActivityId
+            ? [allActivities.find(a => a.id === activity.previousActivityId)].filter(Boolean)
+            : [];
 
     return (
         <div
@@ -104,11 +108,16 @@ const SortableRow = ({
                         {activity.description && (
                             <p className="text-xs text-gray-500 mt-0.5 truncate">{activity.description}</p>
                         )}
-                        {/* Predecessor */}
-                        {predecessor && (
-                            <div className="flex items-center gap-1 mt-1 text-xs text-indigo-500">
-                                <ChevronRight className="w-3 h-3" />
-                                After: <span className="font-semibold">{predecessor.activityName}</span>
+                        {/* Predecessors */}
+                        {predecessors.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
+                                <span className="text-gray-400 font-medium">After:</span>
+                                {predecessors.map(p => (
+                                    <span key={p!.id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 font-semibold">
+                                        <ChevronRight className="w-3 h-3 text-indigo-400" />
+                                        {p!.activityName}
+                                    </span>
+                                ))}
                             </div>
                         )}
                     </div>
@@ -206,6 +215,7 @@ const ActivityForm = ({
         activityName: initial?.activityName || '',
         description: initial?.description || '',
         previousActivityId: initial?.previousActivityId || null as number | null,
+        predecessorIds: initial?.incomingEdges?.map(e => e.sourceId) || (initial?.previousActivityId ? [initial.previousActivityId] : []),
         holdPoint: initial?.holdPoint || false,
         witnessPoint: initial?.witnessPoint || false,
         responsibleParty: initial?.responsibleParty || 'Contractor',
@@ -268,20 +278,34 @@ const ActivityForm = ({
                         <option>Client</option>
                     </select>
                 </div>
-                <div>
-                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Predecessor Activity</label>
-                    <select
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
-                        value={form.previousActivityId ?? ''}
-                        onChange={e => set('previousActivityId', e.target.value ? Number(e.target.value) : null)}
-                    >
-                        <option value="">None (First Activity)</option>
+                <div className="col-span-2">
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block uppercase tracking-wider">Predecessor Activities (Select Multiple)</label>
+                    <div className="border border-gray-200 rounded-lg p-3 bg-white max-h-40 overflow-y-auto space-y-2">
                         {allActivities
                             .filter(a => a.id !== initial?.id)
                             .map(a => (
-                                <option key={a.id} value={a.id}>{a.sequence}. {a.activityName}</option>
+                                <label key={a.id} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors group">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-gray-300 text-indigo-600 w-4 h-4 focus:ring-indigo-500"
+                                        checked={form.predecessorIds!.includes(a.id)}
+                                        onChange={e => {
+                                            const ids = e.target.checked
+                                                ? [...form.predecessorIds!, a.id]
+                                                : form.predecessorIds!.filter(id => id !== a.id);
+                                            set('predecessorIds', ids);
+                                        }}
+                                    />
+                                    <span className="text-sm text-gray-700 group-hover:text-indigo-700">
+                                        <span className="font-bold text-gray-400 mr-2">{a.sequence}.</span>
+                                        {a.activityName}
+                                    </span>
+                                </label>
                             ))}
-                    </select>
+                        {allActivities.length <= 1 && (
+                            <div className="text-xs text-gray-400 py-2 text-center">No other activities available for linking.</div>
+                        )}
+                    </div>
                 </div>
             </div>
             {/* Toggles */}
@@ -450,12 +474,25 @@ const SequenceManagerPage = () => {
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => { setShowAddForm(true); setEditTarget(null); }}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 shadow-sm"
-                    >
-                        <Plus className="w-4 h-4" /> Add Activity
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-gray-100 p-1 rounded-lg">
+                            <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md shadow bg-white text-indigo-700">
+                                <List className="w-4 h-4" /> Activity Editor
+                            </button>
+                            <button
+                                onClick={() => navigate(`/dashboard/projects/${projectId}/quality/activity-lists/${listId}/sequence`)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-colors"
+                            >
+                                <Network className="w-4 h-4" /> Workflow Editor
+                            </button>
+                        </div>
+                        <button
+                            onClick={() => { setShowAddForm(true); setEditTarget(null); }}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 shadow-sm"
+                        >
+                            <Plus className="w-4 h-4" /> Add Activity
+                        </button>
+                    </div>
                 </div>
             </div>
 

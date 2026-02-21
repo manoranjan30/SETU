@@ -26,6 +26,7 @@ import EhsProjectDashboard from './views/ehs/EhsProjectDashboard';
 import QualityProjectDashboard from './views/quality/QualityProjectDashboard';
 import ActivityListsPage from './views/quality/ActivityListsPage';
 import SequenceManagerPage from './views/quality/SequenceManagerPage';
+import QualitySequencer from './views/quality/sequencer/QualitySequencer';
 import InspectionRequestPage from './views/quality/InspectionRequestPage';
 import DesignDashboard from './views/design/DesignDashboard';
 import SystemSettings from './views/admin/SystemSettings';
@@ -176,9 +177,14 @@ const AppRoutes = () => {
             <InspectionRequestPage />
           </ProtectedRoute>
         } />
-        <Route path="projects/:projectId/quality/activity-lists/:listId/sequence" element={
+        <Route path="projects/:projectId/quality/activity-lists/:listId/activities" element={
           <ProtectedRoute permission="VIEW_PROJECTS">
             <SequenceManagerPage />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/quality/activity-lists/:listId/sequence" element={
+          <ProtectedRoute permission="VIEW_PROJECTS">
+            <QualitySequencer />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/design" element={

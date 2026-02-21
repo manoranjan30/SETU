@@ -119,7 +119,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Login event,
     Emitter<AuthState> emit,
   ) async {
-    print('[AuthBloc] Login event received for: ${event.username}');
     emit(AuthLoading());
 
     try {
@@ -127,11 +126,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         username: event.username,
         password: event.password,
       );
-      print('[AuthBloc] Login successful, emitting AuthAuthenticated');
       emit(AuthAuthenticated(user));
-      print('[AuthBloc] AuthAuthenticated emitted');
     } catch (e) {
-      print('[AuthBloc] Login failed: $e');
       final errorMessage = _parseError(e);
       emit(AuthError(errorMessage));
     }
@@ -140,37 +136,38 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   /// Parse error to user-friendly message
   String _parseError(dynamic e) {
     final errorString = e.toString().toLowerCase();
-    
+
     // Connection errors
     if (errorString.contains('connectionerror') ||
         errorString.contains('connection refused') ||
         errorString.contains('connection failed')) {
       return 'Cannot connect to server. Please check:\n'
-          '• Your phone is on the same WiFi network as the server\n'
-          '• The server is running\n'
-          '• Windows Firewall allows port 3000';
+          '- Your phone is on the same WiFi network as the server\n'
+          '- The server is running\n'
+          '- Windows Firewall allows port 3000';
     }
-    
+
     // Timeout errors
     if (errorString.contains('timeout') || errorString.contains('timed out')) {
       return 'Connection timed out. Please check your network connection.';
     }
-    
+
     // Authentication errors
     if (errorString.contains('401') || errorString.contains('unauthorized')) {
       return 'Invalid username or password';
     }
-    
+
     // Server errors
-    if (errorString.contains('500') || errorString.contains('internal server error')) {
+    if (errorString.contains('500') ||
+        errorString.contains('internal server error')) {
       return 'Server error. Please try again later.';
     }
-    
+
     // Network errors
     if (errorString.contains('network') || errorString.contains('socket')) {
       return 'Network error. Please check your internet connection.';
     }
-    
+
     // Default: return a cleaned up version
     return 'Login failed: ${e.toString().replaceAll('Exception: ', '').replaceAll('DioException: ', '')}';
   }

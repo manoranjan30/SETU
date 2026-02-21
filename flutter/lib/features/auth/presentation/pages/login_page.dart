@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
@@ -65,10 +66,10 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 4),
               const Text(
-                '• Ensure phone is on same WiFi as server\n'
-                '• Check server is running (docker ps)\n'
-                '• Verify Windows Firewall allows port 3000\n'
-                '• Try pinging 192.168.0.101 from phone',
+                '- Ensure phone is on same WiFi as server\n'
+                '- Check server is running (docker ps)\n'
+                '- Verify firewall allows the backend port\n'
+                '- Confirm SETU_ENV / SETU_BASE_URL is correct',
                 style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
@@ -97,40 +98,38 @@ class _LoginPageState extends State<LoginPage> {
           _isLoading = state is AuthLoading;
 
           return SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppDimensions.paddingLG),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Logo and Title
-                        _buildHeader(),
-                        const SizedBox(height: 48),
-
-                        // Username Field
-                        _buildUsernameField(),
-                        const SizedBox(height: 16),
-
-                        // Password Field
-                        _buildPasswordField(),
-                        const SizedBox(height: 24),
-
-                        // Login Button
-                        _buildLoginButton(),
-                        const SizedBox(height: 16),
-
-                        // Server info
-                        _buildServerInfo(),
-                        const SizedBox(height: 24),
-
-                        // Version info
-                        _buildVersionInfo(),
-                      ],
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.background, AppColors.accentSoft],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppDimensions.paddingLG),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildHeader(),
+                          const SizedBox(height: 48),
+                          _buildUsernameField(),
+                          const SizedBox(height: 16),
+                          _buildPasswordField(),
+                          const SizedBox(height: 24),
+                          _buildLoginButton(),
+                          const SizedBox(height: 16),
+                          _buildServerInfo(),
+                          const SizedBox(height: 24),
+                          _buildVersionInfo(),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -247,12 +246,16 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildServerInfo() {
+    final uri = Uri.tryParse(ApiEndpoints.baseUrl);
+    final host = uri?.host ?? ApiEndpoints.baseUrl;
+    final port = uri?.port ?? 0;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: Colors.white.withOpacity(0.88),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Column(
         children: [
@@ -262,7 +265,7 @@ class _LoginPageState extends State<LoginPage> {
               Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade600),
               const SizedBox(width: 8),
               Text(
-                'Server: 192.168.0.101:3000',
+                port > 0 ? 'Server: $host:$port' : 'Server: $host',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey.shade600,
@@ -280,14 +283,14 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       children: [
         Text(
-          'Version 1.0.1',
+          'Version 1.1.0',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
         ),
         const SizedBox(height: 4),
         Text(
-          '© 2024 SETU Project Management',
+          '(c) 2026 SETU Project Management',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -296,3 +299,4 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
+
