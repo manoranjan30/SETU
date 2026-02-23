@@ -32,6 +32,9 @@ import { QualitySignature } from './entities/quality-signature.entity';
 import { QualityInspectionService } from './quality-inspection.service';
 import { QualityInspectionController } from './quality-inspection.controller';
 
+import { ActivityObservation } from './entities/activity-observation.entity';
+import { InspectionApproval } from './entities/inspection-approval.entity';
+
 // Sequencer
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import { QualitySequencerService } from './quality-sequencer.service';
@@ -66,6 +69,8 @@ import { ComplianceService } from './compliance.service';
       QualityInspectionStage,
       QualityExecutionItem,
       QualitySignature,
+      ActivityObservation,
+      InspectionApproval,
     ]),
   ],
   controllers: [

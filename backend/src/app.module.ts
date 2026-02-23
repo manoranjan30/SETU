@@ -95,6 +95,8 @@ import { QualityChecklistItemTemplate } from './quality/entities/quality-checkli
 import { QualityInspectionStage } from './quality/entities/quality-inspection-stage.entity';
 import { QualityExecutionItem } from './quality/entities/quality-execution-item.entity';
 import { QualitySignature } from './quality/entities/quality-signature.entity';
+import { ActivityObservation } from './quality/entities/activity-observation.entity';
+import { InspectionApproval } from './quality/entities/inspection-approval.entity';
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
@@ -195,6 +197,8 @@ import { AuditLog } from './audit/audit-log.entity';
         QualityInspectionStage,
         QualityExecutionItem,
         QualitySignature,
+        ActivityObservation,
+        InspectionApproval,
         // Design
         DrawingCategory,
         DrawingRegister,

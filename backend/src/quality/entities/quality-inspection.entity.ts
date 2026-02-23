@@ -16,6 +16,7 @@ import { QualityInspectionStage } from './quality-inspection-stage.entity';
 export enum InspectionStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
+  PROVISIONALLY_APPROVED = 'PROVISIONALLY_APPROVED',
   REJECTED = 'REJECTED',
   CANCELED = 'CANCELED',
 }

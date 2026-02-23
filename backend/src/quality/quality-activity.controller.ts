@@ -23,6 +23,9 @@ import type {
   UpdateActivityDto,
   ReorderDto,
   CsvActivityRow,
+  CreateObservationDto,
+  ResolveObservationDto,
+  ApproveActivityDto,
 } from './quality-activity.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -111,6 +114,69 @@ export class QualityActivityController {
     @Body() dto: UpdateActivityDto,
   ) {
     return this.service.updateActivity(id, dto);
+  }
+
+  @Post('activities/:id/assign-checklists')
+  @Permissions('QUALITY.ACTIVITY.UPDATE')
+  assignChecklists(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('checklistIds') checklistIds: number[],
+  ) {
+    if (!Array.isArray(checklistIds)) throw new BadRequestException('checklistIds must be an array of numbers');
+    return this.service.assignChecklists(id, checklistIds);
+  }
+
+  // ── Observations ───────────────────────────────────────────────────────
+
+  @Get('activities/:id/observations')
+  @Permissions('QUALITY.ACTIVITY.READ')
+  getObservations(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getObservations(id);
+  }
+
+  @Post('activities/:id/observation')
+  @Permissions('QUALITY.OBSERVATION.CREATE')
+  createObservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateObservationDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.service.createObservation(id, req.user?.id?.toString() || 'system', dto);
+  }
+
+  @Patch('activities/:id/observation/:obsId/resolve')
+  @Permissions('QUALITY.OBSERVATION.RESOLVE')
+  resolveObservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('obsId') obsId: string,
+    @Body() dto: ResolveObservationDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.service.resolveObservation(id, obsId, req.user?.id?.toString() || 'system', dto);
+  }
+
+  @Patch('activities/:id/observation/:obsId/close')
+  @Permissions('QUALITY.OBSERVATION.RESOLVE')
+  closeObservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('obsId') obsId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.service.closeObservation(id, obsId, req.user?.id?.toString() || 'system');
+  }
+
+  // ── Approval ───────────────────────────────────────────────────────────
+
+  @Post('activities/:id/approve')
+  @Permissions('QUALITY.ACTIVITY.APPROVE')
+  approveActivity(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApproveActivityDto,
+  ) {
+    if (!dto.inspectorName) {
+      throw new BadRequestException('inspectorName is required for signature');
+    }
+    return this.service.approveActivity(id, dto);
   }
 
   @Delete('activities/:id')

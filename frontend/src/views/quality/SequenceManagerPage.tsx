@@ -20,7 +20,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
     GripVertical, Plus, Edit2, Trash2, Check,
     ArrowLeft, AlertCircle, ShieldAlert, Eye, Scissors,
-    Save, ChevronRight, List, Network
+    Save, ChevronRight, List, Network, ClipboardList, X
 } from 'lucide-react';
 import api from '../../api/axios';
 
@@ -39,6 +39,13 @@ interface Activity {
     responsibleParty: string;
     allowBreak: boolean;
     status: string;
+    assignedChecklistIds?: number[];
+}
+
+interface ChecklistTemplate {
+    id: number;
+    name: string;
+    stages?: any[];
 }
 
 interface ActivityList {
@@ -54,6 +61,7 @@ const SortableRow = ({
     activity,
     index,
     allActivities,
+    checklists,
     onEdit,
     onDelete,
     onToggle,
@@ -61,6 +69,7 @@ const SortableRow = ({
     activity: Activity;
     index: number;
     allActivities: Activity[];
+    checklists: ChecklistTemplate[];
     onEdit: (a: Activity) => void;
     onDelete: (id: number) => void;
     onToggle: (id: number, field: 'holdPoint' | 'witnessPoint' | 'allowBreak', val: boolean) => void;
@@ -118,6 +127,20 @@ const SortableRow = ({
                                         {p!.activityName}
                                     </span>
                                 ))}
+                            </div>
+                        )}
+                        {/* Assigned Checklists */}
+                        {activity.assignedChecklistIds && activity.assignedChecklistIds.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                <ClipboardList className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                                {activity.assignedChecklistIds.map(cid => {
+                                    const tmpl = checklists.find(c => c.id === cid);
+                                    return (
+                                        <span key={cid} className="inline-flex items-center gap-1 text-xs bg-teal-50 text-teal-700 px-1.5 py-0.5 rounded border border-teal-100 font-medium">
+                                            {tmpl?.name || `#${cid}`}
+                                        </span>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -203,11 +226,13 @@ const SortableRow = ({
 const ActivityForm = ({
     initial,
     allActivities,
+    checklists,
     onSave,
     onCancel,
 }: {
     initial?: Activity;
     allActivities: Activity[];
+    checklists: ChecklistTemplate[];
     onSave: (data: Partial<Activity>) => Promise<void>;
     onCancel: () => void;
 }) => {
@@ -220,11 +245,26 @@ const ActivityForm = ({
         witnessPoint: initial?.witnessPoint || false,
         responsibleParty: initial?.responsibleParty || 'Contractor',
         allowBreak: initial?.allowBreak || false,
+        assignedChecklistIds: initial?.assignedChecklistIds || [] as number[],
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [clSearch, setClSearch] = useState('');
 
     const set = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }));
+
+    const toggleChecklist = (id: number) => {
+        setForm(f => ({
+            ...f,
+            assignedChecklistIds: f.assignedChecklistIds.includes(id)
+                ? f.assignedChecklistIds.filter(c => c !== id)
+                : [...f.assignedChecklistIds, id],
+        }));
+    };
+
+    const filteredChecklists = checklists.filter(c =>
+        c.name.toLowerCase().includes(clSearch.toLowerCase())
+    );
 
     const handleSave = async () => {
         if (!form.activityName.trim()) { setError('Activity name is required'); return; }
@@ -308,6 +348,64 @@ const ActivityForm = ({
                     </div>
                 </div>
             </div>
+
+            {/* Assign Checklists */}
+            <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block uppercase tracking-wider flex items-center gap-1.5">
+                    <ClipboardList className="w-3.5 h-3.5 text-teal-600" />
+                    Assign Checklists (Multi-Select)
+                </label>
+                {/* Selected Checklist Pills */}
+                {form.assignedChecklistIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                        {form.assignedChecklistIds.map(cid => {
+                            const tmpl = checklists.find(c => c.id === cid);
+                            return (
+                                <span key={cid} className="inline-flex items-center gap-1 text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-full font-semibold border border-teal-200">
+                                    {tmpl?.name || `#${cid}`}
+                                    <button type="button" onClick={() => toggleChecklist(cid)} className="hover:text-red-600 transition-colors">
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
+                {/* Searchable List */}
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                    <div className="px-3 py-2 border-b border-gray-100">
+                        <input
+                            className="w-full text-sm outline-none placeholder-gray-400"
+                            placeholder="Search checklists..."
+                            value={clSearch}
+                            onChange={e => setClSearch(e.target.value)}
+                        />
+                    </div>
+                    <div className="max-h-36 overflow-y-auto p-2 space-y-1">
+                        {filteredChecklists.length === 0 ? (
+                            <div className="text-xs text-gray-400 py-3 text-center">
+                                {checklists.length === 0 ? 'No checklist templates available. Create one first.' : 'No matching checklists.'}
+                            </div>
+                        ) : (
+                            filteredChecklists.map(cl => (
+                                <label key={cl.id} className="flex items-center gap-3 cursor-pointer hover:bg-teal-50 p-1.5 rounded transition-colors group">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-gray-300 text-teal-600 w-4 h-4 focus:ring-teal-500"
+                                        checked={form.assignedChecklistIds.includes(cl.id)}
+                                        onChange={() => toggleChecklist(cl.id)}
+                                    />
+                                    <span className="text-sm text-gray-700 group-hover:text-teal-700 flex-1">{cl.name}</span>
+                                    {cl.stages && (
+                                        <span className="text-xs text-gray-400">{cl.stages.length} stages</span>
+                                    )}
+                                </label>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+
             {/* Toggles */}
             <div className="flex items-center gap-4 flex-wrap">
                 {(['holdPoint', 'witnessPoint', 'allowBreak'] as const).map(field => (
@@ -347,6 +445,7 @@ const SequenceManagerPage = () => {
 
     const [list, setList] = useState<ActivityList | null>(null);
     const [activities, setActivities] = useState<Activity[]>([]);
+    const [checklists, setChecklists] = useState<ChecklistTemplate[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
@@ -367,12 +466,14 @@ const SequenceManagerPage = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [listRes, activitiesRes] = await Promise.all([
+            const [listRes, activitiesRes, clRes] = await Promise.all([
                 api.get(`/quality/activity-lists/${listId}`),
                 api.get(`/quality/activity-lists/${listId}/activities`),
+                api.get(`/quality/checklist-templates/project/${projectId}`),
             ]);
             setList(listRes.data);
             setActivities(activitiesRes.data);
+            setChecklists(Array.isArray(clRes.data) ? clRes.data : []);
         } catch {
             console.error('Failed to load sequence data');
         } finally {
@@ -407,13 +508,23 @@ const SequenceManagerPage = () => {
     };
 
     const handleAddActivity = async (data: Partial<Activity>) => {
-        await api.post(`/quality/activity-lists/${listId}/activities`, data);
+        const { assignedChecklistIds, ...activityData } = data;
+        const res = await api.post(`/quality/activity-lists/${listId}/activities`, activityData);
+        // Assign checklists if selected
+        if (assignedChecklistIds && assignedChecklistIds.length > 0 && res.data?.id) {
+            await api.post(`/quality/activities/${res.data.id}/assign-checklists`, { checklistIds: assignedChecklistIds });
+        }
         setShowAddForm(false);
         fetchData();
     };
 
     const handleEditActivity = async (data: Partial<Activity>) => {
-        await api.patch(`/quality/activities/${editTarget!.id}`, data);
+        const { assignedChecklistIds, ...activityData } = data;
+        await api.patch(`/quality/activities/${editTarget!.id}`, activityData);
+        // Update checklist assignment
+        if (assignedChecklistIds) {
+            await api.post(`/quality/activities/${editTarget!.id}/assign-checklists`, { checklistIds: assignedChecklistIds });
+        }
         setEditTarget(null);
         fetchData();
     };
@@ -511,6 +622,7 @@ const SequenceManagerPage = () => {
                     {showAddForm && !editTarget && (
                         <ActivityForm
                             allActivities={activities}
+                            checklists={checklists}
                             onSave={handleAddActivity}
                             onCancel={() => setShowAddForm(false)}
                         />
@@ -543,6 +655,7 @@ const SequenceManagerPage = () => {
                                         <ActivityForm
                                             initial={activity}
                                             allActivities={activities}
+                                            checklists={checklists}
                                             onSave={handleEditActivity}
                                             onCancel={() => setEditTarget(null)}
                                         />
@@ -551,6 +664,7 @@ const SequenceManagerPage = () => {
                                             activity={activity}
                                             index={index}
                                             allActivities={activities}
+                                            checklists={checklists}
                                             onEdit={setEditTarget}
                                             onDelete={setDeleteId}
                                             onToggle={handleToggle}

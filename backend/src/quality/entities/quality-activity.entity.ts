@@ -15,6 +15,15 @@ import { QualityChecklistTemplate } from './quality-checklist-template.entity';
 
 export type ResponsibleParty = 'Contractor' | 'Consultant' | 'Client';
 
+export enum QualityActivityStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  RFI_RAISED = 'RFI_RAISED',
+  UNDER_INSPECTION = 'UNDER_INSPECTION',
+  PENDING_OBSERVATION = 'PENDING_OBSERVATION',
+  APPROVED = 'APPROVED',
+  PROVISIONALLY_APPROVED = 'PROVISIONALLY_APPROVED',
+}
+
 @Entity('quality_activity')
 export class QualityActivity {
   @PrimaryGeneratedColumn()
@@ -55,8 +64,15 @@ export class QualityActivity {
   @Column({ default: false })
   allowBreak: boolean;
 
-  @Column({ length: 20, default: 'ACTIVE' })
-  status: string;
+  @Column({
+    type: 'enum',
+    enum: QualityActivityStatus,
+    default: QualityActivityStatus.NOT_STARTED,
+  })
+  status: QualityActivityStatus;
+
+  @Column('int', { array: true, default: [] })
+  assignedChecklistIds: number[];
 
   @ManyToOne(() => QualityActivity, { nullable: true })
   @JoinColumn({ name: 'previousActivityId' })

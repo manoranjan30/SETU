@@ -16,6 +16,11 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
     const [executionData, setExecutionData] = useState<any>({});
     const [signatureData, setSignatureData] = useState({ role: 'Site Engineer', name: '' });
 
+    // Observation Modal State
+    const [showObsModal, setShowObsModal] = useState(false);
+    const [obsText, setObsText] = useState('');
+    const [obsRemarks, setObsRemarks] = useState('');
+
     const fetchInspections = async () => {
         try {
             const response = await api.get(`/quality/inspections?projectId=${projectId}`);
@@ -60,7 +65,11 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
         switch (status) {
             case 'APPROVED': return 'bg-emerald-100 text-emerald-700';
             case 'REJECTED': return 'bg-red-100 text-red-700';
-            case 'IN_PROGRESS': return 'bg-blue-100 text-blue-700';
+            case 'IN_PROGRESS':
+            case 'UNDER_INSPECTION': return 'bg-blue-100 text-blue-700';
+            case 'RFI_RAISED': return 'bg-yellow-100 text-yellow-700';
+            case 'PENDING_OBSERVATION': return 'bg-amber-100 text-amber-800 ring-1 ring-amber-300';
+            case 'NOT_STARTED': return 'bg-gray-100 text-gray-500';
             default: return 'bg-orange-100 text-orange-700'; // PENDING
         }
     };
@@ -106,6 +115,27 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
         } catch (error) {
             console.error('Failed to submit stage:', error);
             alert('Error updating stage. Ensure all mandatory fields are filled.');
+        }
+    };
+
+    const handleAddObservation = async () => {
+        if (!obsText.trim()) return alert("Observation text is required.");
+
+        const currentStage = selectedInspection?.stages?.find((s: any) => s.id === activeStageId);
+
+        try {
+            await api.post(`/quality/activities/${selectedInspection.activityId}/observation`, {
+                observationText: obsText,
+                remarks: obsRemarks,
+                checklistId: currentStage?.stageTemplateId
+            });
+            setShowObsModal(false);
+            setObsText('');
+            setObsRemarks('');
+            alert('Observation added successfully. Activity flagged as PENDING_OBSERVATION.');
+            navigate(`/dashboard/projects/${projectId}/quality`);
+        } catch (error) {
+            console.error('Failed to add observation:', error);
         }
     };
 
@@ -211,22 +241,28 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                                         </div>
 
                                                         <div className="space-y-4 max-w-lg">
-                                                            {/* YES/NO Type */}
-                                                            {template.type === 'YES_NO' && (
+                                                            {/* YES/NA Type */}
+                                                            {(template.type === 'YES_NO' || template.type === 'YES_OR_NA') && (
                                                                 <div className="flex gap-3">
                                                                     <button
                                                                         disabled={stageLocked}
-                                                                        onClick={() => handleItemChange(item.id, 'isOk', true)}
-                                                                        className={`flex-1 py-2.5 rounded-xl border-2 font-bold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/20 ${data.isOk === true ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 disabled:opacity-50'}`}
+                                                                        onClick={() => {
+                                                                            handleItemChange(item.id, 'isOk', true);
+                                                                            handleItemChange(item.id, 'value', 'YES');
+                                                                        }}
+                                                                        className={`flex-1 py-2.5 rounded-xl border-2 font-bold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/20 ${data.isOk === true && data.value === 'YES' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 disabled:opacity-50'}`}
                                                                     >
-                                                                        Pass
+                                                                        YES
                                                                     </button>
                                                                     <button
                                                                         disabled={stageLocked}
-                                                                        onClick={() => handleItemChange(item.id, 'isOk', false)}
-                                                                        className={`flex-1 py-2.5 rounded-xl border-2 font-bold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-red-500/20 ${data.isOk === false && data.value === 'FAIL' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-500 hover:border-red-200 disabled:opacity-50'}`}
+                                                                        onClick={() => {
+                                                                            handleItemChange(item.id, 'isOk', true);
+                                                                            handleItemChange(item.id, 'value', 'NA');
+                                                                        }}
+                                                                        className={`flex-1 py-2.5 rounded-xl border-2 font-bold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-gray-500/20 ${data.isOk === true && data.value === 'NA' ? 'border-gray-500 bg-gray-100 text-gray-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 disabled:opacity-50'}`}
                                                                     >
-                                                                        Fail
+                                                                        N/A
                                                                     </button>
                                                                 </div>
                                                             )}
@@ -302,10 +338,10 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                         </div>
                                         <div className="flex items-center gap-4 border-t border-indigo-200/50 pt-6">
                                             <button
-                                                onClick={() => handleSubmitStage(currentStage.id, 'REJECTED')}
-                                                className="px-6 py-3 rounded-xl font-bold text-red-600 bg-white border-2 border-red-100 hover:border-red-200 hover:bg-red-50 transition-colors"
+                                                onClick={() => setShowObsModal(true)}
+                                                className="px-6 py-3 rounded-xl font-bold text-orange-600 bg-white border-2 border-orange-100 hover:border-orange-200 hover:bg-orange-50 transition-colors"
                                             >
-                                                Reject Stage
+                                                Keep Pending with Observation
                                             </button>
                                             <button
                                                 onClick={() => handleSubmitStage(currentStage.id, 'APPROVED')}
@@ -334,6 +370,54 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                         </div>
                     )}
                 </div>
+
+                {/* Observation Modal */}
+                {showObsModal && (
+                    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Add Observation</h3>
+                            <p className="text-sm text-gray-500 mb-6">Describe the issue. The activity will be flagged as Pending Observation, and approval will be paused until this is resolved.</p>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Observation Details</label>
+                                    <textarea
+                                        rows={4}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                                        placeholder="E.g., Surface uneven, reinforcement incorrect..."
+                                        value={obsText}
+                                        onChange={e => setObsText(e.target.value)}
+                                    ></textarea>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Remarks / Action Required (Optional)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                                        placeholder="Action for the contractor..."
+                                        value={obsRemarks}
+                                        onChange={e => setObsRemarks(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4 mt-8">
+                                <button
+                                    onClick={() => setShowObsModal(false)}
+                                    className="px-6 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors flex-1"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleAddObservation}
+                                    className="px-6 py-3 rounded-xl font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-lg shadow-orange-200 transition-all flex-1"
+                                >
+                                    Save Observation
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

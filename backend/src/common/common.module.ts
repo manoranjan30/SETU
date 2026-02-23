@@ -6,11 +6,12 @@ import { TableViewService } from './table-view.service';
 import { TableViewController } from './table-view.controller';
 import { SystemSettingsService } from './system-settings.service';
 import { SystemSettingsController } from './system-settings.controller';
+import { UploadController } from './upload.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([TableViewConfig, SystemSetting])],
   providers: [TableViewService, SystemSettingsService],
-  controllers: [TableViewController, SystemSettingsController],
+  controllers: [TableViewController, SystemSettingsController, UploadController],
   exports: [TableViewService, SystemSettingsService],
 })
-export class CommonModule {}
+export class CommonModule { }

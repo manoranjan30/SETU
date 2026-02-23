@@ -10,7 +10,8 @@ import {
 import { QualityStageTemplate } from './quality-stage-template.entity';
 
 export enum ChecklistItemType {
-    YES_NO = 'YES_NO',
+    YES_NO = 'YES_NO', // Legacy, keeping for backwards compatibility if needed before migration
+    YES_OR_NA = 'YES_OR_NA', // New default
     TEXT = 'TEXT',
     NUMERIC = 'NUMERIC',
     DROPDOWN = 'DROPDOWN',
@@ -37,7 +38,7 @@ export class QualityChecklistItemTemplate {
     @Column({
         type: 'enum',
         enum: ChecklistItemType,
-        default: ChecklistItemType.YES_NO,
+        default: ChecklistItemType.YES_OR_NA,
     })
     type: ChecklistItemType;
 

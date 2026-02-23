@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import {
   QualityInspection,
   InspectionStatus,
@@ -16,6 +16,7 @@ import { QualityInspectionStage, StageStatus } from './entities/quality-inspecti
 import { QualityExecutionItem } from './entities/quality-execution-item.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
+import { QualityActivityStatus } from './entities/quality-activity.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 
@@ -44,6 +45,8 @@ export class QualityInspectionService {
     private readonly activityRepo: Repository<QualityActivity>,
     @InjectRepository(QualityActivityList)
     private readonly listRepo: Repository<QualityActivityList>,
+    @InjectRepository(QualityChecklistTemplate)
+    private readonly checklistTemplateRepo: Repository<QualityChecklistTemplate>,
     @InjectRepository(QualityInspectionStage)
     private readonly stageRepo: Repository<QualityInspectionStage>,
     @InjectRepository(QualityExecutionItem)
@@ -98,7 +101,6 @@ export class QualityInspectionService {
     // 1. Verify Activity
     const activity = await this.activityRepo.findOne({
       where: { id: dto.activityId },
-      relations: ['checklistTemplate', 'checklistTemplate.stages', 'checklistTemplate.stages.items'],
     });
     if (!activity) throw new NotFoundException('Activity not found');
 
@@ -122,7 +124,12 @@ export class QualityInspectionService {
       );
     }
 
-    // 3. SEQUENCE ENFORCEMENT
+    // 3. CHECKLIST VERIFICATION (mandatory before RFI)
+    if (!activity.assignedChecklistIds || activity.assignedChecklistIds.length === 0) {
+      throw new BadRequestException('At least one checklist must be assigned to the activity before raising an RFI.');
+    }
+
+    // 4. SEQUENCE ENFORCEMENT
     if (activity.previousActivityId) {
       const allowed = await this.checkPredecessor(
         activity.previousActivityId,
@@ -136,7 +143,11 @@ export class QualityInspectionService {
       }
     }
 
-    // 4. Create Inspection
+    // 5. Update Activity Status to RFI_RAISED
+    activity.status = QualityActivityStatus.RFI_RAISED;
+    await this.activityRepo.save(activity);
+
+    // 6. Create Inspection
     const inspection = this.inspectionRepo.create({
       projectId: dto.projectId,
       epsNodeId: dto.epsNodeId,
@@ -155,27 +166,41 @@ export class QualityInspectionService {
 
     const savedInspection = await this.inspectionRepo.save(inspection);
 
-    // 5. Initialize Stages if Template exists
-    if (activity.checklistTemplate) {
-      for (const stageTemplate of activity.checklistTemplate.stages) {
-        const stage = this.stageRepo.create({
-          inspectionId: savedInspection.id,
-          stageTemplateId: stageTemplate.id,
-          status: StageStatus.PENDING,
-        });
-        const savedStage = await this.stageRepo.save(stage);
+    // 7. Initialize Stages from ALL assigned checklists
+    if (activity.assignedChecklistIds && activity.assignedChecklistIds.length > 0) {
+      const templates = await this.checklistTemplateRepo.find({
+        where: { id: In(activity.assignedChecklistIds) },
+        relations: ['stages', 'stages.items'],
+      });
 
-        // Initialize items for each stage
-        for (const itemTemplate of stageTemplate.items) {
-          const item = this.executionItemRepo.create({
-            stageId: savedStage.id,
-            itemTemplateId: itemTemplate.id,
-            isOk: false,
+      for (const template of templates) {
+        if (!template.stages) continue;
+
+        for (const stageTemplate of template.stages) {
+          const stage = this.stageRepo.create({
+            inspectionId: savedInspection.id,
+            stageTemplateId: stageTemplate.id,
+            status: StageStatus.PENDING,
           });
-          await this.executionItemRepo.save(item);
+          const savedStage = await this.stageRepo.save(stage);
+
+          // Initialize items for each stage
+          if (stageTemplate.items) {
+            for (const itemTemplate of stageTemplate.items) {
+              const item = this.executionItemRepo.create({
+                stageId: savedStage.id,
+                itemTemplateId: itemTemplate.id,
+                isOk: false,
+              });
+              await this.executionItemRepo.save(item);
+            }
+          }
         }
       }
     }
+
+    // 8. Transition Activity to UNDER_INSPECTION once stages are ready
+    await this.activityRepo.update(activity.id, { status: QualityActivityStatus.UNDER_INSPECTION });
 
     return this.inspectionRepo.findOne({
       where: { id: savedInspection.id },
@@ -257,7 +282,7 @@ export class QualityInspectionService {
   ) {
     const inspection = await this.inspectionRepo.findOne({
       where: { id },
-      relations: ['stages', 'stages.items'],
+      relations: ['stages', 'stages.items', 'stages.items.itemTemplate'],
     });
     if (!inspection) throw new NotFoundException('Inspection not found');
 
@@ -265,23 +290,27 @@ export class QualityInspectionService {
       // Validate all checklist items are checked (isOk === true)
       let allItemsChecked = true;
       let hasItems = false;
+      const failingItems: { itemId: number; itemText?: string }[] = [];
+
       if (inspection.stages && inspection.stages.length > 0) {
         for (const stage of inspection.stages) {
           if (stage.items && stage.items.length > 0) {
             hasItems = true;
             for (const item of stage.items) {
-              if (!item.isOk) {
+              if (item.isOk !== true) {
                 allItemsChecked = false;
-                break;
+                failingItems.push({ itemId: item.id, itemText: item.itemTemplate?.itemText });
               }
             }
           }
-          if (!allItemsChecked) break;
         }
       }
 
       if (hasItems && !allItemsChecked) {
-        throw new BadRequestException('Cannot approve RFI. All checklist items must be verified and checked.');
+        console.error('Approval validation failed for inspection', id, 'Failing items:', failingItems);
+        throw new BadRequestException(
+          `Cannot approve RFI. All checklist items must be verified and checked. (Failed: ${failingItems.length} items)`,
+        );
       }
     }
 

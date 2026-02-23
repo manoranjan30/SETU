@@ -251,6 +251,9 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     perm('QUALITY.INSPECTION.READ', 'View Inspections (RFI)', 'QUALITY', R),
     perm('QUALITY.INSPECTION.RAISE', 'Raise Inspection (RFI)', 'QUALITY', C),
     perm('QUALITY.INSPECTION.APPROVE', 'Approve Inspection', 'QUALITY', S),
+    perm('QUALITY.ACTIVITY.APPROVE', 'Final Approve Activity (Digital Lock)', 'QUALITY', S),
+    perm('QUALITY.OBSERVATION.CREATE', 'Create Activity Observation', 'QUALITY', C),
+    perm('QUALITY.OBSERVATION.RESOLVE', 'Resolve Activity Observation', 'QUALITY', U),
     perm('QUALITY.STRUCTURE.MANAGE', 'Manage Structure Templates', 'QUALITY', S),
 ];
 

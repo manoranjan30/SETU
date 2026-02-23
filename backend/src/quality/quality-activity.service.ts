@@ -1,12 +1,16 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
-import { QualityActivity } from './entities/quality-activity.entity';
+import { QualityActivity, QualityActivityStatus } from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
+import { ActivityObservation, ActivityObservationStatus } from './entities/activity-observation.entity';
+import { InspectionApproval } from './entities/inspection-approval.entity';
+import * as crypto from 'crypto';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +58,25 @@ export interface CsvActivityRow {
   allowBreak?: boolean;
 }
 
+export interface CreateObservationDto {
+  observationText: string;
+  type?: string;
+  remarks?: string;
+  photos?: string[];
+  checklistId?: number;
+}
+
+export interface ResolveObservationDto {
+  closureText: string;
+  closureEvidence?: string[];
+}
+
+export interface ApproveActivityDto {
+  inspectorName: string;
+  epsNodeId?: number;
+  projectId?: number;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -65,6 +88,10 @@ export class QualityActivityService {
     private readonly activityRepo: Repository<QualityActivity>,
     @InjectRepository(QualitySequenceEdge)
     private readonly edgeRepo: Repository<QualitySequenceEdge>,
+    @InjectRepository(ActivityObservation)
+    private readonly obsRepo: Repository<ActivityObservation>,
+    @InjectRepository(InspectionApproval)
+    private readonly approvalRepo: Repository<InspectionApproval>,
     private readonly dataSource: DataSource,
   ) { }
 
@@ -173,6 +200,132 @@ export class QualityActivityService {
     }
 
     return saved;
+  }
+
+  async assignChecklists(id: number, checklistIds: number[]): Promise<QualityActivity> {
+    const activity = await this.activityRepo.findOne({ where: { id } });
+    if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
+    activity.assignedChecklistIds = checklistIds;
+    return this.activityRepo.save(activity);
+  }
+
+  // ── Observations ───────────────────────────────────────────────────────
+
+  async getObservations(id: number): Promise<ActivityObservation[]> {
+    return this.obsRepo.find({
+      where: { activityId: id },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createObservation(id: number, userId: string, dto: CreateObservationDto): Promise<ActivityObservation> {
+    const activity = await this.activityRepo.findOne({ where: { id } });
+    if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
+    if (activity.status === QualityActivityStatus.APPROVED) {
+      throw new BadRequestException('Cannot add observation to an already approved activity.');
+    }
+
+    const obs = this.obsRepo.create({
+      activityId: id,
+      inspectorId: userId,
+      checklistId: dto.checklistId,
+      type: dto.type,
+      observationText: dto.observationText,
+      remarks: dto.remarks,
+      photos: dto.photos || [],
+      status: ActivityObservationStatus.PENDING,
+    });
+
+    const saved = await this.obsRepo.save(obs);
+
+    activity.status = QualityActivityStatus.PENDING_OBSERVATION;
+    await this.activityRepo.save(activity);
+
+    return saved;
+  }
+
+  async resolveObservation(id: number, obsId: string, userId: string, dto: ResolveObservationDto): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId: id } });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    if (obs.status === ActivityObservationStatus.RECTIFIED || obs.status === ActivityObservationStatus.CLOSED || obs.status === ActivityObservationStatus.RESOLVED) {
+      throw new BadRequestException('This observation is already rectified or closed.');
+    }
+
+    obs.status = ActivityObservationStatus.RECTIFIED;
+    obs.closureText = dto.closureText;
+    obs.closureEvidence = dto.closureEvidence || [];
+    obs.resolvedBy = userId;
+    obs.resolvedAt = new Date();
+    const saved = await this.obsRepo.save(obs);
+
+    // Activity remains in PENDING_OBSERVATION because QC needs to close it
+    // Or we could transition it back to UNDER_INSPECTION if ALL pending obs are at least RECTIFIED.
+    // For now, let's transition it back if no more purely PENDING obs exist.
+    const pendingCount = await this.obsRepo.count({
+      where: { activityId: id, status: ActivityObservationStatus.PENDING },
+    });
+
+    if (pendingCount === 0) {
+      // All observations are at least RECTIFIED, push back to QC
+      await this.activityRepo.update(id, { status: QualityActivityStatus.UNDER_INSPECTION });
+    }
+
+    return saved;
+  }
+
+  async closeObservation(id: number, obsId: string, userId: string): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId: id } });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    if (obs.status !== ActivityObservationStatus.RECTIFIED && obs.status !== ActivityObservationStatus.RESOLVED) {
+      throw new BadRequestException('Only rectified observations can be closed by QC.');
+    }
+
+    obs.status = ActivityObservationStatus.CLOSED;
+    const saved = await this.obsRepo.save(obs);
+
+    // Again check if all pending are clear...
+    return saved;
+  }
+
+  // ── Approval ───────────────────────────────────────────────────────────
+
+  async approveActivity(id: number, dto: ApproveActivityDto): Promise<InspectionApproval> {
+    const activity = await this.activityRepo.findOne({ where: { id } });
+    if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
+    // Guard: prevent double-approval
+    if (activity.status === QualityActivityStatus.APPROVED) {
+      throw new BadRequestException('Activity is already approved and digitally locked.');
+    }
+
+    // Validation: Check pending observations
+    const pendingCount = await this.obsRepo.count({
+      where: { activityId: id, status: ActivityObservationStatus.PENDING },
+    });
+
+    if (pendingCount > 0) {
+      throw new BadRequestException('Cannot approve activity. There are unresolved observations.');
+    }
+
+    const hash = crypto.createHash('sha256').update(`${id}-${new Date().toISOString()}-${dto.inspectorName}`).digest('hex');
+
+    const approval = this.approvalRepo.create({
+      activityId: id,
+      inspectorName: dto.inspectorName,
+      epsNodeId: dto.epsNodeId,
+      projectId: dto.projectId,
+      digitalSignatureHash: hash,
+    });
+    const savedApproval = await this.approvalRepo.save(approval);
+
+    activity.status = QualityActivityStatus.APPROVED;
+    await this.activityRepo.save(activity);
+
+    return savedApproval;
   }
 
   private async syncEdges(targetId: number, predecessorIds: number[]) {
@@ -313,7 +466,8 @@ export class QualityActivityService {
         responsibleParty: act.responsibleParty,
         allowBreak: act.allowBreak,
         position: act.position,
-        status: 'ACTIVE',
+        status: QualityActivityStatus.NOT_STARTED,
+        assignedChecklistIds: act.assignedChecklistIds,
       });
       const savedAct = await this.activityRepo.save(newAct);
       oldToNewMap.set(act.id, savedAct.id);
