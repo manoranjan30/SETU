@@ -5,7 +5,8 @@ import type {
     ApplyUnitDto,
     BulkApplyDto,
     CopyStructureDto,
-    QualitySnag
+    QualitySnag,
+    UpdateGraphDto,
 } from '../types/quality';
 
 const BASE_URL = '/quality';
@@ -78,6 +79,22 @@ export const qualityService = {
     // === DASHBOARD ===
     getSummary: async (projectId: number) => {
         const res = await api.get(`${BASE_URL}/${projectId}/summary`);
+        return res.data;
+    },
+
+    // === SEQUENCER ===
+    getSequence: async (listId: number) => {
+        const res = await api.get(`${BASE_URL}/sequences/${listId}`);
+        return res.data;
+    },
+
+    saveSequence: async (listId: number, data: UpdateGraphDto) => {
+        const res = await api.post(`${BASE_URL}/sequences/${listId}`, data);
+        return res.data;
+    },
+
+    createActivity: async (listId: number, data: { activityName: string; description?: string }) => {
+        const res = await api.post(`${BASE_URL}/activity-lists/${listId}/activities`, data);
         return res.data;
     }
 };

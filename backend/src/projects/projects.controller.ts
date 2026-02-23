@@ -5,6 +5,7 @@ import {
   Param,
   Delete,
   Get,
+  Patch,
   UseGuards,
   Request,
   ParseIntPipe,
@@ -19,6 +20,7 @@ import {
   RequireEpsPermission,
 } from './guards/eps-permission.guard';
 import { ProjectScopeType } from './entities/user-project-assignment.entity';
+import { Auditable } from '../audit/auditable.decorator';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard, ProjectContextGuard, ProjectAssignmentGuard)
@@ -26,19 +28,20 @@ export class ProjectsController {
   constructor(
     private readonly assignmentService: ProjectAssignmentService,
     private readonly permissionService: PermissionResolutionService,
-  ) {}
+  ) { }
 
   // Team Management
 
   @Post(':projectId/assign')
   @UseGuards(EpsPermissionGuard)
   @RequireEpsPermission('TEAM.MANAGE', 'projectId') // Custom permission check on the Project Node
+  @Auditable('TEAM', 'ASSIGN_MEMBER')
   async assignUser(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body()
     body: {
       userId: number;
-      roleId: number;
+      roleIds: number[];
       scopeType?: ProjectScopeType;
       scopeNodeId?: number;
     },
@@ -47,10 +50,28 @@ export class ProjectsController {
     return this.assignmentService.assignUser(
       projectId,
       body.userId,
-      body.roleId,
+      body.roleIds,
       body.scopeType,
       body.scopeNodeId,
-      req.user.sub,
+      req.user.id,
+    );
+  }
+
+  @Patch(':projectId/users/:userId/status')
+  @UseGuards(EpsPermissionGuard)
+  @RequireEpsPermission('TEAM.MANAGE', 'projectId')
+  @Auditable('TEAM', 'UPDATE_MEMBER_STATUS', 'userId')
+  async updateStatus(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body('status') status: any,
+    @Request() req,
+  ) {
+    return this.assignmentService.updateStatus(
+      projectId,
+      userId,
+      status,
+      req.user.id,
     );
   }
 
@@ -64,12 +85,13 @@ export class ProjectsController {
   @Delete(':projectId/users/:userId')
   @UseGuards(EpsPermissionGuard)
   @RequireEpsPermission('TEAM.MANAGE', 'projectId')
+  @Auditable('TEAM', 'REMOVE_MEMBER', 'userId')
   async removeUser(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Param('userId', ParseIntPipe) userId: number,
     @Request() req,
   ) {
-    return this.assignmentService.removeUser(projectId, userId, req.user.sub);
+    return this.assignmentService.removeUser(projectId, userId, req.user.id);
   }
 
   // Permission Verification Endpoint (For Debugging/Frontend Checks)
@@ -83,7 +105,7 @@ export class ProjectsController {
     // Simple boolean check
     const permission = req.query.code;
     return this.permissionService.hasPermission(
-      req.user.sub,
+      req.user.id,
       permission,
       nodeId,
     );

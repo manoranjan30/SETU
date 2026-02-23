@@ -141,3 +141,4 @@ class QualitySequenceEdge {
 4.  **Connect:** Draws line from "Excavation" -> "PCC".
 5.  **Configure:** Clicks line. Sets as "Unbreakable" (Must pass Excavation to start PCC).
 6.  **Save:** Clicks "Save Workflow". Backend validates and stores.
+ 

@@ -286,3 +286,32 @@ For details, see [scripts/README.md](scripts/README.md)
 | Testing  | `test-engineer`       | testing-patterns, webapp-testing      |
 | Debug    | `debugger`            | systematic-debugging                  |
 | Plan     | `project-planner`     | brainstorming, plan-writing           |
+
+---
+
+## 📜 SETU Platform — Binding Rules (Read Before Implementing)
+
+These rule files in `.agent/rules/` are **authoritative contracts** for the SETU platform.
+An AI MUST consult the relevant rule file **before implementing features** in those domains.
+
+| Rule File | Trigger — Read When... |
+|-----------|------------------------|
+| `PERMISSION_SYSTEM.md` | **🔴 Creating ANY module, controller, endpoint, or feature.** Defines the mandatory permission registration, naming convention, and checklist. HIGHEST PRIORITY. |
+| `PERMISSION_FLOW.md` | **Understanding permission architecture.** End-to-end flow from login → JWT → guards → controller, sidebar visibility logic, controller audit status. |
+| `AUDIT_INTEGRATION_RULES.md` | **Building any new module, controller, or service.** Defines the mandatory 3-step audit checklist. |
+| `AUTHORIZATION_MODEL.md` | Adding permissions, guards, or role-based access control to any endpoint. |
+| `DATA_OWNERSHIP.md` | Designing data models where multi-tenancy, project isolation, or user scope matters. |
+| `DOMAIN_EVENTS.md` | Implementing event-driven patterns, webhooks, or cross-module status changes. |
+| `DOMAIN_GLOSSARY.md` | Unsure of terminology — WBS, EPS, BOQ, RFI, NCR, EHS, EOT, etc. |
+| `MODULE_BREAKDOWN_AND_BACKEND_ARCHITECTURE.md` | Starting a new backend module — check existing patterns first. |
+| `REPO_STRUCTURE.md` | Creating new files — verify the correct directory before creating. |
+| `SYSTEM_ARCHITECTURE.md` | Making architectural decisions that affect the overall system. |
+| `PRODUCT_VISION.md` | Unsure if a feature aligns with the platform's goals. |
+
+### 🔴 Critical: When Building ANY New Module
+
+The AI MUST follow this sequence:
+1. Read `PERMISSION_SYSTEM.md` → Register permissions in registry, add `@Permissions()` to all endpoints
+2. Read `AUDIT_INTEGRATION_RULES.md` → Register route, add `@Auditable()`, wire `AuditService` if needed
+3. Read `AUTHORIZATION_MODEL.md` → Verify scope model and ABAC rules
+4. Read `MODULE_BREAKDOWN_AND_BACKEND_ARCHITECTURE.md` → Follow existing NestJS patterns

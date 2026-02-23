@@ -1,11 +1,16 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
-import { QualityActivity } from './entities/quality-activity.entity';
+import { QualityActivity, QualityActivityStatus } from './entities/quality-activity.entity';
+import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
+import { ActivityObservation, ActivityObservationStatus } from './entities/activity-observation.entity';
+import { InspectionApproval } from './entities/inspection-approval.entity';
+import * as crypto from 'crypto';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +31,8 @@ export interface UpdateListDto {
 export interface CreateActivityDto {
   activityName: string;
   description?: string;
-  previousActivityId?: number;
+  previousActivityId?: number; // Legacy single predecessor
+  predecessorIds?: number[];    // Multi-predecessor support
   holdPoint?: boolean;
   witnessPoint?: boolean;
   responsibleParty?: string;
@@ -52,6 +58,25 @@ export interface CsvActivityRow {
   allowBreak?: boolean;
 }
 
+export interface CreateObservationDto {
+  observationText: string;
+  type?: string;
+  remarks?: string;
+  photos?: string[];
+  checklistId?: number;
+}
+
+export interface ResolveObservationDto {
+  closureText: string;
+  closureEvidence?: string[];
+}
+
+export interface ApproveActivityDto {
+  inspectorName: string;
+  epsNodeId?: number;
+  projectId?: number;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -61,6 +86,12 @@ export class QualityActivityService {
     private readonly listRepo: Repository<QualityActivityList>,
     @InjectRepository(QualityActivity)
     private readonly activityRepo: Repository<QualityActivity>,
+    @InjectRepository(QualitySequenceEdge)
+    private readonly edgeRepo: Repository<QualitySequenceEdge>,
+    @InjectRepository(ActivityObservation)
+    private readonly obsRepo: Repository<ActivityObservation>,
+    @InjectRepository(InspectionApproval)
+    private readonly approvalRepo: Repository<InspectionApproval>,
     private readonly dataSource: DataSource,
   ) { }
 
@@ -77,7 +108,10 @@ export class QualityActivityService {
       .where('list.projectId = :projectId', { projectId });
 
     if (epsNodeId) {
-      qb.andWhere('list.epsNodeId = :epsNodeId', { epsNodeId });
+      // Show lists linked to this EXACT node OR global lists (epsNodeId is null)
+      qb.andWhere('(list.epsNodeId = :epsNodeId OR list.epsNodeId IS NULL)', {
+        epsNodeId,
+      });
     }
 
     return qb.orderBy('list.createdAt', 'DESC').getMany();
@@ -116,6 +150,7 @@ export class QualityActivityService {
   async getActivities(listId: number): Promise<QualityActivity[]> {
     return this.activityRepo.find({
       where: { listId },
+      relations: ['incomingEdges', 'incomingEdges.source'],
       order: { sequence: 'ASC' },
     });
   }
@@ -132,16 +167,22 @@ export class QualityActivityService {
       .createQueryBuilder('a')
       .select('MAX(a.sequence)', 'max')
       .where('a.listId = :listId', { listId })
-      .getRawOne<{ max: number | null }>();
+      .getRawOne<{ max: number | string | null }>();
 
-    const nextSeq = (maxSeq?.max ?? 0) + 1;
+    const nextSeq = (Number(maxSeq?.max) || 0) + 1;
 
     const activity = this.activityRepo.create({
       ...dto,
       listId,
       sequence: nextSeq,
     });
-    return this.activityRepo.save(activity);
+    const saved = await this.activityRepo.save(activity);
+
+    if (dto.predecessorIds) {
+      await this.syncEdges(saved.id, dto.predecessorIds);
+    }
+
+    return saved;
   }
 
   async updateActivity(
@@ -150,8 +191,165 @@ export class QualityActivityService {
   ): Promise<QualityActivity> {
     const activity = await this.activityRepo.findOne({ where: { id } });
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
     Object.assign(activity, dto);
+    const saved = await this.activityRepo.save(activity);
+
+    if (dto.predecessorIds) {
+      await this.syncEdges(id, dto.predecessorIds);
+    }
+
+    return saved;
+  }
+
+  async assignChecklists(id: number, checklistIds: number[]): Promise<QualityActivity> {
+    const activity = await this.activityRepo.findOne({ where: { id } });
+    if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
+    activity.assignedChecklistIds = checklistIds;
     return this.activityRepo.save(activity);
+  }
+
+  // ── Observations ───────────────────────────────────────────────────────
+
+  async getObservations(id: number): Promise<ActivityObservation[]> {
+    return this.obsRepo.find({
+      where: { activityId: id },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createObservation(id: number, userId: string, dto: CreateObservationDto): Promise<ActivityObservation> {
+    const activity = await this.activityRepo.findOne({ where: { id } });
+    if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
+    if (activity.status === QualityActivityStatus.APPROVED) {
+      throw new BadRequestException('Cannot add observation to an already approved activity.');
+    }
+
+    const obs = this.obsRepo.create({
+      activityId: id,
+      inspectorId: userId,
+      checklistId: dto.checklistId,
+      type: dto.type,
+      observationText: dto.observationText,
+      remarks: dto.remarks,
+      photos: dto.photos || [],
+      status: ActivityObservationStatus.PENDING,
+    });
+
+    const saved = await this.obsRepo.save(obs);
+
+    activity.status = QualityActivityStatus.PENDING_OBSERVATION;
+    await this.activityRepo.save(activity);
+
+    return saved;
+  }
+
+  async resolveObservation(id: number, obsId: string, userId: string, dto: ResolveObservationDto): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId: id } });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    if (obs.status === ActivityObservationStatus.RECTIFIED || obs.status === ActivityObservationStatus.CLOSED || obs.status === ActivityObservationStatus.RESOLVED) {
+      throw new BadRequestException('This observation is already rectified or closed.');
+    }
+
+    obs.status = ActivityObservationStatus.RECTIFIED;
+    obs.closureText = dto.closureText;
+    obs.closureEvidence = dto.closureEvidence || [];
+    obs.resolvedBy = userId;
+    obs.resolvedAt = new Date();
+    const saved = await this.obsRepo.save(obs);
+
+    // Activity remains in PENDING_OBSERVATION because QC needs to close it
+    // Or we could transition it back to UNDER_INSPECTION if ALL pending obs are at least RECTIFIED.
+    // For now, let's transition it back if no more purely PENDING obs exist.
+    const pendingCount = await this.obsRepo.count({
+      where: { activityId: id, status: ActivityObservationStatus.PENDING },
+    });
+
+    if (pendingCount === 0) {
+      // All observations are at least RECTIFIED, push back to QC
+      await this.activityRepo.update(id, { status: QualityActivityStatus.UNDER_INSPECTION });
+    }
+
+    return saved;
+  }
+
+  async closeObservation(id: number, obsId: string, userId: string): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId: id } });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    if (obs.status !== ActivityObservationStatus.RECTIFIED && obs.status !== ActivityObservationStatus.RESOLVED) {
+      throw new BadRequestException('Only rectified observations can be closed by QC.');
+    }
+
+    obs.status = ActivityObservationStatus.CLOSED;
+    const saved = await this.obsRepo.save(obs);
+
+    // Again check if all pending are clear...
+    return saved;
+  }
+
+  // ── Approval ───────────────────────────────────────────────────────────
+
+  async approveActivity(id: number, dto: ApproveActivityDto): Promise<InspectionApproval> {
+    const activity = await this.activityRepo.findOne({ where: { id } });
+    if (!activity) throw new NotFoundException(`Activity #${id} not found`);
+
+    // Guard: prevent double-approval
+    if (activity.status === QualityActivityStatus.APPROVED) {
+      throw new BadRequestException('Activity is already approved and digitally locked.');
+    }
+
+    // Validation: Check pending observations
+    const pendingCount = await this.obsRepo.count({
+      where: { activityId: id, status: ActivityObservationStatus.PENDING },
+    });
+
+    if (pendingCount > 0) {
+      throw new BadRequestException('Cannot approve activity. There are unresolved observations.');
+    }
+
+    const hash = crypto.createHash('sha256').update(`${id}-${new Date().toISOString()}-${dto.inspectorName}`).digest('hex');
+
+    const approval = this.approvalRepo.create({
+      activityId: id,
+      inspectorName: dto.inspectorName,
+      epsNodeId: dto.epsNodeId,
+      projectId: dto.projectId,
+      digitalSignatureHash: hash,
+    });
+    const savedApproval = await this.approvalRepo.save(approval);
+
+    activity.status = QualityActivityStatus.APPROVED;
+    await this.activityRepo.save(activity);
+
+    return savedApproval;
+  }
+
+  private async syncEdges(targetId: number, predecessorIds: number[]) {
+    // Delete existing edges for this target
+    await this.edgeRepo.delete({ targetId });
+
+    // Create new edges
+    if (predecessorIds.length > 0) {
+      const edges = predecessorIds.map(sourceId => this.edgeRepo.create({
+        sourceId: Number(sourceId),
+        targetId,
+        constraintType: 'HARD'
+      }));
+      await this.edgeRepo.save(edges);
+
+      // Legacy sync: set previousActivityId to the first predecessor
+      await this.activityRepo.update(targetId, {
+        previousActivityId: Number(predecessorIds[0])
+      });
+    } else {
+      await this.activityRepo.update(targetId, {
+        previousActivityId: null as any
+      });
+    }
   }
 
   async deleteActivity(id: number): Promise<void> {
@@ -188,7 +386,6 @@ export class QualityActivityService {
       for (let i = 0; i < orderedIds.length; i++) {
         await manager.update(QualityActivity, orderedIds[i], {
           sequence: i + 1,
-          previousActivityId: i === 0 ? undefined : orderedIds[i - 1],
         });
       }
     });
@@ -238,6 +435,82 @@ export class QualityActivityService {
     }
 
     return this.getActivities(listId);
+  }
+
+  /** Clone an existing list to a target project */
+  async cloneList(sourceListId: number, targetProjectId: number): Promise<QualityActivityList> {
+    const sourceList = await this.listRepo.findOne({
+      where: { id: sourceListId },
+      relations: ['activities'],
+    });
+    if (!sourceList) throw new NotFoundException(`Source list #${sourceListId} not found`);
+
+    // 1. Create newList object
+    const newList = this.listRepo.create({
+      name: `${sourceList.name} (Copy)`,
+      description: sourceList.description,
+      projectId: targetProjectId,
+    });
+    const savedList = await this.listRepo.save(newList);
+
+    // 2. Clone Activities
+    const oldToNewMap = new Map<number, number>();
+    for (const act of sourceList.activities) {
+      const newAct = this.activityRepo.create({
+        listId: savedList.id,
+        sequence: act.sequence,
+        activityName: act.activityName,
+        description: act.description,
+        holdPoint: act.holdPoint,
+        witnessPoint: act.witnessPoint,
+        responsibleParty: act.responsibleParty,
+        allowBreak: act.allowBreak,
+        position: act.position,
+        status: QualityActivityStatus.NOT_STARTED,
+        assignedChecklistIds: act.assignedChecklistIds,
+      });
+      const savedAct = await this.activityRepo.save(newAct);
+      oldToNewMap.set(act.id, savedAct.id);
+    }
+
+    // 3. Clone Sequence Edges
+    const oldIds = Array.from(oldToNewMap.keys());
+    if (oldIds.length > 0) {
+      const sourceEdges = await this.edgeRepo.find({
+        where: { sourceId: In(oldIds) },
+      });
+
+      const newEdges = sourceEdges.map(edge => {
+        const newSourceId = oldToNewMap.get(edge.sourceId);
+        const newTargetId = oldToNewMap.get(edge.targetId);
+        if (newSourceId && newTargetId) {
+          return this.edgeRepo.create({
+            sourceId: newSourceId,
+            targetId: newTargetId,
+            constraintType: edge.constraintType,
+            lagMinutes: edge.lagMinutes,
+          });
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (newEdges.length > 0) {
+        await this.edgeRepo.save(newEdges as QualitySequenceEdge[]);
+      }
+    }
+
+    // 4. Update legacy previousActivityId
+    for (const act of sourceList.activities) {
+      if (act.previousActivityId) {
+        const newId = oldToNewMap.get(act.id);
+        const newPrevId = oldToNewMap.get(act.previousActivityId);
+        if (newId && newPrevId) {
+          await this.activityRepo.update(newId, { previousActivityId: newPrevId });
+        }
+      }
+    }
+
+    return savedList;
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────

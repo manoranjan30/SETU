@@ -6,7 +6,10 @@ import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
+import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart';
+import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:shimmer/shimmer.dart';
 
 class ProjectsListPage extends StatefulWidget {
   const ProjectsListPage({super.key});
@@ -27,19 +30,53 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SETU'),
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Text(
+                  'S',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('SETU'),
+          ],
+        ),
         actions: [
+          // Sync status indicator
+          LiveSyncStatusIndicator(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SyncLogPage()),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
               context.read<ProjectBloc>().add(LoadProjects());
             },
+            tooltip: 'Refresh',
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout_rounded),
             onPressed: () {
               _showLogoutDialog(context);
             },
+            tooltip: 'Logout',
           ),
         ],
       ),
@@ -50,13 +87,14 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               SnackBar(
                 content: Text(state.message),
                 backgroundColor: AppColors.error,
+                behavior: SnackBarBehavior.floating,
               ),
             );
           }
         },
         builder: (context, state) {
           if (state is ProjectLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return _buildLoadingShimmer();
           }
 
           if (state is ProjectsLoaded) {
@@ -74,29 +112,42 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.folder_off_outlined,
-            size: 64,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No projects assigned',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Contact your administrator to get project access',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.folder_off_outlined,
+                size: 40,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No projects assigned',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Contact your administrator to get project access',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -117,40 +168,61 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
   }
 
   Widget _buildProjectCard(Project project) {
+    final progress = project.progress ?? 0;
+    final progressPercent = (progress * 100).toStringAsFixed(0);
+
     return Card(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginMD),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        side: const BorderSide(color: AppColors.divider),
+      ),
       child: InkWell(
         onTap: () {
           _navigateToEpsExplorer(project);
         },
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
         child: Padding(
-          padding: const EdgeInsets.all(AppDimensions.cardPadding),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
+                  // Project icon
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 52,
+                    height: 52,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primary.withOpacity(0.15),
+                          AppColors.primary.withOpacity(0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      Icons.business_outlined,
+                    child: const Icon(
+                      Icons.business_rounded,
                       color: AppColors.primary,
+                      size: 26,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
+                  // Project info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           project.name,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -158,42 +230,83 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                           const SizedBox(height: 4),
                           Text(
                             project.code!,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right),
+                  // Chevron
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textSecondary,
+                  ),
                 ],
               ),
+              // Progress and status row
               if (project.status != null || project.progress != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     if (project.status != null)
                       _buildStatusChip(project.status!),
                     const Spacer(),
                     if (project.progress != null)
-                      Text(
-                        '${(project.progress! * 100).toStringAsFixed(0)}%',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: AppColors.primary,
-                            ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$progressPercent%',
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                   ],
                 ),
               ],
-              // Show EPS structure preview
+              // Progress bar
+              if (project.progress != null) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: AppColors.divider,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      progress >= 1.0 ? AppColors.success : AppColors.primary,
+                    ),
+                    minHeight: 4,
+                  ),
+                ),
+              ],
+              // EPS structure preview
               if (project.children.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '${project.children.length} zones',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.folder_outlined,
+                      size: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${project.children.length} zone${project.children.length > 1 ? 's' : ''}',
+                      style: const TextStyle(
                         color: AppColors.textSecondary,
+                        fontSize: 12,
                       ),
+                    ),
+                  ],
                 ),
               ],
             ],
@@ -205,33 +318,121 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
 
   Widget _buildStatusChip(String status) {
     Color chipColor;
+    Color textColor;
+    String label;
+
     switch (status.toLowerCase()) {
       case 'active':
       case 'in_progress':
         chipColor = AppColors.success;
+        textColor = AppColors.success;
+        label = 'Active';
         break;
       case 'completed':
         chipColor = AppColors.info;
+        textColor = AppColors.info;
+        label = 'Completed';
         break;
       case 'on_hold':
       case 'delayed':
         chipColor = AppColors.warning;
+        textColor = AppColors.warning;
+        label = 'On Hold';
         break;
       default:
         chipColor = AppColors.textSecondary;
+        textColor = AppColors.textSecondary;
+        label = status.replaceAll('_', ' ');
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: chipColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
+        color: chipColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        status.replaceAll('_', ' ').toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: chipColor,
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingShimmer() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppDimensions.paddingMD),
+      itemCount: 4,
+      itemBuilder: (context, index) => _buildShimmerCard(),
+    );
+  }
+
+  Widget _buildShimmerCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppDimensions.marginMD),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 16,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 12,
+                        width: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 14),
+            Container(
+              height: 4,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -252,6 +453,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Logout'),
         content: const Text('Are you sure you want to logout?'),
         actions: [
@@ -266,6 +468,9 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             child: const Text('Logout'),
           ),

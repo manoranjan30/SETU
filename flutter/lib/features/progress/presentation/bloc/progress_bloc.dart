@@ -1,11 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart' as db;
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/features/progress/data/models/progress_model.dart';
-import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 
 // ==================== EVENTS ====================
 
@@ -14,20 +12,6 @@ abstract class ProgressEvent extends Equatable {
 
   @override
   List<Object?> get props => [];
-}
-
-/// Load execution breakdown for an activity
-class LoadExecutionBreakdown extends ProgressEvent {
-  final int activityId;
-  final int epsNodeId;
-
-  const LoadExecutionBreakdown({
-    required this.activityId,
-    required this.epsNodeId,
-  });
-
-  @override
-  List<Object?> get props => [activityId, epsNodeId];
 }
 
 /// Save progress entry
@@ -77,22 +61,6 @@ class ProgressInitial extends ProgressState {}
 
 /// Loading state
 class ProgressLoading extends ProgressState {}
-
-/// Execution breakdown loaded
-class ExecutionBreakdownLoaded extends ProgressState {
-  final ExecutionBreakdown breakdown;
-  final Activity activity;
-  final Project project;
-
-  const ExecutionBreakdownLoaded({
-    required this.breakdown,
-    required this.activity,
-    required this.project,
-  });
-
-  @override
-  List<Object?> get props => [breakdown, activity, project];
-}
 
 /// Progress saved successfully
 class ProgressSaved extends ProgressState {
@@ -159,65 +127,19 @@ class ProgressError extends ProgressState {
 // ==================== BLOC ====================
 
 class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
-  final SetuApiClient _apiClient;
   final db.AppDatabase _database;
   final SyncService _syncService;
 
   ProgressBloc({
-    required SetuApiClient apiClient,
     required db.AppDatabase database,
     required SyncService syncService,
-  })  : _apiClient = apiClient,
-        _database = database,
+  })  : _database = database,
         _syncService = syncService,
         super(ProgressInitial()) {
-    on<LoadExecutionBreakdown>(_onLoadExecutionBreakdown);
     on<SaveProgress>(_onSaveProgress);
     on<SaveMultipleProgress>(_onSaveMultipleProgress);
     on<LoadProgressHistory>(_onLoadProgressHistory);
     on<SyncProgress>(_onSyncProgress);
-  }
-
-  Future<void> _onLoadExecutionBreakdown(
-    LoadExecutionBreakdown event,
-    Emitter<ProgressState> emit,
-  ) async {
-    emit(ProgressLoading());
-
-    try {
-      // Check if activity has micro schedule
-      final hasMicro = await _apiClient.hasMicroSchedule(event.activityId);
-
-      ExecutionBreakdown breakdown;
-
-      if (hasMicro) {
-        // Get execution breakdown
-        final response = await _apiClient.getExecutionBreakdown(
-          activityId: event.activityId,
-          epsNodeId: event.epsNodeId,
-        );
-        breakdown = ExecutionBreakdown.fromJson(response);
-      } else {
-        // Get BOQ items for direct execution
-        // TODO: Implement BOQ items fetching
-        breakdown = const ExecutionBreakdown(hasMicroSchedule: false);
-      }
-
-      // We need activity and project from parent state
-      // For now, emit with placeholder values
-      emit(ExecutionBreakdownLoaded(
-        breakdown: breakdown,
-        activity: Activity(
-          id: event.activityId,
-          name: '',
-          projectId: 0,
-          epsNodeId: event.epsNodeId,
-        ),
-        project: const Project(id: 0, name: ''),
-      ));
-    } catch (e) {
-      emit(ProgressError(e.toString()));
-    }
   }
 
   Future<void> _onSaveProgress(
@@ -305,7 +227,7 @@ class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
     Emitter<ProgressState> emit,
   ) async {
     final pendingCount = await _syncService.getPendingSyncCount();
-    
+
     emit(ProgressSyncing(current: 0, total: pendingCount));
 
     try {
@@ -333,6 +255,8 @@ class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
             microActivityId: Value(entry.microActivityId),
             remarks: Value(entry.remarks),
             photoPaths: Value(entry.photoPaths?.join(',')),
+            syncStatus: Value(db.SyncStatus.pending.value),
+            idempotencyKey: Value(SyncService.generateIdempotencyKey()),
           ),
         );
   }

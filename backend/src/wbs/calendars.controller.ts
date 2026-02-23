@@ -29,10 +29,10 @@ export class CalendarsController {
     private workWeekRepo: Repository<WorkWeek>,
     @InjectRepository(ProjectProfile)
     private profileRepo: Repository<ProjectProfile>,
-  ) {}
+  ) { }
 
   @Get()
-  @Permissions('CALENDAR.READ')
+  @Permissions('SCHEDULE.CALENDAR.READ')
   async findAll(): Promise<WorkCalendar[]> {
     const cals = await this.calendarRepo.find();
     // Populate workWeeks manually
@@ -45,7 +45,7 @@ export class CalendarsController {
   }
 
   @Get(':id')
-  @Permissions('CALENDAR.READ')
+  @Permissions('SCHEDULE.CALENDAR.READ')
   async findOne(@Param('id') id: number): Promise<WorkCalendar> {
     const cal = await this.calendarRepo.findOne({ where: { id } });
     if (!cal) throw new NotFoundException(`Calendar with ID ${id} not found`);
@@ -57,7 +57,7 @@ export class CalendarsController {
   }
 
   @Post()
-  @Permissions('CALENDAR.CREATE')
+  @Permissions('SCHEDULE.CALENDAR.CREATE')
   async create(
     @Body() calendarData: Partial<WorkCalendar>,
   ): Promise<WorkCalendar> {
@@ -71,7 +71,7 @@ export class CalendarsController {
   }
 
   @Put(':id')
-  @Permissions('CALENDAR.UPDATE')
+  @Permissions('SCHEDULE.CALENDAR.UPDATE')
   async update(
     @Param('id') id: number,
     @Body() calendarData: Partial<WorkCalendar>,
@@ -85,7 +85,7 @@ export class CalendarsController {
   }
 
   @Delete(':id')
-  @Permissions('CALENDAR.DELETE')
+  @Permissions('SCHEDULE.CALENDAR.DELETE')
   async remove(@Param('id') id: number): Promise<void> {
     // Validation: Check if calendar is assigned to any project
     const usageCount = await this.profileRepo.count({

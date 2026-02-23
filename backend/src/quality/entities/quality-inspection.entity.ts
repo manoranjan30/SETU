@@ -5,15 +5,18 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { QualityActivity } from './quality-activity.entity';
 import { QualityActivityList } from './quality-activity-list.entity';
 import { EpsNode } from '../../eps/eps.entity';
+import { QualityInspectionStage } from './quality-inspection-stage.entity';
 
 export enum InspectionStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
+  PROVISIONALLY_APPROVED = 'PROVISIONALLY_APPROVED',
   REJECTED = 'REJECTED',
   CANCELED = 'CANCELED',
 }
@@ -68,6 +71,11 @@ export class QualityInspection {
 
   @Column({ type: 'text', nullable: true })
   comments: string;
+
+  @OneToMany(() => QualityInspectionStage, (stage) => stage.inspection, {
+    cascade: true,
+  })
+  stages: QualityInspectionStage[];
 
   @CreateDateColumn()
   createdAt: Date;

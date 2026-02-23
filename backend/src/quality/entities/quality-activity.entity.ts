@@ -3,13 +3,26 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { QualityActivityList } from './quality-activity-list.entity';
+import { QualitySequenceEdge } from './quality-sequence-edge.entity';
+
+import { QualityChecklistTemplate } from './quality-checklist-template.entity';
 
 export type ResponsibleParty = 'Contractor' | 'Consultant' | 'Client';
+
+export enum QualityActivityStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  RFI_RAISED = 'RFI_RAISED',
+  UNDER_INSPECTION = 'UNDER_INSPECTION',
+  PENDING_OBSERVATION = 'PENDING_OBSERVATION',
+  APPROVED = 'APPROVED',
+  PROVISIONALLY_APPROVED = 'PROVISIONALLY_APPROVED',
+}
 
 @Entity('quality_activity')
 export class QualityActivity {
@@ -51,8 +64,35 @@ export class QualityActivity {
   @Column({ default: false })
   allowBreak: boolean;
 
-  @Column({ length: 20, default: 'ACTIVE' })
-  status: string;
+  @Column({
+    type: 'enum',
+    enum: QualityActivityStatus,
+    default: QualityActivityStatus.NOT_STARTED,
+  })
+  status: QualityActivityStatus;
+
+  @Column('int', { array: true, default: [] })
+  assignedChecklistIds: number[];
+
+  @ManyToOne(() => QualityActivity, { nullable: true })
+  @JoinColumn({ name: 'previousActivityId' })
+  previousActivity: QualityActivity;
+
+  @OneToMany(() => QualitySequenceEdge, (edge) => edge.source)
+  outgoingEdges: QualitySequenceEdge[];
+
+  @OneToMany(() => QualitySequenceEdge, (edge) => edge.target)
+  incomingEdges: QualitySequenceEdge[];
+
+  @Column({ type: 'jsonb', nullable: true, default: { x: 0, y: 0 } })
+  position: { x: number; y: number }; // For canvas layout
+
+  @Column({ nullable: true })
+  checklistTemplateId: number;
+
+  @ManyToOne(() => QualityChecklistTemplate)
+  @JoinColumn({ name: 'checklistTemplateId' })
+  checklistTemplate: QualityChecklistTemplate;
 
   @CreateDateColumn()
   createdAt: Date;

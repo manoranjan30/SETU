@@ -157,6 +157,19 @@ When user's prompt is NOT in English:
 
 > 🔴 **Mobile + frontend-specialist = WRONG.** Mobile = mobile-developer ONLY.
 
+### 🔐 Permission System (MANDATORY for Backend)
+
+**When creating or modifying ANY backend controller, endpoint, or module:**
+
+1. **Read** `.agent/rules/PERMISSION_SYSTEM.md` → Understand naming convention + file update steps
+2. **Register** permissions in `backend/src/auth/permission-registry.ts`
+3. **Add** `@Permissions('MODULE.ENTITY.ACTION')` to every endpoint
+4. **Mirror** codes in `backend/src/auth/permission-config.ts` AND `frontend/src/config/permissions.ts`
+5. **Verify** ALL CAPS dot notation: `MODULE.ENTITY.ACTION`
+
+> ❌ **Creating an endpoint without `@Permissions()` = PROTOCOL VIOLATION**
+> ❌ **Inventing permission codes not in registry = PROTOCOL VIOLATION**
+
 ### 🛑 Socratic Gate
 
 **For complex requests, STOP and ASK first:**

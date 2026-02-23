@@ -39,9 +39,10 @@ export class BoqController {
   constructor(
     private readonly boqService: BoqService,
     private readonly boqImportService: BoqImportService,
-  ) {}
+  ) { }
 
   @Get('template')
+  @Permissions('BOQ.ITEM.IMPORT')
   @ApiOperation({ summary: 'Download BOQ Import Excel Template' })
   async downloadTemplate(@Res() res: Response) {
     const buffer = this.boqImportService.getTemplateBuffer();
@@ -55,6 +56,7 @@ export class BoqController {
   }
 
   @Get('export/:projectId')
+  @Permissions('BOQ.ITEM.READ')
   @ApiOperation({ summary: 'Export BOQ to CSV' })
   async exportBoq(
     @Param('projectId', ParseIntPipe) projectId: number,
@@ -70,6 +72,7 @@ export class BoqController {
   }
 
   @Post('import/:projectId')
+  @Permissions('BOQ.ITEM.IMPORT')
   @ApiOperation({ summary: 'Import BOQ from Excel File' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -96,13 +99,13 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     const defaultEpsId = defaultEpsIdStr
       ? parseInt(defaultEpsIdStr, 10)
@@ -121,6 +124,7 @@ export class BoqController {
   }
 
   @Get('measurements/template')
+  @Permissions('BOQ.MEASUREMENT.IMPORT')
   @ApiOperation({ summary: 'Download Measurement Import Template' })
   async downloadMeasurementTemplate(@Res() res: Response) {
     const buffer = this.boqImportService.getMeasurementTemplate();
@@ -135,6 +139,7 @@ export class BoqController {
   }
 
   @Post('measurements/import/:projectId/:boqItemId')
+  @Permissions('BOQ.MEASUREMENT.IMPORT')
   @ApiOperation({ summary: 'Import Measurements for a BOQ Item' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
@@ -152,19 +157,19 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     let valueMap = undefined;
     if (valueMapStr) {
       try {
         valueMap = JSON.parse(valueMapStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const defaultEpsId = defaultEpsIdStr
@@ -202,7 +207,7 @@ export class BoqController {
   }
 
   @Post()
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.ITEM.CREATE')
   @ApiOperation({
     summary:
       'Create a new BOQ Element (Legacy compatibility or Manual Layer 1)',
@@ -229,14 +234,14 @@ export class BoqController {
   // ...
 
   @Post('sub-item')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.ITEM.CREATE')
   @ApiOperation({ summary: 'Create a Sub Item (Layer 2)' })
   async createSubItem(@Body() body: any) {
     return await this.boqService.createSubItem(body);
   }
 
   @Patch('sub-item/:id')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.ITEM.UPDATE')
   @ApiOperation({ summary: 'Update Sub Item (Rate/Description)' })
   async updateSubItem(
     @Param('id', ParseIntPipe) id: number,
@@ -246,14 +251,14 @@ export class BoqController {
   }
 
   @Post('measurement')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.MEASUREMENT.MANAGE')
   @ApiOperation({ summary: 'Add a Measurement (Layer 2)' })
   async addMeasurement(@Body() body: any) {
     return await this.boqService.addMeasurement(body);
   }
 
   @Post('progress')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.PROGRESS.CREATE')
   @ApiOperation({ summary: 'Add Progress Transaction (Layer 4)' })
   async addProgress(@Body() body: any) {
     return await this.boqService.addProgress(body);
@@ -261,14 +266,14 @@ export class BoqController {
 
   // Legacy or drill-down specific
   @Get('eps/:nodeId')
-  @Permissions('VIEW_BOQ')
+  @Permissions('BOQ.ITEM.READ')
   @ApiOperation({ summary: 'Get BOQ items for a specific EPS Node' })
   async getForEps(@Param('nodeId', ParseIntPipe) nodeId: number) {
     return await this.boqService.findByEpsNode(nodeId);
   }
 
   @Get('project/:projectId')
-  @Permissions('VIEW_BOQ')
+  @Permissions('BOQ.ITEM.READ')
   @ApiOperation({ summary: 'Get all BOQ items for a Project (Layer 1)' })
   async getForProject(@Param('projectId', ParseIntPipe) projectId: number) {
     // Return the new Layer 1 Items
@@ -276,7 +281,7 @@ export class BoqController {
   }
 
   @Patch(':id')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.ITEM.UPDATE')
   @ApiOperation({ summary: 'Update BOQ Item (Qty blocked if Derived)' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -287,20 +292,21 @@ export class BoqController {
   }
 
   @Delete(':id')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.ITEM.DELETE')
   @ApiOperation({ summary: 'Delete BOQ Item (Cascades to measurements)' })
   async remove(@Param('id', ParseIntPipe) id: number, @GetUser() user: User) {
     return await this.boqService.deleteBoqItem(id, user.id);
   }
 
   @Post('measurements/bulk-delete')
+  @Permissions('BOQ.MEASUREMENT.MANAGE')
   @ApiOperation({ summary: 'Bulk Delete Measurements and Recalculate' })
   async bulkDeleteMeasurements(@Body() body: { ids: number[] }) {
     return await this.boqService.deleteMeasurements(body.ids);
   }
 
   @Patch('measurement/:id')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.MEASUREMENT.MANAGE')
   @ApiOperation({ summary: 'Update Single Measurement' })
   async updateMeasurement(
     @Param('id', ParseIntPipe) id: number,
@@ -310,7 +316,7 @@ export class BoqController {
   }
 
   @Patch('measurements/bulk')
-  @Permissions('MANAGE_BOQ')
+  @Permissions('BOQ.MEASUREMENT.MANAGE')
   @ApiOperation({ summary: 'Bulk Update Measurements' })
   async bulkUpdateMeasurements(@Body() body: { ids: number[]; data: any }) {
     return await this.boqService.bulkUpdateMeasurements(body.ids, body.data);

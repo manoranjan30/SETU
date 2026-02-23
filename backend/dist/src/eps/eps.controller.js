@@ -44,22 +44,10 @@ let EpsController = class EpsController {
     }
     async findAll(req) {
         try {
-            const nodes = await this.epsService.findAll(req.user);
-            if (!nodes || nodes.length === 0) {
-                return [
-                    {
-                        id: -666,
-                        name: `DEBUG: 0 nodes found.`,
-                        type: 'COMPANY',
-                        parentId: null,
-                        order: 0,
-                    },
-                ];
-            }
-            return nodes;
+            return await this.epsService.findAll(req.user);
         }
         catch (e) {
-            console.error('CONTROLLER CRASH:', e);
+            console.error('EPS CONTROLLER ERROR:', e);
             return [];
         }
     }

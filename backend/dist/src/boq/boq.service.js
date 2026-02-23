@@ -61,7 +61,7 @@ let BoqService = class BoqService {
         }
         const item = this.boqItemRepo.create(data);
         const saved = await this.boqItemRepo.save(item);
-        await this.auditService.log(userId, 'CREATE', 'BOQ_ITEM', saved.id, {
+        await this.auditService.log(userId, 'BOQ', 'CREATE_ITEM', saved.id, saved.projectId, {
             code: saved.boqCode,
             name: saved.description,
             qty: saved.qty,
@@ -287,7 +287,7 @@ let BoqService = class BoqService {
         item.amount = Number(item.qty) * Number(item.rate);
         const saved = await this.boqItemRepo.save(item);
         await this.planningService.updateActivitiesByBoqItem(saved.id);
-        await this.auditService.log(userId, 'UPDATE', 'BOQ_ITEM', id, {
+        await this.auditService.log(userId, 'BOQ', 'UPDATE_ITEM', id, saved.projectId, {
             changes: data,
             previous: oldData,
             new: { qty: saved.qty, amount: saved.amount },
@@ -298,7 +298,7 @@ let BoqService = class BoqService {
         const item = await this.boqItemRepo.findOneBy({ id });
         if (!item)
             throw new common_1.NotFoundException('BOQ Item not found');
-        await this.auditService.log(userId, 'DELETE', 'BOQ_ITEM', id, {
+        await this.auditService.log(userId, 'BOQ', 'DELETE_ITEM', id, item.projectId, {
             code: item.boqCode,
             name: item.description,
         });

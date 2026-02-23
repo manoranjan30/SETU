@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-    ClipboardCheck, AlertCircle, CheckCircle2, XCircle, Clock,
-    ChevronRight, FileText, ShieldAlert, AlertTriangle
+    ClipboardCheck, AlertCircle, Clock,
+    ChevronRight, FileText, ShieldAlert, AlertTriangle,
+    MessageSquareWarning, CheckCircle2, Camera, X
 } from 'lucide-react';
 import api from '../../api/axios';
 
@@ -15,7 +16,21 @@ interface QualityActivity {
     holdPoint: boolean;
     witnessPoint: boolean;
     allowBreak: boolean;
+    status: string;
     previousActivityId?: number;
+    incomingEdges?: { sourceId: number; source: Partial<QualityActivity> }[];
+}
+
+interface ActivityObservation {
+    id: string;
+    observationText: string;
+    type?: string;
+    remarks?: string;
+    photos?: string[];
+    closureText?: string;
+    closureEvidence?: string[];
+    status: 'PENDING' | 'RECTIFIED' | 'CLOSED';
+    createdAt: string;
 }
 
 interface QualityInspection {
@@ -36,7 +51,7 @@ interface ActivityList {
 
 interface EpsNode {
     id: number;
-    name: string;
+    label: string;
     children?: EpsNode[];
 }
 
@@ -49,13 +64,27 @@ export default function InspectionRequestPage() {
 
     const [activities, setActivities] = useState<QualityActivity[]>([]);
     const [inspections, setInspections] = useState<QualityInspection[]>([]);
+    const [observationsMap, setObservationsMap] = useState<Record<number, ActivityObservation[]>>({});
     const [loading, setLoading] = useState(false);
+    const [resolvingId, setResolvingId] = useState<string | null>(null);
+    const [closureTexts, setClosureTexts] = useState<Record<string, string>>({});
+    const [closurePhotos, setClosurePhotos] = useState<Record<string, string[]>>({});
+    const [uploading, setUploading] = useState<string | null>(null); // obsId being uploaded for
     const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh
+
+    // Helper for correct image URLs
+    const getFileUrl = (path: string) => {
+        if (!path) return '';
+        if (path.startsWith('http')) return path;
+        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        return `${baseUrl}${path}`;
+    };
 
     // Load EPS Structure
     useEffect(() => {
         if (projectId) {
-            api.get(`/eps/project/${projectId}/tree`).then(res => setEpsNodes(res.data));
+            // Corrected endpoint from /eps/project/:id/tree to /eps/:id/tree
+            api.get(`/eps/${projectId}/tree`).then(res => setEpsNodes(res.data));
         }
     }, [projectId]);
 
@@ -82,12 +111,26 @@ export default function InspectionRequestPage() {
                     params: { projectId, epsNodeId: selectedNodeId, listId: selectedListId }
                 })
             ]).then(([actRes, inspRes]) => {
-                setActivities(actRes.data);
+                const acts = actRes.data as QualityActivity[];
+                setActivities(acts);
                 setInspections(inspRes.data);
+
+                // Fetch observations for activities in PENDING_OBSERVATION
+                const obsPromises = acts
+                    .filter(a => a.status === 'PENDING_OBSERVATION')
+                    .map(a => api.get(`/quality/activities/${a.id}/observations`).then(res => ({ id: a.id, obs: res.data })));
+
+                Promise.all(obsPromises).then(results => {
+                    const oMap: Record<number, ActivityObservation[]> = {};
+                    results.forEach(r => { oMap[r.id] = r.obs; });
+                    setObservationsMap(oMap);
+                }).catch(err => console.error('Failed to load observations', err));
+
             }).finally(() => setLoading(false));
         } else {
             setActivities([]);
             setInspections([]);
+            setObservationsMap({});
         }
     }, [selectedListId, selectedNodeId, projectId, refreshKey]);
 
@@ -103,18 +146,32 @@ export default function InspectionRequestPage() {
         // Compute status
         return activities.map(act => {
             const insp = inspMap.get(act.id);
-            let state: 'LOCKED' | 'READY' | 'PENDING' | 'APPROVED' | 'REJECTED' = 'LOCKED';
+            let state: 'LOCKED' | 'READY' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_OBSERVATION' = 'LOCKED';
 
-            // Check predecessor
+            // Check predecessors (Multi-dependency support)
             let predecessorDone = true;
-            if (act.previousActivityId) {
+
+            // Check edges if available
+            if (act.incomingEdges && act.incomingEdges.length > 0) {
+                for (const edge of act.incomingEdges) {
+                    const prevInsp = inspMap.get(edge.sourceId);
+                    if (!prevInsp || prevInsp.status !== 'APPROVED') {
+                        predecessorDone = false;
+                        break;
+                    }
+                }
+            }
+            // Fallback for legacy data/cache
+            else if (act.previousActivityId) {
                 const prevInsp = inspMap.get(act.previousActivityId);
                 if (!prevInsp || prevInsp.status !== 'APPROVED') {
                     predecessorDone = false;
                 }
             }
 
-            if (insp) {
+            if (act.status === 'PENDING_OBSERVATION') {
+                state = 'PENDING_OBSERVATION' as any;
+            } else if (insp) {
                 state = insp.status as any;
             } else {
                 if (predecessorDone || act.allowBreak) state = 'READY';
@@ -141,26 +198,68 @@ export default function InspectionRequestPage() {
         }
     };
 
-    const handleUpdateStatus = async (inspectionId: number, status: 'APPROVED' | 'REJECTED') => {
-        if (!confirm(`Mark inspection as ${status}?`)) return;
+    const handleFileUpload = async (obsId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploading(obsId);
+        const formData = new FormData();
+        formData.append('file', file);
+
         try {
-            await api.patch(`/quality/inspections/${inspectionId}/status`, {
-                status,
-                comments: status === 'APPROVED' ? 'Approved via Web' : 'Rejected via Web',
-                inspectedBy: 'Admin'
+            const res = await api.post('/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-            setRefreshKey(k => k + 1);
+            setClosurePhotos(prev => ({
+                ...prev,
+                [obsId]: [...(prev[obsId] || []), res.data.url]
+            }));
         } catch (err: any) {
-            alert(err.response?.data?.message || 'Failed to update status');
+            alert(err.response?.data?.message || 'Upload failed');
+        } finally {
+            setUploading(null);
+        }
+    };
+
+    const handleResolveObservation = async (activityId: number, obsId: string) => {
+        const text = closureTexts[obsId];
+        if (!text || !text.trim()) {
+            alert('Please enter your rectification details and evidence note before submitting.');
+            return;
+        }
+        setResolvingId(obsId);
+        try {
+            await api.patch(`/quality/activities/${activityId}/observation/${obsId}/resolve`, {
+                closureText: text,
+                closureEvidence: closurePhotos[obsId] || []
+            });
+            alert('Observation marked as rectified and sent back to QC.');
+            setRefreshKey(k => k + 1);
+            // Clear inputs for this observation
+            setClosureTexts(prev => {
+                const n = { ...prev };
+                delete n[obsId];
+                return n;
+            });
+            setClosurePhotos(prev => {
+                const n = { ...prev };
+                delete n[obsId];
+                return n;
+            });
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to resolve observation.');
+        } finally {
+            setResolvingId(null);
         }
     };
 
     // Helper for Status Badge
     const StatusBadge = ({ state }: { state: string }) => {
         switch (state) {
-            case 'APPROVED': return <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded-full text-xs font-medium"><CheckCircle2 className="w-3 h-3" /> Approved</span>;
-            case 'REJECTED': return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded-full text-xs font-medium"><XCircle className="w-3 h-3" /> Rejected</span>;
+            case 'APPROVED': return <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded-full text-xs font-medium">Approved</span>;
+            case 'REJECTED': return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded-full text-xs font-medium">Rejected</span>;
             case 'PENDING': return <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-1 rounded-full text-xs font-medium"><Clock className="w-3 h-3" /> QC Pending</span>;
+            case 'PENDING_OBSERVATION': return <span className="flex items-center gap-1 text-rose-600 bg-rose-50 px-2 py-1 rounded-full text-xs font-medium ring-1 ring-rose-200"><MessageSquareWarning className="w-3 h-3" /> Fix Observation</span>;
             case 'READY': return <span className="flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded-full text-xs font-medium">Ready to Request</span>;
             default: return <span className="flex items-center gap-1 text-gray-400 bg-gray-100 px-2 py-1 rounded-full text-xs font-medium">Locked</span>;
         }
@@ -177,7 +276,7 @@ export default function InspectionRequestPage() {
                         style={{ paddingLeft: `${depth * 12 + 8}px` }}
                     >
                         {node.children?.length ? <ChevronRight className="w-3 h-3 mr-1 text-gray-400" /> : <span className="w-4" />}
-                        {node.name}
+                        {node.label}
                     </div>
                     {node.children && renderTree(node.children, depth + 1)}
                 </li>
@@ -304,6 +403,78 @@ export default function InspectionRequestPage() {
                                                         </div>
                                                     </div>
                                                 )}
+                                                {/* Observations Area */}
+                                                {item.statusState === 'PENDING_OBSERVATION' && observationsMap[item.id] && (
+                                                    <div className="mt-3 space-y-4">
+                                                        {observationsMap[item.id].filter(o => o.status === 'PENDING').map(obs => (
+                                                            <div key={obs.id} className="bg-rose-50 border border-rose-200 rounded-lg p-4 shadow-sm">
+                                                                <div className="flex items-start gap-3">
+                                                                    <MessageSquareWarning className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                                                                    <div className="flex-1">
+                                                                        <div className="flex justify-between items-start mb-1">
+                                                                            <h4 className="text-sm font-bold text-rose-900">QC Observation Logged: {obs.type ? `[${obs.type}]` : ''}</h4>
+                                                                            <span className="text-xs text-rose-500 font-medium">{new Date(obs.createdAt).toLocaleDateString()}</span>
+                                                                        </div>
+                                                                        <p className="text-sm text-rose-800 bg-white/50 p-2 rounded border border-rose-100 italic">"{obs.observationText}"</p>
+
+                                                                        {obs.photos && obs.photos.length > 0 && (
+                                                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                                                {obs.photos.map((url, pIdx) => (
+                                                                                    <a key={pIdx} href={getFileUrl(url)} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-md border border-rose-200 overflow-hidden hover:opacity-80 transition-opacity">
+                                                                                        <img src={getFileUrl(url)} alt="Observation" className="w-full h-full object-cover" />
+                                                                                    </a>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+
+                                                                        <div className="mt-4 pt-3 border-t border-rose-200/60">
+                                                                            <label className="block text-xs font-bold text-rose-900 mb-1.5 uppercase tracking-wider">Rectification Evidence</label>
+
+                                                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                                                {(closurePhotos[obs.id] || []).map((url, pIdx) => (
+                                                                                    <div key={pIdx} className="relative w-16 h-16 group">
+                                                                                        <img src={getFileUrl(url)} alt="Rectification" className="w-full h-full object-cover rounded border border-rose-200" />
+                                                                                        <button
+                                                                                            onClick={() => setClosurePhotos(prev => ({
+                                                                                                ...prev,
+                                                                                                [obs.id]: prev[obs.id].filter((_, i) => i !== pIdx)
+                                                                                            }))}
+                                                                                            className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                                        >
+                                                                                            <X className="w-3 h-3" />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ))}
+                                                                                <label className={`w-16 h-16 flex flex-col items-center justify-center border border-dashed border-rose-300 rounded bg-white hover:bg-rose-100 transition-all cursor-pointer ${uploading === obs.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                                                    <Camera className="w-5 h-5 text-rose-400" />
+                                                                                    <span className="text-[8px] text-rose-500 mt-0.5 font-bold uppercase">{uploading === obs.id ? '...' : 'Photo'}</span>
+                                                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(obs.id, e)} />
+                                                                                </label>
+                                                                            </div>
+
+                                                                            <textarea
+                                                                                className="w-full border-rose-200 rounded-md p-2.5 text-sm bg-white focus:ring-2 focus:ring-rose-500 focus:border-rose-500 min-h-[80px]"
+                                                                                placeholder="Describe how this issue was fixed..."
+                                                                                value={closureTexts[obs.id] || ''}
+                                                                                onChange={(e) => setClosureTexts(prev => ({ ...prev, [obs.id]: e.target.value }))}
+                                                                            />
+                                                                            <div className="mt-3 flex justify-end gap-2">
+                                                                                <button
+                                                                                    onClick={() => handleResolveObservation(item.id, obs.id)}
+                                                                                    disabled={resolvingId === obs.id || !closureTexts[obs.id]?.trim() || uploading === obs.id}
+                                                                                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
+                                                                                >
+                                                                                    <CheckCircle2 className="w-4 h-4" />
+                                                                                    {resolvingId === obs.id ? 'Submitting...' : 'Submit Rectification'}
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Action Buttons */}
@@ -316,25 +487,6 @@ export default function InspectionRequestPage() {
                                                         <ShieldAlert className="w-4 h-4" />
                                                         Raise RFI
                                                     </button>
-                                                )}
-
-                                                {item.statusState === 'PENDING' && item.inspection && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => handleUpdateStatus(item.inspection!.id, 'APPROVED')}
-                                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
-                                                        >
-                                                            <CheckCircle2 className="w-4 h-4" />
-                                                            Approve
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleUpdateStatus(item.inspection!.id, 'REJECTED')}
-                                                            className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
-                                                        >
-                                                            <XCircle className="w-4 h-4" />
-                                                            Reject
-                                                        </button>
-                                                    </>
                                                 )}
                                             </div>
                                         </div>

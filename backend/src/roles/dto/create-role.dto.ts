@@ -12,6 +12,10 @@ export class CreateRoleDto {
   @IsNotEmpty()
   name: string;
 
+  @IsString()
+  @IsOptional()
+  description?: string;
+
   @IsArray()
   @IsOptional()
   permissionIds?: number[];

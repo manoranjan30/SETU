@@ -23,7 +23,7 @@ export class SeedService implements OnApplicationBootstrap {
     private categoryRepo: Repository<DrawingCategory>,
     @InjectRepository(WorkDocTemplate)
     private templateRepo: Repository<WorkDocTemplate>,
-  ) {}
+  ) { }
 
   async onApplicationBootstrap() {
     await this.seedPermissions();
@@ -76,9 +76,11 @@ export class SeedService implements OnApplicationBootstrap {
         [
           'VIEW_DASHBOARD',
           'VIEW_PROJECTS',
-          'EXECUTION.READ',
-          'PLANNING.READ',
-          'BOQ.READ',
+          'Execution.Entry.Read',
+          'SCHEDULE.READ',
+          'BOQ.Item.Read',
+          'WBS.NODE.READ',
+          'WBS.ACTIVITY.READ',
         ].includes(p.permissionCode),
       );
       userRole = await this.roleRepo.save(
@@ -95,9 +97,11 @@ export class SeedService implements OnApplicationBootstrap {
         [
           'VIEW_DASHBOARD',
           'VIEW_PROJECTS',
-          'EXECUTION.READ',
-          'PLANNING.READ',
-          'BOQ.READ',
+          'Execution.Entry.Read',
+          'SCHEDULE.READ',
+          'BOQ.Item.Read',
+          'WBS.NODE.READ',
+          'WBS.ACTIVITY.READ',
         ].includes(p.permissionCode),
       );
       userRole.permissions = userPermissions;

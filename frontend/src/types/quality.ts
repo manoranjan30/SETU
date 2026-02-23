@@ -132,3 +132,21 @@ export interface CopyStructureDto {
     sourceNodeId: number;
     targetParentIds: number[];
 }
+
+// === SEQUENCER ===
+export interface NodePositionDto {
+    id: number;
+    position: { x: number; y: number };
+}
+
+export interface EdgeDto {
+    sourceId: number;
+    targetId: number;
+    constraintType: 'HARD' | 'SOFT';
+    lagMinutes?: number;
+}
+
+export interface UpdateGraphDto {
+    nodes: NodePositionDto[];
+    edges: EdgeDto[];
+}

@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:drift/drift.dart' as drift;
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
@@ -219,11 +222,10 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     emit(ProjectLoading());
 
     try {
-      // Try to fetch from API
+      // GET /eps returns a FLAT list of all accessible EPS nodes.
+      // Build the hierarchy client-side and surface only PROJECT-type nodes.
       final response = await _apiClient.getMyProjects();
-      final projects = response
-          .map<Project>((json) => Project.fromJson(json))
-          .toList();
+      final projects = _buildProjectsFromFlatList(response);
 
       // Cache projects for offline use
       await _cacheProjects(projects);
@@ -247,41 +249,47 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     emit(ProjectLoading());
 
     try {
-      // Get the project
-      final projectsResponse = await _apiClient.getMyProjects();
-      final project = projectsResponse
-          .map<Project>((json) => Project.fromJson(json))
-          .firstWhere((p) => p.id == event.projectId);
+      // GET /eps returns a flat list — build tree for the selected project.
+      final allNodesResponse = await _apiClient.getMyProjects();
+      final allNodes = allNodesResponse.cast<Map<String, dynamic>>();
 
-      // Fetch all activities for the project
-      final activitiesResponse = await _apiClient.getProjectActivities(event.projectId);
-      final allActivities = activitiesResponse
-          .map<Activity>((json) => Activity.fromJson(json))
-          .toList();
-
-      // Build activity index by EPS node
-      final activityIndex = <int, List<Activity>>{};
-      for (final activity in allActivities) {
-        if (activity.epsNodeId != null) {
-          activityIndex.putIfAbsent(activity.epsNodeId!, () => []);
-          activityIndex[activity.epsNodeId!]!.add(activity);
-        }
-      }
-
-      // Cache activities for offline use
-      await _database.cacheActivities(
-        activitiesResponse.cast<Map<String, dynamic>>(),
-        event.projectId,
+      // Locate the project node.
+      // Use num comparison to handle both int and double JSON representations.
+      final projectRaw = allNodes.firstWhere(
+        (n) {
+          final raw = n['id'];
+          if (raw is int) return raw == event.projectId;
+          if (raw is num) return raw.toInt() == event.projectId;
+          if (raw is String) return int.tryParse(raw) == event.projectId;
+          return false;
+        },
+        orElse: () => throw StateError('Project ${event.projectId} not found in EPS list'),
       );
 
-      // Get root EPS nodes (children of project)
+      // Build parent → children index from the full flat list
+      final childrenByParentId = _buildChildrenIndex(allNodes);
+
+      // Attach children recursively to the project node
+      final projectWithChildren = _attachChildrenRecursive(
+        Map<String, dynamic>.from(projectRaw),
+        childrenByParentId,
+      );
+      final project = Project.fromJson(projectWithChildren);
+
+      await _cacheProjects([project]);
+
+      // Activities are loaded on-demand when the user navigates to a specific
+      // EPS node (see _onNavigateToNode). Start with an empty index here.
+      final activityIndex = <int, List<Activity>>{};
+
+      // Root EPS nodes = direct children of this project
       final rootNodes = project.children;
 
-      // Create a virtual root node for the project
+      // Create a virtual root node representing the project itself in the breadcrumb
       final projectRootNode = EpsNode(
-        id: -project.id, // Negative ID to avoid collision
+        id: -project.id, // Negative to avoid colliding with real node IDs
         name: project.name,
-        type: 'project',
+        type: 'PROJECT',
         children: rootNodes,
       );
 
@@ -290,7 +298,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
         currentPath: [projectRootNode],
         currentNode: projectRootNode,
         childNodes: rootNodes,
-        activities: [], // No activities at project root
+        activities: const [], // No activities shown at project root level
         activityIndexByEpsNode: activityIndex,
       ));
     } catch (e) {
@@ -304,25 +312,91 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }
   }
 
-  void _onNavigateToNode(
+  Future<void> _onNavigateToNode(
     NavigateToNode event,
     Emitter<ProjectState> emit,
-  ) {
+  ) async {
     final currentState = state;
     if (currentState is! EpsExplorerState) return;
 
-    // Get activities for this node
-    final nodeActivities = currentState.activityIndexByEpsNode[event.node.id] ?? [];
-
-    // Update path
     final newPath = [...currentState.currentPath, event.node];
 
+    // Check if we already have activities cached in memory for this node
+    final cachedActivities = currentState.activityIndexByEpsNode[event.node.id];
+
+    // Emit navigation immediately so the UI responds instantly
     emit(currentState.copyWith(
       currentPath: newPath,
       currentNode: event.node,
       childNodes: event.node.children,
-      activities: nodeActivities,
+      activities: cachedActivities ?? const [],
+      // Show loading spinner only if we haven't loaded activities yet
+      isLoadingChildren: cachedActivities == null,
     ));
+
+    // If already cached, nothing more to do
+    if (cachedActivities != null) return;
+
+    // Fetch activities for this EPS node from the backend.
+    // GET /planning/:epsNodeId/execution-ready — same endpoint the web app uses.
+    try {
+      final response = await _apiClient.getExecutionReadyActivities(event.node.id);
+      final activities = response
+          .map<Activity>((json) => Activity.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // Cache to local DB for offline use (non-fatal — complex plans JSON may fail)
+      if (activities.isNotEmpty) {
+        try {
+          await _database.cacheActivities(
+            response.cast<Map<String, dynamic>>(),
+            currentState.project.id,
+          );
+        } catch (_) {
+          // Caching failure is non-critical; the activities are still shown.
+        }
+      }
+
+      // Merge into the in-memory index
+      final updatedIndex = Map<int, List<Activity>>.from(
+        currentState.activityIndexByEpsNode,
+      )..[event.node.id] = activities;
+
+      // Only emit if we're still on the same node (user hasn't navigated away)
+      final nowState = state;
+      if (nowState is EpsExplorerState &&
+          nowState.currentNode.id == event.node.id) {
+        emit(nowState.copyWith(
+          activities: activities,
+          activityIndexByEpsNode: updatedIndex,
+          isLoadingChildren: false,
+          isOffline: false, // Clear stale offline flag — we just got live data
+        ));
+      }
+    } catch (_) {
+      // Network failed — try local DB cache
+      final cachedRows = await _database.getActivitiesForProject(
+        currentState.project.id,
+      );
+      final activities = cachedRows
+          .map((row) =>
+              Activity.fromJson(jsonDecode(row.rawData) as Map<String, dynamic>))
+          .where((a) => a.epsNodeId == event.node.id)
+          .toList();
+
+      final nowState = state;
+      if (nowState is EpsExplorerState &&
+          nowState.currentNode.id == event.node.id) {
+        emit(nowState.copyWith(
+          activities: activities,
+          activityIndexByEpsNode: Map<int, List<Activity>>.from(
+            currentState.activityIndexByEpsNode,
+          )..[event.node.id] = activities,
+          isLoadingChildren: false,
+          isOffline: true,
+        ));
+      }
+    }
   }
 
   void _onNavigateToPathIndex(
@@ -357,8 +431,8 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     if (currentState is! EpsExplorerState) return;
 
     if (currentState.currentPath.length <= 1) {
-      // At root, go back to project list
-      add(LoadProjects());
+      // At project root — the UI's _handleBackPress() returns true to pop
+      // the route. Do NOT emit here; it causes a loading flicker.
       return;
     }
 
@@ -439,10 +513,79 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
 
   // ==================== HELPER METHODS ====================
 
+  // ---------------------------------------------------------------------------
+  // EPS Tree Builders
+  // GET /eps returns a FLAT list. These helpers build the parent→child tree
+  // so the UI can drill down through the project hierarchy.
+  // ---------------------------------------------------------------------------
+
+  /// Returns only PROJECT-type nodes from the flat list, with children attached.
+  List<Project> _buildProjectsFromFlatList(List<dynamic> rawNodes) {
+    final allNodes = rawNodes.cast<Map<String, dynamic>>();
+    final childrenByParentId = _buildChildrenIndex(allNodes);
+
+    return allNodes
+        .where((n) => (n['type'] as String? ?? '').toUpperCase() == 'PROJECT')
+        .map((json) => Project.fromJson(
+              _attachChildrenRecursive(Map<String, dynamic>.from(json), childrenByParentId),
+            ))
+        .toList();
+  }
+
+  /// Builds a parentId → [children] index from a flat node list.
+  Map<int, List<Map<String, dynamic>>> _buildChildrenIndex(
+    List<Map<String, dynamic>> allNodes,
+  ) {
+    final index = <int, List<Map<String, dynamic>>>{};
+    for (final node in allNodes) {
+      final parentId = node['parentId'] as int? ?? node['parent_id'] as int?;
+      if (parentId != null) {
+        index.putIfAbsent(parentId, () => []).add(node);
+      }
+    }
+    return index;
+  }
+
+  /// Recursively attaches `children` lists to a node map using the index.
+  Map<String, dynamic> _attachChildrenRecursive(
+    Map<String, dynamic> node,
+    Map<int, List<Map<String, dynamic>>> childrenByParentId,
+  ) {
+    final id = node['id'] as int? ?? 0;
+    final children = childrenByParentId[id] ?? [];
+    return {
+      ...node,
+      'children': children
+          .map((child) => _attachChildrenRecursive(
+                Map<String, dynamic>.from(child),
+                childrenByParentId,
+              ))
+          .toList(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+
   Future<void> _cacheProjects(List<Project> projects) async {
-    // Projects are cached via the EPS nodes
+    await _database.batch((batch) {
+      for (final project in projects) {
+          batch.insert(
+            _database.cachedProjects,
+            CachedProjectsCompanion.insert(
+            id: drift.Value(project.id),
+            name: project.name,
+            code: drift.Value(project.code),
+            status: drift.Value(project.status),
+            startDate: drift.Value(project.startDate?.toIso8601String()),
+            endDate: drift.Value(project.endDate?.toIso8601String()),
+            rawData: jsonEncode(project.toJson()),
+          ),
+          mode: drift.InsertMode.insertOrReplace,
+        );
+      }
+    });
+
     for (final project in projects) {
-      // Cache EPS nodes recursively
       await _cacheEpsNodesRecursive(project.children, project.id);
     }
   }
@@ -466,14 +609,97 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   }
 
   Future<List<Project>> _loadCachedProjects() async {
-    // For now, return empty list
-    // In a full implementation, we would reconstruct projects from cached EPS nodes
-    return [];
+    final cached = await _database.select(_database.cachedProjects).get();
+    if (cached.isEmpty) return [];
+
+    return cached.map((row) {
+      final json = jsonDecode(row.rawData) as Map<String, dynamic>;
+      return Project.fromJson(json);
+    }).toList();
   }
 
   Future<EpsExplorerState?> _loadCachedHierarchy(int projectId) async {
-    // For now, return null
-    // In a full implementation, we would reconstruct the hierarchy from cache
-    return null;
+    final cachedProject = await (_database.select(_database.cachedProjects)
+          ..where((t) => t.id.equals(projectId))
+          ..limit(1))
+        .getSingleOrNull();
+
+    if (cachedProject == null) {
+      return null;
+    }
+
+    final cachedNodes = await _database.getEpsNodesForProject(projectId);
+    final cachedActivities = await _database.getActivitiesForProject(projectId);
+    final projectJson = jsonDecode(cachedProject.rawData) as Map<String, dynamic>;
+
+    final nodeById = <int, CachedEpsNode>{for (final node in cachedNodes) node.id: node};
+    final childIdsByParent = <int?, List<int>>{};
+    for (final node in cachedNodes) {
+      childIdsByParent.putIfAbsent(node.parentId, () => []).add(node.id);
+    }
+
+    EpsNode buildNode(int nodeId) {
+      final cachedNode = nodeById[nodeId]!;
+      final children = (childIdsByParent[nodeId] ?? <int>[])
+          .map(buildNode)
+          .toList(growable: false);
+
+      return EpsNode(
+        id: cachedNode.id,
+        name: cachedNode.name,
+        code: cachedNode.code,
+        type: cachedNode.type,
+        progress: cachedNode.progress,
+        parentId: cachedNode.parentId,
+        children: children,
+      );
+    }
+
+    // Direct children of the project have parentId == projectId, not null.
+    final rootNodes = (childIdsByParent[projectId] ?? <int>[])
+        .map(buildNode)
+        .toList(growable: false);
+
+    final project = Project(
+      id: projectId,
+      name: projectJson['name'] as String? ?? cachedProject.name,
+      code: projectJson['code'] as String?,
+      status: projectJson['status'] as String?,
+      startDate: projectJson['startDate'] != null
+          ? DateTime.tryParse(projectJson['startDate'] as String)
+          : null,
+      endDate: projectJson['endDate'] != null
+          ? DateTime.tryParse(projectJson['endDate'] as String)
+          : null,
+      progress: (projectJson['progress'] as num?)?.toDouble(),
+      children: rootNodes,
+    );
+
+    final activityIndex = <int, List<Activity>>{};
+    for (final cachedActivity in cachedActivities) {
+      final activityJson = jsonDecode(cachedActivity.rawData) as Map<String, dynamic>;
+      final activity = Activity.fromJson(activityJson);
+      final epsNodeId = activity.epsNodeId;
+      if (epsNodeId != null) {
+        activityIndex.putIfAbsent(epsNodeId, () => <Activity>[]).add(activity);
+      }
+    }
+
+    final projectRootNode = EpsNode(
+      id: -project.id,
+      name: project.name,
+      type: 'project',
+      children: rootNodes,
+    );
+
+    return EpsExplorerState(
+      project: project,
+      currentPath: [projectRootNode],
+      currentNode: projectRootNode,
+      childNodes: rootNodes,
+      activities: const [],
+      activityIndexByEpsNode: activityIndex,
+      isOffline: true,
+    );
   }
 }

@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/token_manager.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
@@ -19,45 +17,7 @@ class AuthService {
   }) async {
     try {
       print('[AuthService] Starting login for: $username');
-      
-      // Test raw socket connection first
-      print('[AuthService] Testing raw socket connection...');
-      final socketWorks = await testRawSocketConnection('192.168.0.101', 3000);
-      print('[AuthService] Raw socket test result: $socketWorks');
-      
-      // Try dart:io HttpClient as fallback
-      if (!socketWorks) {
-        print('[AuthService] Trying dart:io HttpClient fallback...');
-        final httpResult = await testHttpClientLogin(username, password);
-        if (httpResult != null && httpResult['success'] == true) {
-          print('[AuthService] HttpClient fallback worked!');
-          // Parse the successful response
-          final responseData = jsonDecode(httpResult['body'] as String);
-          final accessToken = responseData['access_token'] as String?;
-          final refreshToken = responseData['refresh_token'] as String?;
-          final expiresIn = responseData['expires_in'] as int?;
-          final userJson = responseData['user'] as Map<String, dynamic>?;
-          
-          if (accessToken == null) {
-            throw Exception('Invalid login response: missing access token');
-          }
-          
-          await _tokenManager.saveTokens(
-            accessToken: accessToken,
-            refreshToken: refreshToken ?? '',
-            expiresIn: expiresIn ?? 28800,
-            userId: userJson?['id'] ?? 0,
-          );
-          
-          if (userJson != null) {
-            return User.fromJson(userJson);
-          }
-          return await getProfile();
-        } else {
-          print('[AuthService] HttpClient fallback also failed: $httpResult');
-        }
-      }
-      
+
       final response = await _apiClient.login(
         username: username,
         password: password,

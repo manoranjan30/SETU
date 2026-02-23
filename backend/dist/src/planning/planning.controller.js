@@ -20,6 +20,12 @@ const schedule_version_service_1 = require("./schedule-version.service");
 const import_export_service_1 = require("./import-export.service");
 const look_ahead_dto_1 = require("./dto/look-ahead.dto");
 const platform_express_1 = require("@nestjs/platform-express");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const project_context_guard_1 = require("../projects/guards/project-context.guard");
+const project_assignment_guard_1 = require("../projects/guards/project-assignment.guard");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
+const auditable_decorator_1 = require("../audit/auditable.decorator");
 let PlanningController = class PlanningController {
     planningService;
     versionService;
@@ -68,8 +74,8 @@ let PlanningController = class PlanningController {
     async distributeSchedule(body, req) {
         return this.planningService.distributeActivitiesToEps(body.activityIds, body.targetEpsIds, req.user);
     }
-    async undistributeSchedule(body) {
-        return this.planningService.undistributeActivities(body.activityIds, body.targetEpsIds);
+    undistributeSchedule(body, req) {
+        return this.planningService.undistributeActivities(body.activityIds, body.targetEpsIds, req.user);
     }
     async repairLinks() {
         return this.planningService.repairDistributedActivitiesV6();
@@ -134,6 +140,7 @@ let PlanningController = class PlanningController {
 exports.PlanningController = PlanningController;
 __decorate([
     (0, common_1.Get)(':projectId/matrix'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -141,6 +148,7 @@ __decorate([
 ], PlanningController.prototype, "getMatrix", null);
 __decorate([
     (0, common_1.Get)('mapper/boq/:projectId'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -148,6 +156,7 @@ __decorate([
 ], PlanningController.prototype, "getMapperBoq", null);
 __decorate([
     (0, common_1.Get)(':projectId/stats'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -155,6 +164,7 @@ __decorate([
 ], PlanningController.prototype, "getStats", null);
 __decorate([
     (0, common_1.Get)(':projectId/unlinked-activities'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -162,6 +172,7 @@ __decorate([
 ], PlanningController.prototype, "getUnlinkedActivities", null);
 __decorate([
     (0, common_1.Get)(':projectId/gap-analysis'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.ANALYSIS.READ'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -169,6 +180,7 @@ __decorate([
 ], PlanningController.prototype, "getGapAnalysis", null);
 __decorate([
     (0, common_1.Get)(':projectId/execution-ready'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Query)('wbsNodeId')),
     __metadata("design:type", Function),
@@ -177,6 +189,7 @@ __decorate([
 ], PlanningController.prototype, "getExecutionReadyActivities", null);
 __decorate([
     (0, common_1.Post)('distribute'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.UPDATE'),
     __param(0, (0, common_1.Body)('boqItemId')),
     __param(1, (0, common_1.Body)('activityId')),
     __param(2, (0, common_1.Body)('quantity')),
@@ -189,6 +202,7 @@ __decorate([
 ], PlanningController.prototype, "distributeBoq", null);
 __decorate([
     (0, common_1.Post)('unlink'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.UPDATE'),
     __param(0, (0, common_1.Body)('boqItemId')),
     __param(1, (0, common_1.Body)('boqSubItemId')),
     __param(2, (0, common_1.Body)('measurementId')),
@@ -198,6 +212,7 @@ __decorate([
 ], PlanningController.prototype, "unlinkBoq", null);
 __decorate([
     (0, common_1.Get)(':projectId/recovery'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.ANALYSIS.READ'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -205,6 +220,7 @@ __decorate([
 ], PlanningController.prototype, "getRecoveryPlans", null);
 __decorate([
     (0, common_1.Post)('recovery'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.RECOVERY.MANAGE'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -212,6 +228,8 @@ __decorate([
 ], PlanningController.prototype, "createRecoveryPlan", null);
 __decorate([
     (0, common_1.Post)('measurements'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.CREATE'),
+    (0, auditable_decorator_1.Auditable)('PROGRESS', 'RECORD_PROGRESS'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -219,6 +237,8 @@ __decorate([
 ], PlanningController.prototype, "recordProgress", null);
 __decorate([
     (0, common_1.Post)('activities/:activityId/complete'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.UPDATE'),
+    (0, auditable_decorator_1.Auditable)('SCHEDULE', 'COMPLETE_ACTIVITY', 'activityId'),
     __param(0, (0, common_1.Param)('activityId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -226,6 +246,8 @@ __decorate([
 ], PlanningController.prototype, "completeActivity", null);
 __decorate([
     (0, common_1.Post)('distribute-schedule'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.UPDATE'),
+    (0, auditable_decorator_1.Auditable)('SCHEDULE', 'DISTRIBUTE_ACTIVITIES'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
@@ -233,20 +255,25 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], PlanningController.prototype, "distributeSchedule", null);
 __decorate([
-    (0, common_1.Post)('undistribute-schedule'),
+    (0, common_1.Post)('undistribute'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.UPDATE'),
+    (0, auditable_decorator_1.Auditable)('SCHEDULE', 'UNDISTRIBUTE_ACTIVITIES'),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
 ], PlanningController.prototype, "undistributeSchedule", null);
 __decorate([
     (0, common_1.Get)('activities/repair-links'),
+    (0, permissions_decorator_1.Permissions)('ADMIN.SETTINGS.MANAGE'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], PlanningController.prototype, "repairLinks", null);
 __decorate([
     (0, common_1.Get)('debug/:projectId'),
+    (0, permissions_decorator_1.Permissions)('ADMIN.SETTINGS.MANAGE'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -254,6 +281,7 @@ __decorate([
 ], PlanningController.prototype, "debugProject", null);
 __decorate([
     (0, common_1.Get)(':projectId/distribution-matrix'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -261,6 +289,7 @@ __decorate([
 ], PlanningController.prototype, "getDistributionMatrix", null);
 __decorate([
     (0, common_1.Get)(':projectId/relationships'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.MATRIX.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -282,6 +311,7 @@ __decorate([
 ], PlanningController.prototype, "searchEps", null);
 __decorate([
     (0, common_1.Post)(':projectId/versions'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.CREATE'),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -290,6 +320,7 @@ __decorate([
 ], PlanningController.prototype, "createVersion", null);
 __decorate([
     (0, common_1.Get)(':projectId/versions'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -297,6 +328,7 @@ __decorate([
 ], PlanningController.prototype, "getVersions", null);
 __decorate([
     (0, common_1.Get)('versions/:versionId/activities'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.READ'),
     __param(0, (0, common_1.Param)('versionId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -304,6 +336,7 @@ __decorate([
 ], PlanningController.prototype, "getVersionActivities", null);
 __decorate([
     (0, common_1.Patch)('versions/:versionId/activities/:activityId'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.UPDATE'),
     __param(0, (0, common_1.Param)('versionId')),
     __param(1, (0, common_1.Param)('activityId')),
     __param(2, (0, common_1.Body)()),
@@ -313,6 +346,7 @@ __decorate([
 ], PlanningController.prototype, "updateVersionActivity", null);
 __decorate([
     (0, common_1.Get)('versions/compare'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.READ'),
     __param(0, (0, common_1.Query)('v1')),
     __param(1, (0, common_1.Query)('v2')),
     __metadata("design:type", Function),
@@ -321,6 +355,7 @@ __decorate([
 ], PlanningController.prototype, "compareVersions", null);
 __decorate([
     (0, common_1.Post)('versions/:versionId/recalculate'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.UPDATE'),
     __param(0, (0, common_1.Param)('versionId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -328,6 +363,7 @@ __decorate([
 ], PlanningController.prototype, "recalculateSchedule", null);
 __decorate([
     (0, common_1.Get)('versions/:versionId/export'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.READ'),
     __param(0, (0, common_1.Param)('versionId')),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
@@ -336,6 +372,7 @@ __decorate([
 ], PlanningController.prototype, "exportVersion", null);
 __decorate([
     (0, common_1.Post)(':projectId/versions/import-revision'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.CREATE'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.UploadedFile)()),
@@ -346,6 +383,7 @@ __decorate([
 ], PlanningController.prototype, "importRevision", null);
 __decorate([
     (0, common_1.Post)('look-ahead'),
+    (0, permissions_decorator_1.Permissions)('PLANNING.LOOKAHEAD.CREATE'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [look_ahead_dto_1.LookAheadDto]),
@@ -353,6 +391,7 @@ __decorate([
 ], PlanningController.prototype, "getLookAhead", null);
 exports.PlanningController = PlanningController = __decorate([
     (0, common_1.Controller)('planning'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, project_context_guard_1.ProjectContextGuard, project_assignment_guard_1.ProjectAssignmentGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [planning_service_1.PlanningService,
         schedule_version_service_1.ScheduleVersionService,
         import_export_service_1.ImportExportService])

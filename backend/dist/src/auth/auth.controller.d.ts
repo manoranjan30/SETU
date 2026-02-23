@@ -9,6 +9,7 @@ export declare class AuthController {
             username: any;
             roles: any;
             permissions: string[];
+            project_ids: number[];
         };
     }>;
     getProfile(req: any): any;

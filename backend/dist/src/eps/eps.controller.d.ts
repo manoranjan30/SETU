@@ -10,13 +10,7 @@ export declare class EpsController {
     uploadFile(file: Express.Multer.File, req: any): Promise<any>;
     create(createEpsDto: CreateEpsNodeDto, req: any): Promise<import("./eps.entity").EpsNode>;
     getProjectTree(id: number): Promise<any[]>;
-    findAll(req: any): Promise<import("./eps.entity").EpsNode[] | {
-        id: number;
-        name: string;
-        type: string;
-        parentId: null;
-        order: number;
-    }[]>;
+    findAll(req: any): Promise<import("./eps.entity").EpsNode[]>;
     findOne(id: number): Promise<import("./eps.entity").EpsNode | null>;
     update(id: number, updateEpsDto: UpdateEpsNodeDto, req: any): Promise<import("./eps.entity").EpsNode | null>;
     remove(id: number, req: any): Promise<void>;

@@ -3,13 +3,15 @@ import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { expandPermissions } from './permission-config';
+import { ProjectAssignmentService } from '../projects/project-assignment.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-  ) {}
+    private assignmentService: ProjectAssignmentService,
+  ) { }
 
   async validateUser(username: string, pass: string): Promise<any> {
     console.log(`[AuthService] Validating user: '${username}'`);
@@ -52,6 +54,17 @@ export class AuthService {
       });
     }
 
+    // Fetch Project Assignments to add Project-specific permissions and Project IDs
+    const assignments = await this.assignmentService.getUserAssignments(user.id);
+    const assignedProjectIds = assignments.map(a => a.project?.id);
+
+    // Merge project-specific role permissions into the raw permissions set
+    assignments.forEach(assignment => {
+      assignment.roles?.forEach(role => {
+        role.permissions?.forEach(p => rawPermissions.add(p.permissionCode));
+      });
+    });
+
     // Expand permissions to include implied dependencies
     const permissions = expandPermissions(Array.from(rawPermissions));
 
@@ -60,16 +73,18 @@ export class AuthService {
       sub: user.id,
       roles: user.roles?.map((r) => r.name),
       permissions: permissions,
+      project_ids: assignedProjectIds,
     };
 
     return {
       access_token: this.jwtService.sign(payload),
-      // We can also return user data here if needed by frontend directly (though AuthContext usually decodes or fetches me)
+      // We can also return user data here if needed by frontend directly
       user: {
         id: user.id,
         username: user.username,
         roles: payload.roles,
         permissions: payload.permissions,
+        project_ids: assignedProjectIds,
       },
     };
   }

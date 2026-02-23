@@ -22,8 +22,27 @@ import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityService } from './quality-activity.service';
 import { QualityActivityController } from './quality-activity.controller';
 
+import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
+import { QualityStageTemplate } from './entities/quality-stage-template.entity';
+import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-template.entity';
+import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
+import { QualityExecutionItem } from './entities/quality-execution-item.entity';
+import { QualitySignature } from './entities/quality-signature.entity';
+
 import { QualityInspectionService } from './quality-inspection.service';
 import { QualityInspectionController } from './quality-inspection.controller';
+
+import { ActivityObservation } from './entities/activity-observation.entity';
+import { InspectionApproval } from './entities/inspection-approval.entity';
+
+// Sequencer
+import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
+import { QualitySequencerService } from './quality-sequencer.service';
+import { QualitySequencerController } from './quality-sequencer.controller';
+
+import { ChecklistTemplateService } from './checklist-template.service';
+import { ChecklistTemplateController } from './checklist-template.controller';
+import { ComplianceService } from './compliance.service';
 
 @Module({
   imports: [
@@ -43,12 +62,23 @@ import { QualityInspectionController } from './quality-inspection.controller';
       // NEW
       QualityActivityList,
       QualityActivity,
+      QualitySequenceEdge,
+      QualityChecklistTemplate,
+      QualityStageTemplate,
+      QualityChecklistItemTemplate,
+      QualityInspectionStage,
+      QualityExecutionItem,
+      QualitySignature,
+      ActivityObservation,
+      InspectionApproval,
     ]),
   ],
   controllers: [
     QualityController,
     QualityActivityController,
     QualityInspectionController,
+    QualitySequencerController,
+    ChecklistTemplateController,
   ],
   providers: [
     QualityService,
@@ -56,6 +86,9 @@ import { QualityInspectionController } from './quality-inspection.controller';
     QualityWorkflowService,
     QualityActivityService,
     QualityInspectionService, // Added
+    QualitySequencerService,
+    ChecklistTemplateService,
+    ComplianceService,
   ],
   exports: [
     QualityService,
@@ -63,6 +96,7 @@ import { QualityInspectionController } from './quality-inspection.controller';
     QualityWorkflowService,
     QualityActivityService,
     QualityInspectionService, // Added
+    QualitySequencerService,
   ],
 })
-export class QualityModule {}
+export class QualityModule { }

@@ -9,29 +9,37 @@ import {
   Res,
   UseInterceptors,
   UploadedFile,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ResourcesService } from './resources.service';
 import { ResourceMaster } from './entities/resource-master.entity';
 import { AnalysisTemplate } from './entities/analysis-template.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { Permissions } from '../auth/permissions.decorator';
 
 @Controller('resources')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ResourcesController {
-  constructor(private readonly resourcesService: ResourcesService) {}
+  constructor(private readonly resourcesService: ResourcesService) { }
 
   // Resources
   @Get('master')
+  @Permissions('RESOURCE.MASTER.READ')
   async getResources() {
     return this.resourcesService.findAllResources();
   }
 
   @Post('master')
+  @Permissions('RESOURCE.MASTER.CREATE')
   async createResource(@Body() body: Partial<ResourceMaster>) {
     return this.resourcesService.createResource(body);
   }
 
   @Put('master/:id')
+  @Permissions('RESOURCE.MASTER.UPDATE')
   async updateResource(
     @Param('id') id: number,
     @Body() body: Partial<ResourceMaster>,
@@ -40,11 +48,13 @@ export class ResourcesController {
   }
 
   @Delete('master/:id')
+  @Permissions('RESOURCE.MASTER.DELETE')
   async deleteResource(@Param('id') id: number) {
     return this.resourcesService.deleteResource(+id);
   }
 
   @Get('template')
+  @Permissions('RESOURCE.MASTER.READ')
   async getTemplateFile(@Res() res: Response) {
     const csv = await this.resourcesService.getResourceTemplate();
     res.setHeader('Content-Type', 'text/csv');
@@ -56,6 +66,7 @@ export class ResourcesController {
   }
 
   @Post('import')
+  @Permissions('RESOURCE.MASTER.IMPORT')
   @UseInterceptors(FileInterceptor('file'))
   async importResources(
     @UploadedFile() file: Express.Multer.File,
@@ -67,21 +78,25 @@ export class ResourcesController {
 
   // Templates
   @Get('templates')
+  @Permissions('RESOURCE.TEMPLATE.MANAGE')
   async getTemplates() {
     return this.resourcesService.findAllTemplates();
   }
 
   @Get('templates/:id')
+  @Permissions('RESOURCE.TEMPLATE.MANAGE')
   async getTemplate(@Param('id') id: number) {
     return this.resourcesService.findTemplateById(+id);
   }
 
   @Post('templates')
+  @Permissions('RESOURCE.TEMPLATE.MANAGE')
   async createTemplate(@Body() body: Partial<AnalysisTemplate>) {
     return this.resourcesService.createTemplate(body);
   }
 
   @Put('templates/:id')
+  @Permissions('RESOURCE.TEMPLATE.MANAGE')
   async updateTemplate(
     @Param('id') id: number,
     @Body() body: Partial<AnalysisTemplate>,
@@ -90,11 +105,13 @@ export class ResourcesController {
   }
 
   @Delete('templates/:id')
+  @Permissions('RESOURCE.TEMPLATE.MANAGE')
   deleteTemplate(@Param('id') id: string) {
     return this.resourcesService.deleteTemplate(+id);
   }
 
   @Post('suggest-mapping')
+  @Permissions('RESOURCE.MASTER.READ')
   suggestMappings(
     @Body() body: { items: { boqItemId: number; description: string }[] },
   ) {
@@ -102,6 +119,7 @@ export class ResourcesController {
   }
 
   @Get('project-totals/:projectId')
+  @Permissions('RESOURCE.MASTER.READ')
   getProjectTotals(@Param('projectId') projectId: string) {
     return this.resourcesService.calculateProjectResources(+projectId);
   }

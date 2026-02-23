@@ -8,27 +8,51 @@ export class AuditService {
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditRepo: Repository<AuditLog>,
-  ) {}
+  ) { }
 
   async log(
     userId: number,
+    module: string,
     action: string,
-    resourceType: string,
-    resourceId: string | number,
+    recordId?: string | number,
+    projectId?: number,
     details?: any,
+    ipAddress?: string,
   ) {
     try {
       const log = this.auditRepo.create({
         userId,
+        module,
         action,
-        resourceType,
-        resourceId: String(resourceId),
-        details: details ? JSON.stringify(details) : undefined,
+        recordId: recordId ? String(recordId) : undefined,
+        projectId,
+        details,
+        ipAddress,
       });
       await this.auditRepo.save(log);
     } catch (e) {
-      console.error('Failed to save audit log', e);
-      // Non-blocking
+      console.error('AuditLog Error:', e);
     }
+  }
+
+  async findAll(projectId?: number, module?: string, limit: number = 100) {
+    const where: any = {};
+    if (projectId) where.projectId = projectId;
+    if (module) where.module = module;
+
+    return this.auditRepo.find({
+      where,
+      relations: ['user'],
+      order: { timestamp: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async findByProject(projectId: number) {
+    return this.auditRepo.find({
+      where: { projectId },
+      relations: ['user'],
+      order: { timestamp: 'DESC' },
+    });
   }
 }

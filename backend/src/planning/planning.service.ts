@@ -23,6 +23,7 @@ import {
 import { WbsNode } from '../wbs/entities/wbs.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { CpmService } from '../wbs/cpm.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class PlanningService {
@@ -48,7 +49,8 @@ export class PlanningService {
     @InjectRepository(ActivityRelationship)
     private relRepo: Repository<ActivityRelationship>,
     private cpmService: CpmService,
-  ) {}
+    private readonly auditService: AuditService,
+  ) { }
 
   async unlinkBoq(
     boqItemId: number,
@@ -75,10 +77,10 @@ export class PlanningService {
     const activityIds = [...new Set(affectedPlans.map((p) => p.activityId))];
     const projectId = affectedPlans[0]?.activityId
       ? (
-          await this.activityRepo.findOne({
-            where: { id: affectedPlans[0].activityId },
-          })
-        )?.projectId
+        await this.activityRepo.findOne({
+          where: { id: affectedPlans[0].activityId },
+        })
+      )?.projectId
       : null;
 
     const result = await this.planRepo.delete(whereClause);
@@ -916,6 +918,19 @@ export class PlanningService {
         }
       }
 
+      await this.auditService.log(
+        user?.id || 0,
+        'SCHEDULE',
+        'DISTRIBUTE_ACTIVITIES',
+        undefined,
+        undefined, // Multi-project usually
+        {
+          activityCount: activityIds.length,
+          targetCount: targetEpsIds.length,
+          created: createdCount,
+        },
+      );
+
       return { created: createdCount, skipped: skippedCount };
     } catch (error) {
       console.error('Distribution Error:', error);
@@ -1018,7 +1033,11 @@ export class PlanningService {
     return results;
   }
 
-  async undistributeActivities(activityIds: number[], targetEpsIds: number[]) {
+  async undistributeActivities(
+    activityIds: number[],
+    targetEpsIds: number[],
+    user: any,
+  ) {
     try {
       if (!activityIds.length || !targetEpsIds.length) return { deleted: 0 };
 
@@ -1029,6 +1048,19 @@ export class PlanningService {
         .where('masterActivityId IN (:...activityIds)', { activityIds })
         .andWhere('projectId IN (:...targetEpsIds)', { targetEpsIds })
         .execute();
+
+      await this.auditService.log(
+        user?.id || 0,
+        'SCHEDULE',
+        'UNDISTRIBUTE_ACTIVITIES',
+        undefined,
+        undefined,
+        {
+          activityCount: activityIds.length,
+          targetCount: targetEpsIds.length,
+          deleted: result.affected,
+        },
+      );
 
       return { deleted: result.affected };
     } catch (error) {

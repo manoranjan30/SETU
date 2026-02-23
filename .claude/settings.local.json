@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Get-WindowsOptionalFeature -Online | Where-Object {$_FeatureName -match ''Hyper|Hypervisor|VirtualMachine''} | Select-Object FeatureName,State\")",
+      "Bash(docker ps:*)",
+      "Bash(adb reverse:*)"
+    ]
+  }
+}

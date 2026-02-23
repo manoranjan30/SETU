@@ -16,6 +16,9 @@ exports.ResourcesController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
 const resources_service_1 = require("./resources.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 let ResourcesController = class ResourcesController {
     resourcesService;
     constructor(resourcesService) {
@@ -68,12 +71,14 @@ let ResourcesController = class ResourcesController {
 exports.ResourcesController = ResourcesController;
 __decorate([
     (0, common_1.Get)('master'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.READ'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], ResourcesController.prototype, "getResources", null);
 __decorate([
     (0, common_1.Post)('master'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.CREATE'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -81,6 +86,7 @@ __decorate([
 ], ResourcesController.prototype, "createResource", null);
 __decorate([
     (0, common_1.Put)('master/:id'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.UPDATE'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -89,6 +95,7 @@ __decorate([
 ], ResourcesController.prototype, "updateResource", null);
 __decorate([
     (0, common_1.Delete)('master/:id'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.DELETE'),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -96,6 +103,7 @@ __decorate([
 ], ResourcesController.prototype, "deleteResource", null);
 __decorate([
     (0, common_1.Get)('template'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.READ'),
     __param(0, (0, common_1.Res)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -103,6 +111,7 @@ __decorate([
 ], ResourcesController.prototype, "getTemplateFile", null);
 __decorate([
     (0, common_1.Post)('import'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.IMPORT'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
     __param(0, (0, common_1.UploadedFile)()),
     __param(1, (0, common_1.Body)('mapping')),
@@ -112,12 +121,14 @@ __decorate([
 ], ResourcesController.prototype, "importResources", null);
 __decorate([
     (0, common_1.Get)('templates'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.TEMPLATE.MANAGE'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], ResourcesController.prototype, "getTemplates", null);
 __decorate([
     (0, common_1.Get)('templates/:id'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.TEMPLATE.MANAGE'),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -125,6 +136,7 @@ __decorate([
 ], ResourcesController.prototype, "getTemplate", null);
 __decorate([
     (0, common_1.Post)('templates'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.TEMPLATE.MANAGE'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -132,6 +144,7 @@ __decorate([
 ], ResourcesController.prototype, "createTemplate", null);
 __decorate([
     (0, common_1.Put)('templates/:id'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.TEMPLATE.MANAGE'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -140,6 +153,7 @@ __decorate([
 ], ResourcesController.prototype, "updateTemplate", null);
 __decorate([
     (0, common_1.Delete)('templates/:id'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.TEMPLATE.MANAGE'),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -147,6 +161,7 @@ __decorate([
 ], ResourcesController.prototype, "deleteTemplate", null);
 __decorate([
     (0, common_1.Post)('suggest-mapping'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.READ'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -154,6 +169,7 @@ __decorate([
 ], ResourcesController.prototype, "suggestMappings", null);
 __decorate([
     (0, common_1.Get)('project-totals/:projectId'),
+    (0, permissions_decorator_1.Permissions)('RESOURCE.MASTER.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -161,6 +177,7 @@ __decorate([
 ], ResourcesController.prototype, "getProjectTotals", null);
 exports.ResourcesController = ResourcesController = __decorate([
     (0, common_1.Controller)('resources'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [resources_service_1.ResourcesService])
 ], ResourcesController);
 //# sourceMappingURL=resources.controller.js.map

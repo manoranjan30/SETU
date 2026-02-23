@@ -292,8 +292,13 @@ const ProgressEntry = () => {
             // Limit to 20 parallel requests to avoid blasting the server
             const limitedIds = uniqueIds.slice(0, 20);
 
-            // FIX: Revert to using the Node ID as the 'projectId' parameter
-            const promises = limitedIds.map(id => api.get(`/planning/${id}/execution-ready`).catch(() => ({ data: [] })));
+            // FIX: DO NOT pass EPS Node ID as Project ID. Pass the context Project ID (from URL)
+            // and use 'wbsNodeId' query param instead. This satisfies ProjectAssignmentGuard.
+            const promises = limitedIds.map(id =>
+                api.get(`/planning/${projectId}/execution-ready`, {
+                    params: { wbsNodeId: id }
+                }).catch(() => ({ data: [] }))
+            );
 
             const responses = await Promise.all(promises);
 

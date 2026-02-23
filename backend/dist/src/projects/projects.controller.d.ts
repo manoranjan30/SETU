@@ -7,10 +7,11 @@ export declare class ProjectsController {
     constructor(assignmentService: ProjectAssignmentService, permissionService: PermissionResolutionService);
     assignUser(projectId: number, body: {
         userId: number;
-        roleId: number;
+        roleIds: number[];
         scopeType?: ProjectScopeType;
         scopeNodeId?: number;
     }, req: any): Promise<import("./entities/user-project-assignment.entity").UserProjectAssignment>;
+    updateStatus(projectId: number, userId: number, status: any, req: any): Promise<import("./entities/user-project-assignment.entity").UserProjectAssignment>;
     getTeam(projectId: number): Promise<import("./entities/user-project-assignment.entity").UserProjectAssignment[]>;
     removeUser(projectId: number, userId: number, req: any): Promise<void>;
     checkPermission(projectId: number, nodeId: number, req: any): Promise<boolean>;

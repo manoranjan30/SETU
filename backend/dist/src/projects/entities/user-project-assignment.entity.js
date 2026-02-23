@@ -27,14 +27,10 @@ var AssignmentStatus;
 let UserProjectAssignment = class UserProjectAssignment {
     id;
     user;
-    userId;
     project;
-    projectId;
-    role;
-    roleId;
+    roles;
     scopeType;
     scopeNode;
-    scopeNodeId;
     status;
     createdAt;
     updatedAt;
@@ -50,27 +46,19 @@ __decorate([
     __metadata("design:type", user_entity_1.User)
 ], UserProjectAssignment.prototype, "user", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'user_id', insert: false, update: false }),
-    __metadata("design:type", Number)
-], UserProjectAssignment.prototype, "userId", void 0);
-__decorate([
     (0, typeorm_1.ManyToOne)(() => eps_entity_1.EpsNode, { onDelete: 'CASCADE' }),
     (0, typeorm_1.JoinColumn)({ name: 'project_id' }),
     __metadata("design:type", eps_entity_1.EpsNode)
 ], UserProjectAssignment.prototype, "project", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'project_id', insert: false, update: false }),
-    __metadata("design:type", Number)
-], UserProjectAssignment.prototype, "projectId", void 0);
-__decorate([
-    (0, typeorm_1.ManyToOne)(() => role_entity_1.Role),
-    (0, typeorm_1.JoinColumn)({ name: 'role_id' }),
-    __metadata("design:type", role_entity_1.Role)
-], UserProjectAssignment.prototype, "role", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ name: 'role_id', insert: false, update: false }),
-    __metadata("design:type", Number)
-], UserProjectAssignment.prototype, "roleId", void 0);
+    (0, typeorm_1.ManyToMany)(() => role_entity_1.Role),
+    (0, typeorm_1.JoinTable)({
+        name: 'user_project_assignment_roles',
+        joinColumn: { name: 'assignment_id', referencedColumnName: 'id' },
+        inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' },
+    }),
+    __metadata("design:type", Array)
+], UserProjectAssignment.prototype, "roles", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'enum',
@@ -84,15 +72,6 @@ __decorate([
     (0, typeorm_1.JoinColumn)({ name: 'scope_node_id' }),
     __metadata("design:type", Object)
 ], UserProjectAssignment.prototype, "scopeNode", void 0);
-__decorate([
-    (0, typeorm_1.Column)({
-        name: 'scope_node_id',
-        nullable: true,
-        insert: false,
-        update: false,
-    }),
-    __metadata("design:type", Object)
-], UserProjectAssignment.prototype, "scopeNodeId", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'enum',
@@ -111,6 +90,6 @@ __decorate([
 ], UserProjectAssignment.prototype, "updatedAt", void 0);
 exports.UserProjectAssignment = UserProjectAssignment = __decorate([
     (0, typeorm_1.Entity)('user_project_assignment'),
-    (0, typeorm_1.Index)(['user', 'project', 'status'])
+    (0, typeorm_1.Index)(['status'])
 ], UserProjectAssignment);
 //# sourceMappingURL=user-project-assignment.entity.js.map

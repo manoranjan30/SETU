@@ -8,9 +8,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuditModule = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const typeorm_1 = require("@nestjs/typeorm");
 const audit_log_entity_1 = require("./audit-log.entity");
 const audit_service_1 = require("./audit.service");
+const audit_controller_1 = require("./audit.controller");
+const audit_interceptor_1 = require("./audit.interceptor");
 let AuditModule = class AuditModule {
 };
 exports.AuditModule = AuditModule;
@@ -18,7 +21,14 @@ exports.AuditModule = AuditModule = __decorate([
     (0, common_1.Global)(),
     (0, common_1.Module)({
         imports: [typeorm_1.TypeOrmModule.forFeature([audit_log_entity_1.AuditLog])],
-        providers: [audit_service_1.AuditService],
+        controllers: [audit_controller_1.AuditController],
+        providers: [
+            audit_service_1.AuditService,
+            {
+                provide: core_1.APP_INTERCEPTOR,
+                useClass: audit_interceptor_1.AuditInterceptor,
+            },
+        ],
         exports: [audit_service_1.AuditService],
     })
 ], AuditModule);

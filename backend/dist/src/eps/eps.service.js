@@ -64,7 +64,7 @@ let EpsService = class EpsService {
             user.role === 'Admin';
         if (isAdmin)
             return;
-        const hasPerm = await this.permissionService.hasPermission(user.userId || user.sub, permission, nodeId);
+        const hasPerm = await this.permissionService.hasPermission(user.id || user.userId || user.sub, permission, nodeId);
         if (!hasPerm) {
             throw new common_2.ForbiddenException(`Access Denied: Missing ${permission} on Node ${nodeId}`);
         }
@@ -178,6 +178,7 @@ let EpsService = class EpsService {
     async findAll(user) {
         if (!user)
             return [];
+        const userId = user.id || user.userId || user.sub;
         const roles = (user.roles || []).map((r) => typeof r === 'string' ? r.toLowerCase() : r.name?.toLowerCase());
         const userRole = user.role ? user.role.toLowerCase() : '';
         const isAdmin = roles.includes('admin') || userRole === 'admin';
@@ -192,30 +193,33 @@ let EpsService = class EpsService {
         }
         const rawAssignments = await this.epsRepository.manager
             .createQueryBuilder(user_project_assignment_entity_1.UserProjectAssignment, 'upa')
-            .select('upa.projectId', 'pid')
-            .where('upa.userId = :userId', { userId: user.userId || user.sub })
+            .select('upa.project_id', 'pid')
+            .where('upa.user_id = :userId', { userId })
             .andWhere('upa.status = :status', { status: 'ACTIVE' })
             .getRawMany();
         const allowedProjectIds = rawAssignments.map((p) => p.pid);
+        console.log(`[EPS RBAC] userId=${userId}, rawAssignments:`, rawAssignments);
+        console.log(`[EPS RBAC] allowedProjectIds:`, allowedProjectIds);
         if (allowedProjectIds.length === 0) {
-            const companies = await this.epsRepository.find({
-                where: { type: eps_entity_1.EpsNodeType.COMPANY },
-                order: { name: 'ASC' },
-            });
-            return this.sanitize(companies);
+            return [];
         }
         const allNodes = await qb.getMany();
-        const finalResult = [];
         const allowedSet = new Set(allowedProjectIds.map((id) => Number(id)));
+        const projectNodes = allNodes.filter((n) => n.type === eps_entity_1.EpsNodeType.PROJECT && allowedSet.has(n.id));
+        const parentCompanyIds = new Set();
+        for (const proj of projectNodes) {
+            if (proj.parentId)
+                parentCompanyIds.add(proj.parentId);
+        }
         const visibleIds = new Set();
+        const finalResult = [];
         for (const node of allNodes) {
             let show = false;
             if (node.type === eps_entity_1.EpsNodeType.COMPANY) {
-                show = true;
+                show = parentCompanyIds.has(node.id);
             }
             else if (node.type === eps_entity_1.EpsNodeType.PROJECT) {
-                if (allowedSet.has(node.id))
-                    show = true;
+                show = allowedSet.has(node.id);
             }
             else {
                 if (node.parentId && visibleIds.has(node.parentId))

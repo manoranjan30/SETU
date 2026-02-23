@@ -24,6 +24,7 @@ import { ProjectContextGuard } from '../projects/guards/project-context.guard';
 import { ProjectAssignmentGuard } from '../projects/guards/project-assignment.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
+import { Auditable } from '../audit/auditable.decorator';
 
 @Controller('projects/:projectId/wbs')
 @UseGuards(
@@ -36,10 +37,11 @@ export class WbsController {
   constructor(
     private readonly wbsService: WbsService,
     private readonly importService: WbsImportService,
-  ) {}
+  ) { }
 
   @Post()
   @Permissions('WBS.NODE.CREATE')
+  @Auditable('WBS', 'CREATE_NODE')
   create(
     @Param('projectId') projectId: string,
     @Body() dto: CreateWbsDto,
@@ -68,6 +70,7 @@ export class WbsController {
 
   @Patch(':id')
   @Permissions('WBS.NODE.UPDATE')
+  @Auditable('WBS', 'UPDATE_NODE', 'id')
   update(
     @Param('projectId') projectId: string,
     @Param('id') id: string,
@@ -77,7 +80,8 @@ export class WbsController {
   }
 
   @Patch(':id/reorder')
-  @Permissions('WBS.NODE.UPDATE') // Reorder is an update
+  @Permissions('WBS.NODE.UPDATE')
+  @Auditable('WBS', 'REORDER_NODE', 'id')
   reorder(
     @Param('projectId') projectId: string,
     @Param('id') id: string,
@@ -88,8 +92,13 @@ export class WbsController {
 
   @Delete(':id')
   @Permissions('WBS.NODE.DELETE')
-  remove(@Param('projectId') projectId: string, @Param('id') id: string) {
-    return this.wbsService.delete(+projectId, +id);
+  @Auditable('WBS', 'DELETE_NODE', 'id')
+  remove(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    return this.wbsService.delete(+projectId, +id, req.user.id);
   }
 
   // --- Activities ---
@@ -130,8 +139,11 @@ export class WbsController {
 
   @Delete('activities/:activityId')
   @Permissions('WBS.ACTIVITY.DELETE')
-  deleteActivity(@Param('activityId') activityId: string) {
-    return this.wbsService.deleteActivity(+activityId);
+  deleteActivity(
+    @Param('activityId') activityId: string,
+    @Request() req: any,
+  ) {
+    return this.wbsService.deleteActivity(+activityId, req.user.id);
   }
 
   // --- Templates ---

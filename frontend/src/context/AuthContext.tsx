@@ -5,6 +5,7 @@ interface User {
     username: string;
     roles: string[];
     permissions: string[];
+    project_ids?: number[];
 }
 
 interface AuthContextType {

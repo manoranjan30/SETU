@@ -21,6 +21,7 @@ const project_profile_entity_1 = require("../eps/project-profile.entity");
 const activity_entity_1 = require("./entities/activity.entity");
 const wbs_template_entity_1 = require("./entities/wbs-template.entity");
 const wbs_template_activity_entity_1 = require("./entities/wbs-template-activity.entity");
+const audit_service_1 = require("../audit/audit.service");
 let WbsService = class WbsService {
     wbsRepo;
     profileRepo;
@@ -29,7 +30,8 @@ let WbsService = class WbsService {
     templateNodeRepo;
     templateActivityRepo;
     dataSource;
-    constructor(wbsRepo, profileRepo, activityRepo, templateRepo, templateNodeRepo, templateActivityRepo, dataSource) {
+    auditService;
+    constructor(wbsRepo, profileRepo, activityRepo, templateRepo, templateNodeRepo, templateActivityRepo, dataSource, auditService) {
         this.wbsRepo = wbsRepo;
         this.profileRepo = profileRepo;
         this.activityRepo = activityRepo;
@@ -37,6 +39,7 @@ let WbsService = class WbsService {
         this.templateNodeRepo = templateNodeRepo;
         this.templateActivityRepo = templateActivityRepo;
         this.dataSource = dataSource;
+        this.auditService = auditService;
     }
     async create(projectId, dto, createdBy) {
         if (dto.responsibleRoleId === '')
@@ -98,9 +101,10 @@ let WbsService = class WbsService {
         Object.assign(node, dto);
         return this.wbsRepo.save(node);
     }
-    async delete(projectId, id) {
+    async delete(projectId, id, userId) {
         const node = await this.findOne(projectId, id);
         await this.wbsRepo.remove(node);
+        await this.auditService.log(userId, 'WBS', 'DELETE_NODE', id, projectId, { code: node.wbsCode, name: node.wbsName });
     }
     async createActivity(projectId, wbsNodeId, dto, createdBy) {
         const node = await this.wbsRepo.findOne({
@@ -141,8 +145,15 @@ let WbsService = class WbsService {
         await this.activityRepo.update(activityId, dto);
         return this.activityRepo.findOneByOrFail({ id: activityId });
     }
-    async deleteActivity(activityId) {
+    async deleteActivity(activityId, userId) {
+        const activity = await this.activityRepo.findOne({
+            where: { id: activityId },
+        });
+        if (!activity)
+            throw new common_1.NotFoundException('Activity not found');
+        const projectId = activity.projectId;
         await this.activityRepo.delete(activityId);
+        await this.auditService.log(userId, 'WBS', 'DELETE_ACTIVITY', activityId, projectId, { code: activity.activityCode, name: activity.activityName });
     }
     async reorder(projectId, id, dto) {
         const node = await this.findOne(projectId, id);
@@ -413,6 +424,7 @@ exports.WbsService = WbsService = __decorate([
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        typeorm_2.DataSource])
+        typeorm_2.DataSource,
+        audit_service_1.AuditService])
 ], WbsService);
 //# sourceMappingURL=wbs.service.js.map

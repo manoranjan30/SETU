@@ -10,6 +10,7 @@ import { QuantityProgressRecord } from './entities/quantity-progress-record.enti
 import { WbsNode } from '../wbs/entities/wbs.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { CpmService } from '../wbs/cpm.service';
+import { AuditService } from '../audit/audit.service';
 export declare class PlanningService {
     private planRepo;
     private recoveryRepo;
@@ -22,7 +23,8 @@ export declare class PlanningService {
     private epsRepo;
     private relRepo;
     private cpmService;
-    constructor(planRepo: Repository<BoqActivityPlan>, recoveryRepo: Repository<RecoveryPlan>, boqRepo: Repository<BoqItem>, activityRepo: Repository<Activity>, progressRepo: Repository<QuantityProgressRecord>, subItemRepo: Repository<BoqSubItem>, measurementRepo: Repository<MeasurementElement>, wbsRepo: Repository<WbsNode>, epsRepo: Repository<EpsNode>, relRepo: Repository<ActivityRelationship>, cpmService: CpmService);
+    private readonly auditService;
+    constructor(planRepo: Repository<BoqActivityPlan>, recoveryRepo: Repository<RecoveryPlan>, boqRepo: Repository<BoqItem>, activityRepo: Repository<Activity>, progressRepo: Repository<QuantityProgressRecord>, subItemRepo: Repository<BoqSubItem>, measurementRepo: Repository<MeasurementElement>, wbsRepo: Repository<WbsNode>, epsRepo: Repository<EpsNode>, relRepo: Repository<ActivityRelationship>, cpmService: CpmService, auditService: AuditService);
     unlinkBoq(boqItemId: number, boqSubItemId?: number, measurementId?: number): Promise<void>;
     distributeBoqToActivity(boqItemId: number, activityId: number, quantity: number, basis?: PlanningBasis, mappingType?: MappingType, mappingRules?: any, boqSubItemId?: number, measurementId?: number): Promise<BoqActivityPlan>;
     getProjectPlanningMatrix(projectId: number): Promise<BoqActivityPlan[]>;
@@ -40,7 +42,7 @@ export declare class PlanningService {
     getGapAnalysis(projectId: number): Promise<any[]>;
     distributeActivitiesToEps(activityIds: number[], targetEpsIds: number[], user: any): Promise<any>;
     repairDistributedActivities(): Promise<any>;
-    undistributeActivities(activityIds: number[], targetEpsIds: number[]): Promise<{
+    undistributeActivities(activityIds: number[], targetEpsIds: number[], user: any): Promise<{
         deleted: number | null | undefined;
     }>;
     getDistributionMatrix(masterProjectId: number): Promise<Record<string, number[]>>;

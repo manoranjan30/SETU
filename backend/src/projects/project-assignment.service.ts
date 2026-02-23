@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import {
   UserProjectAssignment,
   AssignmentStatus,
@@ -15,6 +15,7 @@ import { ProjectTeamAudit } from './entities/project-team-audit.entity';
 import { User } from '../users/user.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { Role } from '../roles/role.entity';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class ProjectAssignmentService {
@@ -29,12 +30,13 @@ export class ProjectAssignmentService {
     private epsRepo: Repository<EpsNode>,
     @InjectRepository(Role)
     private roleRepo: Repository<Role>,
-  ) {}
+    private readonly auditService: AuditService,
+  ) { }
 
   async assignUser(
     projectId: number,
     userId: number,
-    roleId: number,
+    roleIds: number[],
     scopeType: ProjectScopeType = ProjectScopeType.FULL,
     scopeNodeId?: number,
     performedByUserId?: number,
@@ -47,10 +49,11 @@ export class ProjectAssignmentService {
       );
     }
 
-    // 2. Validate User & Role
+    // 2. Validate User & Roles
     const user = await this.userRepo.findOneBy({ id: userId });
-    const role = await this.roleRepo.findOneBy({ id: roleId });
-    if (!user || !role) throw new NotFoundException('User or Role not found');
+    const roles = await this.roleRepo.findBy({ id: In(roleIds) });
+    if (!user) throw new NotFoundException('User not found');
+    if (roles.length === 0) throw new BadRequestException('At least one valid role must be selected');
 
     // 3. Check existing assignment
     let assignment = await this.assignmentRepo.findOne({
@@ -58,15 +61,20 @@ export class ProjectAssignmentService {
         user: { id: userId },
         project: { id: projectId },
       },
+      relations: ['roles'],
     });
 
-    const oldDetails = assignment ? { ...assignment } : null;
+    const oldDetails = assignment ? {
+      roleIds: assignment.roles?.map(r => r.id),
+      status: assignment.status,
+      scopeType: assignment.scopeType
+    } : null;
 
     if (!assignment) {
       assignment = this.assignmentRepo.create({
         user,
         project,
-        role,
+        roles,
         scopeType,
         scopeNode: scopeNodeId
           ? ({ id: scopeNodeId } as unknown as EpsNode)
@@ -75,7 +83,7 @@ export class ProjectAssignmentService {
       });
     } else {
       // Update existing
-      assignment.role = role;
+      assignment.roles = roles;
       assignment.scopeType = scopeType;
       assignment.scopeNode = scopeNodeId
         ? ({ id: scopeNodeId } as unknown as EpsNode)
@@ -94,9 +102,9 @@ export class ProjectAssignmentService {
         performedByUserId,
         {
           old: oldDetails
-            ? { roleId: oldDetails.roleId, scope: oldDetails.scopeType }
+            ? { roleIds: oldDetails.roleIds, scope: oldDetails.scopeType, status: oldDetails.status }
             : null,
-          new: { roleId: role.id, scope: scopeType },
+          new: { roleIds: roles.map(r => r.id), scope: scopeType, status: saved.status },
         },
       );
     }
@@ -121,10 +129,38 @@ export class ProjectAssignmentService {
           'REMOVE_MEMBER',
           userId,
           performedByUserId,
-          { previousRole: assignment.roleId },
+          { previousRoles: assignment.roles?.map(r => r.id) },
         );
       }
     }
+  }
+
+  async updateStatus(
+    projectId: number,
+    userId: number,
+    status: AssignmentStatus,
+    performedByUserId?: number,
+  ): Promise<UserProjectAssignment> {
+    const assignment = await this.assignmentRepo.findOne({
+      where: { user: { id: userId }, project: { id: projectId } },
+    });
+    if (!assignment) throw new NotFoundException('Assignment not found');
+
+    const oldStatus = assignment.status;
+    assignment.status = status;
+    const saved = await this.assignmentRepo.save(assignment);
+
+    if (performedByUserId) {
+      await this.logAudit(
+        projectId,
+        'UPDATE_MEMBER_STATUS',
+        userId,
+        performedByUserId,
+        { oldStatus, newStatus: status },
+      );
+    }
+
+    return saved;
   }
 
   async getProjectAssignments(
@@ -132,14 +168,14 @@ export class ProjectAssignmentService {
   ): Promise<UserProjectAssignment[]> {
     return this.assignmentRepo.find({
       where: { project: { id: projectId } },
-      relations: ['user', 'role', 'scopeNode'],
+      relations: ['user', 'roles', 'scopeNode'],
     });
   }
 
   async getUserAssignments(userId: number): Promise<UserProjectAssignment[]> {
     return this.assignmentRepo.find({
       where: { user: { id: userId }, status: AssignmentStatus.ACTIVE },
-      relations: ['project', 'role', 'scopeNode'],
+      relations: ['project', 'roles', 'roles.permissions', 'scopeNode'],
     });
   }
 
@@ -150,6 +186,7 @@ export class ProjectAssignmentService {
     performedBy: number,
     details: any,
   ) {
+    // 1. Keep the specialized ProjectTeamAudit
     await this.auditRepo.save(
       this.auditRepo.create({
         projectId,
@@ -158,6 +195,16 @@ export class ProjectAssignmentService {
         performedByUserId: performedBy,
         details,
       }),
+    );
+
+    // 2. Also log to centralized AuditLog
+    await this.auditService.log(
+      performedBy,
+      'TEAM',
+      action,
+      targetId,
+      projectId,
+      details,
     );
   }
 }

@@ -16,6 +16,7 @@ exports.RolesController = void 0;
 const common_1 = require("@nestjs/common");
 const roles_service_1 = require("./roles.service");
 const create_role_dto_1 = require("./dto/create-role.dto");
+const permission_presets_1 = require("../auth/permission-presets");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const roles_guard_1 = require("../auth/roles.guard");
 const roles_decorator_1 = require("../auth/roles.decorator");
@@ -23,6 +24,16 @@ let RolesController = class RolesController {
     rolesService;
     constructor(rolesService) {
         this.rolesService = rolesService;
+    }
+    getPresets() {
+        return permission_presets_1.ALL_PERMISSION_PRESETS;
+    }
+    getRoleTemplates() {
+        return permission_presets_1.COMPOSITE_ROLE_TEMPLATES;
+    }
+    resolvePresets(body) {
+        const codes = (0, permission_presets_1.resolvePresetPermissions)(body.presetIds ?? []);
+        return { codes, count: codes.length };
     }
     create(createRoleDto) {
         return this.rolesService.create(createRoleDto);
@@ -42,6 +53,28 @@ let RolesController = class RolesController {
 };
 exports.RolesController = RolesController;
 __decorate([
+    (0, common_1.Get)('presets'),
+    (0, roles_decorator_1.Roles)('Admin'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], RolesController.prototype, "getPresets", null);
+__decorate([
+    (0, common_1.Get)('templates'),
+    (0, roles_decorator_1.Roles)('Admin'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], RolesController.prototype, "getRoleTemplates", null);
+__decorate([
+    (0, common_1.Post)('presets/resolve'),
+    (0, roles_decorator_1.Roles)('Admin'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], RolesController.prototype, "resolvePresets", null);
+__decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)('Admin'),
     __param(0, (0, common_1.Body)()),
@@ -51,13 +84,14 @@ __decorate([
 ], RolesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, roles_decorator_1.Roles)('Admin', 'Viewer'),
+    (0, roles_decorator_1.Roles)('Admin'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], RolesController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, roles_decorator_1.Roles)('Admin'),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
