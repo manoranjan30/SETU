@@ -116,30 +116,30 @@ class SyncService {
           syncStatus: Value(SyncStatus.syncing.value),
         ));
 
-        // Prepare the entry for API
+        // Build payload for POST /execution/:projectId/measurements
+        // microActivityId column is repurposed to carry planId
         final entryData = {
+          'planId': entry.microActivityId,
           'boqItemId': entry.boqItemId,
-          'microActivityId': entry.microActivityId,
-          'quantity': entry.quantity,
+          'projectId': entry.projectId,
+          'wbsNodeId': entry.epsNodeId,
+          'activityId': entry.activityId,
+          'executedQty': entry.quantity,
+          'date': entry.date,
+          if (entry.remarks != null) 'notes': entry.remarks,
         };
 
-        // Call the API
-        final response = await _apiClient.saveMicroProgress(
+        // Call the correct execution measurements endpoint
+        await _apiClient.saveMeasurements(
           projectId: entry.projectId,
-          activityId: entry.activityId,
-          epsNodeId: entry.epsNodeId,
           entries: [entryData],
-          date: entry.date,
-          remarks: entry.remarks,
         );
 
-        // Update local record with server ID
-        final serverId = response['id'] as int?;
+        // Mark as synced (no single serverId returned for batch endpoint)
         await (_database.update(_database.progressEntries)
               ..where((t) => t.id.equals(entry.id)))
             .write(
           ProgressEntriesCompanion(
-            serverId: Value(serverId),
             syncStatus: Value(SyncStatus.synced.value),
             syncedAt: Value(DateTime.now()),
           ),
@@ -385,13 +385,9 @@ class SyncService {
   ) async {
     final operation = item.operation;
     if (operation == 'create') {
-      await _apiClient.saveMicroProgress(
-        projectId: payload['projectId'],
-        activityId: payload['activityId'],
-        epsNodeId: payload['epsNodeId'],
-        entries: payload['entries'],
-        date: payload['date'],
-        remarks: payload['remarks'],
+      await _apiClient.saveMeasurements(
+        projectId: payload['projectId'] as int,
+        entries: (payload['entries'] as List).cast<Map<String, dynamic>>(),
       );
     } else if (operation == 'update') {
       await _apiClient.updateProgressLog(
@@ -502,6 +498,13 @@ class SyncService {
 
     // Trigger sync
     await syncAll();
+  }
+
+  /// Delete a progress entry that has not yet been synced (pending / failed / error).
+  Future<void> deleteProgressEntry(int entryId) async {
+    await (_database.delete(_database.progressEntries)
+          ..where((t) => t.id.equals(entryId)))
+        .go();
   }
 
   /// Retry a specific error item (after user correction)

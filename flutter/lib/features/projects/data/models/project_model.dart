@@ -84,7 +84,8 @@ class EpsNode extends Equatable {
   factory EpsNode.fromJson(Map<String, dynamic> json) {
     return EpsNode(
       id: json['id'] as int? ?? 0,
-      name: json['name'] as String? ?? '',
+      // The /eps/:id/tree endpoint uses 'label' instead of 'name'
+      name: json['name'] as String? ?? json['label'] as String? ?? '',
       code: json['code'] as String?,
       type: json['type'] as String? ?? 'unknown',
       status: json['status'] as String?,
@@ -117,6 +118,64 @@ class EpsNode extends Equatable {
       [id, name, code, type, status, progress, children, parentId];
 }
 
+/// BOQ Activity Plan – one BOQ line item linked to an activity.
+/// Sourced from the `plans` array in GET /planning/:epsNodeId/execution-ready.
+class ActivityPlan extends Equatable {
+  final int planId;
+  final int boqItemId;
+  final String description;
+  final String? uom;
+  final double plannedQuantity;
+  /// Total executed quantity so far (all approved measurements).
+  final double consumedQty;
+
+  const ActivityPlan({
+    required this.planId,
+    required this.boqItemId,
+    required this.description,
+    this.uom,
+    required this.plannedQuantity,
+    required this.consumedQty,
+  });
+
+  factory ActivityPlan.fromJson(Map<String, dynamic> json) {
+    double toDouble(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0;
+      return 0;
+    }
+
+    return ActivityPlan(
+      planId: json['planId'] as int? ?? json['plan_id'] as int? ?? 0,
+      boqItemId: json['boqItemId'] as int? ?? json['boq_item_id'] as int? ?? 0,
+      description: json['description'] as String? ?? '',
+      uom: json['uom'] as String? ?? json['unit'] as String?,
+      plannedQuantity: toDouble(json['plannedQuantity'] ?? json['planned_quantity']),
+      consumedQty: toDouble(
+        json['consumedQty'] ?? json['consumed_qty'] ??
+        json['totalQty'] ?? json['total_qty'],
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'planId': planId,
+        'boqItemId': boqItemId,
+        'description': description,
+        'uom': uom,
+        'plannedQuantity': plannedQuantity,
+        'consumedQty': consumedQty,
+      };
+
+  /// Remaining quantity available for entry (clamped to ≥ 0).
+  double get balance => (plannedQuantity - consumedQty).clamp(0, double.infinity);
+
+  @override
+  List<Object?> get props =>
+      [planId, boqItemId, description, uom, plannedQuantity, consumedQty];
+}
+
 /// Activity model for project activities
 class Activity extends Equatable {
   final int id;
@@ -133,6 +192,8 @@ class Activity extends Equatable {
   final double? actualQuantity;
   final String? unit;
   final bool hasMicroSchedule;
+  /// BOQ plans attached to this activity (from execution-ready endpoint).
+  final List<ActivityPlan> plans;
 
   const Activity({
     required this.id,
@@ -149,6 +210,7 @@ class Activity extends Equatable {
     this.actualQuantity,
     this.unit,
     this.hasMicroSchedule = false,
+    this.plans = const [],
   });
 
   factory Activity.fromJson(Map<String, dynamic> json) {
@@ -162,38 +224,75 @@ class Activity extends Equatable {
     final nestedEps = json['epsNode'] ?? json['eps_node'];
     final nestedProject = json['project'];
 
+    // Backend's /planning/:epsNodeId/execution-ready uses percentComplete (0-100).
+    // Normalise to 0.0-1.0 for consistency with the rest of the app.
+    // getRawMany() in TypeORM returns PostgreSQL DECIMAL columns as Strings
+    // (e.g. "0.00"), so we must handle both num and String gracefully.
+    double? toDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
+    }
+
+    double? resolveProgress() {
+      final v = toDouble(json['actualProgress'] ?? json['actual_progress']);
+      if (v != null) return v;
+      final pc = toDouble(json['percentComplete'] ?? json['percent_complete']);
+      if (pc != null) return pc / 100.0;
+      return null;
+    }
+
+    double? resolvePlannedProgress() {
+      return toDouble(json['plannedProgress'] ?? json['planned_progress']);
+    }
+
     return Activity(
       id: readInt(json['id']) ?? 0,
-      name: json['name'] as String? ?? '',
-      code: json['code'] as String?,
+      // /execution-ready uses 'activityName'; WBS endpoint uses 'name'
+      name: json['name'] as String? ??
+          json['activityName'] as String? ??
+          json['activity_name'] as String? ??
+          '',
+      // /execution-ready uses 'activityCode'; WBS endpoint uses 'code'
+      code: json['code'] as String? ??
+          json['activityCode'] as String? ??
+          json['activity_code'] as String?,
       projectId: readInt(json['projectId']) ??
           readInt(json['project_id']) ??
           (nestedProject is Map<String, dynamic>
               ? readInt(nestedProject['id'])
               : null) ??
           0,
+      // epsNodeId may be injected by the caller (e.g. when fetching per-node)
+      // or derived from 'projectId' which in distributed activities = EPS node ID.
       epsNodeId: readInt(json['epsNodeId']) ??
           readInt(json['eps_node_id']) ??
-          (nestedEps is Map<String, dynamic> ? readInt(nestedEps['id']) : null),
+          (nestedEps is Map<String, dynamic> ? readInt(nestedEps['id']) : null) ??
+          readInt(json['projectId']),
       status: json['status'] as String?,
       startDate: json['startDate'] != null
           ? DateTime.tryParse(json['startDate'].toString())
-          : null,
+          : (json['startDateActual'] != null
+              ? DateTime.tryParse(json['startDateActual'].toString())
+              : null),
       endDate: json['endDate'] != null
           ? DateTime.tryParse(json['endDate'].toString())
-          : null,
-      plannedProgress: (json['plannedProgress'] as num?)?.toDouble() ??
-          (json['planned_progress'] as num?)?.toDouble(),
-      actualProgress: (json['actualProgress'] as num?)?.toDouble() ??
-          (json['actual_progress'] as num?)?.toDouble(),
-      plannedQuantity: (json['plannedQuantity'] as num?)?.toDouble() ??
-          (json['planned_quantity'] as num?)?.toDouble(),
-      actualQuantity: (json['actualQuantity'] as num?)?.toDouble() ??
-          (json['actual_quantity'] as num?)?.toDouble(),
+          : (json['finishDateActual'] != null
+              ? DateTime.tryParse(json['finishDateActual'].toString())
+              : null),
+      plannedProgress: resolvePlannedProgress(),
+      actualProgress: resolveProgress(),
+      plannedQuantity: toDouble(json['plannedQuantity'] ?? json['planned_quantity']),
+      actualQuantity: toDouble(json['actualQuantity'] ?? json['actual_quantity']),
       unit: json['unit'] as String?,
       hasMicroSchedule: json['hasMicroSchedule'] as bool? ??
           json['has_micro_schedule'] as bool? ??
           false,
+      plans: (json['plans'] as List<dynamic>?)
+              ?.map((e) => ActivityPlan.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 
@@ -213,6 +312,7 @@ class Activity extends Equatable {
       'actualQuantity': actualQuantity,
       'unit': unit,
       'hasMicroSchedule': hasMicroSchedule,
+      'plans': plans.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -234,5 +334,6 @@ class Activity extends Equatable {
         actualQuantity,
         unit,
         hasMicroSchedule,
+        plans,
       ];
 }

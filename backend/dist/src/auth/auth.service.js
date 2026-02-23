@@ -48,12 +48,15 @@ const users_service_1 = require("../users/users.service");
 const jwt_1 = require("@nestjs/jwt");
 const bcrypt = __importStar(require("bcryptjs"));
 const permission_config_1 = require("./permission-config");
+const project_assignment_service_1 = require("../projects/project-assignment.service");
 let AuthService = class AuthService {
     usersService;
     jwtService;
-    constructor(usersService, jwtService) {
+    assignmentService;
+    constructor(usersService, jwtService, assignmentService) {
         this.usersService = usersService;
         this.jwtService = jwtService;
+        this.assignmentService = assignmentService;
     }
     async validateUser(username, pass) {
         console.log(`[AuthService] Validating user: '${username}'`);
@@ -85,12 +88,20 @@ let AuthService = class AuthService {
                 }
             });
         }
+        const assignments = await this.assignmentService.getUserAssignments(user.id);
+        const assignedProjectIds = assignments.map(a => a.project?.id);
+        assignments.forEach(assignment => {
+            assignment.roles?.forEach(role => {
+                role.permissions?.forEach(p => rawPermissions.add(p.permissionCode));
+            });
+        });
         const permissions = (0, permission_config_1.expandPermissions)(Array.from(rawPermissions));
         const payload = {
             username: user.username,
             sub: user.id,
             roles: user.roles?.map((r) => r.name),
             permissions: permissions,
+            project_ids: assignedProjectIds,
         };
         return {
             access_token: this.jwtService.sign(payload),
@@ -99,6 +110,7 @@ let AuthService = class AuthService {
                 username: user.username,
                 roles: payload.roles,
                 permissions: payload.permissions,
+                project_ids: assignedProjectIds,
             },
         };
     }
@@ -107,6 +119,7 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [users_service_1.UsersService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        project_assignment_service_1.ProjectAssignmentService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

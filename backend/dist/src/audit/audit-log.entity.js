@@ -14,12 +14,14 @@ const typeorm_1 = require("typeorm");
 const user_entity_1 = require("../users/user.entity");
 let AuditLog = class AuditLog {
     id;
-    action;
-    resourceType;
-    resourceId;
-    details;
     userId;
     user;
+    projectId;
+    module;
+    action;
+    recordId;
+    details;
+    ipAddress;
     timestamp;
 };
 exports.AuditLog = AuditLog;
@@ -28,35 +30,43 @@ __decorate([
     __metadata("design:type", Number)
 ], AuditLog.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    __metadata("design:type", String)
-], AuditLog.prototype, "action", void 0);
-__decorate([
-    (0, typeorm_1.Column)(),
-    __metadata("design:type", String)
-], AuditLog.prototype, "resourceType", void 0);
-__decorate([
-    (0, typeorm_1.Column)(),
-    __metadata("design:type", String)
-], AuditLog.prototype, "resourceId", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
-    __metadata("design:type", String)
-], AuditLog.prototype, "details", void 0);
-__decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ name: 'user_id' }),
     __metadata("design:type", Number)
 ], AuditLog.prototype, "userId", void 0);
 __decorate([
     (0, typeorm_1.ManyToOne)(() => user_entity_1.User),
-    (0, typeorm_1.JoinColumn)({ name: 'userId' }),
+    (0, typeorm_1.JoinColumn)({ name: 'user_id' }),
     __metadata("design:type", user_entity_1.User)
 ], AuditLog.prototype, "user", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'project_id', nullable: true }),
+    __metadata("design:type", Number)
+], AuditLog.prototype, "projectId", void 0);
+__decorate([
+    (0, typeorm_1.Column)(),
+    __metadata("design:type", String)
+], AuditLog.prototype, "module", void 0);
+__decorate([
+    (0, typeorm_1.Column)(),
+    __metadata("design:type", String)
+], AuditLog.prototype, "action", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'record_id', nullable: true }),
+    __metadata("design:type", String)
+], AuditLog.prototype, "recordId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'jsonb', nullable: true }),
+    __metadata("design:type", Object)
+], AuditLog.prototype, "details", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'ip_address', nullable: true }),
+    __metadata("design:type", String)
+], AuditLog.prototype, "ipAddress", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)
 ], AuditLog.prototype, "timestamp", void 0);
 exports.AuditLog = AuditLog = __decorate([
-    (0, typeorm_1.Entity)()
+    (0, typeorm_1.Entity)('audit_logs')
 ], AuditLog);
 //# sourceMappingURL=audit-log.entity.js.map

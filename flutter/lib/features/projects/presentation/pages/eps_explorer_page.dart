@@ -101,6 +101,10 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
               return _buildExplorerContent(state);
             }
 
+            if (state is ProjectError) {
+              return _buildErrorState(state.message);
+            }
+
             return _buildLoadingShimmer();
           },
         ),
@@ -168,9 +172,9 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
         // Folder items (EPS nodes) section
         if (state.childNodes.isNotEmpty) ...[
           _buildSectionHeader(
-            'Zones',
+            _getSectionLabel(state.childNodes),
             state.childNodes.length,
-            Icons.folder_outlined,
+            _getSectionIcon(state.childNodes),
           ),
           const SizedBox(height: 8),
           ...state.childNodes.map((node) => _buildFolderItem(node, state)),
@@ -249,17 +253,17 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Folder icon with background
+              // Node icon with type-based color
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.12),
+                  color: _getNodeColor(node.type).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.folder_rounded,
-                  color: Colors.amber,
+                child: Icon(
+                  _getNodeIcon(node.type),
+                  color: _getNodeColor(node.type),
                   size: 26,
                 ),
               ),
@@ -278,7 +282,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _buildFolderSubtitle(childCount, activityCount),
+                      _buildFolderSubtitle(childCount, activityCount, node.type),
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
@@ -300,18 +304,79 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
-  String _buildFolderSubtitle(int childCount, int activityCount) {
+  String _buildFolderSubtitle(int childCount, int activityCount, String nodeType) {
     final parts = <String>[];
     if (childCount > 0) {
-      parts.add('$childCount sub-zone${childCount > 1 ? 's' : ''}');
+      final childLabel = _childTypeLabelOf(nodeType);
+      parts.add('$childCount $childLabel${childCount > 1 ? 's' : ''}');
     }
     if (activityCount > 0) {
       parts.add('$activityCount activit${activityCount > 1 ? 'ies' : 'y'}');
     }
     if (parts.isEmpty) {
-      return 'Empty';
+      return 'Tap to explore';
     }
-    return parts.join(' | ');
+    return parts.join(' · ');
+  }
+
+  /// Returns singular label for the expected child type
+  String _childTypeLabelOf(String parentType) {
+    switch (parentType.toUpperCase()) {
+      case 'PROJECT': return 'block';
+      case 'BLOCK':   return 'tower';
+      case 'TOWER':   return 'floor';
+      case 'FLOOR':   return 'unit';
+      case 'UNIT':    return 'room';
+      default:        return 'zone';
+    }
+  }
+
+  /// Returns a display label for the section header based on children's type
+  String _getSectionLabel(List<EpsNode> nodes) {
+    if (nodes.isEmpty) return 'Zones';
+    switch (nodes.first.type.toUpperCase()) {
+      case 'BLOCK':    return 'Blocks';
+      case 'TOWER':    return 'Towers';
+      case 'FLOOR':    return 'Floors';
+      case 'UNIT':     return 'Units';
+      case 'ROOM':     return 'Rooms';
+      case 'PHASE':    return 'Phases';
+      case 'BUILDING': return 'Buildings';
+      default:         return 'Zones';
+    }
+  }
+
+  IconData _getSectionIcon(List<EpsNode> nodes) {
+    if (nodes.isEmpty) return Icons.folder_outlined;
+    return _getNodeIcon(nodes.first.type);
+  }
+
+  /// Icon per EPS node type
+  IconData _getNodeIcon(String type) {
+    switch (type.toUpperCase()) {
+      case 'BLOCK':    return Icons.domain_rounded;
+      case 'TOWER':
+      case 'BUILDING': return Icons.apartment_rounded;
+      case 'FLOOR':    return Icons.layers_rounded;
+      case 'UNIT':     return Icons.home_rounded;
+      case 'ROOM':     return Icons.meeting_room_rounded;
+      case 'PHASE':    return Icons.timeline_rounded;
+      default:         return Icons.folder_rounded;
+    }
+  }
+
+  /// Color per EPS node type
+  Color _getNodeColor(String type) {
+    switch (type.toUpperCase()) {
+      case 'BLOCK':    return const Color(0xFF1565C0); // deep blue
+      case 'TOWER':
+      case 'BUILDING': return const Color(0xFF6A1B9A); // purple
+      case 'FLOOR':    return const Color(0xFFE65100); // orange
+      case 'UNIT':     return const Color(0xFF2E7D32); // green
+      case 'ROOM':     return const Color(0xFF00695C); // teal
+      case 'PHASE':    return const Color(0xFF558B2F); // light green
+      default:         return Colors.amber;
+    }
   }
 
   Widget _buildActivityItem(Activity activity, EpsExplorerState state) {
@@ -470,6 +535,60 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           color: chipColor,
           fontSize: 10,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.error.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.cloud_off_outlined,
+                size: 40,
+                color: AppColors.error,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Failed to load project',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                context
+                    .read<ProjectBloc>()
+                    .add(LoadProjectHierarchy(widget.project.id));
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
+            ),
+          ],
         ),
       ),
     );

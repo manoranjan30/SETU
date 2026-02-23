@@ -8,29 +8,35 @@ import {
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
-@Entity()
+@Entity('audit_logs')
 export class AuditLog {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  action: string; // CREATE, UPDATE, DELETE, IMPORT
-
-  @Column()
-  resourceType: string; // BOQ_ITEM, SUB_ITEM, MEASUREMENT
-
-  @Column()
-  resourceId: string; // Stored as string to be generic
-
-  @Column({ type: 'text', nullable: true })
-  details: string; // JSON string of changes or snapshot
-
-  @Column()
+  @Column({ name: 'user_id' })
   userId: number;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @Column({ name: 'project_id', nullable: true })
+  projectId: number;
+
+  @Column()
+  module: string; // e.g. 'SCHEDULE', 'QUALITY', 'BOQ'
+
+  @Column()
+  action: string; // e.g. 'CREATE', 'UPDATE', 'DELETE', 'APPROVE'
+
+  @Column({ name: 'record_id', nullable: true })
+  recordId: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  details: any;
+
+  @Column({ name: 'ip_address', nullable: true })
+  ipAddress: string;
 
   @CreateDateColumn()
   timestamp: Date;

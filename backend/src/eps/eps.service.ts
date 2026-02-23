@@ -23,7 +23,7 @@ export class EpsService {
     @InjectRepository(ProjectProfile)
     private profileRepository: Repository<ProjectProfile>,
     private permissionService: PermissionResolutionService,
-  ) {}
+  ) { }
 
   async updateProfile(
     nodeId: number,
@@ -78,7 +78,7 @@ export class EpsService {
 
     // 2. Permission Check
     const hasPerm = await this.permissionService.hasPermission(
-      user.userId || user.sub,
+      user.id || user.userId || user.sub,
       permission,
       nodeId,
     );
@@ -218,6 +218,9 @@ export class EpsService {
   async findAll(user?: any): Promise<EpsNode[]> {
     if (!user) return []; // Fallback
 
+    // Extract userId from JWT - JwtStrategy sets `id` from payload.sub
+    const userId = user.id || user.userId || user.sub;
+
     const roles = (user.roles || []).map((r: any) =>
       typeof r === 'string' ? r.toLowerCase() : r.name?.toLowerCase(),
     );
@@ -235,38 +238,56 @@ export class EpsService {
       return this.sanitize(all);
     }
 
-    // RBAC Logic
+    // RBAC Logic - get project IDs the user is assigned to
     const rawAssignments = await this.epsRepository.manager
       .createQueryBuilder(UserProjectAssignment, 'upa')
-      .select('upa.projectId', 'pid')
-      .where('upa.userId = :userId', { userId: user.userId || user.sub })
+      .select('upa.project_id', 'pid')
+      .where('upa.user_id = :userId', { userId })
       .andWhere('upa.status = :status', { status: 'ACTIVE' })
       .getRawMany();
 
     const allowedProjectIds = rawAssignments.map((p) => p.pid);
+    console.log(`[EPS RBAC] userId=${userId}, rawAssignments:`, rawAssignments);
+    console.log(`[EPS RBAC] allowedProjectIds:`, allowedProjectIds);
 
     if (allowedProjectIds.length === 0) {
-      const companies = await this.epsRepository.find({
-        where: { type: EpsNodeType.COMPANY },
-        order: { name: 'ASC' },
-      });
-      return this.sanitize(companies);
+      // No assignments → show nothing (no projects)
+      return [];
     }
 
+    // Fetch all nodes and build filtered tree
     const allNodes = await qb.getMany();
-    const finalResult: EpsNode[] = [];
     const allowedSet = new Set(allowedProjectIds.map((id) => Number(id)));
+
+    // Phase 1: Find all assigned PROJECT nodes
+    const projectNodes = allNodes.filter(
+      (n) => n.type === EpsNodeType.PROJECT && allowedSet.has(n.id),
+    );
+
+    // Phase 2: Collect parent company IDs for assigned projects
+    const parentCompanyIds = new Set<number>();
+    for (const proj of projectNodes) {
+      if (proj.parentId) parentCompanyIds.add(proj.parentId);
+    }
+
+    // Phase 3: Build visible set - company → project → all descendants
     const visibleIds = new Set<number>();
+    const finalResult: EpsNode[] = [];
 
     for (const node of allNodes) {
       let show = false;
+
       if (node.type === EpsNodeType.COMPANY) {
-        show = true;
+        // Only show the company if it has an assigned project under it
+        show = parentCompanyIds.has(node.id);
       } else if (node.type === EpsNodeType.PROJECT) {
-        if (allowedSet.has(node.id)) show = true;
+        // Only show assigned projects
+        show = allowedSet.has(node.id);
       } else {
+        // Show descendants of visible parents (cascading down)
         if (node.parentId && visibleIds.has(node.parentId)) show = true;
       }
+
       if (show) {
         visibleIds.add(node.id);
         finalResult.push(node);

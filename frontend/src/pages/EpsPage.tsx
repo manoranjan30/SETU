@@ -38,6 +38,7 @@ const EpsPage = () => {
     const [selectedProjectForProps, setSelectedProjectForProps] = useState<EpsNode | null>(null);
     const [selectedNodeForTeam, setSelectedNodeForTeam] = useState<{ id: number; name: string } | null>(null);
     const navigate = useNavigate();
+    const isAdmin = user?.roles?.includes('Admin') ?? false;
 
     // Tree State
     const [expanded, setExpanded] = useState<Record<number, boolean>>({});
@@ -223,18 +224,20 @@ const EpsPage = () => {
                     <span className="font-medium text-gray-700 text-sm">{node.name}</span>
                     <span className="ml-2 text-xs text-gray-400 uppercase tracking-wider">[{node.type}]</span>
 
-                    {/* Actions (Always visible for better discovery) */}
+                    {/* Actions */}
                     <div className="ml-auto flex gap-2 opacity-100">
                         {node.type === 'PROJECT' && (
                             <>
-                                <button
-                                    onClick={() => openTeam(node)}
-                                    className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded flex items-center gap-1 transition-colors"
-                                    title="Manage Team"
-                                >
-                                    <Users className="w-3 h-3" />
-                                    Team
-                                </button>
+                                {isAdmin && (
+                                    <button
+                                        onClick={() => openTeam(node)}
+                                        className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded flex items-center gap-1 transition-colors"
+                                        title="Manage Team"
+                                    >
+                                        <Users className="w-3 h-3" />
+                                        Team
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => navigate(`/dashboard/projects/${node.id}/wbs`)}
                                     className="px-2 py-0.5 text-xs bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded flex items-center gap-1 transition-colors"
@@ -295,24 +298,26 @@ const EpsPage = () => {
                             </>
                         )}
 
-                        <div className="flex gap-1 opacity-50 hover:opacity-100 transition-opacity">
-                            {node.type === 'PROJECT' && (
-                                <button onClick={() => openProperties(node)} className="p-1 text-orange-600 hover:bg-orange-100 rounded" title="Project Properties">
-                                    <Settings className="w-3 h-3" />
+                        {isAdmin && (
+                            <div className="flex gap-1 opacity-50 hover:opacity-100 transition-opacity">
+                                {node.type === 'PROJECT' && (
+                                    <button onClick={() => openProperties(node)} className="p-1 text-orange-600 hover:bg-orange-100 rounded" title="Project Properties">
+                                        <Settings className="w-3 h-3" />
+                                    </button>
+                                )}
+                                {node.type !== 'ROOM' && (
+                                    <button onClick={() => openCreate(node)} className="p-1 text-green-600 hover:bg-green-100 rounded" title="Add Child">
+                                        <Plus className="w-3 h-3" />
+                                    </button>
+                                )}
+                                <button onClick={() => openEdit(node)} className="p-1 text-blue-600 hover:bg-blue-100 rounded" title="Edit">
+                                    <Edit2 className="w-3 h-3" />
                                 </button>
-                            )}
-                            {node.type !== 'ROOM' && (
-                                <button onClick={() => openCreate(node)} className="p-1 text-green-600 hover:bg-green-100 rounded" title="Add Child">
-                                    <Plus className="w-3 h-3" />
+                                <button onClick={() => handleDelete(node)} className="p-1 text-red-600 hover:bg-red-100 rounded" title="Delete">
+                                    <Trash2 className="w-3 h-3" />
                                 </button>
-                            )}
-                            <button onClick={() => openEdit(node)} className="p-1 text-blue-600 hover:bg-blue-100 rounded" title="Edit">
-                                <Edit2 className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => handleDelete(node)} className="p-1 text-red-600 hover:bg-red-100 rounded" title="Delete">
-                                <Trash2 className="w-3 h-3" />
-                            </button>
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -332,7 +337,7 @@ const EpsPage = () => {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-800">Enterprise Project Structure (EPS)</h1>
                 <div className="flex gap-2">
-                    {user?.roles?.includes('Admin') && (
+                    {isAdmin && (
                         <>
                             <button
                                 onClick={handleDownloadTemplate}
@@ -367,7 +372,7 @@ const EpsPage = () => {
                     <div className="text-center text-red-500 py-10">{error}</div>
                 ) : nodes.length === 0 ? (
                     <div className="text-center text-gray-400 py-10">
-                        {user?.roles?.includes('Admin') ? (
+                        {isAdmin ? (
                             <>No EPS Defined. Click 'Initialize EPS' to start.</>
                         ) : (
                             <>

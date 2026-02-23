@@ -24,6 +24,7 @@ import {
   CreateWbsTemplateDto,
   CreateWbsTemplateNodeDto,
 } from './dto/wbs-template.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class WbsService {
@@ -41,7 +42,8 @@ export class WbsService {
     @InjectRepository(WbsTemplateActivity)
     private templateActivityRepo: Repository<WbsTemplateActivity>,
     private dataSource: DataSource,
-  ) {}
+    private readonly auditService: AuditService,
+  ) { }
 
   async create(
     projectId: number,
@@ -135,15 +137,18 @@ export class WbsService {
     return this.wbsRepo.save(node);
   }
 
-  async delete(projectId: number, id: number): Promise<void> {
+  async delete(projectId: number, id: number, userId: number): Promise<void> {
     const node = await this.findOne(projectId, id);
-
-    // const childrenCount = await this.wbsRepo.count({ where: { parentId: id } });
-    // if (childrenCount > 0) {
-    //     throw new BadRequestException('Cannot delete WBS Node with children. Delete children first.');
-    // }
-
     await this.wbsRepo.remove(node);
+
+    await this.auditService.log(
+      userId,
+      'WBS',
+      'DELETE_NODE',
+      id,
+      projectId,
+      { code: node.wbsCode, name: node.wbsName },
+    );
   }
 
   // --- Activity Methods ---
@@ -202,8 +207,23 @@ export class WbsService {
     return this.activityRepo.findOneByOrFail({ id: activityId });
   }
 
-  async deleteActivity(activityId: number): Promise<void> {
+  async deleteActivity(activityId: number, userId: number): Promise<void> {
+    const activity = await this.activityRepo.findOne({
+      where: { id: activityId },
+    });
+    if (!activity) throw new NotFoundException('Activity not found');
+
+    const projectId = activity.projectId;
     await this.activityRepo.delete(activityId);
+
+    await this.auditService.log(
+      userId,
+      'WBS',
+      'DELETE_ACTIVITY',
+      activityId,
+      projectId,
+      { code: activity.activityCode, name: activity.activityName },
+    );
   }
 
   async reorder(

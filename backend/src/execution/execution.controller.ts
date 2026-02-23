@@ -13,31 +13,37 @@ import {
 import { ExecutionService } from './execution.service';
 import { ExecutionBreakdownService } from './execution-breakdown.service';
 import { FEATURES } from '../config/features.config';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { Permissions } from '../auth/permissions.decorator';
 
 @Controller('execution')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ExecutionController {
   constructor(
     private readonly service: ExecutionService,
     private readonly breakdownService: ExecutionBreakdownService,
-  ) {}
+  ) { }
 
   @Post(':projectId/measurements')
+  @Permissions('EXECUTION.ENTRY.CREATE')
   async saveMeasurements(
     @Param('projectId') projectId: string,
     @Body() body: { entries: any[] },
     @Request() req,
   ) {
-    // userId from Auth Guard (mocked as 1 for now if not found)
     const userId = req.user?.id || 1;
     return this.service.batchSaveMeasurements(+projectId, body.entries, userId);
   }
 
   @Get(':projectId/logs')
+  @Permissions('EXECUTION.ENTRY.READ')
   async getLogs(@Param('projectId') projectId: string) {
     return this.service.getProjectProgressLogs(+projectId);
   }
 
   @Patch('logs/:logId')
+  @Permissions('EXECUTION.ENTRY.UPDATE')
   async updateLog(
     @Param('logId') logId: string,
     @Body() body: { newQty: number },
@@ -48,15 +54,13 @@ export class ExecutionController {
   }
 
   @Delete('logs/:logId')
+  @Permissions('EXECUTION.ENTRY.DELETE')
   async deleteLog(@Param('logId') logId: string) {
     return this.service.deleteProgressLog(+logId);
   }
 
-  /**
-   * NEW: Get execution breakdown (Micro + Balance)
-   * Protected by feature flag
-   */
   @Get('breakdown')
+  @Permissions('EXECUTION.ENTRY.READ')
   async getExecutionBreakdown(
     @Query() query: { activityId: string; epsNodeId: string },
   ) {
@@ -70,10 +74,8 @@ export class ExecutionController {
     );
   }
 
-  /**
-   * Check if activity has micro schedule
-   */
   @Get('has-micro/:activityId')
+  @Permissions('EXECUTION.ENTRY.READ')
   async hasMicroSchedule(@Param('activityId') activityId: string) {
     if (!FEATURES.ENABLE_MICRO_PROGRESS) {
       return { hasMicro: false };
@@ -83,13 +85,10 @@ export class ExecutionController {
     return { hasMicro };
   }
 
-  /**
-   * NEW: Save micro progress (Micro Activities + Direct Execution)
-   * Protected by feature flag
-   */
   @Post('progress/micro')
+  @Permissions('EXECUTION.MICRO.CREATE')
   async saveMicroProgress(
-    @Body() dto: any, // Will be typed properly
+    @Body() dto: any,
     @Request() req,
   ) {
     if (!FEATURES.ENABLE_MICRO_PROGRESS) {
@@ -98,7 +97,6 @@ export class ExecutionController {
 
     const userId = req.user?.id || 1;
 
-    // Transform entries to standard format
     const entries = dto.entries.map((entry: any) => ({
       boqItemId: entry.boqItemId,
       activityId: dto.activityId,
@@ -110,19 +108,21 @@ export class ExecutionController {
       notes: dto.remarks || '',
     }));
 
-    // Use existing batch save logic
     return await this.service.batchSaveMeasurements(
       dto.projectId || req.params.projectId,
       entries,
       userId,
     );
   }
+
   @Get(':projectId/approvals/pending')
+  @Permissions('EXECUTION.ENTRY.APPROVE')
   async getPendingApprovals(@Param('projectId') projectId: string) {
     return this.service.getPendingProgressLogs(+projectId);
   }
 
   @Post('approve')
+  @Permissions('EXECUTION.ENTRY.APPROVE')
   async approveMeasurements(
     @Body() body: { logIds: number[] },
     @Request() req,
@@ -132,6 +132,7 @@ export class ExecutionController {
   }
 
   @Post('reject')
+  @Permissions('EXECUTION.ENTRY.APPROVE')
   async rejectMeasurements(
     @Body() body: { logIds: number[]; reason: string },
     @Request() req,

@@ -124,9 +124,16 @@ class SetuApiClient {
     return response.data;
   }
 
-  /// Get EPS node children
+  /// Get EPS node children (endpoint not yet implemented on backend)
   Future<List<dynamic>> getEpsChildren(int nodeId) async {
     final response = await _dio.get('${ApiEndpoints.epsChildren}/$nodeId/children');
+    return response.data;
+  }
+
+  /// Get full nested EPS tree for a node (GET /eps/:id/tree)
+  /// Response: [{id, label, type, children: [...], data: {...}}]
+  Future<List<dynamic>> getEpsTree(int nodeId) async {
+    final response = await _dio.get('${ApiEndpoints.epsNode}/$nodeId/tree');
     return response.data;
   }
 
@@ -298,7 +305,16 @@ class SetuApiClient {
 
   // ==================== PLANNING ENDPOINTS ====================
 
-  /// Get project activities
+  /// Get activities ready for on-site execution at a specific EPS node.
+  /// The backend recursively includes all descendant nodes, so passing a
+  /// tower ID returns activities from all its floors too.
+  /// Endpoint: GET /planning/:epsNodeId/execution-ready
+  Future<List<dynamic>> getExecutionReadyActivities(int epsNodeId) async {
+    final response = await _dio.get(ApiEndpoints.executionReady(epsNodeId));
+    return response.data;
+  }
+
+  /// @deprecated — endpoint does not exist. Use getExecutionReadyActivities().
   Future<List<dynamic>> getProjectActivities(int projectId) async {
     final response = await _dio.get(ApiEndpoints.projectActivities(projectId));
     return response.data;

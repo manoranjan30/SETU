@@ -40,20 +40,20 @@ let PermissionResolutionService = class PermissionResolutionService {
                 user: { id: userId },
                 project: { id: projectNode.id },
             },
-            relations: ['role', 'role.permissions', 'scopeNode'],
+            relations: ['roles', 'roles.permissions', 'scopeNode'],
         });
         if (!assignment)
             return false;
         if (assignment.scopeType === user_project_assignment_entity_1.ProjectScopeType.LIMITED) {
-            if (!assignment.scopeNodeId)
+            if (!assignment.scopeNode)
                 return false;
-            if (node.id !== assignment.scopeNodeId) {
-                const isDescendant = await this.isDescendant(node, assignment.scopeNodeId);
+            if (node.id !== assignment.scopeNode.id) {
+                const isDescendant = await this.isDescendant(node, assignment.scopeNode.id);
                 if (!isDescendant)
                     return false;
             }
         }
-        const hasPerm = assignment.role.permissions.some((p) => p.permissionCode === permissionCode);
+        const hasPerm = assignment.roles.some((role) => role.permissions.some((p) => p.permissionCode === permissionCode));
         return hasPerm;
     }
     async findProjectRoot(node) {

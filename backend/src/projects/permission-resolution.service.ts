@@ -15,7 +15,7 @@ export class PermissionResolutionService {
     private assignmentRepo: Repository<UserProjectAssignment>,
     @InjectRepository(EpsNode)
     private epsRepo: TreeRepository<EpsNode>,
-  ) {}
+  ) { }
 
   /**
    * Resolves if a user has a specific permission on a specific EPS Node.
@@ -43,29 +43,29 @@ export class PermissionResolutionService {
         user: { id: userId },
         project: { id: projectNode.id },
       },
-      relations: ['role', 'role.permissions', 'scopeNode'],
+      relations: ['roles', 'roles.permissions', 'scopeNode'],
     });
 
     if (!assignment) return false; // Strict Isolation
 
     // 4. Check Scope
     if (assignment.scopeType === ProjectScopeType.LIMITED) {
-      if (!assignment.scopeNodeId) return false; // Invalid state
+      if (!assignment.scopeNode) return false; // Invalid state
 
       // Check if target node is descendant of scope node
       // Optimized: if target == scope, OK. Else check ancestry.
-      if (node.id !== assignment.scopeNodeId) {
+      if (node.id !== assignment.scopeNode.id) {
         const isDescendant = await this.isDescendant(
           node,
-          assignment.scopeNodeId,
+          assignment.scopeNode.id,
         );
         if (!isDescendant) return false;
       }
     }
 
     // 5. Check Role Permissions
-    const hasPerm = assignment.role.permissions.some(
-      (p) => p.permissionCode === permissionCode,
+    const hasPerm = assignment.roles.some((role) =>
+      role.permissions.some((p) => p.permissionCode === permissionCode),
     );
     return hasPerm;
   }

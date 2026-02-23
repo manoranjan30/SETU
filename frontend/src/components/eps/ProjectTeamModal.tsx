@@ -11,9 +11,9 @@ interface ProjectTeamModalProps {
 }
 
 interface TeamMember {
-    id: number;
+    id: string; // UUID in backend now
     user: { id: number; username: string };
-    role: { id: number; name: string };
+    roles: { id: number; name: string }[];
     scopeType: 'FULL' | 'LIMITED';
     scopeNodeId?: number;
     status: 'ACTIVE' | 'INACTIVE';
@@ -22,6 +22,7 @@ interface TeamMember {
 interface User {
     id: number;
     username: string;
+    roles?: Role[];
 }
 
 interface Role {
@@ -39,16 +40,17 @@ interface EpsNode {
 const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({ isOpen, onClose, projectId, projectName }) => {
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [users, setUsers] = useState<User[]>([]);
-    const [roles, setRoles] = useState<Role[]>([]);
     const [projectTree, setProjectTree] = useState<EpsNode[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Form
     const [selectedUser, setSelectedUser] = useState<string>('');
-    const [selectedRole, setSelectedRole] = useState<string>('');
+    const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
     const [scopeType, setScopeType] = useState<'FULL' | 'LIMITED'>('FULL');
     const [selectedScopeNodeId, setSelectedScopeNodeId] = useState<number | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>({});
+
+
 
     useEffect(() => {
         if (isOpen && projectId) {
@@ -60,16 +62,14 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({ isOpen, onClose, pr
         setLoading(true);
         try {
             // Parallel fetch for speed
-            const [teamRes, usersRes, rolesRes, epsRes] = await Promise.allSettled([
+            const [teamRes, usersRes, epsRes] = await Promise.allSettled([
                 api.get(`/projects/${projectId}/team`),
                 api.get('/users'),
-                api.get('/roles'),
                 api.get('/eps') // Fetch full tree, we will filter for this project
             ]);
 
             if (teamRes.status === 'fulfilled') setMembers(teamRes.value.data);
             if (usersRes.status === 'fulfilled') setUsers(usersRes.value.data);
-            if (rolesRes.status === 'fulfilled') setRoles(rolesRes.value.data);
 
             if (epsRes.status === 'fulfilled') {
                 // Find the project node in the full tree
@@ -124,26 +124,38 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({ isOpen, onClose, pr
             return;
         }
 
+        if (selectedRoleIds.length === 0) {
+            alert('Please select at least one role.');
+            return;
+        }
+
         try {
             await api.post(`/projects/${projectId}/assign`, {
                 userId: parseInt(selectedUser),
-                roleId: parseInt(selectedRole),
+                roleIds: selectedRoleIds,
                 scopeType: scopeType,
                 scopeNodeId: scopeType === 'LIMITED' ? selectedScopeNodeId : null
             });
 
             // Reset & Refresh
             setSelectedUser('');
-            setSelectedRole('');
+            setSelectedRoleIds([]);
             setScopeType('FULL');
             setSelectedScopeNodeId(null);
 
-            // Re-fetch only team to update list
-            const res = await api.get(`/projects/${projectId}/team`);
-            setMembers(res.data);
+            fetchData();
         } catch (error: any) {
             console.error(error);
             alert(error.response?.data?.message || 'Failed to add team member');
+        }
+    };
+
+    const handleUpdateStatus = async (userId: number, newStatus: string) => {
+        try {
+            await api.patch(`/projects/${projectId}/users/${userId}/status`, { status: newStatus });
+            fetchData();
+        } catch (error: any) {
+            alert(error.response?.data?.message || 'Failed to update status');
         }
     };
 
@@ -151,8 +163,7 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({ isOpen, onClose, pr
         if (!confirm('Remove this user from the project?')) return;
         try {
             await api.delete(`/projects/${projectId}/users/${userId}`);
-            const res = await api.get(`/projects/${projectId}/team`);
-            setMembers(res.data);
+            fetchData();
         } catch (error: any) {
             alert(error.response?.data?.message || 'Failed to remove team member');
         }
@@ -251,16 +262,29 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({ isOpen, onClose, pr
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Role</label>
-                                    <select
-                                        className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                                        value={selectedRole}
-                                        onChange={e => setSelectedRole(e.target.value)}
-                                        required
-                                    >
-                                        <option value="">Select Role...</option>
-                                        {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                    </select>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Applicable Roles</label>
+                                    <div className="bg-white border rounded p-2 max-h-32 overflow-y-auto">
+                                        {selectedUser ? (
+                                            (() => {
+                                                const userObj = users.find(u => u.id === parseInt(selectedUser));
+                                                return userObj?.roles?.map(role => (
+                                                    <label key={role.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer text-sm">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedRoleIds.includes(role.id)}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) setSelectedRoleIds(prev => [...prev, role.id]);
+                                                                else setSelectedRoleIds(prev => prev.filter(id => id !== role.id));
+                                                            }}
+                                                        />
+                                                        {role.name}
+                                                    </label>
+                                                )) || <div className="text-xs text-gray-400 p-1">No roles assigned to this user globally.</div>;
+                                            })()
+                                        ) : (
+                                            <div className="text-xs text-gray-400 p-1 italic underline">Select a user first to see their roles</div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Access Scope</label>
@@ -330,33 +354,56 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({ isOpen, onClose, pr
                         ) : (
                             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
                                 {members.map(m => (
-                                    <div key={m.id} className="flex items-center justify-between bg-white p-3 rounded border border-gray-200 hover:border-blue-300 transition-colors shadow-sm">
+                                    <div key={m.id} className={clsx("flex items-center justify-between bg-white p-3 rounded border transition-all shadow-sm", {
+                                        "opacity-60 grayscale-[0.5]": m.status === 'INACTIVE',
+                                        "border-gray-200": m.status === 'ACTIVE',
+                                        "border-gray-100 bg-gray-50": m.status === 'INACTIVE'
+                                    })}>
                                         <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs ring-2 ring-white">
+                                            <div className={clsx("w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ring-2 ring-white", {
+                                                "bg-indigo-100 text-indigo-700": m.status === 'ACTIVE',
+                                                "bg-gray-200 text-gray-500": m.status === 'INACTIVE'
+                                            })}>
                                                 {m.user.username.substring(0, 2).toUpperCase()}
                                             </div>
                                             <div>
-                                                <div className="font-medium text-gray-900 text-sm">{m.user.username}</div>
-                                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                                                    <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-700 font-medium border border-gray-200">{m.role.name}</span>
+                                                <div className="font-medium text-gray-900 text-sm flex items-center gap-2">
+                                                    {m.user.username}
+                                                    {m.status === 'INACTIVE' && <span className="bg-gray-200 text-gray-600 text-[9px] px-1 rounded uppercase tracking-tighter">Paused</span>}
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500 mt-0.5">
+                                                    {m.roles.map(r => (
+                                                        <span key={r.id} className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-medium border border-gray-200 text-[10px]">{r.name}</span>
+                                                    ))}
+                                                    <div className="w-1 h-1 bg-gray-300 rounded-full mx-0.5" />
                                                     {m.scopeType === 'FULL' ? (
-                                                        <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100">Full Access</span>
+                                                        <span className="text-green-600 font-medium">Full Access</span>
                                                     ) : (
-                                                        <span className="text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100" title={`Limited to Node ID: ${m.scopeNodeId}`}>
-                                                            Limited Scope
-                                                        </span>
+                                                        <span className="text-orange-600 font-medium whitespace-nowrap">Limited</span>
                                                     )}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <button
-                                            onClick={() => handleRemove(m.user.id)}
-                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                            title="Remove from Project"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => handleUpdateStatus(m.user.id, m.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')}
+                                                className={clsx("p-1.5 rounded transition-colors", {
+                                                    "text-gray-400 hover:text-green-600 hover:bg-green-50": m.status === 'INACTIVE',
+                                                    "text-gray-400 hover:text-orange-600 hover:bg-orange-50": m.status === 'ACTIVE'
+                                                })}
+                                                title={m.status === 'ACTIVE' ? "Pause Permissions" : "Resume Permissions"}
+                                            >
+                                                {m.status === 'ACTIVE' ? <ChevronRight className="w-4 h-4 rotate-90" /> : <ChevronRight className="w-4 h-4" />}
+                                            </button>
+                                            <button
+                                                onClick={() => handleRemove(m.user.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                title="Remove from Project"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

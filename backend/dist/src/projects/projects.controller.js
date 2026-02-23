@@ -20,6 +20,7 @@ const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const project_context_guard_1 = require("./guards/project-context.guard");
 const project_assignment_guard_1 = require("./guards/project-assignment.guard");
 const eps_permission_guard_1 = require("./guards/eps-permission.guard");
+const auditable_decorator_1 = require("../audit/auditable.decorator");
 let ProjectsController = class ProjectsController {
     assignmentService;
     permissionService;
@@ -28,17 +29,20 @@ let ProjectsController = class ProjectsController {
         this.permissionService = permissionService;
     }
     async assignUser(projectId, body, req) {
-        return this.assignmentService.assignUser(projectId, body.userId, body.roleId, body.scopeType, body.scopeNodeId, req.user.sub);
+        return this.assignmentService.assignUser(projectId, body.userId, body.roleIds, body.scopeType, body.scopeNodeId, req.user.id);
+    }
+    async updateStatus(projectId, userId, status, req) {
+        return this.assignmentService.updateStatus(projectId, userId, status, req.user.id);
     }
     async getTeam(projectId) {
         return this.assignmentService.getProjectAssignments(projectId);
     }
     async removeUser(projectId, userId, req) {
-        return this.assignmentService.removeUser(projectId, userId, req.user.sub);
+        return this.assignmentService.removeUser(projectId, userId, req.user.id);
     }
     async checkPermission(projectId, nodeId, req) {
         const permission = req.query.code;
-        return this.permissionService.hasPermission(req.user.sub, permission, nodeId);
+        return this.permissionService.hasPermission(req.user.id, permission, nodeId);
     }
 };
 exports.ProjectsController = ProjectsController;
@@ -46,6 +50,7 @@ __decorate([
     (0, common_1.Post)(':projectId/assign'),
     (0, common_1.UseGuards)(eps_permission_guard_1.EpsPermissionGuard),
     (0, eps_permission_guard_1.RequireEpsPermission)('TEAM.MANAGE', 'projectId'),
+    (0, auditable_decorator_1.Auditable)('TEAM', 'ASSIGN_MEMBER'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
@@ -53,6 +58,19 @@ __decorate([
     __metadata("design:paramtypes", [Number, Object, Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "assignUser", null);
+__decorate([
+    (0, common_1.Patch)(':projectId/users/:userId/status'),
+    (0, common_1.UseGuards)(eps_permission_guard_1.EpsPermissionGuard),
+    (0, eps_permission_guard_1.RequireEpsPermission)('TEAM.MANAGE', 'projectId'),
+    (0, auditable_decorator_1.Auditable)('TEAM', 'UPDATE_MEMBER_STATUS', 'userId'),
+    __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Param)('userId', common_1.ParseIntPipe)),
+    __param(2, (0, common_1.Body)('status')),
+    __param(3, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Number, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "updateStatus", null);
 __decorate([
     (0, common_1.Get)(':projectId/team'),
     (0, common_1.UseGuards)(eps_permission_guard_1.EpsPermissionGuard),
@@ -66,6 +84,7 @@ __decorate([
     (0, common_1.Delete)(':projectId/users/:userId'),
     (0, common_1.UseGuards)(eps_permission_guard_1.EpsPermissionGuard),
     (0, eps_permission_guard_1.RequireEpsPermission)('TEAM.MANAGE', 'projectId'),
+    (0, auditable_decorator_1.Auditable)('TEAM', 'REMOVE_MEMBER', 'userId'),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Param)('userId', common_1.ParseIntPipe)),
     __param(2, (0, common_1.Request)()),

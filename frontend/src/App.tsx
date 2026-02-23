@@ -28,9 +28,11 @@ import ActivityListsPage from './views/quality/ActivityListsPage';
 import SequenceManagerPage from './views/quality/SequenceManagerPage';
 import QualitySequencer from './views/quality/sequencer/QualitySequencer';
 import InspectionRequestPage from './views/quality/InspectionRequestPage';
+import QualityApprovalsPage from './views/quality/QualityApprovalsPage';
 import DesignDashboard from './views/design/DesignDashboard';
 import SystemSettings from './views/admin/SystemSettings';
 import TemplateBuilder from './views/admin/TemplateBuilder';
+import SystemLogs from './views/admin/SystemLogs';
 import VendorMappingPage from './pages/VendorMappingPage';
 import ApprovalsPage from './pages/execution/ApprovalsPage';
 
@@ -63,7 +65,7 @@ const AppRoutes = () => {
       }>
         <Route index element={<ManagementDashboard />} />
         <Route path="execution" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="EXECUTION.ENTRY.READ">
             <ExecutionDashboard />
           </ProtectedRoute>
         } />
@@ -83,7 +85,7 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } />
         <Route path="calendars" element={
-          <ProtectedRoute permission="MANAGE_ROLES">
+          <ProtectedRoute permission="SCHEDULE.CALENDAR.READ">
             <CalendarListPage />
           </ProtectedRoute>
         } />
@@ -97,53 +99,58 @@ const AppRoutes = () => {
             <TemplateBuilder />
           </ProtectedRoute>
         } />
+        <Route path="admin/logs" element={
+          <ProtectedRoute permission="AUDIT.READ">
+            <SystemLogs />
+          </ProtectedRoute>
+        } />
         <Route path="calendars/new" element={
-          <ProtectedRoute permission="MANAGE_ROLES">
+          <ProtectedRoute permission="SCHEDULE.CALENDAR.CREATE">
             <CalendarEditor />
           </ProtectedRoute>
         } />
         <Route path="calendars/:id" element={
-          <ProtectedRoute permission="MANAGE_ROLES">
+          <ProtectedRoute permission="SCHEDULE.CALENDAR.UPDATE">
             <CalendarEditor />
           </ProtectedRoute>
         } />
         <Route path="eps" element={
-          <ProtectedRoute permission="MANAGE_EPS">
+          <ProtectedRoute permission="EPS.NODE.READ">
             <EpsPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/wbs" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="WBS.NODE.READ">
             <WbsPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/boq" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="BOQ.ITEM.READ">
             <BoqPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/execution-mapper" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="PLANNING.MATRIX.READ">
             <ExecutionMapper />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/progress" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="EXECUTION.ENTRY.READ">
             <ProgressDashboard />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/manpower" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="LABOR.ENTRY.READ">
             <LaborCountView />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/planning" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="SCHEDULE.READ">
             <PlanningPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/planning/compare" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="SCHEDULE.VERSION.READ">
             <ScheduleComparisonGrid />
           </ProtectedRoute>
         } />
@@ -158,47 +165,52 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/ehs" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="EHS.DASHBOARD.READ">
             <EhsProjectDashboard />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/quality" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="QUALITY.DASHBOARD.READ">
             <QualityProjectDashboard />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/quality/activity-lists" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="QUALITY.ACTIVITYLIST.READ">
             <ActivityListsPage />
           </ProtectedRoute>
         } />
-        <Route path="projects/:projectId/quality/inspections" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+        <Route path="projects/:projectId/quality/requests" element={
+          <ProtectedRoute permission="QUALITY.INSPECTION.READ">
             <InspectionRequestPage />
           </ProtectedRoute>
         } />
+        <Route path="projects/:projectId/quality/approvals" element={
+          <ProtectedRoute permission="QUALITY.INSPECTION.APPROVE">
+            <QualityApprovalsPage />
+          </ProtectedRoute>
+        } />
         <Route path="projects/:projectId/quality/activity-lists/:listId/activities" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="QUALITY.ACTIVITY.READ">
             <SequenceManagerPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/quality/activity-lists/:listId/sequence" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="QUALITY.SEQUENCE.READ">
             <QualitySequencer />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/design" element={
-          <ProtectedRoute permission="VIEW_PROJECTS">
+          <ProtectedRoute permission="DESIGN.DRAWING.READ">
             <DesignDashboard />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/vendor-mapping" element={
-          <ProtectedRoute permission="WBS.READ">
+          <ProtectedRoute permission="WORKORDER.MAPPING.READ">
             <VendorMappingPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/approvals" element={
-          <ProtectedRoute permission="Execution.Entry.Approve">
+          <ProtectedRoute permission="EXECUTION.ENTRY.APPROVE">
             <ApprovalsPage />
           </ProtectedRoute>
         } />

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserProjectAssignment } from './entities/user-project-assignment.entity';
 import { ProjectTeamAudit } from './entities/project-team-audit.entity';
@@ -9,6 +9,7 @@ import { ProjectAssignmentService } from './project-assignment.service';
 import { PermissionResolutionService } from './permission-resolution.service';
 import { ProjectsController } from './projects.controller';
 
+@Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -27,4 +28,4 @@ import { ProjectsController } from './projects.controller';
   providers: [ProjectAssignmentService, PermissionResolutionService],
   controllers: [ProjectsController],
 })
-export class ProjectsModule {}
+export class ProjectsModule { }

@@ -17,6 +17,9 @@ const common_1 = require("@nestjs/common");
 const execution_service_1 = require("./execution.service");
 const execution_breakdown_service_1 = require("./execution-breakdown.service");
 const features_config_1 = require("../config/features.config");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const permissions_guard_1 = require("../auth/permissions.guard");
+const permissions_decorator_1 = require("../auth/permissions.decorator");
 let ExecutionController = class ExecutionController {
     service;
     breakdownService;
@@ -83,6 +86,7 @@ let ExecutionController = class ExecutionController {
 exports.ExecutionController = ExecutionController;
 __decorate([
     (0, common_1.Post)(':projectId/measurements'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.CREATE'),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
@@ -92,6 +96,7 @@ __decorate([
 ], ExecutionController.prototype, "saveMeasurements", null);
 __decorate([
     (0, common_1.Get)(':projectId/logs'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.READ'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -99,6 +104,7 @@ __decorate([
 ], ExecutionController.prototype, "getLogs", null);
 __decorate([
     (0, common_1.Patch)('logs/:logId'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.UPDATE'),
     __param(0, (0, common_1.Param)('logId')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
@@ -108,6 +114,7 @@ __decorate([
 ], ExecutionController.prototype, "updateLog", null);
 __decorate([
     (0, common_1.Delete)('logs/:logId'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.DELETE'),
     __param(0, (0, common_1.Param)('logId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -115,6 +122,7 @@ __decorate([
 ], ExecutionController.prototype, "deleteLog", null);
 __decorate([
     (0, common_1.Get)('breakdown'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.READ'),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -122,6 +130,7 @@ __decorate([
 ], ExecutionController.prototype, "getExecutionBreakdown", null);
 __decorate([
     (0, common_1.Get)('has-micro/:activityId'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.READ'),
     __param(0, (0, common_1.Param)('activityId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -129,6 +138,7 @@ __decorate([
 ], ExecutionController.prototype, "hasMicroSchedule", null);
 __decorate([
     (0, common_1.Post)('progress/micro'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.MICRO.CREATE'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
@@ -137,6 +147,7 @@ __decorate([
 ], ExecutionController.prototype, "saveMicroProgress", null);
 __decorate([
     (0, common_1.Get)(':projectId/approvals/pending'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.APPROVE'),
     __param(0, (0, common_1.Param)('projectId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -144,6 +155,7 @@ __decorate([
 ], ExecutionController.prototype, "getPendingApprovals", null);
 __decorate([
     (0, common_1.Post)('approve'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.APPROVE'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
@@ -152,6 +164,7 @@ __decorate([
 ], ExecutionController.prototype, "approveMeasurements", null);
 __decorate([
     (0, common_1.Post)('reject'),
+    (0, permissions_decorator_1.Permissions)('EXECUTION.ENTRY.APPROVE'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
@@ -160,6 +173,7 @@ __decorate([
 ], ExecutionController.prototype, "rejectMeasurements", null);
 exports.ExecutionController = ExecutionController = __decorate([
     (0, common_1.Controller)('execution'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
     __metadata("design:paramtypes", [execution_service_1.ExecutionService,
         execution_breakdown_service_1.ExecutionBreakdownService])
 ], ExecutionController);

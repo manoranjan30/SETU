@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:setu_mobile/core/sync/connectivity_sync_service.dart';
+import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -51,6 +52,7 @@ class BreadcrumbWidget extends StatelessWidget {
 
     for (int i = 0; i < path.length; i++) {
       final isLast = i == path.length - 1;
+      final isFirst = i == 0;
       final node = path[i];
 
       // Add chevron before items (except first)
@@ -72,6 +74,7 @@ class BreadcrumbWidget extends StatelessWidget {
         _BreadcrumbItem(
           label: node.name,
           isActive: isLast,
+          isRoot: isFirst,
           onTap: isLast ? null : () => onNavigateToIndex(i),
         ),
       );
@@ -85,27 +88,37 @@ class BreadcrumbWidget extends StatelessWidget {
 class _BreadcrumbItem extends StatelessWidget {
   final String label;
   final bool isActive;
+  final bool isRoot;
   final VoidCallback? onTap;
 
   const _BreadcrumbItem({
     required this.label,
     this.isActive = false,
+    this.isRoot = false,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // isRoot → project home icon
+    // isActive → "you are here" pin icon
+    // intermediate → folder icon
+    final IconData icon;
+    if (isRoot) {
+      icon = Icons.home_work_rounded;
+    } else if (isActive) {
+      icon = Icons.place_rounded;
+    } else {
+      icon = Icons.folder_open_rounded;
+    }
+
+    final iconColor = isActive ? AppColors.primary : AppColors.textSecondary;
+
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Icon for first item
-        if (!isActive)
-          Icon(
-            Icons.location_on_outlined,
-            size: 14,
-            color: isActive ? AppColors.primary : AppColors.textSecondary,
-          ),
-        if (!isActive) const SizedBox(width: 4),
+        Icon(icon, size: 14, color: iconColor),
+        const SizedBox(width: 4),
         Flexible(
           child: Text(
             label,

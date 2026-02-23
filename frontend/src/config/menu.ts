@@ -20,8 +20,7 @@ export const MENU_CONFIG: MenuItem[] = [
     {
         label: 'Projects',
         path: '/dashboard/eps',
-        icon: Database,
-        permission: PermissionCode.MANAGE_EPS // Basic access to see project list
+        icon: Database
     },
     {
         label: 'Site Execution',
@@ -50,6 +49,11 @@ export const MENU_CONFIG: MenuItem[] = [
                 label: 'System Permissions',
                 path: '/dashboard/permissions',
                 permission: PermissionCode.ROLE_UPDATE // Viewing permissions usually requires role management rights
+            },
+            {
+                label: 'System Logs',
+                path: '/dashboard/admin/logs',
+                permission: PermissionCode.AUDIT_READ
             }
         ]
     },

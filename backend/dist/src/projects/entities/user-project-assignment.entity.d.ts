@@ -12,14 +12,10 @@ export declare enum AssignmentStatus {
 export declare class UserProjectAssignment {
     id: string;
     user: User;
-    userId: number;
     project: EpsNode;
-    projectId: number;
-    role: Role;
-    roleId: number;
+    roles: Role[];
     scopeType: ProjectScopeType;
     scopeNode: EpsNode | null;
-    scopeNodeId: number | null;
     status: AssignmentStatus;
     createdAt: Date;
     updatedAt: Date;

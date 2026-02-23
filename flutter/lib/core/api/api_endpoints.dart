@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// API endpoint constants for SETU backend
 class ApiEndpoints {
   ApiEndpoints._();
@@ -29,8 +31,24 @@ class ApiEndpoints {
   static const String productionUrl = 'https://api.setu.example.com/api';
   static const String stagingUrl = 'https://staging-api.setu.example.com/api';
 
-  // Development URL (localhost for web/desktop testing)
-  static const String devUrl = 'http://192.168.0.101:3000/api';
+  // Development URL: platform-aware defaults to avoid hardcoded LAN IPs.
+  // - Android emulator -> host machine via 10.0.2.2
+  // - iOS simulator / desktop / web -> localhost
+  // - Physical devices should use SETU_BASE_URL with your machine IP/hostname.
+  static String get devUrl {
+    if (kIsWeb) return 'http://localhost:3000/api';
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'http://10.0.2.2:3000/api';
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return 'http://localhost:3000/api';
+    }
+  }
 
   // ==================== AUTH ENDPOINTS ====================
   static const String login = '/auth/login';
@@ -131,7 +149,15 @@ class ApiEndpoints {
   static String deleteDailyLog(int id) => '/micro-schedules/logs/$id';
 
   // ==================== PLANNING ENDPOINTS ====================
-  /// GET /planning/projects/:projectId/activities
+  /// GET /planning/:epsNodeId/execution-ready
+  /// Returns activities ready for on-site execution at the given EPS node.
+  /// The backend recursively includes all descendant EPS nodes, so passing
+  /// a floor ID returns that floor's activities.
+  static String executionReady(int epsNodeId) =>
+      '/planning/$epsNodeId/execution-ready';
+
+  /// GET /planning/projects/:projectId/activities (NOT USED - endpoint does not exist)
+  /// Kept for reference only. Use executionReady() instead.
   static String projectActivities(int projectId) =>
       '/planning/projects/$projectId/activities';
 

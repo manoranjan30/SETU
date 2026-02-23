@@ -28,7 +28,7 @@ export declare class PlanningController {
     undistributeSchedule(body: {
         activityIds: number[];
         targetEpsIds: number[];
-    }): Promise<{
+    }, req: any): Promise<{
         deleted: number | null | undefined;
     }>;
     repairLinks(): Promise<any>;

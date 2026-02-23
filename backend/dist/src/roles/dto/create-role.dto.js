@@ -13,6 +13,7 @@ exports.CreateRoleDto = void 0;
 const class_validator_1 = require("class-validator");
 class CreateRoleDto {
     name;
+    description;
     permissionIds;
 }
 exports.CreateRoleDto = CreateRoleDto;
@@ -21,6 +22,11 @@ __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)
 ], CreateRoleDto.prototype, "name", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateRoleDto.prototype, "description", void 0);
 __decorate([
     (0, class_validator_1.IsArray)(),
     (0, class_validator_1.IsOptional)(),

@@ -136,77 +136,43 @@ User
 
 ### 6.1 Permission Naming Convention
 
-<module>.<resource>.<action>[.<subaction>]
+> 🔴 **IMPORTANT**: The authoritative permission naming convention and full registry is defined in:
+> - **Rule file**: `.agent/rules/PERMISSION_SYSTEM.md`
+> - **Source of truth**: `backend/src/auth/permission-registry.ts`
 
+**Format**: `MODULE.ENTITY.ACTION` (ALL CAPS, dot-separated)
 
+**Examples**:
+- `EPS.NODE.CREATE`
+- `BOQ.ITEM.READ`
+- `EXECUTION.ENTRY.APPROVE`
+- `QUALITY.INSPECTION.RAISE`
+- `SCHEDULE.CALENDAR.UPDATE`
 
-**Examples**
-- project.create
-- boq.import
-- wbs.generate
-- task.update.progress
-- quality.precheck.approve
-- ehs.incident.report
-- cost.certify.partial
-- baseline.approve
-- delay.approve
-- eot.prepare
+**When adding new permissions**: Follow the step-by-step guide in `PERMISSION_SYSTEM.md`.
 
 ---
 
 ### 6.2 Permission Categories
 
-These can be created while developing the module
+Permissions are automatically registered from the central registry. See `permission-registry.ts` for the complete list covering all 19 modules:
 
-#### Structural & Planning
-- project.create
-- project.update
-- boq.import
-- boq.classify
-- wbs.create
-- task.create
-- dependency.define
-- baseline.submit
-- baseline.approve
+| Module | Example Permissions |
+|--------|-------------------|
+| EPS | `EPS.NODE.READ`, `EPS.NODE.CREATE`, `EPS.NODE.UPDATE`, `EPS.NODE.DELETE` |
+| WBS | `WBS.NODE.*`, `WBS.ACTIVITY.*`, `WBS.TEMPLATE.*` |
+| SCHEDULE | `SCHEDULE.READ`, `SCHEDULE.UPDATE`, `SCHEDULE.CALENDAR.*` |
+| BOQ | `BOQ.ITEM.*`, `BOQ.MEASUREMENT.*`, `BOQ.PROGRESS.CREATE` |
+| EXECUTION | `EXECUTION.ENTRY.*`, `EXECUTION.ENTRY.APPROVE` |
+| QUALITY | `QUALITY.CHECKLIST.*`, `QUALITY.INSPECTION.*`, `QUALITY.NCR.*` |
+| EHS | `EHS.INCIDENT.*`, `EHS.INSPECTION.*`, `EHS.TRAINING.*` |
+| DESIGN | `DESIGN.DRAWING.*`, `DESIGN.CATEGORY.*` |
+| WORKORDER | `WORKORDER.VENDOR.*`, `WORKORDER.ORDER.*`, `WORKORDER.MAPPING.*` |
+| LABOR | `LABOR.ENTRY.*`, `LABOR.CATEGORY.*` |
+| MICRO | `MICRO.SCHEDULE.*`, `MICRO.ACTIVITY.*`, `MICRO.LOG.*` |
+| ADMIN | `USER.MANAGEMENT.*`, `ROLE.MANAGEMENT.*`, `ADMIN.SETTINGS.MANAGE` |
 
-#### Execution & Progress
-- task.start
-- task.update.progress
-- task.mark.complete
-- quantity.measure
-- quantity.certify.partial
-
-#### Quality (QMS)
-- quality.precheck.submit
-- quality.precheck.approve
-- quality.postcheck.submit
-- quality.postcheck.approve
-- ncr.create
-- ncr.resolve
-
-#### EHS
-- ehs.precheck.submit
-- ehs.precheck.approve
-- ehs.incident.report
-- ehs.incident.escalate
-- ehs.postcheck.approve
-
-#### Cost & Finance
-- cost.view
-- cost.certify
-- cost.recognize
-
-#### Delay & Claims
-- delay.log
-- delay.approve
-- eot.prepare
-- claim.prepare
-
-#### Administration
-- role.assign
-- permission.assign
-- plugin.install
-- integration.configure
+For the complete permission matrix, see `.module_Plans/permission-matrix.md`.
 
 ---
 

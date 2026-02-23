@@ -24,6 +24,7 @@ const project_context_guard_1 = require("../projects/guards/project-context.guar
 const project_assignment_guard_1 = require("../projects/guards/project-assignment.guard");
 const permissions_guard_1 = require("../auth/permissions.guard");
 const permissions_decorator_1 = require("../auth/permissions.decorator");
+const auditable_decorator_1 = require("../audit/auditable.decorator");
 let WbsController = class WbsController {
     wbsService;
     importService;
@@ -49,8 +50,8 @@ let WbsController = class WbsController {
     reorder(projectId, id, dto) {
         return this.wbsService.reorder(+projectId, +id, dto);
     }
-    remove(projectId, id) {
-        return this.wbsService.delete(+projectId, +id);
+    remove(projectId, id, req) {
+        return this.wbsService.delete(+projectId, +id, req.user.id);
     }
     createActivity(projectId, nodeId, dto, req) {
         return this.wbsService.createActivity(+projectId, +nodeId, dto, req.user.username);
@@ -61,8 +62,8 @@ let WbsController = class WbsController {
     updateActivity(activityId, dto) {
         return this.wbsService.updateActivity(+activityId, dto);
     }
-    deleteActivity(activityId) {
-        return this.wbsService.deleteActivity(+activityId);
+    deleteActivity(activityId, req) {
+        return this.wbsService.deleteActivity(+activityId, req.user.id);
     }
     applyTemplate(projectId, templateId, req) {
         return this.wbsService.applyTemplate(+projectId, +templateId, req.user.username);
@@ -85,6 +86,7 @@ exports.WbsController = WbsController;
 __decorate([
     (0, common_1.Post)(),
     (0, permissions_decorator_1.Permissions)('WBS.NODE.CREATE'),
+    (0, auditable_decorator_1.Auditable)('WBS', 'CREATE_NODE'),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
@@ -120,6 +122,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, permissions_decorator_1.Permissions)('WBS.NODE.UPDATE'),
+    (0, auditable_decorator_1.Auditable)('WBS', 'UPDATE_NODE', 'id'),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.Param)('id')),
     __param(2, (0, common_1.Body)()),
@@ -130,6 +133,7 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id/reorder'),
     (0, permissions_decorator_1.Permissions)('WBS.NODE.UPDATE'),
+    (0, auditable_decorator_1.Auditable)('WBS', 'REORDER_NODE', 'id'),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.Param)('id')),
     __param(2, (0, common_1.Body)()),
@@ -140,10 +144,12 @@ __decorate([
 __decorate([
     (0, common_1.Delete)(':id'),
     (0, permissions_decorator_1.Permissions)('WBS.NODE.DELETE'),
+    (0, auditable_decorator_1.Auditable)('WBS', 'DELETE_NODE', 'id'),
     __param(0, (0, common_1.Param)('projectId')),
     __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", void 0)
 ], WbsController.prototype, "remove", null);
 __decorate([
@@ -179,8 +185,9 @@ __decorate([
     (0, common_1.Delete)('activities/:activityId'),
     (0, permissions_decorator_1.Permissions)('WBS.ACTIVITY.DELETE'),
     __param(0, (0, common_1.Param)('activityId')),
+    __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], WbsController.prototype, "deleteActivity", null);
 __decorate([

@@ -161,7 +161,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'WBS Structure',
                                     path: `/dashboard/projects/${activeProjectId}/wbs`,
-                                    icon: Layers
+                                    icon: Layers,
+                                    permission: 'WBS.NODE.READ'
                                 }}
                             />
                             <SidebarItem
@@ -169,7 +170,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Bill of Quantities',
                                     path: `/dashboard/projects/${activeProjectId}/boq`,
-                                    icon: Layout
+                                    icon: Layout,
+                                    permission: 'BOQ.ITEM.READ'
                                 }}
                             />
                             <SidebarItem
@@ -177,7 +179,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Planning & Schedule',
                                     path: `/dashboard/projects/${activeProjectId}/planning`,
-                                    icon: Grid
+                                    icon: Grid,
+                                    permission: 'PLANNING.MATRIX.READ'
                                 }}
                             />
                             <SidebarItem
@@ -185,7 +188,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Progress',
                                     path: `/dashboard/projects/${activeProjectId}/progress`,
-                                    icon: Box
+                                    icon: Box,
+                                    permission: 'PROGRESS.DASHBOARD.READ'
                                 }}
                             />
                             <SidebarItem
@@ -193,7 +197,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Manpower',
                                     path: `/dashboard/projects/${activeProjectId}/manpower`,
-                                    icon: Users
+                                    icon: Users,
+                                    permission: 'LABOR.ENTRY.READ'
                                 }}
                             />
                             <SidebarItem
@@ -201,7 +206,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Site Safety (EHS)',
                                     path: `/dashboard/projects/${activeProjectId}/ehs`,
-                                    icon: ShieldAlert
+                                    icon: ShieldAlert,
+                                    permission: 'EHS.DASHBOARD.READ'
                                 }}
                             />
                             <SidebarItem
@@ -209,15 +215,26 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Quality Control',
                                     path: `/dashboard/projects/${activeProjectId}/quality`,
-                                    icon: CheckCircle
+                                    icon: CheckCircle,
+                                    permission: 'QUALITY.DASHBOARD.READ'
                                 }}
                             />
                             <SidebarItem
                                 isCollapsed={isCollapsed}
                                 item={{
-                                    label: 'Site Inspections',
-                                    path: `/dashboard/projects/${activeProjectId}/quality/inspections`,
-                                    icon: ShieldAlert
+                                    label: 'Quality Requests',
+                                    path: `/dashboard/projects/${activeProjectId}/quality/requests`,
+                                    icon: ShieldAlert,
+                                    permission: 'QUALITY.INSPECTION.READ'
+                                }}
+                            />
+                            <SidebarItem
+                                isCollapsed={isCollapsed}
+                                item={{
+                                    label: 'QA/QC Approvals',
+                                    path: `/dashboard/projects/${activeProjectId}/quality/approvals`,
+                                    icon: CheckCircle,
+                                    permission: 'QUALITY.INSPECTION.APPROVE'
                                 }}
                             />
                             <SidebarItem
@@ -225,7 +242,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Activity Lists',
                                     path: `/dashboard/projects/${activeProjectId}/quality/activity-lists`,
-                                    icon: Clipboard
+                                    icon: Clipboard,
+                                    permission: 'QUALITY.ACTIVITYLIST.READ'
                                 }}
                             />
                             <SidebarItem
@@ -233,7 +251,8 @@ const Sidebar = () => {
                                 item={{
                                     label: 'Design (Drawings)',
                                     path: `/dashboard/projects/${activeProjectId}/design`,
-                                    icon: FileText
+                                    icon: FileText,
+                                    permission: 'DESIGN.DRAWING.READ'
                                 }}
                             />
                         </div>

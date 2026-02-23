@@ -22,20 +22,42 @@ let AuditService = class AuditService {
     constructor(auditRepo) {
         this.auditRepo = auditRepo;
     }
-    async log(userId, action, resourceType, resourceId, details) {
+    async log(userId, module, action, recordId, projectId, details, ipAddress) {
         try {
             const log = this.auditRepo.create({
                 userId,
+                module,
                 action,
-                resourceType,
-                resourceId: String(resourceId),
-                details: details ? JSON.stringify(details) : undefined,
+                recordId: recordId ? String(recordId) : undefined,
+                projectId,
+                details,
+                ipAddress,
             });
             await this.auditRepo.save(log);
         }
         catch (e) {
-            console.error('Failed to save audit log', e);
+            console.error('AuditLog Error:', e);
         }
+    }
+    async findAll(projectId, module, limit = 100) {
+        const where = {};
+        if (projectId)
+            where.projectId = projectId;
+        if (module)
+            where.module = module;
+        return this.auditRepo.find({
+            where,
+            relations: ['user'],
+            order: { timestamp: 'DESC' },
+            take: limit,
+        });
+    }
+    async findByProject(projectId) {
+        return this.auditRepo.find({
+            where: { projectId },
+            relations: ['user'],
+            order: { timestamp: 'DESC' },
+        });
     }
 };
 exports.AuditService = AuditService;

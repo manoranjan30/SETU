@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import {
     Users,
     AlertTriangle,
@@ -69,6 +70,7 @@ const formatCurrency = (value: number) => {
 
 const ManagementDashboard = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [summary, setSummary] = useState<SummaryData | null>(null);
     const [burnRate, setBurnRate] = useState<BurnRateData | null>(null);
@@ -90,6 +92,15 @@ const ManagementDashboard = () => {
                 api.get('/dashboard/milestones'),
                 api.get('/dashboard/alerts')
             ]);
+
+            // Filter projects based on user assignments if not Admin
+            let filteredProjects = summaryRes.data.projects || [];
+            if (user && !user.roles.includes('Admin')) {
+                const allowedIds = user.project_ids || [];
+                filteredProjects = filteredProjects.filter((p: any) => allowedIds.includes(p.id));
+            }
+            summaryRes.data.projects = filteredProjects;
+
             setSummary(summaryRes.data);
             setBurnRate(burnRes.data);
             setManpower(manpowerRes.data);

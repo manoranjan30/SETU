@@ -12,11 +12,11 @@ export declare class WbsController {
     findOne(projectId: string, id: string): Promise<import("./entities/wbs.entity").WbsNode>;
     update(projectId: string, id: string, dto: UpdateWbsDto): Promise<import("./entities/wbs.entity").WbsNode>;
     reorder(projectId: string, id: string, dto: ReorderWbsDto): Promise<import("./entities/wbs.entity").WbsNode>;
-    remove(projectId: string, id: string): Promise<void>;
+    remove(projectId: string, id: string, req: any): Promise<void>;
     createActivity(projectId: string, nodeId: string, dto: CreateActivityDto, req: any): Promise<import("./entities/activity.entity").Activity>;
     getActivities(projectId: string, nodeId: string): Promise<import("./entities/activity.entity").Activity[]>;
     updateActivity(activityId: string, dto: UpdateActivityDto): Promise<import("./entities/activity.entity").Activity>;
-    deleteActivity(activityId: string): Promise<void>;
+    deleteActivity(activityId: string, req: any): Promise<void>;
     applyTemplate(projectId: string, templateId: string, req: any): Promise<void>;
     saveAsTemplate(projectId: string, body: {
         templateName: string;

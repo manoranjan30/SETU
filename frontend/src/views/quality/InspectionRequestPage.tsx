@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-    ClipboardCheck, AlertCircle, CheckCircle2, XCircle, Clock,
+    ClipboardCheck, AlertCircle, Clock,
     ChevronRight, FileText, ShieldAlert, AlertTriangle
 } from 'lucide-react';
 import api from '../../api/axios';
@@ -37,7 +37,7 @@ interface ActivityList {
 
 interface EpsNode {
     id: number;
-    name: string;
+    label: string;
     children?: EpsNode[];
 }
 
@@ -56,7 +56,8 @@ export default function InspectionRequestPage() {
     // Load EPS Structure
     useEffect(() => {
         if (projectId) {
-            api.get(`/eps/project/${projectId}/tree`).then(res => setEpsNodes(res.data));
+            // Corrected endpoint from /eps/project/:id/tree to /eps/:id/tree
+            api.get(`/eps/${projectId}/tree`).then(res => setEpsNodes(res.data));
         }
     }, [projectId]);
 
@@ -154,25 +155,13 @@ export default function InspectionRequestPage() {
         }
     };
 
-    const handleUpdateStatus = async (inspectionId: number, status: 'APPROVED' | 'REJECTED') => {
-        if (!confirm(`Mark inspection as ${status}?`)) return;
-        try {
-            await api.patch(`/quality/inspections/${inspectionId}/status`, {
-                status,
-                comments: status === 'APPROVED' ? 'Approved via Web' : 'Rejected via Web',
-                inspectedBy: 'Admin'
-            });
-            setRefreshKey(k => k + 1);
-        } catch (err: any) {
-            alert(err.response?.data?.message || 'Failed to update status');
-        }
-    };
+
 
     // Helper for Status Badge
     const StatusBadge = ({ state }: { state: string }) => {
         switch (state) {
-            case 'APPROVED': return <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded-full text-xs font-medium"><CheckCircle2 className="w-3 h-3" /> Approved</span>;
-            case 'REJECTED': return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded-full text-xs font-medium"><XCircle className="w-3 h-3" /> Rejected</span>;
+            case 'APPROVED': return <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded-full text-xs font-medium">Approved</span>;
+            case 'REJECTED': return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded-full text-xs font-medium">Rejected</span>;
             case 'PENDING': return <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-1 rounded-full text-xs font-medium"><Clock className="w-3 h-3" /> QC Pending</span>;
             case 'READY': return <span className="flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-1 rounded-full text-xs font-medium">Ready to Request</span>;
             default: return <span className="flex items-center gap-1 text-gray-400 bg-gray-100 px-2 py-1 rounded-full text-xs font-medium">Locked</span>;
@@ -190,7 +179,7 @@ export default function InspectionRequestPage() {
                         style={{ paddingLeft: `${depth * 12 + 8}px` }}
                     >
                         {node.children?.length ? <ChevronRight className="w-3 h-3 mr-1 text-gray-400" /> : <span className="w-4" />}
-                        {node.name}
+                        {node.label}
                     </div>
                     {node.children && renderTree(node.children, depth + 1)}
                 </li>
@@ -329,25 +318,6 @@ export default function InspectionRequestPage() {
                                                         <ShieldAlert className="w-4 h-4" />
                                                         Raise RFI
                                                     </button>
-                                                )}
-
-                                                {item.statusState === 'PENDING' && item.inspection && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => handleUpdateStatus(item.inspection!.id, 'APPROVED')}
-                                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
-                                                        >
-                                                            <CheckCircle2 className="w-4 h-4" />
-                                                            Approve
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleUpdateStatus(item.inspection!.id, 'REJECTED')}
-                                                            className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
-                                                        >
-                                                            <XCircle className="w-4 h-4" />
-                                                            Reject
-                                                        </button>
-                                                    </>
                                                 )}
                                             </div>
                                         </div>

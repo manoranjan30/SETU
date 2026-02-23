@@ -6,7 +6,7 @@ import { ChevronRight, ChevronDown, Plus, Copy, Layers, FileText, ArrowRight } f
 
 interface EpsNode {
     id: number;
-    name: string;
+    label: string;
     type: string;
     children?: EpsNode[];
 }
@@ -38,19 +38,12 @@ export default function QualityStructureManager({ projectId }: Props) {
     const fetchProjectTree = async () => {
         setLoading(true);
         try {
-            const res = await api.get('/eps');
-            const findProject = (nodes: EpsNode[]): EpsNode | null => {
-                for (const node of nodes) {
-                    if (node.id === projectId) return node;
-                    if (node.children && node.children.length > 0) {
-                        const found = findProject(node.children);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            const projectNode = findProject(res.data);
-            setTree(projectNode);
+            // Use specialized project tree endpoint
+            const res = await api.get(`/eps/${projectId}/tree`);
+            // Root node
+            if (res.data && res.data.length > 0) {
+                setTree(res.data[0]);
+            }
         } catch (err) {
             console.error(err);
         } finally {
@@ -135,7 +128,7 @@ export default function QualityStructureManager({ projectId }: Props) {
                                 </div>
                                 <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                                     {selectedNode.type === 'PROJECT' && <Layers className="w-6 h-6 text-blue-600" />}
-                                    {selectedNode.name}
+                                    {selectedNode.label}
                                 </h2>
                             </div>
                         </div>
@@ -206,7 +199,7 @@ export default function QualityStructureManager({ projectId }: Props) {
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                     {selectedNode.children?.map(c => (
                                         <div key={c.id} className="p-3 border border-gray-100 rounded-lg bg-white hover:shadow-md transition-shadow text-sm group">
-                                            <div className="font-medium text-gray-900 mb-1">{c.name}</div>
+                                            <div className="font-medium text-gray-900 mb-1">{c.label}</div>
                                             <div className="text-xs text-gray-500 bg-gray-100 inline-block px-1.5 py-0.5 rounded">{c.type}</div>
                                         </div>
                                     ))}
@@ -280,7 +273,7 @@ function TreeNode({ node, onSelect, selectedId }: { node: EpsNode, onSelect: (n:
                 >
                     {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
-                <span className="truncate text-sm">{node.name}</span>
+                <span className="truncate text-sm">{node.label}</span>
             </div>
             {expanded && hasChildren && (
                 <div className="ml-2 border-l border-gray-200 pl-1">

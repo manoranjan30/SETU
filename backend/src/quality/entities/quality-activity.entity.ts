@@ -11,6 +11,8 @@ import {
 import { QualityActivityList } from './quality-activity-list.entity';
 import { QualitySequenceEdge } from './quality-sequence-edge.entity';
 
+import { QualityChecklistTemplate } from './quality-checklist-template.entity';
+
 export type ResponsibleParty = 'Contractor' | 'Consultant' | 'Client';
 
 @Entity('quality_activity')
@@ -68,6 +70,13 @@ export class QualityActivity {
 
   @Column({ type: 'jsonb', nullable: true, default: { x: 0, y: 0 } })
   position: { x: number; y: number }; // For canvas layout
+
+  @Column({ nullable: true })
+  checklistTemplateId: number;
+
+  @ManyToOne(() => QualityChecklistTemplate)
+  @JoinColumn({ name: 'checklistTemplateId' })
+  checklistTemplate: QualityChecklistTemplate;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -27,6 +27,7 @@ const quantity_progress_record_entity_1 = require("./entities/quantity-progress-
 const wbs_entity_1 = require("../wbs/entities/wbs.entity");
 const eps_entity_1 = require("../eps/eps.entity");
 const cpm_service_1 = require("../wbs/cpm.service");
+const audit_service_1 = require("../audit/audit.service");
 let PlanningService = class PlanningService {
     planRepo;
     recoveryRepo;
@@ -39,7 +40,8 @@ let PlanningService = class PlanningService {
     epsRepo;
     relRepo;
     cpmService;
-    constructor(planRepo, recoveryRepo, boqRepo, activityRepo, progressRepo, subItemRepo, measurementRepo, wbsRepo, epsRepo, relRepo, cpmService) {
+    auditService;
+    constructor(planRepo, recoveryRepo, boqRepo, activityRepo, progressRepo, subItemRepo, measurementRepo, wbsRepo, epsRepo, relRepo, cpmService, auditService) {
         this.planRepo = planRepo;
         this.recoveryRepo = recoveryRepo;
         this.boqRepo = boqRepo;
@@ -51,6 +53,7 @@ let PlanningService = class PlanningService {
         this.epsRepo = epsRepo;
         this.relRepo = relRepo;
         this.cpmService = cpmService;
+        this.auditService = auditService;
     }
     async unlinkBoq(boqItemId, boqSubItemId, measurementId) {
         const whereClause = { boqItemId };
@@ -665,6 +668,11 @@ let PlanningService = class PlanningService {
                     }
                 }
             }
+            await this.auditService.log(user?.id || 0, 'SCHEDULE', 'DISTRIBUTE_ACTIVITIES', undefined, undefined, {
+                activityCount: activityIds.length,
+                targetCount: targetEpsIds.length,
+                created: createdCount,
+            });
             return { created: createdCount, skipped: skippedCount };
         }
         catch (error) {
@@ -743,7 +751,7 @@ let PlanningService = class PlanningService {
         }
         return results;
     }
-    async undistributeActivities(activityIds, targetEpsIds) {
+    async undistributeActivities(activityIds, targetEpsIds, user) {
         try {
             if (!activityIds.length || !targetEpsIds.length)
                 return { deleted: 0 };
@@ -754,6 +762,11 @@ let PlanningService = class PlanningService {
                 .where('masterActivityId IN (:...activityIds)', { activityIds })
                 .andWhere('projectId IN (:...targetEpsIds)', { targetEpsIds })
                 .execute();
+            await this.auditService.log(user?.id || 0, 'SCHEDULE', 'UNDISTRIBUTE_ACTIVITIES', undefined, undefined, {
+                activityCount: activityIds.length,
+                targetCount: targetEpsIds.length,
+                deleted: result.affected,
+            });
             return { deleted: result.affected };
         }
         catch (error) {
@@ -1759,6 +1772,7 @@ exports.PlanningService = PlanningService = __decorate([
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        cpm_service_1.CpmService])
+        cpm_service_1.CpmService,
+        audit_service_1.AuditService])
 ], PlanningService);
 //# sourceMappingURL=planning.service.js.map

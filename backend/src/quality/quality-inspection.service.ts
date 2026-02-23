@@ -11,6 +11,13 @@ import {
 } from './entities/quality-inspection.entity';
 import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
+import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
+import { QualityInspectionStage, StageStatus } from './entities/quality-inspection-stage.entity';
+import { QualityExecutionItem } from './entities/quality-execution-item.entity';
+import { QualitySignature } from './entities/quality-signature.entity';
+import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
+import { AuditService } from '../audit/audit.service';
+import { ComplianceService } from './compliance.service';
 
 export interface CreateInspectionDto {
   projectId: number;
@@ -37,7 +44,17 @@ export class QualityInspectionService {
     private readonly activityRepo: Repository<QualityActivity>,
     @InjectRepository(QualityActivityList)
     private readonly listRepo: Repository<QualityActivityList>,
-  ) {}
+    @InjectRepository(QualityInspectionStage)
+    private readonly stageRepo: Repository<QualityInspectionStage>,
+    @InjectRepository(QualityExecutionItem)
+    private readonly executionItemRepo: Repository<QualityExecutionItem>,
+    @InjectRepository(QualitySignature)
+    private readonly signatureRepo: Repository<QualitySignature>,
+    @InjectRepository(QualitySequenceEdge)
+    private readonly sequenceRepo: Repository<QualitySequenceEdge>,
+    private readonly complianceService: ComplianceService,
+    private readonly auditService: AuditService,
+  ) { }
 
   async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
     const query = this.inspectionRepo
@@ -55,10 +72,33 @@ export class QualityInspectionService {
     return query.orderBy('i.createdAt', 'DESC').getMany();
   }
 
+  async getInspectionDetails(id: number) {
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id },
+      relations: [
+        'activity',
+        'stages',
+        'stages.stageTemplate',
+        'stages.items',
+        'stages.items.itemTemplate',
+        'stages.signatures',
+      ],
+      order: {
+        stages: {
+          stageTemplate: { sequence: 'ASC' },
+          items: { itemTemplate: { sequence: 'ASC' } }
+        }
+      }
+    });
+    if (!inspection) throw new NotFoundException('Inspection not found');
+    return inspection;
+  }
+
   async create(dto: CreateInspectionDto, userId?: string) {
     // 1. Verify Activity
     const activity = await this.activityRepo.findOne({
       where: { id: dto.activityId },
+      relations: ['checklistTemplate', 'checklistTemplate.stages', 'checklistTemplate.stages.items'],
     });
     if (!activity) throw new NotFoundException('Activity not found');
 
@@ -113,7 +153,101 @@ export class QualityInspectionService {
     // Ensure listId matches activity
     inspection.listId = activity.listId;
 
-    return this.inspectionRepo.save(inspection);
+    const savedInspection = await this.inspectionRepo.save(inspection);
+
+    // 5. Initialize Stages if Template exists
+    if (activity.checklistTemplate) {
+      for (const stageTemplate of activity.checklistTemplate.stages) {
+        const stage = this.stageRepo.create({
+          inspectionId: savedInspection.id,
+          stageTemplateId: stageTemplate.id,
+          status: StageStatus.PENDING,
+        });
+        const savedStage = await this.stageRepo.save(stage);
+
+        // Initialize items for each stage
+        for (const itemTemplate of stageTemplate.items) {
+          const item = this.executionItemRepo.create({
+            stageId: savedStage.id,
+            itemTemplateId: itemTemplate.id,
+            isOk: false,
+          });
+          await this.executionItemRepo.save(item);
+        }
+      }
+    }
+
+    return this.inspectionRepo.findOne({
+      where: { id: savedInspection.id },
+      relations: ['stages', 'stages.items'],
+    });
+  }
+
+  async updateStageStatus(
+    stageId: number,
+    data: {
+      status: StageStatus;
+      userId: string;
+      items?: { id: number; value: string; isOk: boolean; remarks?: string; photos?: string[] }[];
+      signature?: { data: string; role: string };
+      metadata?: any;
+    },
+  ) {
+    const stage = await this.stageRepo.findOne({
+      where: { id: stageId },
+      relations: ['items', 'inspection', 'stageTemplate'],
+    });
+
+    if (!stage) throw new NotFoundException('Stage not found');
+
+    // 1. Update Items
+    if (data.items) {
+      for (const itemUpdate of data.items) {
+        await this.executionItemRepo.update(itemUpdate.id, {
+          value: itemUpdate.value,
+          isOk: itemUpdate.isOk,
+          remarks: itemUpdate.remarks,
+          photos: itemUpdate.photos,
+        });
+      }
+    }
+
+    // 2. Update Stage
+    stage.status = data.status;
+    if (data.status === StageStatus.COMPLETED || data.status === StageStatus.APPROVED) {
+      stage.completedAt = new Date();
+      stage.completedBy = data.userId;
+    }
+
+    // 3. Handle Signature & Digital Locking
+    if (data.signature) {
+      const updatedItems = await this.executionItemRepo.find({ where: { stageId } });
+      const fingerprint = this.complianceService.generateFingerprint({
+        stageId,
+        items: updatedItems,
+        metadata: {
+          timestamp: new Date(),
+          user: data.userId,
+          gps: data.metadata?.gps,
+        },
+      });
+
+      const signature = this.signatureRepo.create({
+        stageId,
+        role: data.signature.role,
+        signedBy: data.userId,
+        signatureData: data.signature.data,
+        lockHash: fingerprint,
+        metadata: {
+          timestamp: new Date(),
+          gps: data.metadata?.gps,
+          ipAddress: data.metadata?.ip,
+        },
+      });
+      await this.signatureRepo.save(signature);
+    }
+
+    return this.stageRepo.save(stage);
   }
 
   async updateStatus(
@@ -121,8 +255,35 @@ export class QualityInspectionService {
     dto: UpdateInspectionStatusDto,
     userId?: string,
   ) {
-    const inspection = await this.inspectionRepo.findOne({ where: { id } });
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id },
+      relations: ['stages', 'stages.items'],
+    });
     if (!inspection) throw new NotFoundException('Inspection not found');
+
+    if (dto.status === InspectionStatus.APPROVED) {
+      // Validate all checklist items are checked (isOk === true)
+      let allItemsChecked = true;
+      let hasItems = false;
+      if (inspection.stages && inspection.stages.length > 0) {
+        for (const stage of inspection.stages) {
+          if (stage.items && stage.items.length > 0) {
+            hasItems = true;
+            for (const item of stage.items) {
+              if (!item.isOk) {
+                allItemsChecked = false;
+                break;
+              }
+            }
+          }
+          if (!allItemsChecked) break;
+        }
+      }
+
+      if (hasItems && !allItemsChecked) {
+        throw new BadRequestException('Cannot approve RFI. All checklist items must be verified and checked.');
+      }
+    }
 
     inspection.status = dto.status;
     if (dto.comments) inspection.comments = dto.comments;
@@ -136,7 +297,29 @@ export class QualityInspectionService {
         dto.inspectionDate || new Date().toISOString().split('T')[0];
     }
 
-    return this.inspectionRepo.save(inspection);
+    const saved = await this.inspectionRepo.save(inspection);
+
+    // ─── Audit Logging ──────────────────────────────────────────────────
+    if (
+      dto.status === InspectionStatus.APPROVED ||
+      dto.status === InspectionStatus.REJECTED
+    ) {
+      await this.auditService.log(
+        userId ? parseInt(userId, 10) : 0,
+        'QUALITY',
+        dto.status === InspectionStatus.APPROVED ? 'APPROVE_RFI' : 'REJECT_RFI',
+        String(inspection.id),
+        inspection.epsNodeId,
+        {
+          activity: inspection.activityId,
+          comments: dto.comments,
+          inspectedBy: dto.inspectedBy,
+          date: inspection.inspectionDate,
+        },
+      );
+    }
+
+    return saved;
   }
 
   // ─── Private Helpers ─────────────────────────────────────────────────────

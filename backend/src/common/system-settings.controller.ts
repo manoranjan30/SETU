@@ -7,16 +7,16 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('admin/settings')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SystemSettingsController {
-  constructor(private readonly settingsService: SystemSettingsService) {}
+  constructor(private readonly settingsService: SystemSettingsService) { }
 
   @Get()
-  @Permissions('MANAGE_USERS') // Reusing Admin level permission for now or create specific
+  @Permissions('ADMIN.SETTINGS.MANAGE')
   async getAll() {
     return this.settingsService.getAllSettings();
   }
 
   @Post(':key')
-  @Permissions('MANAGE_USERS')
+  @Permissions('ADMIN.SETTINGS.MANAGE')
   async update(@Param('key') key: string, @Body('value') value: string) {
     return this.settingsService.updateSetting(key, value);
   }

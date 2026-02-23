@@ -169,6 +169,7 @@ let BoqController = class BoqController {
 exports.BoqController = BoqController;
 __decorate([
     (0, common_1.Get)('template'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.IMPORT'),
     (0, swagger_1.ApiOperation)({ summary: 'Download BOQ Import Excel Template' }),
     __param(0, (0, common_1.Res)()),
     __metadata("design:type", Function),
@@ -177,6 +178,7 @@ __decorate([
 ], BoqController.prototype, "downloadTemplate", null);
 __decorate([
     (0, common_1.Get)('export/:projectId'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.READ'),
     (0, swagger_1.ApiOperation)({ summary: 'Export BOQ to CSV' }),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Res)()),
@@ -186,6 +188,7 @@ __decorate([
 ], BoqController.prototype, "exportBoq", null);
 __decorate([
     (0, common_1.Post)('import/:projectId'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.IMPORT'),
     (0, swagger_1.ApiOperation)({ summary: 'Import BOQ from Excel File' }),
     (0, swagger_1.ApiConsumes)('multipart/form-data'),
     (0, swagger_1.ApiBody)({
@@ -212,6 +215,7 @@ __decorate([
 ], BoqController.prototype, "importBoq", null);
 __decorate([
     (0, common_1.Get)('measurements/template'),
+    (0, permissions_decorator_1.Permissions)('BOQ.MEASUREMENT.IMPORT'),
     (0, swagger_1.ApiOperation)({ summary: 'Download Measurement Import Template' }),
     __param(0, (0, common_1.Res)()),
     __metadata("design:type", Function),
@@ -220,6 +224,7 @@ __decorate([
 ], BoqController.prototype, "downloadMeasurementTemplate", null);
 __decorate([
     (0, common_1.Post)('measurements/import/:projectId/:boqItemId'),
+    (0, permissions_decorator_1.Permissions)('BOQ.MEASUREMENT.IMPORT'),
     (0, swagger_1.ApiOperation)({ summary: 'Import Measurements for a BOQ Item' }),
     (0, swagger_1.ApiConsumes)('multipart/form-data'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
@@ -237,7 +242,7 @@ __decorate([
 ], BoqController.prototype, "importMeasurements", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.CREATE'),
     (0, swagger_1.ApiOperation)({
         summary: 'Create a new BOQ Element (Legacy compatibility or Manual Layer 1)',
     }),
@@ -249,7 +254,7 @@ __decorate([
 ], BoqController.prototype, "create", null);
 __decorate([
     (0, common_1.Post)('sub-item'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.CREATE'),
     (0, swagger_1.ApiOperation)({ summary: 'Create a Sub Item (Layer 2)' }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -258,7 +263,7 @@ __decorate([
 ], BoqController.prototype, "createSubItem", null);
 __decorate([
     (0, common_1.Patch)('sub-item/:id'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.UPDATE'),
     (0, swagger_1.ApiOperation)({ summary: 'Update Sub Item (Rate/Description)' }),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -268,7 +273,7 @@ __decorate([
 ], BoqController.prototype, "updateSubItem", null);
 __decorate([
     (0, common_1.Post)('measurement'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.MEASUREMENT.MANAGE'),
     (0, swagger_1.ApiOperation)({ summary: 'Add a Measurement (Layer 2)' }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -277,7 +282,7 @@ __decorate([
 ], BoqController.prototype, "addMeasurement", null);
 __decorate([
     (0, common_1.Post)('progress'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.PROGRESS.CREATE'),
     (0, swagger_1.ApiOperation)({ summary: 'Add Progress Transaction (Layer 4)' }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -286,7 +291,7 @@ __decorate([
 ], BoqController.prototype, "addProgress", null);
 __decorate([
     (0, common_1.Get)('eps/:nodeId'),
-    (0, permissions_decorator_1.Permissions)('VIEW_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.READ'),
     (0, swagger_1.ApiOperation)({ summary: 'Get BOQ items for a specific EPS Node' }),
     __param(0, (0, common_1.Param)('nodeId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
@@ -295,7 +300,7 @@ __decorate([
 ], BoqController.prototype, "getForEps", null);
 __decorate([
     (0, common_1.Get)('project/:projectId'),
-    (0, permissions_decorator_1.Permissions)('VIEW_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.READ'),
     (0, swagger_1.ApiOperation)({ summary: 'Get all BOQ items for a Project (Layer 1)' }),
     __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
@@ -304,7 +309,7 @@ __decorate([
 ], BoqController.prototype, "getForProject", null);
 __decorate([
     (0, common_1.Patch)(':id'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.UPDATE'),
     (0, swagger_1.ApiOperation)({ summary: 'Update BOQ Item (Qty blocked if Derived)' }),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -315,7 +320,7 @@ __decorate([
 ], BoqController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.ITEM.DELETE'),
     (0, swagger_1.ApiOperation)({ summary: 'Delete BOQ Item (Cascades to measurements)' }),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, get_user_decorator_1.GetUser)()),
@@ -325,6 +330,7 @@ __decorate([
 ], BoqController.prototype, "remove", null);
 __decorate([
     (0, common_1.Post)('measurements/bulk-delete'),
+    (0, permissions_decorator_1.Permissions)('BOQ.MEASUREMENT.MANAGE'),
     (0, swagger_1.ApiOperation)({ summary: 'Bulk Delete Measurements and Recalculate' }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -333,7 +339,7 @@ __decorate([
 ], BoqController.prototype, "bulkDeleteMeasurements", null);
 __decorate([
     (0, common_1.Patch)('measurement/:id'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.MEASUREMENT.MANAGE'),
     (0, swagger_1.ApiOperation)({ summary: 'Update Single Measurement' }),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -343,7 +349,7 @@ __decorate([
 ], BoqController.prototype, "updateMeasurement", null);
 __decorate([
     (0, common_1.Patch)('measurements/bulk'),
-    (0, permissions_decorator_1.Permissions)('MANAGE_BOQ'),
+    (0, permissions_decorator_1.Permissions)('BOQ.MEASUREMENT.MANAGE'),
     (0, swagger_1.ApiOperation)({ summary: 'Bulk Update Measurements' }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),

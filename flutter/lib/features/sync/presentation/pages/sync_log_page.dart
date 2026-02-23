@@ -252,6 +252,9 @@ class _SyncLogPageState extends State<SyncLogPage> {
     final syncStatus = _getSyncStatusEnum(entry.syncStatus);
     final dateFormat = DateFormat('MMM d, yyyy');
     final timeFormat = DateFormat('h:mm a');
+    final isDeletable = syncStatus == SyncStatusEntry.pending ||
+        syncStatus == SyncStatusEntry.failed ||
+        syncStatus == SyncStatusEntry.error;
 
     return Card(
       elevation: 0,
@@ -334,14 +337,21 @@ class _SyncLogPageState extends State<SyncLogPage> {
                 ],
               ),
             ),
-            // Retry button for errors
+            // Action buttons
             if (syncStatus == SyncStatusEntry.error ||
                 syncStatus == SyncStatusEntry.failed)
               IconButton(
-                icon:
-                    const Icon(Icons.refresh_rounded, color: AppColors.primary),
+                icon: const Icon(Icons.refresh_rounded,
+                    color: AppColors.primary),
                 onPressed: () => _retryEntry(entry),
                 tooltip: 'Retry',
+              ),
+            if (isDeletable)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded,
+                    color: AppColors.error),
+                onPressed: () => _confirmDelete(entry),
+                tooltip: 'Delete',
               ),
           ],
         ),
@@ -358,6 +368,41 @@ class _SyncLogPageState extends State<SyncLogPage> {
     final syncService = sl<SyncService>();
     await syncService.retryErrorItem(entry.id);
     _loadEntries();
+  }
+
+  void _confirmDelete(ProgressEntry entry) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Delete Entry?'),
+        content: Text(
+          'Activity #${entry.activityId} — '
+          '${entry.quantity.toStringAsFixed(1)} units\n\n'
+          'This entry has not been synced. Delete it permanently?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.delete_rounded, size: 18),
+            label: const Text('Delete'),
+            onPressed: () async {
+              Navigator.pop(context);
+              final syncService = sl<SyncService>();
+              await syncService.deleteProgressEntry(entry.id);
+              _loadEntries();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Color _getStatusColor(SyncStatusInfo status) {

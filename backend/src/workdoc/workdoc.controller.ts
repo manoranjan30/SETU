@@ -31,28 +31,28 @@ const ensureDir = (dir: string) => {
 @Controller('workdoc')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class WorkDocController {
-  constructor(private readonly workService: WorkDocService) {}
+  constructor(private readonly workService: WorkDocService) { }
 
   @Get('vendors')
-  @Permissions('EXECUTION.READ') // Adjust permissions later
+  @Permissions('WORKORDER.VENDOR.READ')
   async getVendors(@Query('search') search?: string) {
     return this.workService.getAllVendors(search);
   }
 
   @Get('vendors/code/:code')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.VENDOR.READ')
   async getVendorByCode(@Param('code') code: string) {
     return this.workService.getVendorByCode(code);
   }
 
   @Post('vendors')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.VENDOR.CREATE')
   async createVendor(@Body() data: Partial<Vendor>) {
     return this.workService.createVendor(data);
   }
 
   @Post('vendors/:id/update')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.VENDOR.UPDATE')
   async updateVendor(
     @Param('id', ParseIntPipe) id: number,
     @Body() data: Partial<Vendor>,
@@ -61,19 +61,19 @@ export class WorkDocController {
   }
 
   @Post('vendors/:id/delete')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.VENDOR.DELETE')
   async deleteVendor(@Param('id', ParseIntPipe) id: number) {
     return this.workService.deleteVendor(id);
   }
 
   @Get('vendors/:id/work-orders')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getVendorWorkOrders(@Param('id', ParseIntPipe) id: number) {
     return this.workService.getVendorWorkOrders(id);
   }
 
   @Post(':projectId/analyze')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.ORDER.CREATE')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -117,7 +117,7 @@ export class WorkDocController {
   }
 
   @Post(':projectId/confirm')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.ORDER.CREATE')
   async confirmWorkOrder(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body() data: any,
@@ -126,7 +126,7 @@ export class WorkDocController {
   }
 
   @Post(':projectId/import-excel')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.ORDER.IMPORT')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -169,7 +169,7 @@ export class WorkDocController {
   }
 
   @Post(':projectId/preview-excel')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.ORDER.CREATE')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -193,19 +193,19 @@ export class WorkDocController {
 
   // --- Templates ---
   @Get('templates')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.TEMPLATE.MANAGE')
   async getTemplates() {
     return this.workService.getAllTemplates();
   }
 
   @Post('templates')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.TEMPLATE.MANAGE')
   async createTemplate(@Body() data: any) {
     return this.workService.createTemplate(data);
   }
 
   @Post('templates/:id/update') // Using POST for easier dev bypass if needed, or Patch
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.TEMPLATE.MANAGE')
   async updateTemplate(
     @Param('id', ParseIntPipe) id: number,
     @Body() data: any,
@@ -214,32 +214,32 @@ export class WorkDocController {
   }
 
   @Post('templates/:id/delete')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.TEMPLATE.MANAGE')
   async deleteTemplate(@Param('id', ParseIntPipe) id: number) {
     return this.workService.deleteTemplate(id);
   }
 
   @Get(':projectId/work-orders')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getWorkOrders(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.workService.getProjectWorkOrders(projectId);
   }
 
   @Get('work-orders/:woId')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getWorkOrderDetail(@Param('woId', ParseIntPipe) woId: number) {
     return this.workService.getWorkOrderDetails(woId);
   }
 
   @Post('work-orders/:woId/delete') // Using POST for delete if DELETE method issues, or just Delete
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.ORDER.DELETE')
   async deleteWorkOrder(@Param('woId', ParseIntPipe) woId: number) {
     return this.workService.deleteWorkOrder(woId);
   }
 
   // --- Linkage & Pending Board ---
   @Get(':projectId/linkage-data')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.MAPPING.READ')
   async getLinkageData(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Query('woId') woId?: number,
@@ -248,7 +248,7 @@ export class WorkDocController {
   }
 
   @Post('items/:woItemId/map')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.MAPPING.MANAGE')
   async updateMapping(
     @Param('woItemId', ParseIntPipe) woItemId: number,
     @Body()
@@ -260,7 +260,7 @@ export class WorkDocController {
   // --- Intelligent Mapping Endpoints ---
 
   @Get('mapping/suggestions')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.MAPPING.READ')
   async getMappingSuggestions(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('search') search: string,
@@ -269,7 +269,7 @@ export class WorkDocController {
   }
 
   @Post('mapping/auto')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.MAPPING.MANAGE')
   async autoMapWorkOrder(
     @Body('workOrderId', ParseIntPipe) workOrderId: number,
   ) {
@@ -277,7 +277,7 @@ export class WorkDocController {
   }
 
   @Post('mapping/bulk')
-  @Permissions('EXECUTION.UPDATE')
+  @Permissions('WORKORDER.MAPPING.MANAGE')
   async bulkMapItems(
     @Body('projectId', ParseIntPipe) projectId: number,
     @Body('mappings')
@@ -287,7 +287,7 @@ export class WorkDocController {
   }
 
   @Get(':projectId/pending-vendor-board')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getPendingVendorBoard(
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
@@ -295,7 +295,7 @@ export class WorkDocController {
   }
 
   @Get(':projectId/global-registry')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getGlobalMappingRegistry(
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
@@ -304,7 +304,7 @@ export class WorkDocController {
 
   // --- Execution / Vendor Discovery ---
   @Get('execution/vendors-for-activity')
-  @Permissions('EXECUTION.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getVendorsForActivity(
     @Query('activityId', ParseIntPipe) activityId: number,
   ) {

@@ -107,9 +107,11 @@ let SeedService = SeedService_1 = class SeedService {
             const userPermissions = allPermissions.filter((p) => [
                 'VIEW_DASHBOARD',
                 'VIEW_PROJECTS',
-                'EXECUTION.READ',
-                'PLANNING.READ',
-                'BOQ.READ',
+                'Execution.Entry.Read',
+                'SCHEDULE.READ',
+                'BOQ.Item.Read',
+                'WBS.NODE.READ',
+                'WBS.ACTIVITY.READ',
             ].includes(p.permissionCode));
             userRole = await this.roleRepo.save(this.roleRepo.create({
                 name: 'User',
@@ -122,9 +124,11 @@ let SeedService = SeedService_1 = class SeedService {
             const userPermissions = allPermissions.filter((p) => [
                 'VIEW_DASHBOARD',
                 'VIEW_PROJECTS',
-                'EXECUTION.READ',
-                'PLANNING.READ',
-                'BOQ.READ',
+                'Execution.Entry.Read',
+                'SCHEDULE.READ',
+                'BOQ.Item.Read',
+                'WBS.NODE.READ',
+                'WBS.ACTIVITY.READ',
             ].includes(p.permissionCode));
             userRole.permissions = userPermissions;
             await this.roleRepo.save(userRole);

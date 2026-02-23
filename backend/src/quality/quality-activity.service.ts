@@ -81,7 +81,10 @@ export class QualityActivityService {
       .where('list.projectId = :projectId', { projectId });
 
     if (epsNodeId) {
-      qb.andWhere('list.epsNodeId = :epsNodeId', { epsNodeId });
+      // Show lists linked to this EXACT node OR global lists (epsNodeId is null)
+      qb.andWhere('(list.epsNodeId = :epsNodeId OR list.epsNodeId IS NULL)', {
+        epsNodeId,
+      });
     }
 
     return qb.orderBy('list.createdAt', 'DESC').getMany();

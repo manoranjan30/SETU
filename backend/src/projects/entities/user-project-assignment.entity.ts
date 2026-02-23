@@ -3,6 +3,8 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  ManyToMany,
+  JoinTable,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
@@ -23,7 +25,7 @@ export enum AssignmentStatus {
 }
 
 @Entity('user_project_assignment')
-@Index(['user', 'project', 'status']) // Common query pattern
+@Index(['status'])
 export class UserProjectAssignment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -32,24 +34,19 @@ export class UserProjectAssignment {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column({ name: 'user_id', insert: false, update: false })
-  userId: number;
-
   // The Project Node (Must be Type=PROJECT)
   @ManyToOne(() => EpsNode, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'project_id' })
   project: EpsNode;
 
-  @Column({ name: 'project_id', insert: false, update: false })
-  projectId: number;
-
-  // The Role assigned for this project context
-  @ManyToOne(() => Role)
-  @JoinColumn({ name: 'role_id' })
-  role: Role;
-
-  @Column({ name: 'role_id', insert: false, update: false })
-  roleId: number;
+  // The Roles assigned for this project context
+  @ManyToMany(() => Role)
+  @JoinTable({
+    name: 'user_project_assignment_roles',
+    joinColumn: { name: 'assignment_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' },
+  })
+  roles: Role[];
 
   @Column({
     type: 'enum',
@@ -62,14 +59,6 @@ export class UserProjectAssignment {
   @ManyToOne(() => EpsNode, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'scope_node_id' })
   scopeNode: EpsNode | null;
-
-  @Column({
-    name: 'scope_node_id',
-    nullable: true,
-    insert: false,
-    update: false,
-  })
-  scopeNodeId: number | null;
 
   @Column({
     type: 'enum',

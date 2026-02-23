@@ -89,6 +89,12 @@ import { QualityUnitTemplate } from './quality/entities/quality-unit-template.en
 import { QualityActivityList } from './quality/entities/quality-activity-list.entity';
 import { QualityActivity } from './quality/entities/quality-activity.entity';
 import { QualitySequenceEdge } from './quality/entities/quality-sequence-edge.entity';
+import { QualityChecklistTemplate } from './quality/entities/quality-checklist-template.entity';
+import { QualityStageTemplate } from './quality/entities/quality-stage-template.entity';
+import { QualityChecklistItemTemplate } from './quality/entities/quality-checklist-item-template.entity';
+import { QualityInspectionStage } from './quality/entities/quality-inspection-stage.entity';
+import { QualityExecutionItem } from './quality/entities/quality-execution-item.entity';
+import { QualitySignature } from './quality/entities/quality-signature.entity';
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
@@ -107,6 +113,8 @@ import { MicroScheduleActivity } from './micro-schedule/entities/micro-schedule-
 import { MicroDailyLog } from './micro-schedule/entities/micro-daily-log.entity';
 import { MicroQuantityLedger } from './micro-schedule/entities/micro-quantity-ledger.entity';
 import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
+import { AuditModule } from './audit/audit.module';
+import { AuditLog } from './audit/audit-log.entity';
 
 @Module({
   imports: [
@@ -181,6 +189,12 @@ import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
         QualityActivityList,
         QualityActivity,
         QualitySequenceEdge,
+        QualityChecklistTemplate,
+        QualityStageTemplate,
+        QualityChecklistItemTemplate,
+        QualityInspectionStage,
+        QualityExecutionItem,
+        QualitySignature,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -202,6 +216,7 @@ import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
         DelayReason,
         QuantityProgressRecord,
         UserRoleNodeAssignment,
+        AuditLog,
       ],
       synchronize: true,
     }),
@@ -233,6 +248,7 @@ import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
     WorkDocModule,
     TemplateBuilderModule,
     MicroScheduleModule,
+    AuditModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,
