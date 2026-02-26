@@ -15,10 +15,12 @@ import { QualityInspectionStage } from './quality-inspection-stage.entity';
 
 export enum InspectionStatus {
   PENDING = 'PENDING',
+  PARTIALLY_APPROVED = 'PARTIALLY_APPROVED',
   APPROVED = 'APPROVED',
   PROVISIONALLY_APPROVED = 'PROVISIONALLY_APPROVED',
   REJECTED = 'REJECTED',
   CANCELED = 'CANCELED',
+  REVERSED = 'REVERSED',
 }
 
 @Entity('quality_inspections')

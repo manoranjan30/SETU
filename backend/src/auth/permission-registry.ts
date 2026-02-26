@@ -255,6 +255,8 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     perm('QUALITY.OBSERVATION.CREATE', 'Create Activity Observation', 'QUALITY', C),
     perm('QUALITY.OBSERVATION.RESOLVE', 'Resolve Activity Observation', 'QUALITY', U),
     perm('QUALITY.STRUCTURE.MANAGE', 'Manage Structure Templates', 'QUALITY', S),
+    perm('QUALITY.WORKFLOW.READ', 'View Approval Workflows', 'QUALITY', R),
+    perm('QUALITY.WORKFLOW.WRITE', 'Manage Approval Workflows', 'QUALITY', C),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════

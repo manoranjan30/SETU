@@ -13,11 +13,12 @@ export class QualitySignature {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column()
+    @Column({ type: 'int', nullable: true })
     stageId: number;
 
     @ManyToOne(() => QualityInspectionStage, (s) => s.signatures, {
         onDelete: 'CASCADE',
+        nullable: true,
     })
     @JoinColumn({ name: 'stageId' })
     stage: QualityInspectionStage;

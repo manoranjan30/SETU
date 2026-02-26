@@ -19,6 +19,7 @@ import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import { QualityActivityStatus } from './entities/quality-activity.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
+import { InspectionWorkflowService } from './inspection-workflow.service';
 
 export interface CreateInspectionDto {
   projectId: number;
@@ -27,6 +28,7 @@ export interface CreateInspectionDto {
   activityId: number;
   comments?: string;
   requestDate?: string;
+  signature?: { data: string; role: string; signedBy: string };
 }
 
 export interface UpdateInspectionStatusDto {
@@ -57,6 +59,7 @@ export class QualityInspectionService {
     private readonly sequenceRepo: Repository<QualitySequenceEdge>,
     private readonly complianceService: ComplianceService,
     private readonly auditService: AuditService,
+    private readonly inspectionWorkflowService: InspectionWorkflowService,
   ) { }
 
   async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
@@ -175,6 +178,7 @@ export class QualityInspectionService {
 
       for (const template of templates) {
         if (!template.stages) continue;
+        let isFirstStageForSignature = true;
 
         for (const stageTemplate of template.stages) {
           const stage = this.stageRepo.create({
@@ -185,6 +189,7 @@ export class QualityInspectionService {
           const savedStage = await this.stageRepo.save(stage);
 
           // Initialize items for each stage
+          const items: any[] = [];
           if (stageTemplate.items) {
             for (const itemTemplate of stageTemplate.items) {
               const item = this.executionItemRepo.create({
@@ -192,8 +197,27 @@ export class QualityInspectionService {
                 itemTemplateId: itemTemplate.id,
                 isOk: false,
               });
-              await this.executionItemRepo.save(item);
+              items.push(await this.executionItemRepo.save(item));
             }
+          }
+
+          // If signature provided during RFI creation, save it to the FIRST stage
+          if (dto.signature && isFirstStageForSignature) {
+            const fingerprint = this.complianceService.generateFingerprint({
+              stageId: savedStage.id,
+              items: items,
+              metadata: { timestamp: new Date(), user: dto.signature.signedBy || userId || 'Unknown' }
+            });
+            const signature = this.signatureRepo.create({
+              stageId: savedStage.id,
+              role: dto.signature.role || 'Site Engineer',
+              signedBy: dto.signature.signedBy || userId || 'Unknown',
+              signatureData: dto.signature.data,
+              lockHash: fingerprint,
+              metadata: { timestamp: new Date() }
+            });
+            await this.signatureRepo.save(signature);
+            isFirstStageForSignature = false;
           }
         }
       }
@@ -201,6 +225,14 @@ export class QualityInspectionService {
 
     // 8. Transition Activity to UNDER_INSPECTION once stages are ready
     await this.activityRepo.update(activity.id, { status: QualityActivityStatus.UNDER_INSPECTION });
+
+    // 9. Start Approval Workflow if template exists
+    await this.inspectionWorkflowService.startWorkflowForInspection(
+      savedInspection.id,
+      activity.listId,
+      dto.projectId,
+      userId ? parseInt(userId, 10) : 0
+    );
 
     return this.inspectionRepo.findOne({
       where: { id: savedInspection.id },
@@ -226,14 +258,27 @@ export class QualityInspectionService {
     if (!stage) throw new NotFoundException('Stage not found');
 
     // 1. Update Items
-    if (data.items) {
+    if (data.items && stage.items) {
       for (const itemUpdate of data.items) {
+        const isOkParsed = itemUpdate.isOk === true || String(itemUpdate.isOk) === 'true';
+
+        // Update DB directly
         await this.executionItemRepo.update(itemUpdate.id, {
           value: itemUpdate.value,
-          isOk: itemUpdate.isOk,
+          isOk: isOkParsed,
           remarks: itemUpdate.remarks,
           photos: itemUpdate.photos,
         });
+
+        // Update in-memory item so that subsequent stageRepo.save(stage)
+        // doesn't overwrite DB with stale values due to cascade: true.
+        const memItem = stage.items.find(i => i.id === itemUpdate.id);
+        if (memItem) {
+          memItem.value = itemUpdate.value ?? '';
+          memItem.isOk = isOkParsed;
+          memItem.remarks = itemUpdate.remarks ?? '';
+          memItem.photos = itemUpdate.photos ?? [];
+        }
       }
     }
 
@@ -272,7 +317,31 @@ export class QualityInspectionService {
       await this.signatureRepo.save(signature);
     }
 
-    return this.stageRepo.save(stage);
+    const savedStage = await this.stageRepo.save(stage);
+
+    // 4. Update Parent Inspection Status
+    if (data.status === StageStatus.APPROVED || data.status === StageStatus.COMPLETED) {
+      const parentInspection = await this.inspectionRepo.findOne({
+        where: { id: stage.inspection.id },
+        relations: ['stages']
+      });
+
+      if (parentInspection && parentInspection.stages) {
+        const allCompleted = parentInspection.stages.every(s => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED);
+        const someCompleted = parentInspection.stages.some(s => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED);
+
+        if (allCompleted) {
+          parentInspection.status = InspectionStatus.APPROVED;
+          parentInspection.inspectionDate = new Date().toISOString().split('T')[0];
+          await this.inspectionRepo.save(parentInspection);
+        } else if (someCompleted) {
+          parentInspection.status = InspectionStatus.PARTIALLY_APPROVED;
+          await this.inspectionRepo.save(parentInspection);
+        }
+      }
+    }
+
+    return savedStage;
   }
 
   async updateStatus(
@@ -380,5 +449,27 @@ export class QualityInspectionService {
     }
 
     return { approved: false, activityName: prevActivity.activityName };
+  }
+
+  async deleteInspection(id: number, userId?: string) {
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id },
+    });
+    if (!inspection) throw new NotFoundException('Inspection not found');
+
+    const activityId = inspection.activityId;
+
+    await this.inspectionRepo.remove(inspection);
+
+    const remaining = await this.inspectionRepo.count({ where: { activityId } });
+    if (remaining === 0) {
+      await this.activityRepo.update(activityId, { status: QualityActivityStatus.NOT_STARTED });
+    }
+
+    if (userId) {
+      await this.auditService.log(parseInt(userId, 10), 'QUALITY', 'DELETE_RFI', String(id), inspection.epsNodeId, { activity: activityId });
+    }
+
+    return { success: true };
   }
 }

@@ -29,6 +29,13 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 
+# Fix Windows console encoding for Unicode output
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except:
+    pass
+
 # ANSI colors
 class Colors:
     HEADER = '\033[95m'

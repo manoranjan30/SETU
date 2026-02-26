@@ -43,6 +43,18 @@ import { QualitySequencerController } from './quality-sequencer.controller';
 import { ChecklistTemplateService } from './checklist-template.service';
 import { ChecklistTemplateController } from './checklist-template.controller';
 import { ComplianceService } from './compliance.service';
+import { QualityReportService } from './quality-report.service';
+
+// Workflow Designer
+import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
+import { ApprovalWorkflowNode } from './entities/approval-workflow-node.entity';
+import { ApprovalWorkflowEdge } from './entities/approval-workflow-edge.entity';
+import { InspectionWorkflowRun } from './entities/inspection-workflow-run.entity';
+import { InspectionWorkflowStep } from './entities/inspection-workflow-step.entity';
+
+import { ApprovalWorkflowService } from './approval-workflow.service';
+import { InspectionWorkflowService } from './inspection-workflow.service';
+import { ApprovalWorkflowController } from './approval-workflow.controller';
 
 @Module({
   imports: [
@@ -71,6 +83,12 @@ import { ComplianceService } from './compliance.service';
       QualitySignature,
       ActivityObservation,
       InspectionApproval,
+      // Workflow Designer
+      ApprovalWorkflowTemplate,
+      ApprovalWorkflowNode,
+      ApprovalWorkflowEdge,
+      InspectionWorkflowRun,
+      InspectionWorkflowStep,
     ]),
   ],
   controllers: [
@@ -79,6 +97,7 @@ import { ComplianceService } from './compliance.service';
     QualityInspectionController,
     QualitySequencerController,
     ChecklistTemplateController,
+    ApprovalWorkflowController,
   ],
   providers: [
     QualityService,
@@ -89,6 +108,9 @@ import { ComplianceService } from './compliance.service';
     QualitySequencerService,
     ChecklistTemplateService,
     ComplianceService,
+    QualityReportService,
+    ApprovalWorkflowService,
+    InspectionWorkflowService,
   ],
   exports: [
     QualityService,
@@ -97,6 +119,9 @@ import { ComplianceService } from './compliance.service';
     QualityActivityService,
     QualityInspectionService, // Added
     QualitySequencerService,
+    QualityReportService,
+    ApprovalWorkflowService,
+    InspectionWorkflowService,
   ],
 })
 export class QualityModule { }

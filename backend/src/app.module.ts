@@ -97,6 +97,14 @@ import { QualityExecutionItem } from './quality/entities/quality-execution-item.
 import { QualitySignature } from './quality/entities/quality-signature.entity';
 import { ActivityObservation } from './quality/entities/activity-observation.entity';
 import { InspectionApproval } from './quality/entities/inspection-approval.entity';
+
+// Workflow Designer
+import { ApprovalWorkflowTemplate } from './quality/entities/approval-workflow-template.entity';
+import { ApprovalWorkflowNode } from './quality/entities/approval-workflow-node.entity';
+import { ApprovalWorkflowEdge } from './quality/entities/approval-workflow-edge.entity';
+import { InspectionWorkflowRun } from './quality/entities/inspection-workflow-run.entity';
+import { InspectionWorkflowStep } from './quality/entities/inspection-workflow-step.entity';
+
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
@@ -199,6 +207,12 @@ import { AuditLog } from './audit/audit-log.entity';
         QualitySignature,
         ActivityObservation,
         InspectionApproval,
+        // Workflow Designer
+        ApprovalWorkflowTemplate,
+        ApprovalWorkflowNode,
+        ApprovalWorkflowEdge,
+        InspectionWorkflowRun,
+        InspectionWorkflowStep,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -224,13 +238,15 @@ import { AuditLog } from './audit/audit-log.entity';
       ],
       synchronize: true,
     }),
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'client'),
-    }),
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
-      serveRoot: '/uploads',
-    }),
+    ServeStaticModule.forRoot(
+      {
+        rootPath: join(process.cwd(), 'client'),
+      },
+      {
+        rootPath: join(process.cwd(), 'uploads'),
+        serveRoot: '/uploads',
+      }
+    ),
     UsersModule,
     RolesModule,
     AuthModule,
