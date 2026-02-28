@@ -54,6 +54,11 @@ export const MENU_CONFIG: MenuItem[] = [
                 label: 'System Logs',
                 path: '/dashboard/admin/logs',
                 permission: PermissionCode.AUDIT_READ
+            },
+            {
+                label: 'Vendor Access Templates',
+                path: '/dashboard/admin/vendor-access-templates',
+                permission: PermissionCode.TEMP_ROLE_VIEW
             }
         ]
     },

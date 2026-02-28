@@ -880,7 +880,8 @@ let PlanningService = class PlanningService {
                 activityBoqPairs.push({ activityId, boqItemId, planId });
             }
         }
-        const execMeasMap = new Map();
+        const approvedMeasMap = new Map();
+        const pendingMeasMap = new Map();
         if (activityBoqPairs.length > 0) {
             const uniqueBoqIds = [
                 ...new Set(activityBoqPairs.map((p) => p.boqItemId)),
@@ -909,14 +910,15 @@ let PlanningService = class PlanningService {
                 const extractedPlanId = parts.length >= 6 ? parts[5] : parts.length >= 5 ? parts[4] : null;
                 if (extractedPlanId && extractedPlanId !== 'NOPLAN') {
                     const key = `plan - ${extractedPlanId} `;
-                    const current = execMeasMap.get(key) || 0;
-                    execMeasMap.set(key, current + totalQty);
-                    console.log(`[PlanningService] Per - Plan Execution: ${key} = ${execMeasMap.get(key)} `);
+                    approvedMeasMap.set(key, (approvedMeasMap.get(key) || 0) + approvedQty);
+                    pendingMeasMap.set(key, (pendingMeasMap.get(key) || 0) + pendingQty);
+                    console.log(`[PlanningService] Per-Plan approved=${approvedQty} pending=${pendingQty} key=${key}`);
                 }
                 else {
                     const legacyKey = `${m.activityId || 'null'} -${m.boqItemId} `;
-                    execMeasMap.set(legacyKey, (execMeasMap.get(legacyKey) || 0) + totalQty);
-                    console.log(`[PlanningService] Legacy Execution: ${legacyKey} = ${execMeasMap.get(legacyKey)} `);
+                    approvedMeasMap.set(legacyKey, (approvedMeasMap.get(legacyKey) || 0) + approvedQty);
+                    pendingMeasMap.set(legacyKey, (pendingMeasMap.get(legacyKey) || 0) + pendingQty);
+                    console.log(`[PlanningService] Legacy approved=${approvedQty} pending=${pendingQty} key=${legacyKey}`);
                 }
             }
         }
@@ -988,12 +990,16 @@ let PlanningService = class PlanningService {
                 const planKey = `plan - ${r.plan_id} `;
                 const specificKey = `${activityId} -${validBoqItemId} `;
                 const genericKey = `null - ${validBoqItemId} `;
-                let executedQty = execMeasMap.get(planKey) ||
-                    execMeasMap.get(specificKey) ||
-                    execMeasMap.get(genericKey) ||
+                let approvedQty = approvedMeasMap.get(planKey) ||
+                    approvedMeasMap.get(specificKey) ||
+                    approvedMeasMap.get(genericKey) ||
                     0;
-                if (executedQty === 0) {
-                    executedQty = parseFloat(r.meas_executedQty) || 0;
+                let pendingQty = pendingMeasMap.get(planKey) ||
+                    pendingMeasMap.get(specificKey) ||
+                    pendingMeasMap.get(genericKey) ||
+                    0;
+                if (approvedQty === 0 && pendingQty === 0) {
+                    approvedQty = parseFloat(r.meas_executedQty) || 0;
                 }
                 groupedMap.get(activityId).plans.push({
                     planId: r.plan_id,
@@ -1002,7 +1008,9 @@ let PlanningService = class PlanningService {
                     uom: r.boqItem_uom,
                     plannedQuantity: finalPlannedQty,
                     totalQty: parseFloat(r.boqItem_qty || 0),
-                    consumedQty: executedQty,
+                    consumedQty: approvedQty + pendingQty,
+                    approvedQty,
+                    pendingQty,
                 });
             }
         }

@@ -85,17 +85,36 @@ const WorkflowDesignerPage: React.FC = () => {
         setSelectedNode(null);
     }, []);
 
+    const deleteNode = useCallback((nodeId: string) => {
+        setNodes((nds: Node[]) => nds.filter(n => n.id !== nodeId));
+        setEdges((eds: Edge[]) => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
+        if (selectedNode?.id === nodeId) setSelectedNode(null);
+    }, [setNodes, setEdges, selectedNode]);
+
+    const displayNodes = React.useMemo(() => {
+        const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
+        return nodes.map(n => ({
+            ...n,
+            data: {
+                ...n.data,
+                canDelete: nodes.length > 2 && (n.data.stepOrder as number) === maxOrder,
+                onDelete: deleteNode
+            }
+        }));
+    }, [nodes, deleteNode]);
+
     const addNode = () => {
+        const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
         const newNodeId = `node_${Date.now()}`;
         const newNode: Node = {
             id: newNodeId,
             type: 'approvalNode',
-            position: { x: 250, y: 150 },
+            position: { x: 250, y: 150 + (maxOrder * 80) },
             data: {
-                label: `New Step ${nodes.length + 1}`,
+                label: `New Step ${maxOrder + 1}`,
                 stepType: 'APPROVE',
                 assignmentMode: 'USER',
-                stepOrder: nodes.length + 1,
+                stepOrder: maxOrder + 1,
                 isOptional: false,
                 canDelegate: false,
                 allowRaiseRFI: false,
@@ -193,7 +212,7 @@ const WorkflowDesignerPage: React.FC = () => {
                         <div className="flex h-full items-center justify-center">Loading workflow...</div>
                     ) : (
                         <ReactFlow
-                            nodes={nodes}
+                            nodes={displayNodes}
                             edges={edges}
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}

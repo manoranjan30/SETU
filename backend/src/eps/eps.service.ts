@@ -230,7 +230,13 @@ export class EpsService {
     const qb = this.epsRepository
       .createQueryBuilder('node')
       .orderBy('node.parentId', 'ASC')
-      .addOrderBy('node.order', 'ASC')
+      .addOrderBy('node.order', 'ASC', 'NULLS LAST')
+      // Natural sort: numeric segments sort numerically so "Floor 2" < "Floor 10"
+      .addOrderBy(
+        `CAST(NULLIF(regexp_replace(node.name, '[^0-9]', '', 'g'), '') AS INTEGER)`,
+        'ASC',
+        'NULLS LAST',
+      )
       .addOrderBy('node.name', 'ASC');
 
     if (isAdmin) {

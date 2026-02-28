@@ -7,6 +7,7 @@ import {
     CreateDateColumn,
 } from 'typeorm';
 import { QualityActivity } from './quality-activity.entity';
+import { QualityInspection } from './quality-inspection.entity';
 
 export enum ActivityObservationStatus {
     PENDING = 'PENDING',
@@ -29,6 +30,13 @@ export class ActivityObservation {
 
     @Column({ nullable: true })
     checklistId: number; // Optional context pointer
+
+    @Column({ nullable: true })
+    inspectionId: number; // FK → quality_inspections.id
+
+    @ManyToOne(() => QualityInspection, { onDelete: 'CASCADE', nullable: true })
+    @JoinColumn({ name: 'inspectionId' })
+    inspection: QualityInspection;
 
     @Column({ nullable: true })
     inspectorId: string; // Foreign Key to User (String based on current app pattern)

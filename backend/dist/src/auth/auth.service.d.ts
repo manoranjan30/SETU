@@ -15,6 +15,8 @@ export declare class AuthService {
             roles: any;
             permissions: string[];
             project_ids: number[];
+            isTempUser: any;
+            isFirstLogin: any;
         };
     }>;
 }

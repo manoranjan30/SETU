@@ -22,6 +22,7 @@ const measurement_element_entity_1 = require("../boq/entities/measurement-elemen
 const micro_schedule_activity_entity_1 = require("../micro-schedule/entities/micro-schedule-activity.entity");
 const micro_daily_log_entity_1 = require("../micro-schedule/entities/micro-daily-log.entity");
 const micro_quantity_ledger_entity_1 = require("../micro-schedule/entities/micro-quantity-ledger.entity");
+const eps_entity_1 = require("../eps/eps.entity");
 let ExecutionModule = class ExecutionModule {
 };
 exports.ExecutionModule = ExecutionModule;
@@ -37,6 +38,7 @@ exports.ExecutionModule = ExecutionModule = __decorate([
                 micro_schedule_activity_entity_1.MicroScheduleActivity,
                 micro_daily_log_entity_1.MicroDailyLog,
                 micro_quantity_ledger_entity_1.MicroQuantityLedger,
+                eps_entity_1.EpsNode,
             ]),
             boq_module_1.BoqModule,
         ],

@@ -252,12 +252,23 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     perm('QUALITY.INSPECTION.RAISE', 'Raise Inspection (RFI)', 'QUALITY', C),
     perm('QUALITY.INSPECTION.APPROVE', 'Approve Inspection', 'QUALITY', S),
     perm('QUALITY.INSPECTION.REVERSE', 'Reverse Approved Inspection', 'QUALITY', S),
+    perm('QUALITY.INSPECTION.STAGE_APPROVE', 'Approve Individual Checklist Stage', 'QUALITY', S),
+    perm('QUALITY.INSPECTION.FINAL_APPROVE', 'Give Final Approval to an RFI', 'QUALITY', S),
+    perm('QUALITY.INSPECTION.DELETE', 'Delete Inspection (Admin Only)', 'QUALITY', D),
     perm('QUALITY.ACTIVITY.APPROVE', 'Final Approve Activity (Digital Lock)', 'QUALITY', S),
     perm('QUALITY.OBSERVATION.CREATE', 'Create Activity Observation', 'QUALITY', C),
     perm('QUALITY.OBSERVATION.RESOLVE', 'Resolve Activity Observation', 'QUALITY', U),
+    perm('QUALITY.OBSERVATION.DELETE', 'Delete Activity Observation', 'QUALITY', D),
     perm('QUALITY.STRUCTURE.MANAGE', 'Manage Structure Templates', 'QUALITY', S),
     perm('QUALITY.WORKFLOW.READ', 'View Approval Workflows', 'QUALITY', R),
     perm('QUALITY.WORKFLOW.WRITE', 'Manage Approval Workflows', 'QUALITY', C),
+
+    // Site Observations
+    perm('QUALITY.SITE_OBS.READ', 'View Site Observations', 'QUALITY', R),
+    perm('QUALITY.SITE_OBS.CREATE', 'Raise Site Observation', 'QUALITY', C),
+    perm('QUALITY.SITE_OBS.RECTIFY', 'Submit Rectification for Site Observation', 'QUALITY', U),
+    perm('QUALITY.SITE_OBS.CLOSE', 'Close Site Observation', 'QUALITY', S),
+    perm('QUALITY.SITE_OBS.DELETE', 'Delete Site Observation (Admin)', 'QUALITY', D),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -332,6 +343,26 @@ export const TEMPLATE_PERMISSIONS: PermissionDef[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MODULE 19: TEMP_ROLE (Temporary Roles)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const TEMP_ROLE_PERMISSIONS: PermissionDef[] = [
+    perm('TEMP_ROLE.VIEW', 'View Temp Roles', 'TEMP_ROLE', R),
+    perm('TEMP_ROLE.MANAGE', 'Manage Temp Roles', 'TEMP_ROLE', S),
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODULE 20: TEMP_USER (Temporary Users)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const TEMP_USER_PERMISSIONS: PermissionDef[] = [
+    perm('TEMP_USER.VIEW', 'View Temp Users', 'TEMP_USER', R),
+    perm('TEMP_USER.CREATE', 'Create Temp Users', 'TEMP_USER', C),
+    perm('TEMP_USER.SUSPEND', 'Suspend Temp Users', 'TEMP_USER', S),
+    perm('TEMP_USER.MANAGE', 'Manage All Temp Users', 'TEMP_USER', S),
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ALL PERMISSIONS — Combined Registry
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -355,6 +386,8 @@ export const ALL_MODULE_PERMISSIONS: PermissionDef[][] = [
     DASHBOARD_PERMISSIONS,
     ADMIN_PERMISSIONS,
     TEMPLATE_PERMISSIONS,
+    TEMP_ROLE_PERMISSIONS,
+    TEMP_USER_PERMISSIONS,
 ];
 
 /** Flat array of all permission definitions */

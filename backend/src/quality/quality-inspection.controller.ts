@@ -160,10 +160,64 @@ export class QualityInspectionController {
     );
   }
 
+  @Post(':id/workflow/delegate')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
+  delegateWorkflowStep(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { targetUserId: number; comments: string },
+    @Request() req
+  ) {
+    return this.workflowService.delegateWorkflowStep(
+      id,
+      req.user?.userId || req.user?.id,
+      body.targetUserId,
+      body.comments,
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin')
+    );
+  }
+
   // ==================================
 
+  // ===== STAGE-WISE APPROVAL =====
+
+  @Post(':id/stages/:stageId/approve')
+  @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
+  @Auditable('QUALITY', 'STAGE_APPROVE_RFI', 'id')
+  approveStage(
+    @Param('id', ParseIntPipe) inspectionId: number,
+    @Param('stageId', ParseIntPipe) stageId: number,
+    @Body() body: { signatureData?: string; comments?: string },
+    @Request() req,
+  ) {
+    return this.service.approveStage(
+      inspectionId,
+      stageId,
+      req.user?.userId || req.user?.id,
+      body.signatureData,
+      body.comments,
+    );
+  }
+
+  @Post(':id/final-approve')
+  @Permissions('QUALITY.INSPECTION.FINAL_APPROVE')
+  @Auditable('QUALITY', 'FINAL_APPROVE_RFI', 'id')
+  finalApprove(
+    @Param('id', ParseIntPipe) inspectionId: number,
+    @Body() body: { signatureData?: string; comments?: string },
+    @Request() req,
+  ) {
+    return this.service.finalApprove(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      body.signatureData,
+      body.comments,
+    );
+  }
+
+  // ===== ADMIN DELETE =====
+
   @Delete(':id')
-  @Permissions('ADMIN.Settings.Manage')
+  @Permissions('QUALITY.INSPECTION.DELETE')
   @Auditable('QUALITY', 'DELETE_RFI', 'id')
   deleteInspection(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.service.deleteInspection(id, req.user?.id);

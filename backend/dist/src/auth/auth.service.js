@@ -102,15 +102,23 @@ let AuthService = class AuthService {
             roles: user.roles?.map((r) => r.name),
             permissions: permissions,
             project_ids: assignedProjectIds,
+            isTempUser: user.isTempUser,
+            isFirstLogin: user.isFirstLogin,
         };
+        const tokenOptions = {};
+        if (user.isTempUser) {
+            tokenOptions.expiresIn = '8h';
+        }
         return {
-            access_token: this.jwtService.sign(payload),
+            access_token: this.jwtService.sign(payload, tokenOptions),
             user: {
                 id: user.id,
                 username: user.username,
                 roles: payload.roles,
                 permissions: payload.permissions,
                 project_ids: assignedProjectIds,
+                isTempUser: user.isTempUser,
+                isFirstLogin: user.isFirstLogin,
             },
         };
     }

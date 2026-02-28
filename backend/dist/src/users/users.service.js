@@ -104,6 +104,71 @@ let UsersService = class UsersService {
         }
         return this.usersRepository.save(user);
     }
+    async getProfile(id) {
+        const user = await this.usersRepository.findOne({
+            where: { id },
+            relations: ['roles'],
+        });
+        if (!user)
+            throw new common_1.ForbiddenException('User not found');
+        const { passwordHash, ...safeUser } = user;
+        return safeUser;
+    }
+    async updateProfile(id, updateData) {
+        const user = await this.usersRepository.findOneBy({ id });
+        if (!user) {
+            throw new common_1.NotFoundException(`User with ID ${id} not found`);
+        }
+        Object.assign(user, updateData);
+        return this.usersRepository.save(user);
+    }
+    async changePassword(id, oldPassword, newPassword) {
+        const user = await this.usersRepository.findOneBy({ id });
+        if (!user)
+            throw new common_1.NotFoundException('User not found');
+        if (!user.isFirstLogin && oldPassword) {
+            const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+            if (!isMatch)
+                throw new common_1.BadRequestException('Incorrect current password');
+        }
+        user.passwordHash = await bcrypt.hash(newPassword, 10);
+        user.isFirstLogin = false;
+        return this.usersRepository.save(user);
+    }
+    async getSignature(id) {
+        const user = await this.usersRepository.findOne({ where: { id } });
+        if (!user)
+            throw new common_1.ForbiddenException('User not found');
+        return {
+            signatureData: user.signatureData,
+            signatureImageUrl: user.signatureImageUrl,
+            signatureUpdatedAt: user.signatureUpdatedAt,
+        };
+    }
+    async updateSignature(id, signatureData, signatureImageUrl) {
+        console.log(`[UsersService] Updating signature for UserID: ${id}`);
+        try {
+            const user = await this.usersRepository.findOne({ where: { id } });
+            if (!user) {
+                console.error(`[UsersService] User not found (ID: ${id})`);
+                throw new common_1.ForbiddenException('User not found');
+            }
+            const updateData = {
+                signatureData: signatureData,
+                signatureUpdatedAt: new Date(),
+            };
+            if (signatureImageUrl !== undefined) {
+                updateData.signatureImageUrl = signatureImageUrl;
+            }
+            const updateResult = await this.usersRepository.update(id, updateData);
+            console.log(`[UsersService] Database updated rows: ${updateResult.affected}`);
+            return { success: true };
+        }
+        catch (error) {
+            console.error(`[UsersService] Database error while updating signature:`, error);
+            throw error;
+        }
+    }
     async saveFcmToken(userId, token) {
         await this.usersRepository.update(userId, { fcmToken: token });
     }

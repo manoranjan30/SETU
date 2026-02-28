@@ -190,6 +190,17 @@ export class InspectionWorkflowService {
         } else {
             run.status = WorkflowRunStatus.COMPLETED;
             isFinal = true;
+
+            // Auto-approve the parent inspection
+            const inspection = await this.inspectionRepo.findOne({
+                where: { id: inspectionId }
+            });
+            if (inspection) {
+                inspection.status = 'APPROVED' as any;
+                inspection.inspectionDate = now.toISOString().split('T')[0];
+                inspection.inspectedBy = String(userId);
+                await this.inspectionRepo.save(inspection);
+            }
         }
 
         const savedRun = await this.runRepo.save(run);
@@ -205,6 +216,10 @@ export class InspectionWorkflowService {
         const run = await this.getWorkflowState(inspectionId);
         if (!run) throw new NotFoundException('Workflow run not found');
 
+        if (run.status !== WorkflowRunStatus.IN_PROGRESS) {
+            throw new BadRequestException('Workflow is not in progress');
+        }
+
         const currentStep = run.steps.find(s => s.stepOrder === run.currentStepOrder);
         if (!currentStep) throw new NotFoundException('Current workflow step not found');
 
@@ -212,11 +227,33 @@ export class InspectionWorkflowService {
             throw new ForbiddenException('You are not the assigned user for this approval step');
         }
 
+        // Mark current step as rejected to keep a record
         currentStep.status = WorkflowStepStatus.REJECTED;
-        currentStep.comments = comments || '';
+        currentStep.comments = comments || 'Rejected. Falling back to start.';
         await this.stepRepo.save(currentStep);
 
-        run.status = WorkflowRunStatus.REJECTED;
+        // Fall back to step 1
+        const firstStep = run.steps.find(s => s.stepOrder === 1);
+        if (firstStep) {
+            firstStep.status = WorkflowStepStatus.PENDING;
+            firstStep.comments = `Fell back due to rejection at step ${run.currentStepOrder}: ${comments}`;
+            await this.stepRepo.save(firstStep);
+        }
+
+        // Set run back to step 1 but keep status IN_PROGRESS so it can be re-run
+        run.currentStepOrder = 1;
+
+        // Notify the original raiser
+        const inspection = await this.inspectionRepo.findOne({ where: { id: inspectionId } });
+        if (inspection?.requestedById) {
+            this.pushService.sendToUsers(
+                [inspection.requestedById],
+                'RFI Workflow Rejected ⚠️',
+                `Your RFI #${inspectionId} was rejected and fell back to the first step. Reason: ${comments}`,
+                { inspectionId: String(inspectionId), type: 'REJECTED' },
+            ).catch(() => { /* non-fatal */ });
+        }
+
         return this.runRepo.save(run);
     }
 
@@ -282,6 +319,51 @@ export class InspectionWorkflowService {
         }
 
         return savedRun;
+    }
+
+    async delegateWorkflowStep(
+        inspectionId: number,
+        currentUserId: number,
+        newUserId: number,
+        comments?: string,
+        isAdmin: boolean = false,
+        stepOrder?: number
+    ): Promise<InspectionWorkflowRun> {
+        const run = await this.runRepo.findOne({
+            where: { inspectionId },
+            relations: ['steps'],
+        });
+        if (!run) throw new NotFoundException('Workflow run not found');
+
+        const orderToDelegate = stepOrder !== undefined ? stepOrder : run.currentStepOrder;
+        const targetStep = run.steps.find((s) => s.stepOrder === orderToDelegate);
+
+        if (!targetStep) throw new NotFoundException('Workflow step not found');
+
+        if (!isAdmin && targetStep.assignedUserId !== currentUserId) {
+            throw new ForbiddenException('You can only delegate steps assigned to you.');
+        }
+
+        if (targetStep.status === WorkflowStepStatus.COMPLETED) {
+            throw new BadRequestException('Cannot delegate a completed step.');
+        }
+
+        targetStep.assignedUserId = newUserId;
+        targetStep.comments = comments || `Delegated by ${isAdmin ? 'Admin' : 'User ' + currentUserId}`;
+
+        await this.stepRepo.save(targetStep);
+
+        // Audit log
+        await this.auditService.log(
+            currentUserId,
+            'QUALITY',
+            'DELEGATE_WORKFLOW_STEP',
+            String(inspectionId),
+            0,
+            { stepOrder: orderToDelegate, from: currentUserId, to: newUserId, comments },
+        );
+
+        return (await this.getWorkflowState(inspectionId))!;
     }
 
 }

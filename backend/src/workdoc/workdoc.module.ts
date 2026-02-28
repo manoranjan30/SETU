@@ -10,6 +10,7 @@ import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { WorkDocTemplate } from './entities/work-doc-template.entity';
 import { BoqModule } from '../boq/boq.module';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
 
 import { HttpModule } from '@nestjs/axios';
 
@@ -24,6 +25,7 @@ import { HttpModule } from '@nestjs/axios';
       BoqItem,
       BoqSubItem,
       WorkDocTemplate,
+      TempUser,
     ]),
     forwardRef(() => BoqModule),
   ],
@@ -31,4 +33,4 @@ import { HttpModule } from '@nestjs/axios';
   providers: [WorkDocService],
   exports: [WorkDocService],
 })
-export class WorkDocModule {}
+export class WorkDocModule { }

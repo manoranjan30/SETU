@@ -153,6 +153,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
 
     // Authentication errors
+    if (errorString.contains('temp_expired')) {
+      return 'Temporary vendor access has expired or was revoked.';
+    }
     if (errorString.contains('401') || errorString.contains('unauthorized')) {
       return 'Invalid username or password';
     }

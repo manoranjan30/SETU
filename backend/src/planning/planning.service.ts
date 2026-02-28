@@ -1218,8 +1218,9 @@ export class PlanningService {
     }
 
     // Fetch all Site Execution measurements for these combinations
-    // Key format: "planId" -> executedQty (per-plan tracking)
-    const execMeasMap = new Map<string, number>();
+    // Separate maps for approved and pending quantities
+    const approvedMeasMap = new Map<string, number>();
+    const pendingMeasMap  = new Map<string, number>();
 
     if (activityBoqPairs.length > 0) {
       // Get unique boqItemIds
@@ -1264,22 +1265,20 @@ export class PlanningService {
           parts.length >= 6 ? parts[5] : parts.length >= 5 ? parts[4] : null;
 
         if (extractedPlanId && extractedPlanId !== 'NOPLAN') {
-          // Per-plan tracking key: SITE-EXEC-{boqItemId}-{activityId}-{epsNodeId}-{planId}
+          // Per-plan tracking key: plan - {planId}
           const key = `plan - ${extractedPlanId} `;
-          const current = execMeasMap.get(key) || 0;
-          execMeasMap.set(key, current + totalQty);
+          approvedMeasMap.set(key, (approvedMeasMap.get(key) || 0) + approvedQty);
+          pendingMeasMap.set(key,  (pendingMeasMap.get(key)  || 0) + pendingQty);
           console.log(
-            `[PlanningService] Per - Plan Execution: ${key} = ${execMeasMap.get(key)} `,
+            `[PlanningService] Per-Plan approved=${approvedQty} pending=${pendingQty} key=${key}`,
           );
         } else {
           // Fallback to legacy key format: "activityId-boqItemId"
           const legacyKey = `${m.activityId || 'null'} -${m.boqItemId} `;
-          execMeasMap.set(
-            legacyKey,
-            (execMeasMap.get(legacyKey) || 0) + totalQty,
-          );
+          approvedMeasMap.set(legacyKey, (approvedMeasMap.get(legacyKey) || 0) + approvedQty);
+          pendingMeasMap.set(legacyKey,  (pendingMeasMap.get(legacyKey)  || 0) + pendingQty);
           console.log(
-            `[PlanningService] Legacy Execution: ${legacyKey} = ${execMeasMap.get(legacyKey)} `,
+            `[PlanningService] Legacy approved=${approvedQty} pending=${pendingQty} key=${legacyKey}`,
           );
         }
       }
@@ -1378,19 +1377,26 @@ export class PlanningService {
             parseFloat(r.meas_qty) || parseFloat(r.subItem_qty) || 0;
         }
 
-        // Lookup executed qty from map: try plan-specific first, then activity+boq, then generic
-        const planKey = `plan - ${r.plan_id} `;
+        // Lookup approved + pending qty from maps: try plan-specific first, then fallbacks
+        const planKey     = `plan - ${r.plan_id} `;
         const specificKey = `${activityId} -${validBoqItemId} `;
-        const genericKey = `null - ${validBoqItemId} `;
-        let executedQty =
-          execMeasMap.get(planKey) ||
-          execMeasMap.get(specificKey) ||
-          execMeasMap.get(genericKey) ||
+        const genericKey  = `null - ${validBoqItemId} `;
+
+        let approvedQty =
+          approvedMeasMap.get(planKey) ||
+          approvedMeasMap.get(specificKey) ||
+          approvedMeasMap.get(genericKey) ||
           0;
 
-        // Fallback to plan's measurement (distribution)
-        if (executedQty === 0) {
-          executedQty = parseFloat(r.meas_executedQty) || 0;
+        let pendingQty =
+          pendingMeasMap.get(planKey) ||
+          pendingMeasMap.get(specificKey) ||
+          pendingMeasMap.get(genericKey) ||
+          0;
+
+        // Fallback to plan's measurement (distribution) when no site execution exists
+        if (approvedQty === 0 && pendingQty === 0) {
+          approvedQty = parseFloat(r.meas_executedQty) || 0;
         }
 
         groupedMap.get(activityId).plans.push({
@@ -1400,7 +1406,9 @@ export class PlanningService {
           uom: r.boqItem_uom,
           plannedQuantity: finalPlannedQty,
           totalQty: parseFloat(r.boqItem_qty || 0),
-          consumedQty: executedQty,
+          consumedQty:  approvedQty + pendingQty, // backward compat (total submitted)
+          approvedQty,                             // approved by manager
+          pendingQty,                              // submitted, awaiting approval
         });
       }
     }

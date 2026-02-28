@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { MENU_CONFIG, type MenuItem } from '../../config/menu';
-import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, Clipboard } from 'lucide-react';
+import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, Clipboard, User } from 'lucide-react';
 
 const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?: number; isCollapsed: boolean }) => {
     const location = useLocation();
@@ -260,7 +260,15 @@ const Sidebar = () => {
                 )}
             </nav>
 
-            <div className={`p-4 border-t bg-gray-50 ${isCollapsed ? 'flex justify-center' : ''}`}>
+            <div className={`p-4 border-t bg-gray-50 flex flex-col gap-2 ${isCollapsed ? 'items-center' : ''}`}>
+                <Link
+                    to="/dashboard/profile"
+                    className={`flex items-center text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors ${isCollapsed ? 'p-2' : 'w-full px-4 py-2'}`}
+                    title={isCollapsed ? "My Profile" : ""}
+                >
+                    <User className={`w-4 h-4 ${isCollapsed ? '' : 'mr-3'} text-gray-500`} />
+                    {!isCollapsed && <span>My Profile</span>}
+                </Link>
                 <button
                     onClick={logout}
                     className={`flex items-center text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors ${isCollapsed ? 'p-2' : 'w-full px-4 py-2'}`}

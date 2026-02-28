@@ -97,6 +97,7 @@ import { QualityExecutionItem } from './quality/entities/quality-execution-item.
 import { QualitySignature } from './quality/entities/quality-signature.entity';
 import { ActivityObservation } from './quality/entities/activity-observation.entity';
 import { InspectionApproval } from './quality/entities/inspection-approval.entity';
+import { SiteObservation } from './quality/entities/site-observation.entity';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './quality/entities/approval-workflow-template.entity';
@@ -125,6 +126,10 @@ import { MicroQuantityLedger } from './micro-schedule/entities/micro-quantity-le
 import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
 import { AuditModule } from './audit/audit.module';
 import { AuditLog } from './audit/audit-log.entity';
+
+import { TempUserModule } from './temp-user/temp-user.module';
+import { TempRoleTemplate } from './temp-user/entities/temp-role-template.entity';
+import { TempUser } from './temp-user/entities/temp-user.entity';
 
 @Module({
   imports: [
@@ -207,6 +212,7 @@ import { AuditLog } from './audit/audit-log.entity';
         QualitySignature,
         ActivityObservation,
         InspectionApproval,
+        SiteObservation,
         // Workflow Designer
         ApprovalWorkflowTemplate,
         ApprovalWorkflowNode,
@@ -235,6 +241,8 @@ import { AuditLog } from './audit/audit-log.entity';
         QuantityProgressRecord,
         UserRoleNodeAssignment,
         AuditLog,
+        TempRoleTemplate,
+        TempUser,
       ],
       synchronize: true,
     }),
@@ -269,6 +277,7 @@ import { AuditLog } from './audit/audit-log.entity';
     TemplateBuilderModule,
     MicroScheduleModule,
     AuditModule,
+    TempUserModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

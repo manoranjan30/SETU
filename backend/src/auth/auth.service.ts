@@ -71,20 +71,28 @@ export class AuthService {
     const payload = {
       username: user.username,
       sub: user.id,
-      roles: user.roles?.map((r) => r.name),
+      roles: user.roles?.map((r: any) => r.name),
       permissions: permissions,
       project_ids: assignedProjectIds,
+      isTempUser: user.isTempUser,
+      isFirstLogin: user.isFirstLogin,
     };
 
+    const tokenOptions: any = {};
+    if (user.isTempUser) {
+      tokenOptions.expiresIn = '8h';
+    }
+
     return {
-      access_token: this.jwtService.sign(payload),
-      // We can also return user data here if needed by frontend directly
+      access_token: this.jwtService.sign(payload, tokenOptions),
       user: {
         id: user.id,
         username: user.username,
         roles: payload.roles,
         permissions: payload.permissions,
         project_ids: assignedProjectIds,
+        isTempUser: user.isTempUser,
+        isFirstLogin: user.isFirstLogin,
       },
     };
   }

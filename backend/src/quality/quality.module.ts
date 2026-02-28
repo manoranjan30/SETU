@@ -35,6 +35,11 @@ import { QualityInspectionController } from './quality-inspection.controller';
 import { ActivityObservation } from './entities/activity-observation.entity';
 import { InspectionApproval } from './entities/inspection-approval.entity';
 
+// Site Observations
+import { SiteObservation } from './entities/site-observation.entity';
+import { SiteObservationService } from './site-observation.service';
+import { SiteObservationController } from './site-observation.controller';
+
 // Sequencer
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import { QualitySequencerService } from './quality-sequencer.service';
@@ -88,6 +93,7 @@ import { AuditModule } from '../audit/audit.module';
       QualitySignature,
       ActivityObservation,
       InspectionApproval,
+      SiteObservation,
       // Workflow Designer
       ApprovalWorkflowTemplate,
       ApprovalWorkflowNode,
@@ -104,6 +110,7 @@ import { AuditModule } from '../audit/audit.module';
     QualitySequencerController,
     ChecklistTemplateController,
     ApprovalWorkflowController,
+    SiteObservationController,
   ],
   providers: [
     QualityService,
@@ -117,6 +124,7 @@ import { AuditModule } from '../audit/audit.module';
     QualityReportService,
     ApprovalWorkflowService,
     InspectionWorkflowService,
+    SiteObservationService,
   ],
   exports: [
     QualityService,
@@ -128,6 +136,7 @@ import { AuditModule } from '../audit/audit.module';
     QualityReportService,
     ApprovalWorkflowService,
     InspectionWorkflowService,
+    SiteObservationService,
   ],
 })
 export class QualityModule { }

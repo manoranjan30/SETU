@@ -9,6 +9,11 @@ export declare class UsersService {
     findById(id: number): Promise<User | null>;
     findAll(): Promise<User[]>;
     update(id: number, updateUserDto: any): Promise<User | null>;
+    getProfile(id: number): Promise<any>;
+    updateProfile(id: number, updateData: Partial<User>): Promise<User>;
+    changePassword(id: number, oldPassword: string, newPassword: string): Promise<User>;
+    getSignature(id: number): Promise<any>;
+    updateSignature(id: number, signatureData: string, signatureImageUrl?: string): Promise<any>;
     saveFcmToken(userId: number, token: string): Promise<void>;
     remove(id: number): Promise<void>;
 }

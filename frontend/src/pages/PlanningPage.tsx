@@ -11,8 +11,9 @@ import { Construction, CheckSquare } from 'lucide-react'; // Split unused
 import WorkDocManager from '../components/workdoc/WorkDocManager';
 import LookAheadView from '../components/planning/LookAheadView';
 import MicroSchedulePage from './micro-schedule/MicroSchedulePage';
+import { VendorUserManagementPage } from './planning/VendorUserManagementPage';
 
-const PlanningPage: React.FC = () => {
+const PlanningPage = () => {
     const { projectId } = useParams();
     const pId = parseInt(projectId || '0');
     // projectId is available via useParams in child components if needed, or we can pass it down.
@@ -43,6 +44,8 @@ const PlanningPage: React.FC = () => {
                 return <LookAheadView />;
             case 'micro_schedule':
                 return <MicroSchedulePage />;
+            case 'temp_users':
+                return <VendorUserManagementPage />;
             case 'recovery':
                 return (
                     <div className="flex flex-col items-center justify-center h-64 text-gray-500">

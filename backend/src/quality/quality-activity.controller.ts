@@ -165,6 +165,15 @@ export class QualityActivityController {
     return this.service.closeObservation(id, obsId, req.user?.id?.toString() || 'system');
   }
 
+  @Delete('activities/:id/observation/:obsId')
+  @Permissions('QUALITY.OBSERVATION.DELETE')
+  deleteObservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('obsId') obsId: string,
+  ) {
+    return this.service.deleteObservation(id, obsId);
+  }
+
   // ── Approval ───────────────────────────────────────────────────────────
 
   @Post('activities/:id/approve')

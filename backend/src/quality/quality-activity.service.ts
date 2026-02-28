@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, Not } from 'typeorm';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityActivity, QualityActivityStatus } from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
@@ -287,8 +287,35 @@ export class QualityActivityService {
     obs.status = ActivityObservationStatus.CLOSED;
     const saved = await this.obsRepo.save(obs);
 
-    // Again check if all pending are clear...
+    // Check if any more non-closed observations exist for this activity
+    const remainingCount = await this.obsRepo.count({
+      where: { activityId: id, status: Not(ActivityObservationStatus.CLOSED) } as any,
+    });
+
+    if (remainingCount === 0) {
+      await this.activityRepo.update(id, { status: QualityActivityStatus.UNDER_INSPECTION });
+    }
+
     return saved;
+  }
+
+  async deleteObservation(activityId: number, obsId: string): Promise<void> {
+    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId } });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    await this.obsRepo.remove(obs);
+
+    // Re-check status: if no more pending obs, move back to UNDER_INSPECTION
+    const pendingCount = await this.obsRepo.count({
+      where: { activityId, status: ActivityObservationStatus.PENDING },
+    });
+
+    if (pendingCount === 0) {
+      const activity = await this.activityRepo.findOne({ where: { id: activityId } });
+      if (activity && activity.status === QualityActivityStatus.PENDING_OBSERVATION) {
+        await this.activityRepo.update(activityId, { status: QualityActivityStatus.UNDER_INSPECTION });
+      }
+    }
   }
 
   // ── Approval ───────────────────────────────────────────────────────────

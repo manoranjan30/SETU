@@ -126,7 +126,11 @@ class ActivityPlan extends Equatable {
   final String description;
   final String? uom;
   final double plannedQuantity;
-  /// Total executed quantity so far (all approved measurements).
+  /// Approved quantity — confirmed by manager, counts toward progress.
+  final double approvedQty;
+  /// Pending quantity — submitted but awaiting manager approval.
+  final double pendingQty;
+  /// Total submitted (approved + pending). Kept for backward compat.
   final double consumedQty;
 
   const ActivityPlan({
@@ -135,6 +139,8 @@ class ActivityPlan extends Equatable {
     required this.description,
     this.uom,
     required this.plannedQuantity,
+    required this.approvedQty,
+    required this.pendingQty,
     required this.consumedQty,
   });
 
@@ -146,16 +152,24 @@ class ActivityPlan extends Equatable {
       return 0;
     }
 
+    final approved = toDouble(json['approvedQty'] ?? json['approved_qty']);
+    final pending  = toDouble(json['pendingQty']  ?? json['pending_qty']);
+    // consumedQty from server already = approved + pending; fall back if old backend
+    final consumed = toDouble(
+      json['consumedQty'] ?? json['consumed_qty'] ??
+      json['totalQty']   ?? json['total_qty'],
+    );
+
     return ActivityPlan(
       planId: json['planId'] as int? ?? json['plan_id'] as int? ?? 0,
       boqItemId: json['boqItemId'] as int? ?? json['boq_item_id'] as int? ?? 0,
       description: json['description'] as String? ?? '',
       uom: json['uom'] as String? ?? json['unit'] as String?,
       plannedQuantity: toDouble(json['plannedQuantity'] ?? json['planned_quantity']),
-      consumedQty: toDouble(
-        json['consumedQty'] ?? json['consumed_qty'] ??
-        json['totalQty'] ?? json['total_qty'],
-      ),
+      approvedQty: approved,
+      pendingQty:  pending,
+      // If backend sends separate fields use sum, else fall back to consumedQty
+      consumedQty: (approved + pending > 0) ? approved + pending : consumed,
     );
   }
 
@@ -165,15 +179,20 @@ class ActivityPlan extends Equatable {
         'description': description,
         'uom': uom,
         'plannedQuantity': plannedQuantity,
+        'approvedQty': approvedQty,
+        'pendingQty': pendingQty,
         'consumedQty': consumedQty,
       };
 
-  /// Remaining quantity available for entry (clamped to ≥ 0).
-  double get balance => (plannedQuantity - consumedQty).clamp(0, double.infinity);
+  /// Maximum quantity the user can enter now (clamped to ≥ 0).
+  /// = planned − approved − pending  (pending already locks in that quantity)
+  double get balance =>
+      (plannedQuantity - approvedQty - pendingQty).clamp(0, double.infinity);
 
   @override
   List<Object?> get props =>
-      [planId, boqItemId, description, uom, plannedQuantity, consumedQty];
+      [planId, boqItemId, description, uom, plannedQuantity,
+       approvedQty, pendingQty, consumedQty];
 }
 
 /// Activity model for project activities

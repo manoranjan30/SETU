@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, In } from 'typeorm';
 import { MicroScheduleActivity } from '../micro-schedule/entities/micro-schedule-activity.entity';
 import { MicroDailyLog } from '../micro-schedule/entities/micro-daily-log.entity';
 import { MicroQuantityLedger } from '../micro-schedule/entities/micro-quantity-ledger.entity';
@@ -8,6 +8,7 @@ import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { Activity } from '../wbs/entities/activity.entity';
+import { EpsNode } from '../eps/eps.entity';
 
 export interface ExecutionBreakdownItem {
   type: 'MICRO' | 'BALANCE';
@@ -52,7 +53,31 @@ export class ExecutionBreakdownService {
     private readonly activityRepo: Repository<Activity>,
     @InjectRepository(BoqItem)
     private readonly boqRepo: Repository<BoqItem>,
+    @InjectRepository(EpsNode)
+    private readonly epsNodeRepo: Repository<EpsNode>,
   ) { }
+
+  /**
+   * Returns the given EPS node ID plus all descendant node IDs.
+   * Allows the breakdown to find micro activities created at any sub-node
+   * (e.g., unit level) when the caller is navigating at a parent level
+   * (e.g., floor level).
+   */
+  private async getNodeAndDescendantIds(epsNodeId: number): Promise<number[]> {
+    const all = await this.epsNodeRepo.find({ select: ['id', 'parentId'] });
+    const ids: number[] = [epsNodeId];
+    const queue = [epsNodeId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const node of all) {
+        if (node.parentId === current) {
+          ids.push(node.id);
+          queue.push(node.id);
+        }
+      }
+    }
+    return ids;
+  }
 
   /**
    * Get unified execution breakdown for an activity at a specific location
@@ -92,22 +117,27 @@ export class ExecutionBreakdownService {
       };
     }
 
-    // 3. Build Breakdown for each BOQ Item
+    // 3. Resolve EPS node IDs: include the given node AND all its descendants.
+    // This handles the case where micro activities are defined at a child node
+    // (e.g., unit level) while the caller is browsing at a parent level (floor).
+    const nodeIds = await this.getNodeAndDescendantIds(epsNodeId);
+
+    // 4. Build Breakdown for each BOQ Item
     const boqBreakdown = await Promise.all(
       ledgers.map(async (ledger) => {
-        // 3a. Fetch Micro Activities for this BOQ Item
+        // 4a. Fetch Micro Activities for this BOQ Item across the node subtree
         const microActivities = await this.microActivityRepo.find({
           where: {
             microSchedule: {
               parentActivityId: activityId,
             },
-            epsNodeId: epsNodeId,
+            epsNodeId: In(nodeIds),
             boqItemId: ledger.boqItemId,
           },
           relations: ['microSchedule'],
         });
 
-        // 3b. Calculate executed quantities
+        // 4b. Calculate executed quantities
         const items: ExecutionBreakdownItem[] = [];
 
         for (const ma of microActivities) {
@@ -141,7 +171,7 @@ export class ExecutionBreakdownService {
           });
         }
 
-        // 3c. Calculate Direct Execution (Balance)
+        // 4c. Calculate Direct Execution (Balance)
         const directExecutedQty = await this.getDirectExecutionQty(
           activityId,
           ledger.boqItemId,

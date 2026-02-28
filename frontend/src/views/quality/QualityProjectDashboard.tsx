@@ -4,7 +4,7 @@ import {
     LayoutDashboard,
     ClipboardCheck,
     FlaskConical,
-    AlertCircle,
+    Eye,
     CheckSquare,
     Hammer,
     ShieldCheck,
@@ -15,7 +15,7 @@ import api from '../../api/axios';
 import QualityOverview from './subviews/QualityOverview';
 import QualityInspection from './subviews/QualityInspection';
 import QualityMaterialTest from './subviews/QualityMaterialTest';
-import QualityObservationNcr from './subviews/QualityObservationNcr';
+import SiteObservationPanel from './subviews/SiteObservationPanel';
 import QualityChecklist from './subviews/QualityChecklist';
 import QualitySnagList from './subviews/QualitySnagList';
 import QualityAudit from './subviews/QualityAudit';
@@ -47,7 +47,7 @@ const QualityProjectDashboard = () => {
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'inspections', label: 'Inspections', icon: ClipboardCheck },
         { id: 'materials', label: 'Materials', icon: FlaskConical },
-        { id: 'observation-ncr', label: 'Observations & NCR', icon: AlertCircle },
+        { id: 'observation-ncr', label: 'Site Observations', icon: Eye },
         { id: 'checklists', label: 'Checklists', icon: CheckSquare },
         { id: 'snags', label: 'Snag List', icon: Hammer },
         { id: 'structure', label: 'Structure', icon: LayoutDashboard },
@@ -61,7 +61,7 @@ const QualityProjectDashboard = () => {
             case 'overview': return <QualityOverview projectId={numericProjectId} />;
             case 'inspections': return <QualityInspection projectId={numericProjectId} />;
             case 'materials': return <QualityMaterialTest projectId={numericProjectId} />;
-            case 'observation-ncr': return <QualityObservationNcr projectId={numericProjectId} />;
+            case 'observation-ncr': return <SiteObservationPanel projectId={numericProjectId} />;
             case 'checklists': return <QualityChecklist projectId={numericProjectId} />;
             case 'snags': return <QualitySnagList projectId={numericProjectId} />;
             case 'structure': return <QualityStructureManager projectId={numericProjectId} />;

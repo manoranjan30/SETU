@@ -10,6 +10,8 @@ export declare class AuthController {
             roles: any;
             permissions: string[];
             project_ids: number[];
+            isTempUser: any;
+            isFirstLogin: any;
         };
     }>;
     getProfile(req: any): any;

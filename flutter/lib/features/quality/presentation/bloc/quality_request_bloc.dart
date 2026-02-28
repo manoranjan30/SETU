@@ -475,7 +475,12 @@ class QualityRequestBloc
       final syncResult = await _syncService.syncAll();
       final pending = await _syncService.getPendingSyncCount();
 
+      // 4. Show the success / queued toast
       emit(RfiQueued(isOffline: !syncResult.success, pendingSyncCount: pending));
+
+      // 5. Immediately reload the activity list so the UI shows the updated
+      //    status and stops showing the spinner.
+      add(const RefreshCurrentList());
     } catch (e) {
       emit(QualityRequestError(_friendly(e)));
     }

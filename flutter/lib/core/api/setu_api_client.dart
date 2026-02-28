@@ -195,8 +195,10 @@ class SetuApiClient {
     return response.data;
   }
 
-  /// Save micro progress
-  Future<Map<String, dynamic>> saveMicroProgress({
+  /// Save micro progress.
+  /// Returns dynamic because the backend returns a List (array of saved records),
+  /// not a Map. The caller doesn't use the return value.
+  Future<dynamic> saveMicroProgress({
     required int projectId,
     required int activityId,
     required int epsNodeId,
@@ -623,6 +625,9 @@ class _ErrorInterceptor extends Interceptor {
           case 400:
             return ApiException.badRequest(message);
           case 401:
+            if (message == 'TEMP_EXPIRED') {
+              return const ApiException.unauthorized('TEMP_EXPIRED');
+            }
             return const ApiException.unauthorized();
           case 403:
             return const ApiException.forbidden();

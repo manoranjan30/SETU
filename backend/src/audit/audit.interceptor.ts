@@ -223,6 +223,7 @@ export class AuditInterceptor implements NestInterceptor {
             delete sanitised.passwordHash;
             delete sanitised.token;
             delete sanitised.secret;
+            delete sanitised.signatureData; // HUGE payload, exclude from audit log snapshot
 
             // Only include body for create/update actions (POST/PATCH/PUT)
             if (['POST', 'PATCH', 'PUT'].includes(method)) {

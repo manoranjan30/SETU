@@ -36,6 +36,9 @@ import SystemLogs from './views/admin/SystemLogs';
 import VendorMappingPage from './pages/VendorMappingPage';
 import ApprovalsPage from './pages/execution/ApprovalsPage';
 import WorkflowDesignerPage from './views/quality/workflow/WorkflowDesignerPage';
+import UserProfilePage from './pages/UserProfilePage';
+import { VendorAccessTemplatesPage } from './pages/admin/VendorAccessTemplatesPage';
+import { VendorUserManagementPage } from './pages/planning/VendorUserManagementPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -100,9 +103,19 @@ const AppRoutes = () => {
             <TemplateBuilder />
           </ProtectedRoute>
         } />
+        <Route path="admin/vendor-access-templates" element={
+          <ProtectedRoute permission="TEMP_ROLE.VIEW">
+            <VendorAccessTemplatesPage />
+          </ProtectedRoute>
+        } />
         <Route path="admin/logs" element={
           <ProtectedRoute permission="AUDIT.READ">
             <SystemLogs />
+          </ProtectedRoute>
+        } />
+        <Route path="profile" element={
+          <ProtectedRoute>
+            <UserProfilePage />
           </ProtectedRoute>
         } />
         <Route path="calendars/new" element={
@@ -148,6 +161,11 @@ const AppRoutes = () => {
         <Route path="projects/:projectId/planning" element={
           <ProtectedRoute permission="SCHEDULE.READ">
             <PlanningPage />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/planning/temp-users" element={
+          <ProtectedRoute permission="TEMP_USER.VIEW">
+            <VendorUserManagementPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/planning/compare" element={
