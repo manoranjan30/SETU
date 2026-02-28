@@ -7,5 +7,8 @@ export declare class UsersController {
     findAll(): Promise<import("./user.entity").User[]>;
     findOne(id: string): Promise<import("./user.entity").User | null>;
     update(id: string, updateUserDto: any): Promise<import("./user.entity").User | null>;
+    saveFcmToken(req: any, body: {
+        token: string;
+    }): Promise<void>;
     remove(id: string): Promise<void>;
 }

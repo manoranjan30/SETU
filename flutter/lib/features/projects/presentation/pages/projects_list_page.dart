@@ -5,10 +5,9 @@ import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
-import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
+import 'package:setu_mobile/features/projects/presentation/pages/module_selection_page.dart';
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart';
 import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart';
-import 'package:setu_mobile/injection_container.dart';
 import 'package:shimmer/shimmer.dart';
 
 class ProjectsListPage extends StatefulWidget {
@@ -180,7 +179,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       ),
       child: InkWell(
         onTap: () {
-          _navigateToEpsExplorer(project);
+          _navigateToModuleSelection(project);
         },
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
         child: Padding(
@@ -437,14 +436,11 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
-  void _navigateToEpsExplorer(Project project) {
+  void _navigateToModuleSelection(Project project) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => BlocProvider(
-          create: (context) => sl<ProjectBloc>(),
-          child: EpsExplorerPage(project: project),
-        ),
+        builder: (_) => ModuleSelectionPage(project: project),
       ),
     );
   }
@@ -479,3 +475,4 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 }
+

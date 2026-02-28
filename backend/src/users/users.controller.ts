@@ -7,6 +7,7 @@ import {
   Delete,
   Put,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -40,6 +41,11 @@ export class UsersController {
   @Roles('Admin')
   update(@Param('id') id: string, @Body() updateUserDto: any) {
     return this.usersService.update(+id, updateUserDto);
+  }
+
+  @Post('fcm-token')
+  saveFcmToken(@Request() req, @Body() body: { token: string }) {
+    return this.usersService.saveFcmToken(+req.user.id, body.token);
   }
 
   @Delete(':id')

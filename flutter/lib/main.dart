@@ -1,4 +1,5 @@
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -8,11 +9,14 @@ import 'package:setu_mobile/core/auth/auth_service.dart';
 import 'package:setu_mobile/core/auth/token_manager.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/network/network_info.dart';
+import 'package:setu_mobile/core/notifications/notification_service.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/core/sync/connectivity_sync_service.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/app.dart';
 
@@ -24,6 +28,9 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Initialize Firebase (reads google-services.json locally — fast)
+  await Firebase.initializeApp();
 
   // Initialize Hive for local storage
   await Hive.initFlutter();
@@ -57,6 +64,12 @@ void main() async {
   );
 
   runApp(const SETUMobileApp());
+
+  // Initialize notification service AFTER app is shown (non-blocking).
+  // This prevents the permission dialog from blocking the splash screen.
+  NotificationService().init().catchError(
+    (e) => debugPrint('Notification init error: $e'),
+  );
 }
 
 /// Initialize all dependencies using GetIt
@@ -72,6 +85,7 @@ void initDependencies({
   // Core services
   sl.registerSingleton<AppDatabase>(database);
   sl.registerSingleton<SetuApiClient>(apiClient);
+  sl.registerSingleton<NotificationService>(NotificationService());
   sl.registerSingleton<AuthService>(authService);
   sl.registerSingleton<TokenManager>(tokenManager);
   sl.registerSingleton<NetworkInfo>(networkInfo);
@@ -83,6 +97,15 @@ void initDependencies({
   sl.registerFactory(() => ProjectBloc(apiClient: sl(), database: sl()));
   sl.registerFactory(() => ProgressBloc(
         database: sl(),
+        syncService: sl(),
+      ));
+  sl.registerFactory(() => QualityRequestBloc(
+        apiClient: sl(),
+        database: sl(),
+        syncService: sl(),
+      ));
+  sl.registerFactory(() => QualityApprovalBloc(
+        apiClient: sl(),
         syncService: sl(),
       ));
 }

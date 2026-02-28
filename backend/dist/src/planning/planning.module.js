@@ -18,6 +18,7 @@ const activity_entity_1 = require("../wbs/entities/activity.entity");
 const quantity_progress_record_entity_1 = require("./entities/quantity-progress-record.entity");
 const boq_sub_item_entity_1 = require("../boq/entities/boq-sub-item.entity");
 const measurement_element_entity_1 = require("../boq/entities/measurement-element.entity");
+const measurement_progress_entity_1 = require("../boq/entities/measurement-progress.entity");
 const eps_entity_1 = require("../eps/eps.entity");
 const wbs_entity_1 = require("../wbs/entities/wbs.entity");
 const schedule_version_entity_1 = require("./entities/schedule-version.entity");
@@ -42,6 +43,7 @@ exports.PlanningModule = PlanningModule = __decorate([
                 activity_relationship_entity_1.ActivityRelationship,
                 boq_sub_item_entity_1.BoqSubItem,
                 measurement_element_entity_1.MeasurementElement,
+                measurement_progress_entity_1.MeasurementProgress,
                 wbs_entity_1.WbsNode,
                 eps_entity_1.EpsNode,
                 schedule_version_entity_1.ScheduleVersion,

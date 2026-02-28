@@ -9,5 +9,22 @@ export default defineConfig({
   },
   server: {
     allowedHosts: true
-  }
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('ag-grid')) return 'vendor-aggrid';
+            if (id.includes('pdfjs-dist') || id.includes('react-pdf')) return 'vendor-pdf';
+            if (id.includes('lucide-react')) return 'vendor-lucide';
+            if (id.includes('recharts')) return 'vendor-recharts';
+            if (id.includes('three')) return 'vendor-three';
+            return 'vendor';
+          }
+        },
+      },
+    },
+  },
 })

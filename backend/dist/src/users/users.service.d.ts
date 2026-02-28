@@ -9,5 +9,6 @@ export declare class UsersService {
     findById(id: number): Promise<User | null>;
     findAll(): Promise<User[]>;
     update(id: number, updateUserDto: any): Promise<User | null>;
+    saveFcmToken(userId: number, token: string): Promise<void>;
     remove(id: number): Promise<void>;
 }

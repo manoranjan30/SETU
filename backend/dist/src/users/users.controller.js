@@ -36,6 +36,9 @@ let UsersController = class UsersController {
     update(id, updateUserDto) {
         return this.usersService.update(+id, updateUserDto);
     }
+    saveFcmToken(req, body) {
+        return this.usersService.saveFcmToken(+req.user.id, body.token);
+    }
     remove(id) {
         return this.usersService.remove(+id);
     }
@@ -72,6 +75,14 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "update", null);
+__decorate([
+    (0, common_1.Post)('fcm-token'),
+    __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "saveFcmToken", null);
 __decorate([
     (0, common_1.Delete)(':id'),
     (0, roles_decorator_1.Roles)('Admin'),

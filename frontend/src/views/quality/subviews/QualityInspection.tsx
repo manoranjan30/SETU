@@ -1,17 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, Calendar, ClipboardCheck, ArrowLeft, CheckCircle2, XCircle, Camera, PenTool, Lock, Plus } from 'lucide-react';
+import {
+    Search, MapPin, Calendar, ClipboardCheck, ArrowLeft, CheckCircle2,
+    XCircle, Camera, PenTool, Lock, Plus, FileDown, RotateCcw, Trash2,
+    AlertTriangle, Clock
+} from 'lucide-react';
 import api from '../../../api/axios';
 
 interface Props {
     projectId: number;
 }
 
+type TabView = 'all' | 'my-pending';
+
 const QualityInspection: React.FC<Props> = ({ projectId }) => {
     const navigate = useNavigate();
     const [inspections, setInspections] = useState<any[]>([]);
+    const [myPending, setMyPending] = useState<any[]>([]);
     const [selectedInspection, setSelectedInspection] = useState<any>(null);
     const [activeStageId, setActiveStageId] = useState<number | null>(null);
+    const [activeTab, setActiveTab] = useState<TabView>('all');
+    const [searchTerm, setSearchTerm] = useState('');
 
     const [executionData, setExecutionData] = useState<any>({});
     const [signatureData, setSignatureData] = useState({ role: 'Site Engineer', name: '' });
@@ -20,6 +29,20 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
     const [showObsModal, setShowObsModal] = useState(false);
     const [obsText, setObsText] = useState('');
     const [obsRemarks, setObsRemarks] = useState('');
+
+    // Reversal Modal State
+    const [showReversalModal, setShowReversalModal] = useState(false);
+    const [reversalTarget, setReversalTarget] = useState<any>(null);
+    const [reversalReason, setReversalReason] = useState('');
+    const [reversalLoading, setReversalLoading] = useState(false);
+
+    // Signature Canvas
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [isDrawing, setIsDrawing] = useState(false);
+
+    // User info (from localStorage)
+    const userRole = localStorage.getItem('userRole') || '';
+    const isAdmin = userRole === 'Admin';
 
     const fetchInspections = async () => {
         try {
@@ -30,8 +53,18 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
         }
     };
 
+    const fetchMyPending = async () => {
+        try {
+            const response = await api.get(`/quality/inspections/my-pending?projectId=${projectId}`);
+            setMyPending(response.data);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     useEffect(() => {
         fetchInspections();
+        fetchMyPending();
     }, [projectId]);
 
     const openInspection = async (id: number) => {
@@ -42,7 +75,6 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                 setActiveStageId(response.data.stages[0].id);
             }
 
-            // Format state for execution
             const execState: any = {};
             response.data.stages.forEach((s: any) => {
                 s.items.forEach((item: any) => {
@@ -65,12 +97,13 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
         switch (status) {
             case 'APPROVED': return 'bg-emerald-100 text-emerald-700';
             case 'REJECTED': return 'bg-red-100 text-red-700';
+            case 'REVERSED': return 'bg-amber-100 text-amber-800 ring-1 ring-amber-300';
             case 'IN_PROGRESS':
             case 'UNDER_INSPECTION': return 'bg-blue-100 text-blue-700';
             case 'RFI_RAISED': return 'bg-yellow-100 text-yellow-700';
             case 'PENDING_OBSERVATION': return 'bg-amber-100 text-amber-800 ring-1 ring-amber-300';
             case 'NOT_STARTED': return 'bg-gray-100 text-gray-500';
-            default: return 'bg-orange-100 text-orange-700'; // PENDING
+            default: return 'bg-orange-100 text-orange-700';
         }
     };
 
@@ -84,10 +117,58 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
         }));
     };
 
+    // ─── Signature Canvas ──────────────────────────────────────────────
+    const initCanvas = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.strokeStyle = '#1e40af';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+    };
+
+    const startDraw = (e: React.MouseEvent) => {
+        setIsDrawing(true);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const rect = canvas.getBoundingClientRect();
+        ctx.beginPath();
+        ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    };
+
+    const draw = (e: React.MouseEvent) => {
+        if (!isDrawing) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const rect = canvas.getBoundingClientRect();
+        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+        ctx.stroke();
+    };
+
+    const stopDraw = () => setIsDrawing(false);
+
+    const clearCanvas = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
+    const getSignatureDataUrl = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return '';
+        return canvas.toDataURL('image/png');
+    };
+
     const handleSubmitStage = async (stageId: number, status: 'APPROVED' | 'REJECTED') => {
         const stage = selectedInspection.stages.find((s: any) => s.id === stageId);
 
-        // Prepare items array
         const itemsToUpdate = stage.items.map((i: any) => ({
             itemTemplateId: i.itemTemplate.id,
             value: executionData[i.id].value,
@@ -96,6 +177,8 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
             photos: executionData[i.id].photos
         }));
 
+        const signatureDataUrl = getSignatureDataUrl();
+
         try {
             await api.patch(`/quality/inspections/stage/${stageId}`, {
                 status,
@@ -103,12 +186,11 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                 signature: {
                     role: signatureData.role,
                     signedBy: signatureData.name,
-                    signatureData: "data:image/png;base64,mocksignaturedata",
-                    metadata: { lat: 12.9716, lng: 77.5946, ip: "127.0.0.1" }
+                    signatureData: signatureDataUrl || 'data:image/png;base64,mocksignaturedata',
+                    metadata: { lat: 12.9716, lng: 77.5946, ip: '127.0.0.1' }
                 }
             });
 
-            // Refresh
             openInspection(selectedInspection.id);
             alert(`Stage digitally locked and marked as ${status}!`);
 
@@ -119,7 +201,7 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
     };
 
     const handleAddObservation = async () => {
-        if (!obsText.trim()) return alert("Observation text is required.");
+        if (!obsText.trim()) return alert('Observation text is required.');
 
         const currentStage = selectedInspection?.stages?.find((s: any) => s.id === activeStageId);
 
@@ -136,6 +218,62 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
             navigate(`/dashboard/projects/${projectId}/quality`);
         } catch (error) {
             console.error('Failed to add observation:', error);
+        }
+    };
+
+    // ─── PDF Report Download ──────────────────────────────────────────
+    const downloadReport = async (inspectionId: number) => {
+        try {
+            const res = await api.get(`/quality/inspections/${inspectionId}/report`, {
+                responseType: 'blob'
+            });
+            const url = URL.createObjectURL(res.data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `RFI_Report_${inspectionId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to download report:', error);
+            alert('Failed to download PDF report.');
+        }
+    };
+
+    // ─── RFI Reversal ──────────────────────────────────────────────────
+    const handleReverse = async () => {
+        if (!reversalReason.trim()) return alert('Reversal reason is required.');
+        if (!reversalTarget) return;
+
+        setReversalLoading(true);
+        try {
+            await api.post(`/quality/inspections/${reversalTarget.id}/workflow/reverse`, {
+                reason: reversalReason
+            });
+            alert('RFI reversed successfully. Original raiser has been notified.');
+            setShowReversalModal(false);
+            setReversalReason('');
+            setReversalTarget(null);
+            fetchInspections();
+            fetchMyPending();
+        } catch (error: any) {
+            alert(error.response?.data?.message || 'Failed to reverse RFI.');
+        } finally {
+            setReversalLoading(false);
+        }
+    };
+
+    // ─── Admin Delete ──────────────────────────────────────────────────
+    const handleDelete = async (inspectionId: number) => {
+        if (!confirm('Are you sure you want to permanently delete this RFI? This action cannot be undone.')) return;
+        try {
+            await api.delete(`/quality/inspections/${inspectionId}`);
+            alert('RFI deleted successfully.');
+            fetchInspections();
+            fetchMyPending();
+        } catch (error: any) {
+            alert(error.response?.data?.message || 'Failed to delete RFI.');
         }
     };
 
@@ -161,6 +299,17 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                             </div>
                             <p className="text-sm text-gray-500 font-medium">{selectedInspection.activity?.activityName || 'Activity'}</p>
                         </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {/* PDF Download Button — only if APPROVED or PARTIALLY_APPROVED */}
+                        {['APPROVED', 'PARTIALLY_APPROVED', 'REVERSED'].includes(selectedInspection.status) && (
+                            <button
+                                onClick={() => downloadReport(selectedInspection.id)}
+                                className="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-xl hover:bg-emerald-100 transition-colors text-sm font-bold"
+                            >
+                                <FileDown className="w-4 h-4" /> Download PDF
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -277,7 +426,7 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                                                     value={data.value}
                                                                     onChange={(e) => {
                                                                         handleItemChange(item.id, 'value', e.target.value);
-                                                                        handleItemChange(item.id, 'isOk', !!e.target.value); // Just arbitrary checking logic
+                                                                        handleItemChange(item.id, 'isOk', !!e.target.value);
                                                                     }}
                                                                 />
                                                             )}
@@ -306,7 +455,7 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                     })}
                                 </div>
 
-                                {/* Sign Off Block */}
+                                {/* Sign Off Block with Canvas */}
                                 {!stageLocked && (
                                     <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 mt-8">
                                         <h4 className="text-indigo-900 font-bold flex items-center gap-2 mb-4">
@@ -336,6 +485,31 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                                 />
                                             </div>
                                         </div>
+
+                                        {/* Digital Signature Canvas */}
+                                        <div className="mb-4">
+                                            <label className="block text-xs font-bold text-indigo-800/60 uppercase mb-2">Digital Signature</label>
+                                            <div className="bg-white rounded-xl border-2 border-dashed border-indigo-200 p-2 relative">
+                                                <canvas
+                                                    ref={canvasRef}
+                                                    width={500}
+                                                    height={120}
+                                                    className="w-full cursor-crosshair"
+                                                    onMouseDown={(e) => { initCanvas(); startDraw(e); }}
+                                                    onMouseMove={draw}
+                                                    onMouseUp={stopDraw}
+                                                    onMouseLeave={stopDraw}
+                                                />
+                                                <button
+                                                    onClick={clearCanvas}
+                                                    className="absolute top-2 right-2 text-xs text-gray-400 hover:text-red-500 bg-white/80 px-2 py-1 rounded transition-colors"
+                                                >
+                                                    Clear
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-indigo-500/60 mt-1">Draw your signature above. SHA-256 hash will be generated for audit trail.</p>
+                                        </div>
+
                                         <div className="flex items-center gap-4 border-t border-indigo-200/50 pt-6">
                                             <button
                                                 onClick={() => setShowObsModal(true)}
@@ -362,7 +536,7 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                         </div>
                                         <div className="mt-4 p-4 bg-white rounded-xl shadow-sm text-xs font-mono break-all text-gray-500 border border-emerald-100 max-w-full">
                                             <div className="font-bold text-emerald-700 mb-1 border-b pb-1">SHA-256 Signature Hash</div>
-                                            {currentStage.signatures?.[0]?.lockHash || '9a4b8df2...'}
+                                            {currentStage.signatures?.[0]?.lockHash || 'Pending...'}
                                         </div>
                                     </div>
                                 )}
@@ -422,14 +596,50 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
         );
     }
 
+    // ─── Filter logic ──────────────────────────────────────────────────
+    const filteredInspections = inspections.filter(item => {
+        const name = item.activity?.activityName || '';
+        return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            String(item.id).includes(searchTerm);
+    });
+
     // List View
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex items-center gap-4 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 w-96 focus-within:ring-2 focus-within:ring-orange-500 transition-all">
-                    <Search className="w-5 h-5 text-gray-400" />
-                    <input type="text" placeholder="Search Request for Inspections..." className="bg-transparent border-none focus:ring-0 text-sm w-full p-0" />
+                <div className="flex items-center gap-4">
+                    {/* Tabs */}
+                    <div className="flex bg-gray-100 rounded-xl p-1">
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            All RFIs
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('my-pending')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'my-pending' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <Clock className="w-4 h-4" />
+                            My Pending
+                            {myPending.length > 0 && (
+                                <span className="bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{myPending.length}</span>
+                            )}
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-3 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 w-72 focus-within:ring-2 focus-within:ring-orange-500 transition-all">
+                        <Search className="w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search inspections..."
+                            className="bg-transparent border-none focus:ring-0 text-sm w-full p-0"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
                 </div>
+
                 <button
                     onClick={() => navigate(`/dashboard/projects/${projectId}/quality/inspections`)}
                     className="flex items-center gap-2 bg-orange-600 text-white px-6 py-2.5 rounded-xl hover:bg-orange-700 transition-all shadow-lg shadow-orange-200"
@@ -447,21 +657,23 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                             <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Location</th>
                             <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
                             <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Date Raised</th>
-                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Action</th>
+                            <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {inspections.length === 0 ? (
+                        {(activeTab === 'all' ? filteredInspections : myPending).length === 0 ? (
                             <tr>
                                 <td colSpan={5} className="py-12 text-center text-gray-500">
                                     <ClipboardCheck className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                                    No Inspections found. Raise an RFI from the Schedule to start.
+                                    {activeTab === 'my-pending'
+                                        ? 'No pending inspections. All your RFIs are resolved.'
+                                        : 'No Inspections found. Raise an RFI from the Schedule to start.'}
                                 </td>
                             </tr>
                         ) : (
-                            inspections.map((item) => (
-                                <tr key={item.id} className="hover:bg-orange-50/30 transition-colors group cursor-pointer" onClick={() => openInspection(item.id)}>
-                                    <td className="px-6 py-4">
+                            (activeTab === 'all' ? filteredInspections : myPending).map((item) => (
+                                <tr key={item.id} className="hover:bg-orange-50/30 transition-colors group">
+                                    <td className="px-6 py-4 cursor-pointer" onClick={() => openInspection(item.id)}>
                                         <div className="flex items-center gap-3">
                                             <div className="font-mono text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded">#{item.id}</div>
                                             <p className="font-bold text-gray-900 group-hover:text-orange-600 transition-colors">{item.activity?.activityName || 'N/A'}</p>
@@ -469,7 +681,8 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-1.5 text-sm font-medium text-gray-600">
-                                            <MapPin className="w-4 h-4 text-gray-400" /> EPS Node {item.epsNodeId}
+                                            <MapPin className="w-4 h-4 text-gray-400" />
+                                            {item.epsNode?.label || `Node ${item.epsNodeId}`}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -484,9 +697,51 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <button className="text-sm font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-4 py-2 rounded-xl transition-all">
-                                            Execute
-                                        </button>
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                onClick={() => openInspection(item.id)}
+                                                className="text-sm font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg transition-all"
+                                            >
+                                                Open
+                                            </button>
+
+                                            {/* PDF Download for approved */}
+                                            {['APPROVED', 'PARTIALLY_APPROVED'].includes(item.status) && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); downloadReport(item.id); }}
+                                                    className="text-sm font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg transition-all"
+                                                    title="Download PDF Report"
+                                                >
+                                                    <FileDown className="w-4 h-4" />
+                                                </button>
+                                            )}
+
+                                            {/* Reverse for approved items (permission-based) */}
+                                            {item.status === 'APPROVED' && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setReversalTarget(item);
+                                                        setShowReversalModal(true);
+                                                    }}
+                                                    className="text-sm font-bold text-amber-600 hover:text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg transition-all"
+                                                    title="Reverse Approval"
+                                                >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                </button>
+                                            )}
+
+                                            {/* Admin Delete */}
+                                            {isAdmin && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                                                    className="text-sm font-bold text-red-500 hover:text-red-600 bg-red-50 px-3 py-1.5 rounded-lg transition-all"
+                                                    title="Delete RFI (Admin Only)"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))
@@ -494,6 +749,56 @@ const QualityInspection: React.FC<Props> = ({ projectId }) => {
                     </tbody>
                 </table>
             </div>
+
+            {/* Reversal Modal */}
+            {showReversalModal && reversalTarget && (
+                <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center">
+                                <AlertTriangle className="w-6 h-6 text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">Reverse RFI #{reversalTarget.id}</h3>
+                                <p className="text-sm text-gray-500">{reversalTarget.activity?.activityName}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
+                            <strong>Warning:</strong> This will reverse the approved RFI back to REVERSED status.
+                            The original raiser will be notified. All previous signatures are preserved for audit trail.
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Reason for Reversal *</label>
+                            <textarea
+                                rows={4}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                                placeholder="Explain why this approval is being reversed..."
+                                value={reversalReason}
+                                onChange={e => setReversalReason(e.target.value)}
+                            ></textarea>
+                        </div>
+
+                        <div className="flex gap-4 mt-6">
+                            <button
+                                onClick={() => { setShowReversalModal(false); setReversalReason(''); setReversalTarget(null); }}
+                                className="px-6 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors flex-1"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleReverse}
+                                disabled={reversalLoading || !reversalReason.trim()}
+                                className="px-6 py-3 rounded-xl font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-lg shadow-amber-200 transition-all flex-1 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                                {reversalLoading ? 'Reversing...' : 'Confirm Reversal'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

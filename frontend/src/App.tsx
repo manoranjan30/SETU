@@ -35,6 +35,7 @@ import TemplateBuilder from './views/admin/TemplateBuilder';
 import SystemLogs from './views/admin/SystemLogs';
 import VendorMappingPage from './pages/VendorMappingPage';
 import ApprovalsPage from './pages/execution/ApprovalsPage';
+import WorkflowDesignerPage from './views/quality/workflow/WorkflowDesignerPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -197,6 +198,11 @@ const AppRoutes = () => {
         <Route path="projects/:projectId/quality/activity-lists/:listId/sequence" element={
           <ProtectedRoute permission="QUALITY.SEQUENCE.READ">
             <QualitySequencer />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/quality/workflow" element={
+          <ProtectedRoute permission="QUALITY.WORKFLOW.READ">
+            <WorkflowDesignerPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/design" element={

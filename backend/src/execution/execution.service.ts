@@ -25,7 +25,7 @@ export class ExecutionService {
     private progressRepo: Repository<MeasurementProgress>,
     @InjectRepository(MeasurementElement)
     private measurementRepo: Repository<MeasurementElement>,
-  ) {}
+  ) { }
 
   async batchSaveMeasurements(
     projectId: number,
@@ -97,14 +97,7 @@ export class ExecutionService {
 
         // 4. Update Aggregates & Sync Schedule (ONLY IF APPROVED)
         if (status === 'APPROVED') {
-          siteMeas.executedQty =
-            Number(siteMeas.executedQty || 0) + Number(entry.executedQty);
-          await manager.save(MeasurementElement, siteMeas);
-
-          // BoqItem Update
-          boqItem.consumedQty =
-            Number(boqItem.consumedQty || 0) + Number(entry.executedQty);
-          await manager.save(BoqItem, boqItem);
+          await this.recomputeAggregates(siteMeas.id, manager);
 
           // Trigger Schedule Update
           await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
@@ -139,6 +132,30 @@ export class ExecutionService {
       // If the measurement was specific to Activity A, ideally we shouldn't touch Activity B.
       // But 'recalculateActivityProgress' will handle the filtering logic.
       await this.recalculateActivityProgress(actId as number, manager);
+    }
+  }
+
+  private async recomputeAggregates(meId: number, manager: any) {
+    // 1. Recompute MeasurementElement.executedQty from APPROVED logs
+    const { total } = await manager
+      .createQueryBuilder(MeasurementProgress, 'p')
+      .where('p.measurementElementId = :meId', { meId })
+      .andWhere('p.status = :status', { status: 'APPROVED' })
+      .select('COALESCE(SUM(p.executedQty), 0)', 'total')
+      .getRawOne();
+
+    await manager.update(MeasurementElement, meId, { executedQty: Number(total) });
+
+    // 2. Recompute BoqItem.consumedQty from all its MeasurementElements
+    const me = await manager.findOne(MeasurementElement, { where: { id: meId } });
+    if (me?.boqItemId) {
+      const { boqTotal } = await manager
+        .createQueryBuilder(MeasurementElement, 'me')
+        .where('me.boqItemId = :boqId', { boqId: me.boqItemId })
+        .select('COALESCE(SUM(me.executedQty), 0)', 'boqTotal')
+        .getRawOne();
+
+      await manager.update(BoqItem, me.boqItemId, { consumedQty: Number(boqTotal) });
     }
   }
 
@@ -329,17 +346,10 @@ export class ExecutionService {
       progress.updatedBy = userId.toString();
       await manager.save(progress);
 
-      // 2. Update MeasurementElement Aggregate
-      me.executedQty = Number(me.executedQty || 0) + diff;
-      await manager.save(me);
+      // 2. Recompute Aggregates
+      await this.recomputeAggregates(me.id, manager);
 
-      // 3. Update BoqItem Aggregate
-      if (boqItem) {
-        boqItem.consumedQty = Number(boqItem.consumedQty || 0) + diff;
-        await manager.save(boqItem);
-      }
-
-      // 4. Trigger Syncs
+      // 3. Trigger Syncs
       if (boqItem) {
         await this.syncSchedule(boqItem.id, manager, me.activityId);
       }
@@ -361,21 +371,18 @@ export class ExecutionService {
       const boqItem = me.boqItem;
       const qtyToRemove = Number(progress.executedQty);
 
-      // 1. Update Aggregates (Subtract)
-      me.executedQty = Number(me.executedQty || 0) - qtyToRemove;
-      await manager.save(me);
-
-      if (boqItem) {
-        boqItem.consumedQty = Number(boqItem.consumedQty || 0) - qtyToRemove;
-        await manager.save(boqItem);
-      }
-
-      // 2. Delete Log
+      // 1. Delete Log
       await manager.remove(progress);
 
-      // 3. Trigger Syncs
-      if (boqItem) {
-        await this.syncSchedule(boqItem.id, manager, me.activityId);
+      // ONLY recompute if this progress log was actually approved
+      if (progress.status === 'APPROVED') {
+        // 2. Recompute Aggregates
+        await this.recomputeAggregates(me.id, manager);
+
+        // 3. Trigger Syncs
+        if (boqItem) {
+          await this.syncSchedule(boqItem.id, manager, me.activityId);
+        }
       }
 
       return { success: true };
@@ -426,18 +433,12 @@ export class ExecutionService {
         if (!me) continue; // Should not happen
 
         const boqItem = me.boqItem;
-        const qty = Number(progress.executedQty);
 
-        // Update Aggregate
-        me.executedQty = Number(me.executedQty || 0) + qty;
-        await manager.save(MeasurementElement, me);
+        // Recompute Aggregates
+        await this.recomputeAggregates(me.id, manager);
 
-        // Update BOQ
+        // Trigger Schedule Sync
         if (boqItem) {
-          boqItem.consumedQty = Number(boqItem.consumedQty || 0) + qty;
-          await manager.save(BoqItem, boqItem);
-
-          // Trigger Schedule Sync
           await this.syncSchedule(boqItem.id, manager, me.activityId);
         }
       }

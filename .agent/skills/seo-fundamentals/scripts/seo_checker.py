@@ -34,7 +34,7 @@ except:
 SKIP_DIRS = {
     'node_modules', '.next', 'dist', 'build', '.git', '.github',
     '__pycache__', '.vscode', '.idea', 'coverage', 'test', 'tests',
-    '__tests__', 'spec', 'docs', 'documentation', 'examples'
+    '__tests__', 'spec', 'docs', 'documentation', 'examples', 'client', 'views'
 }
 
 # Files to skip (not pages)
@@ -56,7 +56,7 @@ def is_page_file(file_path: Path) -> bool:
     
     # Check path - pages in specific directories are likely pages
     parts = [p.lower() for p in file_path.parts]
-    page_dirs = ['pages', 'app', 'routes', 'views', 'screens']
+    page_dirs = ['pages', 'app', 'routes', 'screens']
     
     if any(d in parts for d in page_dirs):
         return True

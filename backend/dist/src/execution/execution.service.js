@@ -92,12 +92,7 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
                 await manager.save(measurement_progress_entity_1.MeasurementProgress, progress);
                 results.push(progress);
                 if (status === 'APPROVED') {
-                    siteMeas.executedQty =
-                        Number(siteMeas.executedQty || 0) + Number(entry.executedQty);
-                    await manager.save(measurement_element_entity_1.MeasurementElement, siteMeas);
-                    boqItem.consumedQty =
-                        Number(boqItem.consumedQty || 0) + Number(entry.executedQty);
-                    await manager.save(boq_item_entity_1.BoqItem, boqItem);
+                    await this.recomputeAggregates(siteMeas.id, manager);
                     await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
                 }
             }
@@ -114,6 +109,24 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
         const activityIds = [...new Set(plans.map((p) => p.activityId))];
         for (const actId of activityIds) {
             await this.recalculateActivityProgress(actId, manager);
+        }
+    }
+    async recomputeAggregates(meId, manager) {
+        const { total } = await manager
+            .createQueryBuilder(measurement_progress_entity_1.MeasurementProgress, 'p')
+            .where('p.measurementElementId = :meId', { meId })
+            .andWhere('p.status = :status', { status: 'APPROVED' })
+            .select('COALESCE(SUM(p.executedQty), 0)', 'total')
+            .getRawOne();
+        await manager.update(measurement_element_entity_1.MeasurementElement, meId, { executedQty: Number(total) });
+        const me = await manager.findOne(measurement_element_entity_1.MeasurementElement, { where: { id: meId } });
+        if (me?.boqItemId) {
+            const { boqTotal } = await manager
+                .createQueryBuilder(measurement_element_entity_1.MeasurementElement, 'me')
+                .where('me.boqItemId = :boqId', { boqId: me.boqItemId })
+                .select('COALESCE(SUM(me.executedQty), 0)', 'boqTotal')
+                .getRawOne();
+            await manager.update(boq_item_entity_1.BoqItem, me.boqItemId, { consumedQty: Number(boqTotal) });
         }
     }
     async recalculateActivityProgress(activityId, manager) {
@@ -242,12 +255,7 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
             progress.executedQty = newQty;
             progress.updatedBy = userId.toString();
             await manager.save(progress);
-            me.executedQty = Number(me.executedQty || 0) + diff;
-            await manager.save(me);
-            if (boqItem) {
-                boqItem.consumedQty = Number(boqItem.consumedQty || 0) + diff;
-                await manager.save(boqItem);
-            }
+            await this.recomputeAggregates(me.id, manager);
             if (boqItem) {
                 await this.syncSchedule(boqItem.id, manager, me.activityId);
             }
@@ -265,15 +273,12 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
             const me = progress.measurementElement;
             const boqItem = me.boqItem;
             const qtyToRemove = Number(progress.executedQty);
-            me.executedQty = Number(me.executedQty || 0) - qtyToRemove;
-            await manager.save(me);
-            if (boqItem) {
-                boqItem.consumedQty = Number(boqItem.consumedQty || 0) - qtyToRemove;
-                await manager.save(boqItem);
-            }
             await manager.remove(progress);
-            if (boqItem) {
-                await this.syncSchedule(boqItem.id, manager, me.activityId);
+            if (progress.status === 'APPROVED') {
+                await this.recomputeAggregates(me.id, manager);
+                if (boqItem) {
+                    await this.syncSchedule(boqItem.id, manager, me.activityId);
+                }
             }
             return { success: true };
         });
@@ -314,12 +319,8 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
                 if (!me)
                     continue;
                 const boqItem = me.boqItem;
-                const qty = Number(progress.executedQty);
-                me.executedQty = Number(me.executedQty || 0) + qty;
-                await manager.save(measurement_element_entity_1.MeasurementElement, me);
+                await this.recomputeAggregates(me.id, manager);
                 if (boqItem) {
-                    boqItem.consumedQty = Number(boqItem.consumedQty || 0) + qty;
-                    await manager.save(boq_item_entity_1.BoqItem, boqItem);
                     await this.syncSchedule(boqItem.id, manager, me.activityId);
                 }
             }

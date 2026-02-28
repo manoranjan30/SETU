@@ -18,13 +18,13 @@ export class ProgressService {
     private elementRepo: Repository<MeasurementElement>,
     @InjectRepository(BoqActivityPlan)
     private planRepo: Repository<BoqActivityPlan>,
-  ) {}
+  ) { }
 
   // 1. Burn Rate Stats (Financials)
   async getBurnRateStats(projectId: number) {
     // Fetch all progress with rates
     const progress = await this.progressRepo.find({
-      where: { measurementElement: { projectId } },
+      where: { measurementElement: { projectId }, status: 'APPROVED' },
       relations: ['measurementElement', 'measurementElement.boqItem'],
       order: { date: 'DESC' },
     });

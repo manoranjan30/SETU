@@ -75,6 +75,10 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  async saveFcmToken(userId: number, token: string): Promise<void> {
+    await this.usersRepository.update(userId, { fcmToken: token });
+  }
+
   async remove(id: number): Promise<void> {
     const user = await this.usersRepository.findOneBy({ id });
     if (user && user.username === 'admin') {

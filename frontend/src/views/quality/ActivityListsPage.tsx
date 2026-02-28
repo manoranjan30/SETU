@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     Plus, Upload, Edit2, Trash2, ChevronRight,
-    Clipboard, Layers, Search, X, AlertCircle, Copy
+    Clipboard, Layers, Search, X, AlertCircle, Copy, Network
 } from 'lucide-react';
 import api from '../../api/axios';
 
@@ -508,10 +508,16 @@ const ActivityListsPage = () => {
                     </div>
                     <div className="flex gap-2">
                         <button
+                            onClick={() => navigate(`/dashboard/projects/${projectId}/quality/workflow`)}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-indigo-600 rounded-xl text-sm font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
+                        >
+                            <Network className="w-4 h-4" /> Approval Workflow
+                        </button>
+                        <button
                             onClick={() => setShowCopy(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-indigo-600 rounded-xl text-sm font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
                         >
-                            <Copy className="w-4 h-4" /> Copy Workflow
+                            <Copy className="w-4 h-4" /> Copy List
                         </button>
                         <button
                             onClick={() => setShowCreate(true)}

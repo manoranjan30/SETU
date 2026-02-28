@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Load .env file before anything else
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import {
@@ -9,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { join } from 'path';
 import { json, urlencoded } from 'express';
+import * as express from 'express';
 
 import { existsSync } from 'fs';
 
@@ -19,15 +21,15 @@ export class SpaFallbackFilter implements ExceptionFilter {
     const response = ctx.getResponse();
     const request = ctx.getRequest();
 
-    if (request.url.startsWith('/api')) {
-      // API 404 -> Return JSON
+    if (request.url.startsWith('/api') || request.url.startsWith('/uploads')) {
+      // API or Static Asset 404 -> Return JSON
       response.status(404).json({
         statusCode: 404,
-        message: `API Endpoint not found: ${request.url}`,
+        message: `Endpoint or File not found: ${request.url}`,
       });
     } else {
       // Frontend 404 -> Serve index.html (SPA)
-      const indexPath = join(__dirname, '..', 'client', 'index.html');
+      const indexPath = join(process.cwd(), 'client', 'index.html');
       if (existsSync(indexPath)) {
         response.sendFile(indexPath);
       } else {
@@ -52,6 +54,9 @@ async function bootstrap() {
 
   // Use SPA Filter
   app.useGlobalFilters(new SpaFallbackFilter());
+
+  // Serve uploads statically bypassing NestJS routing prefix logic entirely
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   await app.listen(3000, '0.0.0.0');
 }

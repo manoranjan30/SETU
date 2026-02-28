@@ -52,7 +52,7 @@ export class ExecutionBreakdownService {
     private readonly activityRepo: Repository<Activity>,
     @InjectRepository(BoqItem)
     private readonly boqRepo: Repository<BoqItem>,
-  ) {}
+  ) { }
 
   /**
    * Get unified execution breakdown for an activity at a specific location
@@ -111,13 +111,25 @@ export class ExecutionBreakdownService {
         const items: ExecutionBreakdownItem[] = [];
 
         for (const ma of microActivities) {
-          const dailyLogs = await this.dailyLogRepo.find({
-            where: { microActivityId: ma.id },
+          const measurements = await this.measurementRepo.find({
+            where: { microActivityId: ma.id, epsNodeId: epsNodeId },
           });
-          const executedQty = dailyLogs.reduce(
-            (sum, log) => sum + Number(log.qtyDone || 0),
+
+          let executedQty = measurements.reduce(
+            (sum, m) => sum + Number(m.executedQty || 0),
             0,
           );
+
+          const elementIds = measurements.map((m) => m.id);
+          if (elementIds.length > 0) {
+            const pendingLogs = await this.progressRepo
+              .createQueryBuilder('progress')
+              .where('progress.measurementElementId IN (:...ids)', { ids: elementIds })
+              .andWhere('progress.status = :status', { status: 'PENDING' })
+              .getMany();
+            executedQty += pendingLogs.reduce((sum, log) => sum + Number(log.executedQty || 0), 0);
+          }
+          executedQty = Math.max(0, executedQty);
 
           items.push({
             type: 'MICRO',
@@ -141,7 +153,7 @@ export class ExecutionBreakdownService {
         items.push({
           type: 'BALANCE',
           id: null,
-          name: 'Direct Execution (Non-Micro)',
+          name: 'Unassigned Quantity (Direct)',
           allocatedQty: balanceQty,
           executedQty: Number(directExecutedQty),
           balanceQty: balanceQty - Number(directExecutedQty),
@@ -216,7 +228,7 @@ export class ExecutionBreakdownService {
       total += pendingTotal;
     }
 
-    return total;
+    return Math.max(0, total);
   }
 
   /**
