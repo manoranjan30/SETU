@@ -13,6 +13,7 @@ import {
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { MeasurementElement } from '../boq/entities/measurement-element.entity';
+import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { Activity, ActivityStatus } from '../wbs/entities/activity.entity';
 import { ActivityRelationship } from '../wbs/entities/activity-relationship.entity';
 import { RecoveryPlan } from './entities/recovery-plan.entity';
@@ -42,6 +43,8 @@ export class PlanningService {
     private subItemRepo: Repository<BoqSubItem>,
     @InjectRepository(MeasurementElement)
     private measurementRepo: Repository<MeasurementElement>,
+    @InjectRepository(MeasurementProgress)
+    private measurementProgressRepo: Repository<MeasurementProgress>,
     @InjectRepository(WbsNode)
     private wbsRepo: Repository<WbsNode>,
     @InjectRepository(EpsNode)
@@ -1235,7 +1238,23 @@ export class PlanningService {
         `[PlanningService] Found ${siteExecMeas.length} Site Execution measurements`,
       );
 
+      // Also get PENDING progress logs for these elements
+      const elementIds = siteExecMeas.map((m: any) => m.id);
+      const pendingLogs = elementIds.length > 0 ? await this.measurementProgressRepo.createQueryBuilder('p')
+        .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
+        .andWhere('p.status = :status', { status: 'PENDING' })
+        .getMany() : [];
+
+      const pendingMap = new Map<number, number>();
+      for (const p of pendingLogs) {
+        pendingMap.set(p.measurementElementId, (pendingMap.get(p.measurementElementId) || 0) + Number(p.executedQty || 0));
+      }
+
       for (const m of siteExecMeas as any[]) {
+        const approvedQty = Number(m.executedQty || 0);
+        const pendingQty = pendingMap.get(m.id) || 0;
+        const totalQty = Math.max(0, approvedQty + pendingQty);
+
         // NEW: Parse elementId to extract planId for per-plan lookup
         // Format A (Legacy): "SITE-EXEC-{boqItemId}-{activityId}-{planId}" (5 parts)
         // Format B (Isolated): "SITE-EXEC-{boqItemId}-{activityId}-{epsNodeId}-{planId}" (6 parts)
@@ -1248,7 +1267,7 @@ export class PlanningService {
           // Per-plan tracking key: SITE-EXEC-{boqItemId}-{activityId}-{epsNodeId}-{planId}
           const key = `plan - ${extractedPlanId} `;
           const current = execMeasMap.get(key) || 0;
-          execMeasMap.set(key, current + Number(m.executedQty || 0));
+          execMeasMap.set(key, current + totalQty);
           console.log(
             `[PlanningService] Per - Plan Execution: ${key} = ${execMeasMap.get(key)} `,
           );
@@ -1257,7 +1276,7 @@ export class PlanningService {
           const legacyKey = `${m.activityId || 'null'} -${m.boqItemId} `;
           execMeasMap.set(
             legacyKey,
-            (execMeasMap.get(legacyKey) || 0) + Number(m.executedQty || 0),
+            (execMeasMap.get(legacyKey) || 0) + totalQty,
           );
           console.log(
             `[PlanningService] Legacy Execution: ${legacyKey} = ${execMeasMap.get(legacyKey)} `,

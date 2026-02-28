@@ -17,13 +17,15 @@ part 'app_database.g.dart';
     CachedActivities,
     CachedBoqItems,
     CachedEpsNodes,
+    CachedQualityActivityLists,
+    CachedQualityActivities,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -32,9 +34,12 @@ class AppDatabase extends _$AppDatabase {
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Handle migrations for version 2
         if (from < 2) {
           await m.createTable(cachedEpsNodes);
+        }
+        if (from < 3) {
+          await m.createTable(cachedQualityActivityLists);
+          await m.createTable(cachedQualityActivities);
         }
       },
     );
@@ -49,6 +54,8 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedActivities).go();
     await delete(cachedBoqItems).go();
     await delete(cachedEpsNodes).go();
+    await delete(cachedQualityActivityLists).go();
+    await delete(cachedQualityActivities).go();
   }
 
   // ==================== EPS NODE QUERIES ====================
@@ -148,6 +155,94 @@ class AppDatabase extends _$AppDatabase {
         );
       }
     });
+  }
+
+  // ==================== QUALITY CACHE QUERIES ====================
+
+  /// Get cached activity lists for a project + optional EPS node
+  Future<List<CachedQualityActivityList>> getCachedActivityLists(
+      int projectId, int? epsNodeId) async {
+    final all = await (select(cachedQualityActivityLists)
+          ..where((t) => t.projectId.equals(projectId)))
+        .get();
+    if (epsNodeId != null) {
+      return all.where((r) => r.epsNodeId == epsNodeId).toList();
+    }
+    return all;
+  }
+
+  /// Cache quality activity lists from API response
+  Future<void> cacheActivityLists(
+      List<Map<String, dynamic>> lists, int projectId) async {
+    await batch((b) {
+      for (final l in lists) {
+        b.insert(
+          cachedQualityActivityLists,
+          CachedQualityActivityListsCompanion.insert(
+            id: Value(l['id'] as int),
+            projectId: projectId,
+            epsNodeId: Value(l['epsNodeId'] as int?),
+            name: l['name'] as String,
+            description: Value(l['description'] as String?),
+            activityCount: Value(
+              (l['activityCount'] as int?) ??
+                  (l['activities'] as List?)?.length ??
+                  0,
+            ),
+            rawData: jsonEncode(l),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  /// Get cached quality activities for a list
+  Future<List<CachedQualityActivity>> getCachedQualityActivities(
+      int listId) async {
+    return (select(cachedQualityActivities)
+          ..where((t) => t.listId.equals(listId))
+          ..orderBy([(t) => OrderingTerm.asc(t.sequence)]))
+        .get();
+  }
+
+  /// Cache quality activities from API response
+  Future<void> cacheQualityActivities(
+    List<Map<String, dynamic>> activities,
+    int listId,
+    int projectId,
+    int? epsNodeId,
+  ) async {
+    await batch((b) {
+      for (final a in activities) {
+        b.insert(
+          cachedQualityActivities,
+          CachedQualityActivitiesCompanion.insert(
+            id: Value(a['id'] as int),
+            listId: listId,
+            projectId: projectId,
+            epsNodeId: Value(epsNodeId),
+            sequence: Value(a['sequence'] as int? ?? 0),
+            activityName: a['activityName'] as String,
+            status: Value(a['status'] as String? ?? 'NOT_STARTED'),
+            holdPoint: Value((a['holdPoint'] as bool? ?? false) ? 1 : 0),
+            witnessPoint: Value((a['witnessPoint'] as bool? ?? false) ? 1 : 0),
+            rawData: jsonEncode(a),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  /// Optimistically update a cached activity status (after RFI queued offline)
+  Future<void> updateCachedActivityStatus(
+      int activityId, String newStatus) async {
+    await (update(cachedQualityActivities)
+          ..where((t) => t.id.equals(activityId)))
+        .write(CachedQualityActivitiesCompanion(
+      status: Value(newStatus),
+    ));
   }
 
   // ==================== SYNC STATUS QUERIES ====================
@@ -302,6 +397,42 @@ class CachedEpsNodes extends Table {
   RealColumn get progress => real().withDefault(const Constant(0))();
   TextColumn get rawData => text()();
   DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Cached quality activity lists (one per list, keyed by list id + project)
+class CachedQualityActivityLists extends Table {
+  IntColumn get id => integer()();
+  IntColumn get projectId => integer()();
+  IntColumn get epsNodeId => integer().nullable()();
+  TextColumn get name => text()();
+  TextColumn get description => text().nullable()();
+  IntColumn get activityCount => integer().withDefault(const Constant(0))();
+  TextColumn get rawData => text()();
+  DateTimeColumn get cachedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Cached quality activities (one per activity, keyed by activity id)
+class CachedQualityActivities extends Table {
+  IntColumn get id => integer()();
+  IntColumn get listId => integer()();
+  IntColumn get projectId => integer()();
+  IntColumn get epsNodeId => integer().nullable()();
+  IntColumn get sequence => integer().withDefault(const Constant(0))();
+  TextColumn get activityName => text()();
+  TextColumn get status =>
+      text().withDefault(const Constant('NOT_STARTED'))();
+  IntColumn get holdPoint => integer().withDefault(const Constant(0))();
+  IntColumn get witnessPoint => integer().withDefault(const Constant(0))();
+  TextColumn get rawData => text()();
+  DateTimeColumn get cachedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {id};

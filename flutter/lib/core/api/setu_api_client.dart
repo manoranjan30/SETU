@@ -140,7 +140,7 @@ class SetuApiClient {
   // ==================== PROGRESS/EXECUTION ENDPOINTS ====================
 
   /// Save measurements for a project
-  Future<Map<String, dynamic>> saveMeasurements({
+  Future<dynamic> saveMeasurements({
     required int projectId,
     required List<Map<String, dynamic>> entries,
   }) async {
@@ -355,6 +355,180 @@ class SetuApiClient {
     });
     final response = await _dio.post(ApiEndpoints.uploadFile, data: formData);
     return response.data;
+  }
+
+  // ==================== QUALITY ENDPOINTS ====================
+
+  /// GET /eps/:projectId/tree — full nested EPS tree for inspection location picker
+  Future<List<dynamic>> getEpsTreeForProject(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.epsTree(projectId));
+    return response.data;
+  }
+
+  /// GET /quality/activity-lists?projectId=X&epsNodeId=Y
+  Future<List<dynamic>> getQualityActivityLists({
+    required int projectId,
+    int? epsNodeId,
+  }) async {
+    final response = await _dio.get(
+      ApiEndpoints.qualityActivityLists,
+      queryParameters: {
+        'projectId': projectId,
+        if (epsNodeId != null) 'epsNodeId': epsNodeId,
+      },
+    );
+    return response.data;
+  }
+
+  /// GET /quality/activity-lists/:listId/activities
+  Future<List<dynamic>> getQualityListActivities(int listId) async {
+    final response =
+        await _dio.get(ApiEndpoints.qualityListActivities(listId));
+    return response.data;
+  }
+
+  /// GET /quality/inspections?projectId=X&epsNodeId=Y&listId=Z
+  Future<List<dynamic>> getQualityInspections({
+    required int projectId,
+    int? epsNodeId,
+    int? listId,
+  }) async {
+    final response = await _dio.get(
+      ApiEndpoints.qualityInspections,
+      queryParameters: {
+        'projectId': projectId,
+        if (epsNodeId != null) 'epsNodeId': epsNodeId,
+        if (listId != null) 'listId': listId,
+      },
+    );
+    return response.data;
+  }
+
+  /// GET /quality/inspections/:id — full detail with stages + items
+  Future<Map<String, dynamic>> getQualityInspectionDetail(int id) async {
+    final response = await _dio.get(ApiEndpoints.qualityInspection(id));
+    return response.data;
+  }
+
+  /// POST /quality/inspections — Raise RFI
+  Future<Map<String, dynamic>> raiseRfi({
+    required int projectId,
+    required int epsNodeId,
+    required int listId,
+    required int activityId,
+    String? comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.raiseRfi,
+      data: {
+        'projectId': projectId,
+        'epsNodeId': epsNodeId,
+        'listId': listId,
+        'activityId': activityId,
+        if (comments != null && comments.isNotEmpty) 'comments': comments,
+      },
+    );
+    return response.data;
+  }
+
+  /// PATCH /quality/inspections/:id/status — Approve / Reject / Provisional
+  Future<Map<String, dynamic>> updateInspectionStatus({
+    required int inspectionId,
+    required String status,
+    String? comments,
+    String? inspectionDate,
+  }) async {
+    final response = await _dio.patch(
+      ApiEndpoints.inspectionStatus(inspectionId),
+      data: {
+        'status': status,
+        if (comments != null) 'comments': comments,
+        if (inspectionDate != null) 'inspectionDate': inspectionDate,
+      },
+    );
+    return response.data;
+  }
+
+  /// PATCH /quality/inspections/stage/:stageId — Save checklist items progress
+  Future<Map<String, dynamic>> saveInspectionStage({
+    required int stageId,
+    required String status,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final response = await _dio.patch(
+      ApiEndpoints.inspectionStage(stageId),
+      data: {
+        'status': status,
+        'items': items,
+      },
+    );
+    return response.data;
+  }
+
+  /// GET /quality/activities/:id/observations
+  Future<List<dynamic>> getActivityObservations(int activityId) async {
+    final response =
+        await _dio.get(ApiEndpoints.activityObservations(activityId));
+    return response.data;
+  }
+
+  /// POST /quality/activities/:id/observation — Raise observation (QC Inspector)
+  Future<Map<String, dynamic>> raiseObservation({
+    required int activityId,
+    required String observationText,
+    String? type,
+    List<String>? photos,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.raiseObservation(activityId),
+      data: {
+        'observationText': observationText,
+        if (type != null) 'type': type,
+        if (photos != null && photos.isNotEmpty) 'photos': photos,
+      },
+    );
+    return response.data;
+  }
+
+  /// PATCH /quality/activities/:actId/observation/:obsId/resolve
+  /// Submit rectification (site engineer)
+  Future<Map<String, dynamic>> resolveObservation({
+    required int activityId,
+    required String obsId,
+    required String closureText,
+    List<String>? closureEvidence,
+  }) async {
+    final response = await _dio.patch(
+      ApiEndpoints.resolveObservation(activityId, obsId),
+      data: {
+        'closureText': closureText,
+        if (closureEvidence != null && closureEvidence.isNotEmpty)
+          'closureEvidence': closureEvidence,
+      },
+    );
+    return response.data;
+  }
+
+  /// PATCH /quality/activities/:actId/observation/:obsId/close
+  /// Close observation after verifying rectification (QC Inspector)
+  Future<Map<String, dynamic>> closeObservation({
+    required int activityId,
+    required String obsId,
+  }) async {
+    final response = await _dio.patch(
+      ApiEndpoints.closeObservation(activityId, obsId),
+    );
+    return response.data;
+  }
+
+  // ==================== FCM / PUSH NOTIFICATION ====================
+
+  /// POST /users/fcm-token — Register device FCM token after login
+  Future<void> registerFcmToken(String token) async {
+    await _dio.post(
+      ApiEndpoints.fcmToken,
+      data: {'token': token},
+    );
   }
 }
 

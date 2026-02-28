@@ -17,6 +17,7 @@ let User = class User {
     username;
     passwordHash;
     isActive;
+    fcmToken;
     roles;
     createdAt;
     updatedAt;
@@ -38,6 +39,10 @@ __decorate([
     (0, typeorm_1.Column)({ default: true }),
     __metadata("design:type", Boolean)
 ], User.prototype, "isActive", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], User.prototype, "fcmToken", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => role_entity_1.Role, (role) => role.users),
     (0, typeorm_1.JoinTable)(),

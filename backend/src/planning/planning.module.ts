@@ -9,6 +9,7 @@ import { Activity } from '../wbs/entities/activity.entity';
 import { QuantityProgressRecord } from './entities/quantity-progress-record.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { MeasurementElement } from '../boq/entities/measurement-element.entity';
+import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { WbsNode } from '../wbs/entities/wbs.entity';
 import { ScheduleVersion } from './entities/schedule-version.entity';
@@ -30,6 +31,7 @@ import { ImportExportService } from './import-export.service';
       ActivityRelationship,
       BoqSubItem,
       MeasurementElement,
+      MeasurementProgress,
       WbsNode,
       EpsNode,
       ScheduleVersion,
@@ -46,4 +48,4 @@ import { ImportExportService } from './import-export.service';
   ],
   exports: [PlanningService, ScheduleVersionService],
 })
-export class PlanningModule {}
+export class PlanningModule { }

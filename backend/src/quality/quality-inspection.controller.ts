@@ -44,6 +44,16 @@ export class QualityInspectionController {
     return this.service.getInspections(projectId, epsNodeId, listId);
   }
 
+  @Get('my-pending')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getMyPendingInspections(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Request() req,
+  ) {
+    const userId = req.user?.userId || req.user?.id;
+    return this.service.getMyPendingInspections(projectId, userId);
+  }
+
   @Get(':id')
   @Permissions('QUALITY.INSPECTION.READ')
   getInspectionDetails(@Param('id', ParseIntPipe) id: number) {
@@ -130,6 +140,22 @@ export class QualityInspectionController {
       id,
       req.user?.userId || req.user?.id,
       body.comments,
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin')
+    );
+  }
+
+  @Post(':id/workflow/reverse')
+  @Permissions('QUALITY.INSPECTION.REVERSE')
+  @Auditable('QUALITY', 'REVERSE_RFI', 'id')
+  reverseWorkflow(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { reason: string },
+    @Request() req
+  ) {
+    return this.workflowService.reverseWorkflow(
+      id,
+      req.user?.userId || req.user?.id,
+      body.reason,
       req.user?.role === 'Admin' || req.user?.roles?.includes('Admin')
     );
   }

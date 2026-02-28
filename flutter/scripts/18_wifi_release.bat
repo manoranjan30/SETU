@@ -174,16 +174,19 @@ if errorlevel 1 (
   pause & exit /b 1
 )
 
+:install_only
+
+:: Install the APK (covers both normal flow and install-only mode)
 echo.
-echo        Installing APK on !SELECTED_DEVICE!...
+echo        Installing APK on device...
 adb -s "!SELECTED_DEVICE!" install -r "build\app\outputs\flutter-apk\app-release.apk"
 if errorlevel 1 (
-  echo        Install FAILED.
+  echo.
+  echo        Install FAILED. Try uninstalling first:
+  echo          adb uninstall com.example.setu_mobile
   pause & exit /b 1
 )
 echo        Install SUCCESS.
-
-:install_only
 
 :: Whitelist the app in Android's network policy
 echo.

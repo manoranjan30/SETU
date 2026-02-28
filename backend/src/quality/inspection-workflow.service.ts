@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { createHash } from 'crypto';
 import { InspectionWorkflowRun, WorkflowRunStatus } from './entities/inspection-workflow-run.entity';
 import { InspectionWorkflowStep, WorkflowStepStatus } from './entities/inspection-workflow-step.entity';
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
 import { AssignmentMode } from './entities/approval-workflow-node.entity';
 import { UserProjectAssignment } from '../projects/entities/user-project-assignment.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
+import { QualityInspection, InspectionStatus } from './entities/quality-inspection.entity';
+import { AuditService } from '../audit/audit.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 @Injectable()
 export class InspectionWorkflowService {
@@ -20,8 +24,18 @@ export class InspectionWorkflowService {
         @InjectRepository(UserProjectAssignment)
         private readonly assignmentRepo: Repository<UserProjectAssignment>,
         @InjectRepository(QualitySignature)
-        private readonly signatureRepo: Repository<QualitySignature>
+        private readonly signatureRepo: Repository<QualitySignature>,
+        @InjectRepository(QualityInspection)
+        private readonly inspectionRepo: Repository<QualityInspection>,
+        private readonly auditService: AuditService,
+        private readonly pushService: PushNotificationService,
     ) { }
+
+    // ─── Signature Hash ─────────────────────────────────────────────────
+    private generateSignatureHash(signatureData: string, userId: number, timestamp: Date): string {
+        const payload = `${signatureData}|${userId}|${timestamp.toISOString()}`;
+        return createHash('sha256').update(payload).digest('hex');
+    }
 
     /**
      * Instantiates a workflow run for a newly created RFI if an Approval Template exists for the project.
@@ -39,7 +53,7 @@ export class InspectionWorkflowService {
         });
 
         if (!template) {
-            return null; // Fallback to manual flow
+            return null;
         }
 
         if (!template.nodes || template.nodes.length === 0) {
@@ -55,7 +69,6 @@ export class InspectionWorkflowService {
 
         const savedRun = await this.runRepo.save(run);
 
-        // Fetch team to resolve roles
         const teamMembers = await this.assignmentRepo.find({
             where: { project: { id: projectId } },
             relations: ['user', 'roles'],
@@ -65,7 +78,6 @@ export class InspectionWorkflowService {
             let resolvedUserId = node.assignedUserId;
 
             if (node.assignmentMode === AssignmentMode.ROLE && node.assignedRoleId) {
-                // Find the FIRST active user who has this role on this project
                 const eligibleMember = teamMembers.find(member =>
                     member.roles.some(r => r.id === node.assignedRoleId)
                 );
@@ -74,8 +86,6 @@ export class InspectionWorkflowService {
                 }
             }
 
-            // If step 1 (Raise RFI), it automatically should be the person who raised it, unless strictly enforced.
-            // Usually, the first node is Raise RFI. 
             if (node.stepOrder === 1) {
                 resolvedUserId = raiserUserId;
             }
@@ -112,7 +122,7 @@ export class InspectionWorkflowService {
 
     /**
      * Completes the current step and advances to the next step.
-     * Validates if the user is authorized.
+     * Generates auditable SHA-256 signature hash for each approval.
      */
     async advanceWorkflow(
         inspectionId: number,
@@ -137,23 +147,24 @@ export class InspectionWorkflowService {
             throw new NotFoundException('Current workflow step not found');
         }
 
-        // Validate if the user is authorized. If nobody is assigned, effectively it's stuck or fallback rules apply.
-        // Admins have unrestricted access (bypass assignment check).
         if (!isAdmin && currentStep.assignedUserId && currentStep.assignedUserId !== userId) {
             throw new ForbiddenException('You are not the assigned user for this approval step');
         }
 
         let effectiveSignatureId = signatureId;
+        const now = new Date();
 
-        // Create signature if data is provided and ID is not valid
+        // Create signature with SHA-256 audit hash
         if (!effectiveSignatureId && signatureData) {
+            const signatureHash = this.generateSignatureHash(signatureData, userId, now);
+
             const sig = this.signatureRepo.create({
                 role: currentStep.workflowNode?.label || 'Approver',
                 signedBy: signedByName,
                 signatureData: signatureData,
-                lockHash: 'WORKFLOW_STEP_' + currentStep.id,
+                lockHash: signatureHash,
                 metadata: {
-                    timestamp: new Date()
+                    timestamp: now,
                 }
             });
             const savedSig = await this.signatureRepo.save(sig);
@@ -163,12 +174,11 @@ export class InspectionWorkflowService {
         currentStep.status = WorkflowStepStatus.COMPLETED;
         currentStep.signatureId = effectiveSignatureId > 0 ? effectiveSignatureId : null;
         currentStep.signedBy = signedByName;
-        currentStep.completedAt = new Date();
+        currentStep.completedAt = now;
         currentStep.comments = comments || '';
 
         await this.stepRepo.save(currentStep);
 
-        // Determine next step
         const nextStep = run.steps.find(s => s.stepOrder === run.currentStepOrder + 1);
 
         let isFinal = false;
@@ -178,7 +188,6 @@ export class InspectionWorkflowService {
             await this.stepRepo.save(nextStep);
             run.currentStepOrder += 1;
         } else {
-            // It's the final step
             run.status = WorkflowRunStatus.COMPLETED;
             isFinal = true;
         }
@@ -209,6 +218,70 @@ export class InspectionWorkflowService {
 
         run.status = WorkflowRunStatus.REJECTED;
         return this.runRepo.save(run);
+    }
+
+    /**
+     * Reverses an already-completed workflow.
+     * Resets all steps back to WAITING and sets run to IN_PROGRESS at step 1.
+     * Notifies the original RFI raiser about the reversal.
+     */
+    async reverseWorkflow(
+        inspectionId: number,
+        userId: number,
+        reason: string,
+        isAdmin: boolean = false
+    ): Promise<InspectionWorkflowRun> {
+        const run = await this.getWorkflowState(inspectionId);
+        if (!run) throw new NotFoundException('Workflow run not found');
+
+        if (run.status !== WorkflowRunStatus.COMPLETED) {
+            throw new BadRequestException('Only completed workflows can be reversed');
+        }
+
+        // Update the inspection status to REVERSED
+        const inspection = await this.inspectionRepo.findOne({
+            where: { id: inspectionId },
+        });
+        if (!inspection) throw new NotFoundException('Inspection not found');
+
+        inspection.status = InspectionStatus.REVERSED;
+        await this.inspectionRepo.save(inspection);
+
+        // Reset all workflow steps
+        for (const step of run.steps) {
+            step.status = step.stepOrder === 1 ? WorkflowStepStatus.PENDING : WorkflowStepStatus.WAITING;
+            step.completedAt = null;
+            step.comments = step.stepOrder === 1 ? `REVERSED: ${reason}` : null;
+            // Keep signature references for audit trail (do NOT delete)
+        }
+        await this.stepRepo.save(run.steps);
+
+        // Reset the run
+        run.status = WorkflowRunStatus.REVERSED;
+        run.currentStepOrder = 1;
+        const savedRun = await this.runRepo.save(run);
+
+        // Audit log
+        await this.auditService.log(
+            userId,
+            'QUALITY',
+            'REVERSE_RFI',
+            String(inspectionId),
+            inspection.epsNodeId,
+            { reason, previousStatus: 'COMPLETED' },
+        );
+
+        // Notify the original raiser
+        if (inspection.requestedById) {
+            this.pushService.sendToUsers(
+                [inspection.requestedById],
+                'RFI Reversed ⚠️',
+                `Your RFI #${inspectionId} has been reversed. Reason: ${reason}`,
+                { inspectionId: String(inspectionId), type: 'REVERSED' },
+            ).catch(() => { /* non-fatal */ });
+        }
+
+        return savedRun;
     }
 
 }

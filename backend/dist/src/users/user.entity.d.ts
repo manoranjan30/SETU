@@ -4,6 +4,7 @@ export declare class User {
     username: string;
     passwordHash: string;
     isActive: boolean;
+    fcmToken: string | null;
     roles: Role[];
     createdAt: Date;
     updatedAt: Date;

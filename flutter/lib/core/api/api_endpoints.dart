@@ -177,4 +177,53 @@ class ApiEndpoints {
 
   /// GET /files/:id
   static String downloadFile(int id) => '/files/$id';
+
+  // ==================== QUALITY ENDPOINTS ====================
+
+  /// GET /eps/:projectId/tree
+  static String epsTree(int projectId) => '/eps/$projectId/tree';
+
+  /// GET /quality/activity-lists?projectId=X&epsNodeId=Y
+  static const String qualityActivityLists = '/quality/activity-lists';
+
+  /// GET /quality/activity-lists/:listId/activities
+  static String qualityListActivities(int listId) =>
+      '/quality/activity-lists/$listId/activities';
+
+  /// GET /quality/inspections  (query: projectId, epsNodeId?, listId?)
+  static const String qualityInspections = '/quality/inspections';
+
+  /// GET /quality/inspections/:id
+  static String qualityInspection(int id) => '/quality/inspections/$id';
+
+  /// POST /quality/inspections  → Raise RFI
+  static const String raiseRfi = '/quality/inspections';
+
+  /// PATCH /quality/inspections/:id/status  → Approve / Reject
+  static String inspectionStatus(int id) => '/quality/inspections/$id/status';
+
+  /// PATCH /quality/inspections/stage/:stageId  → Save checklist stage
+  static String inspectionStage(int stageId) =>
+      '/quality/inspections/stage/$stageId';
+
+  /// GET /quality/activities/:id/observations
+  static String activityObservations(int activityId) =>
+      '/quality/activities/$activityId/observations';
+
+  /// POST /quality/activities/:id/observation  → Raise observation
+  static String raiseObservation(int activityId) =>
+      '/quality/activities/$activityId/observation';
+
+  /// PATCH /quality/activities/:actId/observation/:obsId/resolve
+  static String resolveObservation(int activityId, String obsId) =>
+      '/quality/activities/$activityId/observation/$obsId/resolve';
+
+  /// PATCH /quality/activities/:actId/observation/:obsId/close
+  static String closeObservation(int activityId, String obsId) =>
+      '/quality/activities/$activityId/observation/$obsId/close';
+
+  // ==================== FCM / PUSH NOTIFICATION ENDPOINTS ====================
+
+  /// POST /users/fcm-token  → Register/update device FCM token
+  static const String fcmToken = '/users/fcm-token';
 }

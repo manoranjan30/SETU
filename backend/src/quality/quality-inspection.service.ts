@@ -20,6 +20,7 @@ import { QualityActivityStatus } from './entities/quality-activity.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 export interface CreateInspectionDto {
   projectId: number;
@@ -60,6 +61,7 @@ export class QualityInspectionService {
     private readonly complianceService: ComplianceService,
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
+    private readonly pushService: PushNotificationService,
   ) { }
 
   async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
@@ -76,6 +78,20 @@ export class QualityInspectionService {
     }
 
     return query.orderBy('i.createdAt', 'DESC').getMany();
+  }
+
+  async getMyPendingInspections(projectId: number, userId: number) {
+    return this.inspectionRepo
+      .createQueryBuilder('i')
+      .leftJoinAndSelect('i.activity', 'activity')
+      .leftJoinAndSelect('i.epsNode', 'eps')
+      .where('i.projectId = :projectId', { projectId })
+      .andWhere('i.requestedById = :userId', { userId })
+      .andWhere('i.status NOT IN (:...closedStatuses)', {
+        closedStatuses: ['APPROVED', 'CANCELED', 'CLOSED'],
+      })
+      .orderBy('i.createdAt', 'DESC')
+      .getMany();
   }
 
   async getInspectionDetails(id: number) {
@@ -161,7 +177,7 @@ export class QualityInspectionService {
       comments: dto.comments,
       requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
       status: InspectionStatus.PENDING,
-      // inspectedBy: userId // Requestor
+      requestedById: userId ? parseInt(userId, 10) : undefined,
     });
 
     // Ensure listId matches activity
@@ -233,6 +249,14 @@ export class QualityInspectionService {
       dto.projectId,
       userId ? parseInt(userId, 10) : 0
     );
+
+    // 10. Notify QC inspectors of new RFI (fire-and-forget)
+    this.pushService.sendToPermission(
+      'QUALITY.INSPECTION.APPROVE',
+      'New RFI Raised',
+      `Activity: ${activity.activityName} — Seq #${activity.sequence}`,
+      { inspectionId: String(savedInspection.id), type: 'RFI_RAISED' },
+    ).catch(() => { /* non-fatal */ });
 
     return this.inspectionRepo.findOne({
       where: { id: savedInspection.id },
@@ -415,6 +439,19 @@ export class QualityInspectionService {
           date: inspection.inspectionDate,
         },
       );
+
+      // Notify the person who raised the RFI (fire-and-forget)
+      if (inspection.requestedById) {
+        const resultLabel = dto.status === InspectionStatus.APPROVED ? 'Approved ✓' : 'Rejected ✗';
+        this.pushService.sendToUsers(
+          [inspection.requestedById],
+          `RFI ${resultLabel}`,
+          dto.comments || (dto.status === InspectionStatus.APPROVED
+            ? 'Your inspection request has been approved.'
+            : 'Your inspection request has been rejected.'),
+          { inspectionId: String(id), type: dto.status },
+        ).catch(() => { /* non-fatal */ });
+      }
     }
 
     return saved;

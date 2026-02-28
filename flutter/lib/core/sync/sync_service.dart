@@ -63,8 +63,11 @@ class SyncService {
       result.logsSynced = logsResult.synced;
       result.logsFailed = logsResult.failed;
 
-      // Process sync queue
+      // Process sync queue (general)
       await _processSyncQueue();
+
+      // Process quality-specific queue items
+      await _processQualityQueue();
 
       result.success = true;
 
@@ -421,6 +424,130 @@ class SyncService {
     Map<String, dynamic> payload,
   ) async {
     // Handle photo uploads - postponed as per requirements
+  }
+
+  /// Process quality-specific entries from SyncQueue
+  Future<void> _processQualityQueue() async {
+    final qualityItems = await (_database.select(_database.syncQueue)
+          ..where((t) =>
+              t.entityType.equals('quality_rfi') |
+              t.entityType.equals('quality_obs_resolve') |
+              t.entityType.equals('quality_stage_save') |
+              t.entityType.equals('quality_approve') |
+              t.entityType.equals('quality_obs_raise') |
+              t.entityType.equals('quality_obs_close'))
+          ..orderBy([
+            (t) => OrderingTerm.desc(t.priority),
+            (t) => OrderingTerm.asc(t.createdAt),
+          ])
+          ..limit(50))
+        .get();
+
+    for (final item in qualityItems) {
+      if (item.retryCount >= maxRetryAttempts) {
+        await (_database.update(_database.syncQueue)
+              ..where((t) => t.id.equals(item.id)))
+            .write(SyncQueueCompanion(
+          lastError: const Value('Max retries exceeded — needs attention'),
+        ));
+        continue;
+      }
+
+      try {
+        final payload = jsonDecode(item.payload) as Map<String, dynamic>;
+
+        switch (item.entityType) {
+          case 'quality_rfi':
+            await _apiClient.raiseRfi(
+              projectId: payload['projectId'] as int,
+              epsNodeId: payload['epsNodeId'] as int,
+              listId: payload['listId'] as int,
+              activityId: payload['activityId'] as int,
+              comments: payload['comments'] as String?,
+            );
+            break;
+
+          case 'quality_obs_resolve':
+            await _apiClient.resolveObservation(
+              activityId: payload['activityId'] as int,
+              obsId: payload['obsId'] as String,
+              closureText: payload['closureText'] as String,
+              closureEvidence: (payload['closureEvidence'] as List?)
+                  ?.map((e) => e as String)
+                  .toList(),
+            );
+            break;
+
+          case 'quality_stage_save':
+            await _apiClient.saveInspectionStage(
+              stageId: payload['stageId'] as int,
+              status: payload['status'] as String,
+              items: (payload['items'] as List)
+                  .cast<Map<String, dynamic>>(),
+            );
+            break;
+
+          case 'quality_approve':
+            await _apiClient.updateInspectionStatus(
+              inspectionId: payload['inspectionId'] as int,
+              status: payload['status'] as String,
+              comments: payload['comments'] as String?,
+              inspectionDate: payload['inspectionDate'] as String?,
+            );
+            break;
+
+          case 'quality_obs_raise':
+            await _apiClient.raiseObservation(
+              activityId: payload['activityId'] as int,
+              observationText: payload['observationText'] as String,
+              type: payload['type'] as String?,
+              photos: (payload['photos'] as List?)
+                  ?.map((e) => e as String)
+                  .toList(),
+            );
+            break;
+
+          case 'quality_obs_close':
+            await _apiClient.closeObservation(
+              activityId: payload['activityId'] as int,
+              obsId: payload['obsId'] as String,
+            );
+            break;
+        }
+
+        // Remove from queue on success
+        await (_database.delete(_database.syncQueue)
+              ..where((t) => t.id.equals(item.id)))
+            .go();
+
+        _logger.i('Quality queue synced: ${item.entityType} #${item.id}');
+      } on DioException catch (e) {
+        final statusCode = e.response?.statusCode ?? 0;
+        // 4xx = permanent validation error, do not retry indefinitely
+        final newRetry = statusCode >= 400 && statusCode < 500
+            ? maxRetryAttempts // force stop
+            : item.retryCount + 1;
+
+        await (_database.update(_database.syncQueue)
+              ..where((t) => t.id.equals(item.id)))
+            .write(SyncQueueCompanion(
+          retryCount: Value(newRetry),
+          lastAttemptAt: Value(DateTime.now()),
+          lastError: Value(_extractErrorMessage(e.response?.data)),
+        ));
+        _logger.e(
+            'Quality sync failed: ${item.entityType} #${item.id}',
+            error: e);
+      } catch (e) {
+        await (_database.update(_database.syncQueue)
+              ..where((t) => t.id.equals(item.id)))
+            .write(SyncQueueCompanion(
+          retryCount: Value(item.retryCount + 1),
+          lastAttemptAt: Value(DateTime.now()),
+          lastError: Value(e.toString()),
+        ));
+      }
+    }
   }
 
   /// Add item to sync queue

@@ -3,6 +3,7 @@ import { BoqActivityPlan, PlanningBasis, MappingType } from './entities/boq-acti
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { MeasurementElement } from '../boq/entities/measurement-element.entity';
+import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { ActivityRelationship } from '../wbs/entities/activity-relationship.entity';
 import { RecoveryPlan } from './entities/recovery-plan.entity';
@@ -19,12 +20,13 @@ export declare class PlanningService {
     private progressRepo;
     private subItemRepo;
     private measurementRepo;
+    private measurementProgressRepo;
     private wbsRepo;
     private epsRepo;
     private relRepo;
     private cpmService;
     private readonly auditService;
-    constructor(planRepo: Repository<BoqActivityPlan>, recoveryRepo: Repository<RecoveryPlan>, boqRepo: Repository<BoqItem>, activityRepo: Repository<Activity>, progressRepo: Repository<QuantityProgressRecord>, subItemRepo: Repository<BoqSubItem>, measurementRepo: Repository<MeasurementElement>, wbsRepo: Repository<WbsNode>, epsRepo: Repository<EpsNode>, relRepo: Repository<ActivityRelationship>, cpmService: CpmService, auditService: AuditService);
+    constructor(planRepo: Repository<BoqActivityPlan>, recoveryRepo: Repository<RecoveryPlan>, boqRepo: Repository<BoqItem>, activityRepo: Repository<Activity>, progressRepo: Repository<QuantityProgressRecord>, subItemRepo: Repository<BoqSubItem>, measurementRepo: Repository<MeasurementElement>, measurementProgressRepo: Repository<MeasurementProgress>, wbsRepo: Repository<WbsNode>, epsRepo: Repository<EpsNode>, relRepo: Repository<ActivityRelationship>, cpmService: CpmService, auditService: AuditService);
     unlinkBoq(boqItemId: number, boqSubItemId?: number, measurementId?: number): Promise<void>;
     distributeBoqToActivity(boqItemId: number, activityId: number, quantity: number, basis?: PlanningBasis, mappingType?: MappingType, mappingRules?: any, boqSubItemId?: number, measurementId?: number): Promise<BoqActivityPlan>;
     getProjectPlanningMatrix(projectId: number): Promise<BoqActivityPlan[]>;

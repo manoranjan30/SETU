@@ -71,6 +71,9 @@ export class QualityInspection {
   @Column({ nullable: true })
   inspectedBy: string; // User ID or Name
 
+  @Column({ nullable: true })
+  requestedById: number; // User ID who raised the RFI
+
   @Column({ type: 'text', nullable: true })
   comments: string;
 

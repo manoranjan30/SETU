@@ -3823,6 +3823,972 @@ class CachedEpsNodesCompanion extends UpdateCompanion<CachedEpsNode> {
   }
 }
 
+class $CachedQualityActivityListsTable extends CachedQualityActivityLists
+    with
+        TableInfo<$CachedQualityActivityListsTable, CachedQualityActivityList> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedQualityActivityListsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _epsNodeIdMeta =
+      const VerificationMeta('epsNodeId');
+  @override
+  late final GeneratedColumn<int> epsNodeId = GeneratedColumn<int>(
+      'eps_node_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _descriptionMeta =
+      const VerificationMeta('description');
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+      'description', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _activityCountMeta =
+      const VerificationMeta('activityCount');
+  @override
+  late final GeneratedColumn<int> activityCount = GeneratedColumn<int>(
+      'activity_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        projectId,
+        epsNodeId,
+        name,
+        description,
+        activityCount,
+        rawData,
+        cachedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_quality_activity_lists';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<CachedQualityActivityList> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('eps_node_id')) {
+      context.handle(
+          _epsNodeIdMeta,
+          epsNodeId.isAcceptableOrUnknown(
+              data['eps_node_id']!, _epsNodeIdMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+          _descriptionMeta,
+          description.isAcceptableOrUnknown(
+              data['description']!, _descriptionMeta));
+    }
+    if (data.containsKey('activity_count')) {
+      context.handle(
+          _activityCountMeta,
+          activityCount.isAcceptableOrUnknown(
+              data['activity_count']!, _activityCountMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedQualityActivityList map(Map<String, dynamic> data,
+      {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedQualityActivityList(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      epsNodeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}eps_node_id']),
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      description: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}description']),
+      activityCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}activity_count'])!,
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedQualityActivityListsTable createAlias(String alias) {
+    return $CachedQualityActivityListsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedQualityActivityList extends DataClass
+    implements Insertable<CachedQualityActivityList> {
+  final int id;
+  final int projectId;
+  final int? epsNodeId;
+  final String name;
+  final String? description;
+  final int activityCount;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedQualityActivityList(
+      {required this.id,
+      required this.projectId,
+      this.epsNodeId,
+      required this.name,
+      this.description,
+      required this.activityCount,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['project_id'] = Variable<int>(projectId);
+    if (!nullToAbsent || epsNodeId != null) {
+      map['eps_node_id'] = Variable<int>(epsNodeId);
+    }
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['activity_count'] = Variable<int>(activityCount);
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedQualityActivityListsCompanion toCompanion(bool nullToAbsent) {
+    return CachedQualityActivityListsCompanion(
+      id: Value(id),
+      projectId: Value(projectId),
+      epsNodeId: epsNodeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(epsNodeId),
+      name: Value(name),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      activityCount: Value(activityCount),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedQualityActivityList.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedQualityActivityList(
+      id: serializer.fromJson<int>(json['id']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      epsNodeId: serializer.fromJson<int?>(json['epsNodeId']),
+      name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String?>(json['description']),
+      activityCount: serializer.fromJson<int>(json['activityCount']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'projectId': serializer.toJson<int>(projectId),
+      'epsNodeId': serializer.toJson<int?>(epsNodeId),
+      'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String?>(description),
+      'activityCount': serializer.toJson<int>(activityCount),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedQualityActivityList copyWith(
+          {int? id,
+          int? projectId,
+          Value<int?> epsNodeId = const Value.absent(),
+          String? name,
+          Value<String?> description = const Value.absent(),
+          int? activityCount,
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedQualityActivityList(
+        id: id ?? this.id,
+        projectId: projectId ?? this.projectId,
+        epsNodeId: epsNodeId.present ? epsNodeId.value : this.epsNodeId,
+        name: name ?? this.name,
+        description: description.present ? description.value : this.description,
+        activityCount: activityCount ?? this.activityCount,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedQualityActivityList copyWithCompanion(
+      CachedQualityActivityListsCompanion data) {
+    return CachedQualityActivityList(
+      id: data.id.present ? data.id.value : this.id,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      epsNodeId: data.epsNodeId.present ? data.epsNodeId.value : this.epsNodeId,
+      name: data.name.present ? data.name.value : this.name,
+      description:
+          data.description.present ? data.description.value : this.description,
+      activityCount: data.activityCount.present
+          ? data.activityCount.value
+          : this.activityCount,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedQualityActivityList(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('activityCount: $activityCount, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, projectId, epsNodeId, name, description,
+      activityCount, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedQualityActivityList &&
+          other.id == this.id &&
+          other.projectId == this.projectId &&
+          other.epsNodeId == this.epsNodeId &&
+          other.name == this.name &&
+          other.description == this.description &&
+          other.activityCount == this.activityCount &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedQualityActivityListsCompanion
+    extends UpdateCompanion<CachedQualityActivityList> {
+  final Value<int> id;
+  final Value<int> projectId;
+  final Value<int?> epsNodeId;
+  final Value<String> name;
+  final Value<String?> description;
+  final Value<int> activityCount;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  const CachedQualityActivityListsCompanion({
+    this.id = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.epsNodeId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.activityCount = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+  });
+  CachedQualityActivityListsCompanion.insert({
+    this.id = const Value.absent(),
+    required int projectId,
+    this.epsNodeId = const Value.absent(),
+    required String name,
+    this.description = const Value.absent(),
+    this.activityCount = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+  })  : projectId = Value(projectId),
+        name = Value(name),
+        rawData = Value(rawData);
+  static Insertable<CachedQualityActivityList> custom({
+    Expression<int>? id,
+    Expression<int>? projectId,
+    Expression<int>? epsNodeId,
+    Expression<String>? name,
+    Expression<String>? description,
+    Expression<int>? activityCount,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (projectId != null) 'project_id': projectId,
+      if (epsNodeId != null) 'eps_node_id': epsNodeId,
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (activityCount != null) 'activity_count': activityCount,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+    });
+  }
+
+  CachedQualityActivityListsCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? projectId,
+      Value<int?>? epsNodeId,
+      Value<String>? name,
+      Value<String?>? description,
+      Value<int>? activityCount,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt}) {
+    return CachedQualityActivityListsCompanion(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      epsNodeId: epsNodeId ?? this.epsNodeId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      activityCount: activityCount ?? this.activityCount,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (epsNodeId.present) {
+      map['eps_node_id'] = Variable<int>(epsNodeId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (activityCount.present) {
+      map['activity_count'] = Variable<int>(activityCount.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedQualityActivityListsCompanion(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('activityCount: $activityCount, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedQualityActivitiesTable extends CachedQualityActivities
+    with TableInfo<$CachedQualityActivitiesTable, CachedQualityActivity> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedQualityActivitiesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _listIdMeta = const VerificationMeta('listId');
+  @override
+  late final GeneratedColumn<int> listId = GeneratedColumn<int>(
+      'list_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _epsNodeIdMeta =
+      const VerificationMeta('epsNodeId');
+  @override
+  late final GeneratedColumn<int> epsNodeId = GeneratedColumn<int>(
+      'eps_node_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _sequenceMeta =
+      const VerificationMeta('sequence');
+  @override
+  late final GeneratedColumn<int> sequence = GeneratedColumn<int>(
+      'sequence', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _activityNameMeta =
+      const VerificationMeta('activityName');
+  @override
+  late final GeneratedColumn<String> activityName = GeneratedColumn<String>(
+      'activity_name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('NOT_STARTED'));
+  static const VerificationMeta _holdPointMeta =
+      const VerificationMeta('holdPoint');
+  @override
+  late final GeneratedColumn<int> holdPoint = GeneratedColumn<int>(
+      'hold_point', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _witnessPointMeta =
+      const VerificationMeta('witnessPoint');
+  @override
+  late final GeneratedColumn<int> witnessPoint = GeneratedColumn<int>(
+      'witness_point', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        listId,
+        projectId,
+        epsNodeId,
+        sequence,
+        activityName,
+        status,
+        holdPoint,
+        witnessPoint,
+        rawData,
+        cachedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_quality_activities';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<CachedQualityActivity> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('list_id')) {
+      context.handle(_listIdMeta,
+          listId.isAcceptableOrUnknown(data['list_id']!, _listIdMeta));
+    } else if (isInserting) {
+      context.missing(_listIdMeta);
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('eps_node_id')) {
+      context.handle(
+          _epsNodeIdMeta,
+          epsNodeId.isAcceptableOrUnknown(
+              data['eps_node_id']!, _epsNodeIdMeta));
+    }
+    if (data.containsKey('sequence')) {
+      context.handle(_sequenceMeta,
+          sequence.isAcceptableOrUnknown(data['sequence']!, _sequenceMeta));
+    }
+    if (data.containsKey('activity_name')) {
+      context.handle(
+          _activityNameMeta,
+          activityName.isAcceptableOrUnknown(
+              data['activity_name']!, _activityNameMeta));
+    } else if (isInserting) {
+      context.missing(_activityNameMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('hold_point')) {
+      context.handle(_holdPointMeta,
+          holdPoint.isAcceptableOrUnknown(data['hold_point']!, _holdPointMeta));
+    }
+    if (data.containsKey('witness_point')) {
+      context.handle(
+          _witnessPointMeta,
+          witnessPoint.isAcceptableOrUnknown(
+              data['witness_point']!, _witnessPointMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedQualityActivity map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedQualityActivity(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      listId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}list_id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      epsNodeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}eps_node_id']),
+      sequence: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sequence'])!,
+      activityName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}activity_name'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      holdPoint: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}hold_point'])!,
+      witnessPoint: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}witness_point'])!,
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedQualityActivitiesTable createAlias(String alias) {
+    return $CachedQualityActivitiesTable(attachedDatabase, alias);
+  }
+}
+
+class CachedQualityActivity extends DataClass
+    implements Insertable<CachedQualityActivity> {
+  final int id;
+  final int listId;
+  final int projectId;
+  final int? epsNodeId;
+  final int sequence;
+  final String activityName;
+  final String status;
+  final int holdPoint;
+  final int witnessPoint;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedQualityActivity(
+      {required this.id,
+      required this.listId,
+      required this.projectId,
+      this.epsNodeId,
+      required this.sequence,
+      required this.activityName,
+      required this.status,
+      required this.holdPoint,
+      required this.witnessPoint,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['list_id'] = Variable<int>(listId);
+    map['project_id'] = Variable<int>(projectId);
+    if (!nullToAbsent || epsNodeId != null) {
+      map['eps_node_id'] = Variable<int>(epsNodeId);
+    }
+    map['sequence'] = Variable<int>(sequence);
+    map['activity_name'] = Variable<String>(activityName);
+    map['status'] = Variable<String>(status);
+    map['hold_point'] = Variable<int>(holdPoint);
+    map['witness_point'] = Variable<int>(witnessPoint);
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedQualityActivitiesCompanion toCompanion(bool nullToAbsent) {
+    return CachedQualityActivitiesCompanion(
+      id: Value(id),
+      listId: Value(listId),
+      projectId: Value(projectId),
+      epsNodeId: epsNodeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(epsNodeId),
+      sequence: Value(sequence),
+      activityName: Value(activityName),
+      status: Value(status),
+      holdPoint: Value(holdPoint),
+      witnessPoint: Value(witnessPoint),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedQualityActivity.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedQualityActivity(
+      id: serializer.fromJson<int>(json['id']),
+      listId: serializer.fromJson<int>(json['listId']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      epsNodeId: serializer.fromJson<int?>(json['epsNodeId']),
+      sequence: serializer.fromJson<int>(json['sequence']),
+      activityName: serializer.fromJson<String>(json['activityName']),
+      status: serializer.fromJson<String>(json['status']),
+      holdPoint: serializer.fromJson<int>(json['holdPoint']),
+      witnessPoint: serializer.fromJson<int>(json['witnessPoint']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'listId': serializer.toJson<int>(listId),
+      'projectId': serializer.toJson<int>(projectId),
+      'epsNodeId': serializer.toJson<int?>(epsNodeId),
+      'sequence': serializer.toJson<int>(sequence),
+      'activityName': serializer.toJson<String>(activityName),
+      'status': serializer.toJson<String>(status),
+      'holdPoint': serializer.toJson<int>(holdPoint),
+      'witnessPoint': serializer.toJson<int>(witnessPoint),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedQualityActivity copyWith(
+          {int? id,
+          int? listId,
+          int? projectId,
+          Value<int?> epsNodeId = const Value.absent(),
+          int? sequence,
+          String? activityName,
+          String? status,
+          int? holdPoint,
+          int? witnessPoint,
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedQualityActivity(
+        id: id ?? this.id,
+        listId: listId ?? this.listId,
+        projectId: projectId ?? this.projectId,
+        epsNodeId: epsNodeId.present ? epsNodeId.value : this.epsNodeId,
+        sequence: sequence ?? this.sequence,
+        activityName: activityName ?? this.activityName,
+        status: status ?? this.status,
+        holdPoint: holdPoint ?? this.holdPoint,
+        witnessPoint: witnessPoint ?? this.witnessPoint,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedQualityActivity copyWithCompanion(
+      CachedQualityActivitiesCompanion data) {
+    return CachedQualityActivity(
+      id: data.id.present ? data.id.value : this.id,
+      listId: data.listId.present ? data.listId.value : this.listId,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      epsNodeId: data.epsNodeId.present ? data.epsNodeId.value : this.epsNodeId,
+      sequence: data.sequence.present ? data.sequence.value : this.sequence,
+      activityName: data.activityName.present
+          ? data.activityName.value
+          : this.activityName,
+      status: data.status.present ? data.status.value : this.status,
+      holdPoint: data.holdPoint.present ? data.holdPoint.value : this.holdPoint,
+      witnessPoint: data.witnessPoint.present
+          ? data.witnessPoint.value
+          : this.witnessPoint,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedQualityActivity(')
+          ..write('id: $id, ')
+          ..write('listId: $listId, ')
+          ..write('projectId: $projectId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('sequence: $sequence, ')
+          ..write('activityName: $activityName, ')
+          ..write('status: $status, ')
+          ..write('holdPoint: $holdPoint, ')
+          ..write('witnessPoint: $witnessPoint, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, listId, projectId, epsNodeId, sequence,
+      activityName, status, holdPoint, witnessPoint, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedQualityActivity &&
+          other.id == this.id &&
+          other.listId == this.listId &&
+          other.projectId == this.projectId &&
+          other.epsNodeId == this.epsNodeId &&
+          other.sequence == this.sequence &&
+          other.activityName == this.activityName &&
+          other.status == this.status &&
+          other.holdPoint == this.holdPoint &&
+          other.witnessPoint == this.witnessPoint &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedQualityActivitiesCompanion
+    extends UpdateCompanion<CachedQualityActivity> {
+  final Value<int> id;
+  final Value<int> listId;
+  final Value<int> projectId;
+  final Value<int?> epsNodeId;
+  final Value<int> sequence;
+  final Value<String> activityName;
+  final Value<String> status;
+  final Value<int> holdPoint;
+  final Value<int> witnessPoint;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  const CachedQualityActivitiesCompanion({
+    this.id = const Value.absent(),
+    this.listId = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.epsNodeId = const Value.absent(),
+    this.sequence = const Value.absent(),
+    this.activityName = const Value.absent(),
+    this.status = const Value.absent(),
+    this.holdPoint = const Value.absent(),
+    this.witnessPoint = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+  });
+  CachedQualityActivitiesCompanion.insert({
+    this.id = const Value.absent(),
+    required int listId,
+    required int projectId,
+    this.epsNodeId = const Value.absent(),
+    this.sequence = const Value.absent(),
+    required String activityName,
+    this.status = const Value.absent(),
+    this.holdPoint = const Value.absent(),
+    this.witnessPoint = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+  })  : listId = Value(listId),
+        projectId = Value(projectId),
+        activityName = Value(activityName),
+        rawData = Value(rawData);
+  static Insertable<CachedQualityActivity> custom({
+    Expression<int>? id,
+    Expression<int>? listId,
+    Expression<int>? projectId,
+    Expression<int>? epsNodeId,
+    Expression<int>? sequence,
+    Expression<String>? activityName,
+    Expression<String>? status,
+    Expression<int>? holdPoint,
+    Expression<int>? witnessPoint,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (listId != null) 'list_id': listId,
+      if (projectId != null) 'project_id': projectId,
+      if (epsNodeId != null) 'eps_node_id': epsNodeId,
+      if (sequence != null) 'sequence': sequence,
+      if (activityName != null) 'activity_name': activityName,
+      if (status != null) 'status': status,
+      if (holdPoint != null) 'hold_point': holdPoint,
+      if (witnessPoint != null) 'witness_point': witnessPoint,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+    });
+  }
+
+  CachedQualityActivitiesCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? listId,
+      Value<int>? projectId,
+      Value<int?>? epsNodeId,
+      Value<int>? sequence,
+      Value<String>? activityName,
+      Value<String>? status,
+      Value<int>? holdPoint,
+      Value<int>? witnessPoint,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt}) {
+    return CachedQualityActivitiesCompanion(
+      id: id ?? this.id,
+      listId: listId ?? this.listId,
+      projectId: projectId ?? this.projectId,
+      epsNodeId: epsNodeId ?? this.epsNodeId,
+      sequence: sequence ?? this.sequence,
+      activityName: activityName ?? this.activityName,
+      status: status ?? this.status,
+      holdPoint: holdPoint ?? this.holdPoint,
+      witnessPoint: witnessPoint ?? this.witnessPoint,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (listId.present) {
+      map['list_id'] = Variable<int>(listId.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (epsNodeId.present) {
+      map['eps_node_id'] = Variable<int>(epsNodeId.value);
+    }
+    if (sequence.present) {
+      map['sequence'] = Variable<int>(sequence.value);
+    }
+    if (activityName.present) {
+      map['activity_name'] = Variable<String>(activityName.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (holdPoint.present) {
+      map['hold_point'] = Variable<int>(holdPoint.value);
+    }
+    if (witnessPoint.present) {
+      map['witness_point'] = Variable<int>(witnessPoint.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedQualityActivitiesCompanion(')
+          ..write('id: $id, ')
+          ..write('listId: $listId, ')
+          ..write('projectId: $projectId, ')
+          ..write('epsNodeId: $epsNodeId, ')
+          ..write('sequence: $sequence, ')
+          ..write('activityName: $activityName, ')
+          ..write('status: $status, ')
+          ..write('holdPoint: $holdPoint, ')
+          ..write('witnessPoint: $witnessPoint, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3835,6 +4801,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $CachedActivitiesTable(this);
   late final $CachedBoqItemsTable cachedBoqItems = $CachedBoqItemsTable(this);
   late final $CachedEpsNodesTable cachedEpsNodes = $CachedEpsNodesTable(this);
+  late final $CachedQualityActivityListsTable cachedQualityActivityLists =
+      $CachedQualityActivityListsTable(this);
+  late final $CachedQualityActivitiesTable cachedQualityActivities =
+      $CachedQualityActivitiesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3846,7 +4816,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         cachedProjects,
         cachedActivities,
         cachedBoqItems,
-        cachedEpsNodes
+        cachedEpsNodes,
+        cachedQualityActivityLists,
+        cachedQualityActivities
       ];
 }
 
@@ -5669,6 +6641,492 @@ typedef $$CachedEpsNodesTableProcessedTableManager = ProcessedTableManager<
     ),
     CachedEpsNode,
     PrefetchHooks Function()>;
+typedef $$CachedQualityActivityListsTableCreateCompanionBuilder
+    = CachedQualityActivityListsCompanion Function({
+  Value<int> id,
+  required int projectId,
+  Value<int?> epsNodeId,
+  required String name,
+  Value<String?> description,
+  Value<int> activityCount,
+  required String rawData,
+  Value<DateTime> cachedAt,
+});
+typedef $$CachedQualityActivityListsTableUpdateCompanionBuilder
+    = CachedQualityActivityListsCompanion Function({
+  Value<int> id,
+  Value<int> projectId,
+  Value<int?> epsNodeId,
+  Value<String> name,
+  Value<String?> description,
+  Value<int> activityCount,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+});
+
+class $$CachedQualityActivityListsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedQualityActivityListsTable> {
+  $$CachedQualityActivityListsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get activityCount => $composableBuilder(
+      column: $table.activityCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedQualityActivityListsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedQualityActivityListsTable> {
+  $$CachedQualityActivityListsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get activityCount => $composableBuilder(
+      column: $table.activityCount,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedQualityActivityListsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedQualityActivityListsTable> {
+  $$CachedQualityActivityListsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<int> get epsNodeId =>
+      $composableBuilder(column: $table.epsNodeId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<int> get activityCount => $composableBuilder(
+      column: $table.activityCount, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedQualityActivityListsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedQualityActivityListsTable,
+    CachedQualityActivityList,
+    $$CachedQualityActivityListsTableFilterComposer,
+    $$CachedQualityActivityListsTableOrderingComposer,
+    $$CachedQualityActivityListsTableAnnotationComposer,
+    $$CachedQualityActivityListsTableCreateCompanionBuilder,
+    $$CachedQualityActivityListsTableUpdateCompanionBuilder,
+    (
+      CachedQualityActivityList,
+      BaseReferences<_$AppDatabase, $CachedQualityActivityListsTable,
+          CachedQualityActivityList>
+    ),
+    CachedQualityActivityList,
+    PrefetchHooks Function()> {
+  $$CachedQualityActivityListsTableTableManager(
+      _$AppDatabase db, $CachedQualityActivityListsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedQualityActivityListsTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedQualityActivityListsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedQualityActivityListsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<int?> epsNodeId = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> description = const Value.absent(),
+            Value<int> activityCount = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedQualityActivityListsCompanion(
+            id: id,
+            projectId: projectId,
+            epsNodeId: epsNodeId,
+            name: name,
+            description: description,
+            activityCount: activityCount,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int projectId,
+            Value<int?> epsNodeId = const Value.absent(),
+            required String name,
+            Value<String?> description = const Value.absent(),
+            Value<int> activityCount = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedQualityActivityListsCompanion.insert(
+            id: id,
+            projectId: projectId,
+            epsNodeId: epsNodeId,
+            name: name,
+            description: description,
+            activityCount: activityCount,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedQualityActivityListsTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $CachedQualityActivityListsTable,
+        CachedQualityActivityList,
+        $$CachedQualityActivityListsTableFilterComposer,
+        $$CachedQualityActivityListsTableOrderingComposer,
+        $$CachedQualityActivityListsTableAnnotationComposer,
+        $$CachedQualityActivityListsTableCreateCompanionBuilder,
+        $$CachedQualityActivityListsTableUpdateCompanionBuilder,
+        (
+          CachedQualityActivityList,
+          BaseReferences<_$AppDatabase, $CachedQualityActivityListsTable,
+              CachedQualityActivityList>
+        ),
+        CachedQualityActivityList,
+        PrefetchHooks Function()>;
+typedef $$CachedQualityActivitiesTableCreateCompanionBuilder
+    = CachedQualityActivitiesCompanion Function({
+  Value<int> id,
+  required int listId,
+  required int projectId,
+  Value<int?> epsNodeId,
+  Value<int> sequence,
+  required String activityName,
+  Value<String> status,
+  Value<int> holdPoint,
+  Value<int> witnessPoint,
+  required String rawData,
+  Value<DateTime> cachedAt,
+});
+typedef $$CachedQualityActivitiesTableUpdateCompanionBuilder
+    = CachedQualityActivitiesCompanion Function({
+  Value<int> id,
+  Value<int> listId,
+  Value<int> projectId,
+  Value<int?> epsNodeId,
+  Value<int> sequence,
+  Value<String> activityName,
+  Value<String> status,
+  Value<int> holdPoint,
+  Value<int> witnessPoint,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+});
+
+class $$CachedQualityActivitiesTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedQualityActivitiesTable> {
+  $$CachedQualityActivitiesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get listId => $composableBuilder(
+      column: $table.listId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get sequence => $composableBuilder(
+      column: $table.sequence, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get activityName => $composableBuilder(
+      column: $table.activityName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get holdPoint => $composableBuilder(
+      column: $table.holdPoint, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get witnessPoint => $composableBuilder(
+      column: $table.witnessPoint, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedQualityActivitiesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedQualityActivitiesTable> {
+  $$CachedQualityActivitiesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get listId => $composableBuilder(
+      column: $table.listId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get epsNodeId => $composableBuilder(
+      column: $table.epsNodeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get sequence => $composableBuilder(
+      column: $table.sequence, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get activityName => $composableBuilder(
+      column: $table.activityName,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get holdPoint => $composableBuilder(
+      column: $table.holdPoint, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get witnessPoint => $composableBuilder(
+      column: $table.witnessPoint,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedQualityActivitiesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedQualityActivitiesTable> {
+  $$CachedQualityActivitiesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get listId =>
+      $composableBuilder(column: $table.listId, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<int> get epsNodeId =>
+      $composableBuilder(column: $table.epsNodeId, builder: (column) => column);
+
+  GeneratedColumn<int> get sequence =>
+      $composableBuilder(column: $table.sequence, builder: (column) => column);
+
+  GeneratedColumn<String> get activityName => $composableBuilder(
+      column: $table.activityName, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get holdPoint =>
+      $composableBuilder(column: $table.holdPoint, builder: (column) => column);
+
+  GeneratedColumn<int> get witnessPoint => $composableBuilder(
+      column: $table.witnessPoint, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedQualityActivitiesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedQualityActivitiesTable,
+    CachedQualityActivity,
+    $$CachedQualityActivitiesTableFilterComposer,
+    $$CachedQualityActivitiesTableOrderingComposer,
+    $$CachedQualityActivitiesTableAnnotationComposer,
+    $$CachedQualityActivitiesTableCreateCompanionBuilder,
+    $$CachedQualityActivitiesTableUpdateCompanionBuilder,
+    (
+      CachedQualityActivity,
+      BaseReferences<_$AppDatabase, $CachedQualityActivitiesTable,
+          CachedQualityActivity>
+    ),
+    CachedQualityActivity,
+    PrefetchHooks Function()> {
+  $$CachedQualityActivitiesTableTableManager(
+      _$AppDatabase db, $CachedQualityActivitiesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedQualityActivitiesTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedQualityActivitiesTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedQualityActivitiesTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> listId = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<int?> epsNodeId = const Value.absent(),
+            Value<int> sequence = const Value.absent(),
+            Value<String> activityName = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<int> holdPoint = const Value.absent(),
+            Value<int> witnessPoint = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedQualityActivitiesCompanion(
+            id: id,
+            listId: listId,
+            projectId: projectId,
+            epsNodeId: epsNodeId,
+            sequence: sequence,
+            activityName: activityName,
+            status: status,
+            holdPoint: holdPoint,
+            witnessPoint: witnessPoint,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int listId,
+            required int projectId,
+            Value<int?> epsNodeId = const Value.absent(),
+            Value<int> sequence = const Value.absent(),
+            required String activityName,
+            Value<String> status = const Value.absent(),
+            Value<int> holdPoint = const Value.absent(),
+            Value<int> witnessPoint = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+          }) =>
+              CachedQualityActivitiesCompanion.insert(
+            id: id,
+            listId: listId,
+            projectId: projectId,
+            epsNodeId: epsNodeId,
+            sequence: sequence,
+            activityName: activityName,
+            status: status,
+            holdPoint: holdPoint,
+            witnessPoint: witnessPoint,
+            rawData: rawData,
+            cachedAt: cachedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedQualityActivitiesTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $CachedQualityActivitiesTable,
+        CachedQualityActivity,
+        $$CachedQualityActivitiesTableFilterComposer,
+        $$CachedQualityActivitiesTableOrderingComposer,
+        $$CachedQualityActivitiesTableAnnotationComposer,
+        $$CachedQualityActivitiesTableCreateCompanionBuilder,
+        $$CachedQualityActivitiesTableUpdateCompanionBuilder,
+        (
+          CachedQualityActivity,
+          BaseReferences<_$AppDatabase, $CachedQualityActivitiesTable,
+              CachedQualityActivity>
+        ),
+        CachedQualityActivity,
+        PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5687,4 +7145,11 @@ class $AppDatabaseManager {
       $$CachedBoqItemsTableTableManager(_db, _db.cachedBoqItems);
   $$CachedEpsNodesTableTableManager get cachedEpsNodes =>
       $$CachedEpsNodesTableTableManager(_db, _db.cachedEpsNodes);
+  $$CachedQualityActivityListsTableTableManager
+      get cachedQualityActivityLists =>
+          $$CachedQualityActivityListsTableTableManager(
+              _db, _db.cachedQualityActivityLists);
+  $$CachedQualityActivitiesTableTableManager get cachedQualityActivities =>
+      $$CachedQualityActivitiesTableTableManager(
+          _db, _db.cachedQualityActivities);
 }

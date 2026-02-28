@@ -20,6 +20,7 @@ const boq_activity_plan_entity_1 = require("./entities/boq-activity-plan.entity"
 const boq_item_entity_1 = require("../boq/entities/boq-item.entity");
 const boq_sub_item_entity_1 = require("../boq/entities/boq-sub-item.entity");
 const measurement_element_entity_1 = require("../boq/entities/measurement-element.entity");
+const measurement_progress_entity_1 = require("../boq/entities/measurement-progress.entity");
 const activity_entity_1 = require("../wbs/entities/activity.entity");
 const activity_relationship_entity_1 = require("../wbs/entities/activity-relationship.entity");
 const recovery_plan_entity_1 = require("./entities/recovery-plan.entity");
@@ -36,12 +37,13 @@ let PlanningService = class PlanningService {
     progressRepo;
     subItemRepo;
     measurementRepo;
+    measurementProgressRepo;
     wbsRepo;
     epsRepo;
     relRepo;
     cpmService;
     auditService;
-    constructor(planRepo, recoveryRepo, boqRepo, activityRepo, progressRepo, subItemRepo, measurementRepo, wbsRepo, epsRepo, relRepo, cpmService, auditService) {
+    constructor(planRepo, recoveryRepo, boqRepo, activityRepo, progressRepo, subItemRepo, measurementRepo, measurementProgressRepo, wbsRepo, epsRepo, relRepo, cpmService, auditService) {
         this.planRepo = planRepo;
         this.recoveryRepo = recoveryRepo;
         this.boqRepo = boqRepo;
@@ -49,6 +51,7 @@ let PlanningService = class PlanningService {
         this.progressRepo = progressRepo;
         this.subItemRepo = subItemRepo;
         this.measurementRepo = measurementRepo;
+        this.measurementProgressRepo = measurementProgressRepo;
         this.wbsRepo = wbsRepo;
         this.epsRepo = epsRepo;
         this.relRepo = relRepo;
@@ -888,19 +891,31 @@ let PlanningService = class PlanningService {
                 .andWhere('m.elementName = :name', { name: 'Site Execution' })
                 .getMany();
             console.log(`[PlanningService] Found ${siteExecMeas.length} Site Execution measurements`);
+            const elementIds = siteExecMeas.map((m) => m.id);
+            const pendingLogs = elementIds.length > 0 ? await this.measurementProgressRepo.createQueryBuilder('p')
+                .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
+                .andWhere('p.status = :status', { status: 'PENDING' })
+                .getMany() : [];
+            const pendingMap = new Map();
+            for (const p of pendingLogs) {
+                pendingMap.set(p.measurementElementId, (pendingMap.get(p.measurementElementId) || 0) + Number(p.executedQty || 0));
+            }
             for (const m of siteExecMeas) {
+                const approvedQty = Number(m.executedQty || 0);
+                const pendingQty = pendingMap.get(m.id) || 0;
+                const totalQty = Math.max(0, approvedQty + pendingQty);
                 const elementId = m.elementId || '';
                 const parts = elementId.split('-');
                 const extractedPlanId = parts.length >= 6 ? parts[5] : parts.length >= 5 ? parts[4] : null;
                 if (extractedPlanId && extractedPlanId !== 'NOPLAN') {
                     const key = `plan - ${extractedPlanId} `;
                     const current = execMeasMap.get(key) || 0;
-                    execMeasMap.set(key, current + Number(m.executedQty || 0));
+                    execMeasMap.set(key, current + totalQty);
                     console.log(`[PlanningService] Per - Plan Execution: ${key} = ${execMeasMap.get(key)} `);
                 }
                 else {
                     const legacyKey = `${m.activityId || 'null'} -${m.boqItemId} `;
-                    execMeasMap.set(legacyKey, (execMeasMap.get(legacyKey) || 0) + Number(m.executedQty || 0));
+                    execMeasMap.set(legacyKey, (execMeasMap.get(legacyKey) || 0) + totalQty);
                     console.log(`[PlanningService] Legacy Execution: ${legacyKey} = ${execMeasMap.get(legacyKey)} `);
                 }
             }
@@ -1759,10 +1774,12 @@ exports.PlanningService = PlanningService = __decorate([
     __param(4, (0, typeorm_1.InjectRepository)(quantity_progress_record_entity_1.QuantityProgressRecord)),
     __param(5, (0, typeorm_1.InjectRepository)(boq_sub_item_entity_1.BoqSubItem)),
     __param(6, (0, typeorm_1.InjectRepository)(measurement_element_entity_1.MeasurementElement)),
-    __param(7, (0, typeorm_1.InjectRepository)(wbs_entity_1.WbsNode)),
-    __param(8, (0, typeorm_1.InjectRepository)(eps_entity_1.EpsNode)),
-    __param(9, (0, typeorm_1.InjectRepository)(activity_relationship_entity_1.ActivityRelationship)),
+    __param(7, (0, typeorm_1.InjectRepository)(measurement_progress_entity_1.MeasurementProgress)),
+    __param(8, (0, typeorm_1.InjectRepository)(wbs_entity_1.WbsNode)),
+    __param(9, (0, typeorm_1.InjectRepository)(eps_entity_1.EpsNode)),
+    __param(10, (0, typeorm_1.InjectRepository)(activity_relationship_entity_1.ActivityRelationship)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,

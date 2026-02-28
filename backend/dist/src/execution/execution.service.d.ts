@@ -17,6 +17,7 @@ export declare class ExecutionService {
     constructor(dataSource: DataSource, boqService: BoqService, activityRepo: Repository<Activity>, planRepo: Repository<BoqActivityPlan>, boqRepo: Repository<BoqItem>, progressRepo: Repository<MeasurementProgress>, measurementRepo: Repository<MeasurementElement>);
     batchSaveMeasurements(projectId: number, entries: any[], userId: number, autoApprove?: boolean): Promise<MeasurementProgress[]>;
     private syncSchedule;
+    private recomputeAggregates;
     private recalculateActivityProgress;
     getProjectProgressLogs(projectId: number): Promise<MeasurementProgress[]>;
     updateProgressLog(logId: number, newQty: number, userId: number): Promise<MeasurementProgress>;

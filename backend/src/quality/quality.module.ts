@@ -44,6 +44,7 @@ import { ChecklistTemplateService } from './checklist-template.service';
 import { ChecklistTemplateController } from './checklist-template.controller';
 import { ComplianceService } from './compliance.service';
 import { QualityReportService } from './quality-report.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
@@ -55,10 +56,14 @@ import { InspectionWorkflowStep } from './entities/inspection-workflow-step.enti
 import { ApprovalWorkflowService } from './approval-workflow.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
 import { ApprovalWorkflowController } from './approval-workflow.controller';
+import { UserProjectAssignment } from '../projects/entities/user-project-assignment.entity';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
     MulterModule.register({ dest: './uploads/quality-csv' }),
+    NotificationsModule,
+    AuditModule,
     TypeOrmModule.forFeature([
       QualityInspection,
       QualityMaterialTest,
@@ -89,6 +94,7 @@ import { ApprovalWorkflowController } from './approval-workflow.controller';
       ApprovalWorkflowEdge,
       InspectionWorkflowRun,
       InspectionWorkflowStep,
+      UserProjectAssignment,
     ]),
   ],
   controllers: [

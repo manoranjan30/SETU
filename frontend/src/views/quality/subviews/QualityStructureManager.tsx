@@ -265,7 +265,7 @@ function TreeNode({ node, onSelect, selectedId }: { node: EpsNode, onSelect: (n:
         <div className="ml-3 select-none">
             <div
                 className={`flex items-center cursor-pointer p-1.5 rounded-lg transition-all ${selectedId === node.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-100 text-gray-600'}`}
-                onClick={() => onSelect(node)}
+                onClick={() => { onSelect(node); if (hasChildren) setExpanded(!expanded); }}
             >
                 <button
                     onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
