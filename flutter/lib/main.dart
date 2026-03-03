@@ -10,6 +10,8 @@ import 'package:setu_mobile/core/auth/token_manager.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/network/network_info.dart';
 import 'package:setu_mobile/core/notifications/notification_service.dart';
+import 'package:setu_mobile/core/media/media_cleanup_service.dart';
+import 'package:setu_mobile/core/sync/background_download_service.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/core/sync/connectivity_sync_service.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
@@ -17,6 +19,7 @@ import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dar
 import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
+import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/app.dart';
 
@@ -52,6 +55,14 @@ void main() async {
     syncService: syncService,
   );
 
+  final backgroundDownloadService = BackgroundDownloadService(
+    apiClient: apiClient,
+    database: database,
+  );
+
+  // Initialize WorkManager for background WiFi downloads
+  await BackgroundDownloadService.initWorkManager();
+
   // Initialize dependency injection
   initDependencies(
     database: database,
@@ -61,14 +72,23 @@ void main() async {
     networkInfo: networkInfo,
     syncService: syncService,
     connectivitySyncService: connectivitySyncService,
+    backgroundDownloadService: backgroundDownloadService,
   );
 
   runApp(const SETUMobileApp());
 
-  // Initialize notification service AFTER app is shown (non-blocking).
-  // This prevents the permission dialog from blocking the splash screen.
+  // Post-startup non-blocking tasks
   NotificationService().init().catchError(
     (e) => debugPrint('Notification init error: $e'),
+  );
+  // Clean up old temp photos and trim photo cache to 150 MB cap
+  MediaCleanupService().runCleanup().catchError(
+    (e) => debugPrint('MediaCleanup error: $e'),
+  );
+  // Start WiFi listener for auto background download
+  backgroundDownloadService.startWifiListener();
+  backgroundDownloadService.checkAndRunPendingDownload().catchError(
+    (e) => debugPrint('BgDownload check error: $e'),
   );
 }
 
@@ -81,6 +101,7 @@ void initDependencies({
   required NetworkInfo networkInfo,
   required SyncService syncService,
   required ConnectivitySyncService connectivitySyncService,
+  required BackgroundDownloadService backgroundDownloadService,
 }) {
   // Core services
   sl.registerSingleton<AppDatabase>(database);
@@ -91,6 +112,7 @@ void initDependencies({
   sl.registerSingleton<NetworkInfo>(networkInfo);
   sl.registerSingleton<SyncService>(syncService);
   sl.registerSingleton<ConnectivitySyncService>(connectivitySyncService);
+  sl.registerSingleton<BackgroundDownloadService>(backgroundDownloadService);
 
   // BLoCs
   sl.registerFactory(() => AuthBloc(authService: sl()));
@@ -108,4 +130,5 @@ void initDependencies({
         apiClient: sl(),
         syncService: sl(),
       ));
+  sl.registerFactory(() => ProfileBloc(apiClient: sl()));
 }

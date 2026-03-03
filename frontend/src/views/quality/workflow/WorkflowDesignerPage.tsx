@@ -104,12 +104,15 @@ const WorkflowDesignerPage: React.FC = () => {
     }, [nodes, deleteNode]);
 
     const addNode = () => {
+        const sortedNodes = [...nodes].sort((a, b) => ((a.data.stepOrder as number) || 0) - ((b.data.stepOrder as number) || 0));
+        const lastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
         const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
+
         const newNodeId = `node_${Date.now()}`;
         const newNode: Node = {
             id: newNodeId,
             type: 'approvalNode',
-            position: { x: 250, y: 150 + (maxOrder * 80) },
+            position: lastNode ? { x: lastNode.position.x + 300, y: lastNode.position.y } : { x: 250, y: 150 },
             data: {
                 label: `New Step ${maxOrder + 1}`,
                 stepType: 'APPROVE',
@@ -124,7 +127,18 @@ const WorkflowDesignerPage: React.FC = () => {
                 allowObservation: false,
             },
         };
+
         setNodes((nds: Node[]) => nds.concat(newNode));
+
+        if (lastNode) {
+            setEdges((eds: Edge[]) => eds.concat({
+                id: `e-${lastNode.id}-${newNodeId}`,
+                source: lastNode.id,
+                target: newNodeId,
+                type: 'smoothstep',
+                markerEnd: { type: MarkerType.ArrowClosed }
+            }));
+        }
     };
 
     const handleSave = async () => {
@@ -172,7 +186,7 @@ const WorkflowDesignerPage: React.FC = () => {
     return (
         <div className="flex flex-col h-screen bg-gray-50">
             {/* Header */}
-            <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
+            <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-20 relative">
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={() => navigate(`/dashboard/projects/${projectId}/quality/activity-lists`)}
@@ -231,7 +245,7 @@ const WorkflowDesignerPage: React.FC = () => {
 
                 {/* Properties Panel */}
                 {selectedNode ? (
-                    <div className="w-80 border-l bg-white flex flex-col shadow-lg z-10">
+                    <div className="w-80 border-l bg-white flex flex-col shadow-lg z-10 overflow-y-auto">
                         <NodePropertiesPanel
                             node={selectedNode}
                             onChange={(updatedData: any) => handleNodeUpdate(selectedNode.id, updatedData)}

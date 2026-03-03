@@ -105,6 +105,8 @@ import { ApprovalWorkflowNode } from './quality/entities/approval-workflow-node.
 import { ApprovalWorkflowEdge } from './quality/entities/approval-workflow-edge.entity';
 import { InspectionWorkflowRun } from './quality/entities/inspection-workflow-run.entity';
 import { InspectionWorkflowStep } from './quality/entities/inspection-workflow-step.entity';
+import { QualityRatingConfig } from './quality/entities/quality-rating-config.entity';
+import { ProjectRating } from './quality/entities/quality-project-rating.entity';
 
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
@@ -219,6 +221,8 @@ import { TempUser } from './temp-user/entities/temp-user.entity';
         ApprovalWorkflowEdge,
         InspectionWorkflowRun,
         InspectionWorkflowStep,
+        QualityRatingConfig,
+        ProjectRating,
         // Design
         DrawingCategory,
         DrawingRegister,

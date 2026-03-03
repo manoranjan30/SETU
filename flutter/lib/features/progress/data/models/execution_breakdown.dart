@@ -3,6 +3,7 @@
 /// The backend returns a unified view of micro-scheduled activities PLUS
 /// the "balance" (direct / unassigned) quantity for each BOQ item linked
 /// to an activity.
+library;
 
 // ---------------------------------------------------------------------------
 // BreakdownItem — one row inside a BOQ item breakdown
@@ -102,14 +103,14 @@ class BoqItemBreakdown {
     return BoqItemBreakdown(
       boqItemId: boqItem['id'] as int? ?? 0,
       // BoqItem entity may use 'description' or 'name'
-      description: boqItem['description'] as String? ??
-          boqItem['name'] as String? ??
-          '',
+      description:
+          boqItem['description'] as String? ?? boqItem['name'] as String? ?? '',
       uom: boqItem['uom'] as String?,
       totalScope: toDouble(scope['total']),
       allocatedToMicro: toDouble(scope['allocated']),
       balanceDirect: toDouble(scope['balance']),
-      items: (json['items'] as List<dynamic>?)
+      items:
+          (json['items'] as List<dynamic>?)
               ?.map((e) => BreakdownItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -136,9 +137,9 @@ class ExecutionBreakdown {
     return ExecutionBreakdown(
       activityId: json['activityId'] as int? ?? 0,
       epsNodeId: json['epsNodeId'] as int? ?? 0,
-      boqBreakdown: (json['boqBreakdown'] as List<dynamic>?)
-              ?.map((e) =>
-                  BoqItemBreakdown.fromJson(e as Map<String, dynamic>))
+      boqBreakdown:
+          (json['boqBreakdown'] as List<dynamic>?)
+              ?.map((e) => BoqItemBreakdown.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );

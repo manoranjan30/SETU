@@ -295,6 +295,96 @@ export class QualityReportService {
                 currentY = doc.y + 10;
             }
 
+            const drawSignatureBlock = () => {
+                // SIGNATURE BLOCK
+                const sigs: any[] = [];
+
+                if (workflowRun && workflowRun.steps) {
+                    const sortedSteps = [...workflowRun.steps].sort((a, b) => a.stepOrder - b.stepOrder);
+                    sortedSteps.forEach(step => {
+                        if (step.status === 'COMPLETED' && step.signature) {
+                            sigs.push({
+                                role: step.workflowNode?.label || step.signature.role || 'Approver',
+                                signedBy: step.signedBy || step.signature.signedBy || 'Unknown',
+                                signatureData: step.signature.signatureData,
+                                date: step.completedAt ? new Date(step.completedAt).toLocaleDateString() : new Date().toLocaleDateString()
+                            });
+                        }
+                    });
+                }
+
+                // Legacy stages signatures:
+                if (sigs.length === 0 && inspection.stages) {
+                    inspection.stages.forEach(stage => {
+                        if (stage.signatures) {
+                            stage.signatures.forEach(sig => {
+                                sigs.push({
+                                    role: sig.role,
+                                    signedBy: sig.signedBy,
+                                    signatureData: sig.signatureData,
+                                    date: new Date(sig.createdAt).toLocaleDateString()
+                                });
+                            });
+                        }
+                    });
+                }
+
+                if (sigs.length > 0) {
+                    const sigBlockHeight = 85;
+                    const columnsPerRow = Math.min(4, Math.max(1, sigs.length));
+                    const sigColWidth = pageWidth / columnsPerRow;
+                    const numRows = Math.ceil(sigs.length / columnsPerRow);
+
+                    if (currentY + (sigBlockHeight * numRows) + 40 > doc.page.height) {
+                        doc.addPage();
+                        currentY = 40;
+                    }
+
+                    doc.moveDown(2);
+                    doc.fontSize(10).font('Helvetica-Bold').fillColor('#4F46E5').text('DIGITAL SIGNATURES LOG', startX, currentY);
+                    doc.fillColor('black');
+                    currentY += 20;
+
+                    for (let r = 0; r < numRows; r++) {
+                        const y = currentY + (r * sigBlockHeight);
+                        doc.rect(startX, y, pageWidth, sigBlockHeight).stroke();
+
+                        for (let c = 1; c < columnsPerRow; c++) {
+                            doc.moveTo(startX + (c * sigColWidth), y).lineTo(startX + (c * sigColWidth), y + sigBlockHeight).stroke();
+                        }
+
+                        for (let c = 0; c < columnsPerRow; c++) {
+                            const sigIndex = r * columnsPerRow + c;
+                            if (sigIndex < sigs.length) {
+                                const sig = sigs[sigIndex];
+                                const cx = startX + (c * sigColWidth);
+
+                                doc.fillColor('#E5E7EB').rect(cx, y, sigColWidth, 15).fill().stroke();
+                                doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
+                                doc.text(sig.role, cx, y + 4, { width: sigColWidth, align: 'center' });
+
+                                if (sig.signatureData && sig.signatureData.startsWith('data:image')) {
+                                    try {
+                                        doc.image(sig.signatureData, cx + 5, y + 20, { width: sigColWidth - 10, height: 40 });
+                                    } catch (e) {
+                                        console.error('Invalid signature image blob');
+                                    }
+                                }
+
+                                doc.moveTo(cx, y + 65).lineTo(cx + sigColWidth, y + 65).stroke();
+                                doc.font('Helvetica-Bold').fontSize(7);
+                                doc.text(sig.signedBy, cx, y + 68, { width: sigColWidth, align: 'center' });
+                                doc.font('Helvetica').fontSize(6).fillColor('#6B7280');
+                                doc.text(sig.date, cx, y + 76, { width: sigColWidth, align: 'center' });
+                                doc.fillColor('black');
+                            }
+                        }
+                    }
+                }
+
+                doc.end();
+            };
+
             // Fetch observations mapping to the inspection activity
             this.observationRepo.find({ where: { activityId: inspection.activityId } }).then((observations) => {
                 if (observations.length > 0) {
@@ -343,98 +433,6 @@ export class QualityReportService {
 
                 drawSignatureBlock();
             });
-
-            const drawSignatureBlock = () => {
-                // SIGNATURE BLOCK
-                const sigBlockHeight = 60;
-                const sigColWidth = pageWidth / 4;
-
-                if (currentY + sigBlockHeight + 40 > doc.page.height) {
-                    doc.addPage();
-                    currentY = 40;
-                }
-
-                doc.rect(startX, currentY, pageWidth, sigBlockHeight).stroke();
-
-                // Grid lines for Signatures
-                doc.moveTo(startX, currentY + 20).lineTo(startX + pageWidth, currentY + 20).stroke();
-                doc.moveTo(startX, currentY + 40).lineTo(startX + pageWidth, currentY + 40).stroke();
-
-                doc.moveTo(startX + sigColWidth, currentY).lineTo(startX + sigColWidth, currentY + sigBlockHeight).stroke();
-                doc.moveTo(startX + sigColWidth * 2, currentY).lineTo(startX + sigColWidth * 2, currentY + sigBlockHeight).stroke();
-                doc.moveTo(startX + sigColWidth * 3, currentY).lineTo(startX + sigColWidth * 3, currentY + sigBlockHeight).stroke();
-
-                // Row 1: Main Labels
-                doc.fontSize(9).font('Helvetica-Bold');
-                doc.text('Contractor', startX, currentY + 5, { width: sigColWidth * 2, align: 'center' });
-                doc.text('PL/PHL', startX + sigColWidth * 2, currentY + 5, { width: sigColWidth * 2, align: 'center' });
-
-                currentY += 20;
-
-                // Row 2: Roles
-                doc.fontSize(8);
-                doc.text('Site In Charge', startX, currentY + 5, { width: sigColWidth, align: 'center' });
-                doc.text('QC Engineer', startX + sigColWidth, currentY + 5, { width: sigColWidth, align: 'center' });
-                doc.text('Site In Charge:', startX + sigColWidth * 2, currentY + 5, { width: sigColWidth, align: 'center' });
-                doc.text('QA & PE', startX + sigColWidth * 3, currentY + 5, { width: sigColWidth, align: 'center' });
-
-                currentY += 20;
-
-                // Row 3: Placeholder for Names/Signatures
-                const sigs = inspection.stages?.filter(s => s.status === 'COMPLETED' || s.status === 'APPROVED' || s.status === 'IN_PROGRESS')?.flatMap(s => s.signatures || []) || [];
-
-                // Collect workflow signatures as well
-                if (workflowRun && workflowRun.steps) {
-                    workflowRun.steps.forEach(step => {
-                        if (step.status === 'COMPLETED' && step.signature) {
-                            sigs.push({
-                                ...step.signature,
-                                role: step.workflowNode?.label || step.signature.role,
-                                signedBy: step.signedBy || step.signature.signedBy
-                            } as any);
-                        }
-                    });
-                }
-
-                const findSig = (roles: string[]) => sigs.find(s =>
-                    roles.some(r => s.role.toLowerCase().includes(r.toLowerCase()))
-                );
-
-                // Contractor Zone
-                const contractorSig = findSig(['Contractor', 'Site Engineer', 'Requester']);
-                // QC Zone
-                const qcSig = findSig(['QC Engineer', 'QC Inspector', 'Inspector']);
-                // Site In Charge (PL/PHL) Zone
-                const sicSig = findSig(['Site In Charge', 'Witness', 'Witnessing']);
-                // QA/PE Zone
-                const qaSig = findSig(['QA Manager', 'QA & PE', 'QA/QC Head', 'Project Manager', 'Digital Lock', 'Approver']);
-
-                const drawSig = (sig: any, x: number, y: number, width: number) => {
-                    if (sig?.signedBy) {
-                        // Draw Name
-                        doc.font('Helvetica-Bold').fontSize(7).text(sig.signedBy, x, y + 2, { width, align: 'center' });
-                        // Draw Signature Image if exists
-                        if (sig.signatureData && sig.signatureData.startsWith('data:image')) {
-                            try {
-                                // Extract base64 and draw
-                                doc.image(sig.signatureData, x + 10, y + 12, { width: width - 20, height: 24 });
-                            } catch (e) {
-                                console.error('Failed to draw signature image', e);
-                            }
-                        }
-                        // Draw Role (Subtitle)
-                        doc.font('Helvetica').fontSize(5).text(sig.role, x, y + 36, { width, align: 'center' });
-                    }
-                };
-
-                // Draw them in respective columns
-                drawSig(contractorSig, startX, currentY, sigColWidth);
-                drawSig(qcSig, startX + sigColWidth, currentY, sigColWidth);
-                drawSig(sicSig, startX + sigColWidth * 2, currentY, sigColWidth);
-                drawSig(qaSig, startX + sigColWidth * 3, currentY, sigColWidth);
-
-                doc.end();
-            };
         });
     }
 }

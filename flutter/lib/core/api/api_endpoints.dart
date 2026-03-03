@@ -222,6 +222,14 @@ class ApiEndpoints {
   static String closeObservation(int activityId, String obsId) =>
       '/quality/activities/$activityId/observation/$obsId/close';
 
+  // ==================== USER PROFILE ENDPOINTS ====================
+
+  /// GET/PUT /users/me
+  static const String userMe = '/users/me';
+
+  /// GET/PUT /users/me/signature
+  static const String userSignature = '/users/me/signature';
+
   // ==================== FCM / PUSH NOTIFICATION ENDPOINTS ====================
 
   /// POST /users/fcm-token  → Register/update device FCM token

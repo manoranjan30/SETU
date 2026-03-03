@@ -15,7 +15,7 @@ interface QualityInspection {
     id: number;
     activityId: number;
     epsNodeId: number;
-    status: 'PENDING' | 'APPROVED' | 'PROVISIONALLY_APPROVED' | 'REJECTED' | 'CANCELED' | 'REVERSED';
+    status: 'PENDING' | 'APPROVED' | 'PROVISIONALLY_APPROVED' | 'REJECTED' | 'CANCELED' | 'REVERSED' | 'PARTIALLY_APPROVED';
     requestDate: string;
     inspectionDate?: string;
     comments?: string;
@@ -67,7 +67,8 @@ export default function QualityApprovalsPage() {
 
 
     // User info
-    const { hasPermission } = useAuth();
+    const { user, hasPermission } = useAuth();
+    const [showDraftOrSignModal, setShowDraftOrSignModal] = useState(false);
     const isAdmin = hasPermission(PermissionCode.QUALITY_INSPECTION_DELETE);
 
     // Helper for correct image URLs
@@ -241,7 +242,7 @@ export default function QualityApprovalsPage() {
                 const currentStep = workflowState.steps.find((s: any) => s.stepOrder === workflowState.currentStepOrder);
                 const wfRes = await api.post(`/quality/inspections/${inspectionDetail.id}/workflow/advance`, {
                     signatureData,
-                    signedBy: currentStep?.workflowNode?.label || 'Approver',
+                    signedBy: user?.displayName || user?.username || currentStep?.workflowNode?.label || 'Approver',
                     comments: 'Approved digitally',
                 });
 
@@ -455,11 +456,12 @@ export default function QualityApprovalsPage() {
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${insp.status === 'APPROVED' ? 'bg-green-100 text-green-700' :
-                                                insp.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                                                    insp.status === 'REVERSED' ? 'bg-amber-100 text-amber-800' :
-                                                        'bg-amber-100 text-amber-700'
+                                                insp.status === 'PARTIALLY_APPROVED' ? 'bg-blue-100 text-blue-700' :
+                                                    insp.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                                                        insp.status === 'REVERSED' ? 'bg-amber-100 text-amber-800' :
+                                                            'bg-amber-100 text-amber-700'
                                                 }`}>
-                                                {insp.status}
+                                                {insp.status === 'PARTIALLY_APPROVED' ? 'PARTIALLY APPROVED - REVIEW UNDER PROGRESS' : insp.status}
                                             </span>
                                             <span className="text-xs text-gray-500">{insp.requestDate}</span>
                                         </div>
@@ -501,8 +503,8 @@ export default function QualityApprovalsPage() {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <button
-                                            onClick={saveChecklistProgress}
-                                            disabled={inspectionDetail.status !== 'PENDING'}
+                                            onClick={() => setShowDraftOrSignModal(true)}
+                                            disabled={inspectionDetail.status !== 'PENDING' && inspectionDetail.status !== 'PARTIALLY_APPROVED'}
                                             className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 shadow-sm disabled:opacity-50"
                                         >
                                             <Save className="w-4 h-4" /> Save Progress
@@ -568,6 +570,7 @@ export default function QualityApprovalsPage() {
                                                     const isCurrent = workflowState.currentStepOrder === step.stepOrder;
                                                     const isCompleted = step.status === 'COMPLETED';
                                                     const isRejected = step.status === 'REJECTED';
+                                                    const isLastStepNode = step.stepOrder === Math.max(...workflowState.steps.map((s: any) => s.stepOrder));
 
                                                     let colorClass = "bg-gray-100 text-gray-500 border-gray-200";
                                                     if (isCompleted) colorClass = "bg-green-100 text-green-700 border-green-200";
@@ -577,7 +580,7 @@ export default function QualityApprovalsPage() {
                                                     return (
                                                         <div key={step.id} className="flex items-center gap-2 shrink-0">
                                                             <div className={`flex flex-col border rounded-lg px-3 py-1.5 ${colorClass}`}>
-                                                                <span className="text-[10px] font-bold uppercase">{step.workflowNode?.label || `Step ${step.stepOrder}`}</span>
+                                                                <span className="text-[10px] font-bold uppercase">{isLastStepNode ? 'Final Approval' : (step.workflowNode?.label || `Step ${step.stepOrder}`)}</span>
                                                                 <span className="text-[10px] truncate max-w-[120px]">
                                                                     {isCompleted ? `Signed by ${step.signedBy}` :
                                                                         isRejected ? `Rejected` :
@@ -598,6 +601,17 @@ export default function QualityApprovalsPage() {
                                 {/* Checklist Area */}
                                 <div className="flex-1 overflow-y-auto p-8">
                                     <div className="max-w-4xl mx-auto space-y-6 pb-20">
+
+                                        {/* Workflow Completed Banner */}
+                                        {workflowState?.status === 'COMPLETED' && (
+                                            <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-6 py-4 flex items-center gap-3 text-emerald-800">
+                                                <CheckCircle2 className="w-6 h-6 shrink-0" />
+                                                <div>
+                                                    <h4 className="font-bold text-sm">Workflow Fully Approved</h4>
+                                                    <p className="text-xs mt-1">All {workflowState.steps.length} approval levels have been completed and signed.</p>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Observation Banner */}
                                         {pendingObservationsCount > 0 && (
@@ -1013,6 +1027,47 @@ export default function QualityApprovalsPage() {
                                 className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                             >
                                 {delegating ? 'Delegating...' : 'Confirm Delegation'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Draft vs Sign Modal */}
+            {showDraftOrSignModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-gray-200">
+                        <div className="p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">Save Progress</h3>
+                            <p className="text-sm text-gray-500 mb-6">
+                                Would you like to just save this checklist as a draft, or sign and approve this stage?
+                            </p>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={async () => {
+                                        setShowDraftOrSignModal(false);
+                                        await saveChecklistProgress();
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                                >
+                                    <Save className="w-4 h-4" /> Save as Draft
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowDraftOrSignModal(false);
+                                        handleInitiateApprove();
+                                    }}
+                                    disabled={!allChecked || pendingObservationsCount > 0}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium disabled:opacity-50 shadow-sm"
+                                    title={(!allChecked || pendingObservationsCount > 0) ? "You must complete all checklist items and close all observations before approving." : ""}
+                                >
+                                    <ShieldCheck className="w-4 h-4" /> Sign & Approve Step
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => setShowDraftOrSignModal(false)}
+                                className="mt-4 w-full text-center text-sm text-gray-400 hover:text-gray-600 font-medium"
+                            >
+                                Cancel
                             </button>
                         </div>
                     </div>

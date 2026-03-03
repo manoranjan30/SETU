@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/network/connectivity_banner.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/checklist_item_tile.dart';
@@ -20,6 +21,10 @@ class InspectionDetailPage extends StatefulWidget {
 class _InspectionDetailPageState extends State<InspectionDetailPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
+
+  /// Last successfully loaded state — shown while approval actions run
+  /// and when transient errors occur (e.g. photo upload failures).
+  InspectionDetailLoaded? _lastDetail;
 
   @override
   void initState() {
@@ -126,23 +131,44 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
           }
         },
         builder: (context, state) {
-          if (state is QualityApprovalLoading) {
+          // Cache the last good state so errors/loading don't blank the page
+          if (state is InspectionDetailLoaded) _lastDetail = state;
+
+          // Full spinner only on initial load (nothing to show yet)
+          if (state is QualityApprovalLoading && _lastDetail == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (state is InspectionDetailLoaded) {
-            return Column(
+          final display = state is InspectionDetailLoaded
+              ? state
+              : _lastDetail;
+
+          if (display != null) {
+            return Stack(
               children: [
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabCtrl,
-                    children: [
-                      _ChecklistTab(state: state),
-                      _ObservationsTab(state: state),
-                    ],
-                  ),
+                Column(
+                  children: [
+                    const ConnectivityBanner(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabCtrl,
+                        children: [
+                          _ChecklistTab(state: display),
+                          _ObservationsTab(state: display),
+                        ],
+                      ),
+                    ),
+                    _ActionBar(state: display),
+                  ],
                 ),
-                _ActionBar(state: state),
+                // Slim progress bar while approval/checklist save is running
+                if (state is QualityApprovalLoading)
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: LinearProgressIndicator(),
+                  ),
               ],
             );
           }
@@ -194,7 +220,7 @@ class _StageSectionState extends State<_StageSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final stage = widget.stage;
-    final completedCount = stage.completedCount;
+    final resolvedCount = stage.resolvedCount;
     final totalCount = stage.totalCount;
 
     return Card(
@@ -241,7 +267,7 @@ class _StageSectionState extends State<_StageSection> {
                             style: theme.textTheme.bodyMedium
                                 ?.copyWith(fontWeight: FontWeight.w600)),
                         Text(
-                          '$completedCount / $totalCount checked',
+                          '$resolvedCount / $totalCount evaluated',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurface
                                 .withValues(alpha: 0.6),
@@ -267,11 +293,12 @@ class _StageSectionState extends State<_StageSection> {
           if (_expanded)
             ...stage.items.map((item) => ChecklistItemTile(
                   item: item,
-                  onToggle: (checked) => context
+                  onStatusChanged: (status) => context
                       .read<QualityApprovalBloc>()
-                      .add(ToggleChecklistItem(
+                      .add(SetChecklistItemStatus(
                         stageId: stage.id,
                         itemId: item.id,
+                        itemStatus: status,
                       )),
                   onRemarksChanged: (text) => context
                       .read<QualityApprovalBloc>()

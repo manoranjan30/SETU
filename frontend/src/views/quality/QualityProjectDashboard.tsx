@@ -21,6 +21,11 @@ import QualitySnagList from './subviews/QualitySnagList';
 import QualityAudit from './subviews/QualityAudit';
 import QualityDocuments from './subviews/QualityDocuments';
 import QualityStructureManager from './subviews/QualityStructureManager';
+import QualityRatingConfigTab from './subviews/QualityRatingConfigTab';
+import QualityRatingDisplayTab from './subviews/QualityRatingDisplayTab';
+import InspectionRequestPage from './InspectionRequestPage';
+import QualityApprovalsPage from './QualityApprovalsPage';
+import ActivityListsPage from './ActivityListsPage';
 
 const QualityProjectDashboard = () => {
     const { projectId } = useParams();
@@ -45,9 +50,14 @@ const QualityProjectDashboard = () => {
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+        { id: 'requests', label: 'Quality Requests', icon: FileText },
+        { id: 'approvals', label: 'QA/QC Approvals', icon: ShieldCheck },
+        { id: 'activities', label: 'Activity Lists', icon: ClipboardCheck },
         { id: 'inspections', label: 'Inspections', icon: ClipboardCheck },
         { id: 'materials', label: 'Materials', icon: FlaskConical },
         { id: 'observation-ncr', label: 'Site Observations', icon: Eye },
+        { id: 'rating-config', label: 'Rating Config', icon: ShieldCheck },
+        { id: 'project-rating', label: 'Project Rating', icon: LayoutDashboard },
         { id: 'checklists', label: 'Checklists', icon: CheckSquare },
         { id: 'snags', label: 'Snag List', icon: Hammer },
         { id: 'structure', label: 'Structure', icon: LayoutDashboard },
@@ -59,6 +69,11 @@ const QualityProjectDashboard = () => {
         const numericProjectId = Number(projectId);
         switch (activeTab) {
             case 'overview': return <QualityOverview projectId={numericProjectId} />;
+            case 'requests': return <InspectionRequestPage />;
+            case 'approvals': return <QualityApprovalsPage />;
+            case 'activities': return <ActivityListsPage />;
+            case 'rating-config': return <QualityRatingConfigTab projectId={numericProjectId} />;
+            case 'project-rating': return <QualityRatingDisplayTab projectId={numericProjectId} />;
             case 'inspections': return <QualityInspection projectId={numericProjectId} />;
             case 'materials': return <QualityMaterialTest projectId={numericProjectId} />;
             case 'observation-ncr': return <SiteObservationPanel projectId={numericProjectId} />;

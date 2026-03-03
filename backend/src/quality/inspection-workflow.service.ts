@@ -154,6 +154,11 @@ export class InspectionWorkflowService {
         let effectiveSignatureId = signatureId;
         const now = new Date();
 
+        // Enforce signature on all approval steps
+        if (!effectiveSignatureId && !signatureData) {
+            throw new BadRequestException('A digital signature is required to approve this workflow step.');
+        }
+
         // Create signature with SHA-256 audit hash
         if (!effectiveSignatureId && signatureData) {
             const signatureHash = this.generateSignatureHash(signatureData, userId, now);
@@ -187,6 +192,17 @@ export class InspectionWorkflowService {
             nextStep.status = WorkflowStepStatus.PENDING;
             await this.stepRepo.save(nextStep);
             run.currentStepOrder += 1;
+
+            // Mark parent inspection as PARTIALLY_APPROVED
+            const inspection = await this.inspectionRepo.findOne({
+                where: { id: inspectionId }
+            });
+            if (inspection && (inspection.status === 'PENDING' || inspection.status === 'PARTIALLY_APPROVED' as any)) {
+                if (inspection.status !== 'PARTIALLY_APPROVED') {
+                    inspection.status = 'PARTIALLY_APPROVED' as any;
+                    await this.inspectionRepo.save(inspection);
+                }
+            }
         } else {
             run.status = WorkflowRunStatus.COMPLETED;
             isFinal = true;

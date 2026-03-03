@@ -88,6 +88,7 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
+        displayName: user.displayName,
         roles: payload.roles,
         permissions: payload.permissions,
         project_ids: assignedProjectIds,

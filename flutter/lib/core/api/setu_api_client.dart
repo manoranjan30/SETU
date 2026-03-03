@@ -523,6 +523,43 @@ class SetuApiClient {
     return response.data;
   }
 
+  // ==================== USER PROFILE ====================
+
+  /// GET /users/me — Full profile (name, email, phone, designation, roles)
+  Future<Map<String, dynamic>> getUserProfile() async {
+    final response = await _dio.get(ApiEndpoints.userMe);
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// PUT /users/me — Update editable profile fields
+  Future<Map<String, dynamic>> updateUserProfile({
+    required String displayName,
+    required String email,
+    required String phone,
+    required String designation,
+  }) async {
+    final response = await _dio.put(ApiEndpoints.userMe, data: {
+      'displayName': displayName,
+      'email': email,
+      'phone': phone,
+      'designation': designation,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// GET /users/me/signature → {signatureData, signatureUpdatedAt}
+  Future<Map<String, dynamic>> getUserSignature() async {
+    final response = await _dio.get(ApiEndpoints.userSignature);
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// PUT /users/me/signature — Save hand-drawn signature as base64 PNG
+  Future<void> updateUserSignature(String signatureData) async {
+    await _dio.put(ApiEndpoints.userSignature, data: {
+      'signatureData': signatureData,
+    });
+  }
+
   // ==================== FCM / PUSH NOTIFICATION ====================
 
   /// POST /users/fcm-token — Register device FCM token after login

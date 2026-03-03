@@ -245,6 +245,18 @@ class AppDatabase extends _$AppDatabase {
     ));
   }
 
+  /// Return distinct projectIds that have cached activity lists.
+  /// Used by [BackgroundDownloadService] to know which projects to refresh.
+  Future<List<int>> selectOnlyDistinctProjectIds() async {
+    final query = selectOnly(cachedQualityActivityLists, distinct: true)
+      ..addColumns([cachedQualityActivityLists.projectId]);
+    final rows = await query.get();
+    return rows
+        .map((r) => r.read(cachedQualityActivityLists.projectId))
+        .whereType<int>()
+        .toList();
+  }
+
   // ==================== SYNC STATUS QUERIES ====================
 
   /// Get pending progress entries count

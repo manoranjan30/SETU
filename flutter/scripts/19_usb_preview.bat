@@ -94,7 +94,7 @@ echo.
 :: ===========================================================
 :: STEP 1 - Flutter Check
 :: ===========================================================
-echo  [1/4] Checking Flutter...
+echo  [1/5] Checking Flutter...
 where flutter >nul 2>&1
 if errorlevel 1 (
   if exist "C:\flutter\flutter\bin\flutter.bat" (
@@ -131,7 +131,7 @@ if errorlevel 1 (
 :: STEP 2 - USB Device Detection
 :: ===========================================================
 echo.
-echo  [2/4] Detecting USB Device...
+echo  [2/5] Detecting USB Device...
 echo.
 
 :: Handle command-line device override
@@ -206,7 +206,7 @@ echo         Target: !SELECTED_DEVICE!
 :: STEP 3 - Backend URL (auto-detect PC WiFi IP)
 :: ===========================================================
 echo.
-echo  [3/4] Backend Configuration...
+echo  [3/5] Backend Configuration...
 echo.
 
 :: Auto-detect PC WiFi IP using ipconfig
@@ -266,10 +266,30 @@ if defined BACKEND_URL (
 )
 
 :: ===========================================================
-:: STEP 4 - Pub get + Network Whitelist
+:: STEP 4 - Kill stale build processes + clean locked dirs
 :: ===========================================================
 echo.
-echo  [4/4] Syncing packages...
+echo  [4/5] Cleaning stale build processes...
+
+:: Kill any lingering Java / Gradle processes that may lock build dirs
+taskkill /F /IM java.exe /T >nul 2>&1
+taskkill /F /IM gradle.exe /T >nul 2>&1
+
+:: Remove the Gradle assets staging dir that OneDrive / AV commonly locks
+set "MERGE_ASSETS=%PROJECT_ROOT%\build\app\intermediates\assets\debug\mergeDebugAssets"
+if exist "!MERGE_ASSETS!" (
+  rd /s /q "!MERGE_ASSETS!" >nul 2>&1
+  echo         Cleared locked build assets dir.
+) else (
+  echo         Build assets dir clean  -  nothing to remove.
+)
+echo         Stale processes cleared.
+
+:: ===========================================================
+:: STEP 5 - Pub get + Network Whitelist
+:: ===========================================================
+echo.
+echo  [5/5] Syncing packages...
 call flutter pub get
 echo         Packages ready.
 

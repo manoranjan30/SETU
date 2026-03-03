@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { useSearchParams, useParams } from 'react-router-dom';
 import PlanningDashboard from '../components/planning/PlanningDashboard'; // Path adjustment needed depending on folder structure
 import SchedulePage from './SchedulePage';

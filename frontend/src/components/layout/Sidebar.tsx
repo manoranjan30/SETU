@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { MENU_CONFIG, type MenuItem } from '../../config/menu';
-import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, Clipboard, User } from 'lucide-react';
+import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, User } from 'lucide-react';
 
 const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?: number; isCollapsed: boolean }) => {
     const location = useLocation();
@@ -217,33 +217,6 @@ const Sidebar = () => {
                                     path: `/dashboard/projects/${activeProjectId}/quality`,
                                     icon: CheckCircle,
                                     permission: 'QUALITY.DASHBOARD.READ'
-                                }}
-                            />
-                            <SidebarItem
-                                isCollapsed={isCollapsed}
-                                item={{
-                                    label: 'Quality Requests',
-                                    path: `/dashboard/projects/${activeProjectId}/quality/requests`,
-                                    icon: ShieldAlert,
-                                    permission: 'QUALITY.INSPECTION.READ'
-                                }}
-                            />
-                            <SidebarItem
-                                isCollapsed={isCollapsed}
-                                item={{
-                                    label: 'QA/QC Approvals',
-                                    path: `/dashboard/projects/${activeProjectId}/quality/approvals`,
-                                    icon: CheckCircle,
-                                    permission: 'QUALITY.INSPECTION.APPROVE'
-                                }}
-                            />
-                            <SidebarItem
-                                isCollapsed={isCollapsed}
-                                item={{
-                                    label: 'Activity Lists',
-                                    path: `/dashboard/projects/${activeProjectId}/quality/activity-lists`,
-                                    icon: Clipboard,
-                                    permission: 'QUALITY.ACTIVITYLIST.READ'
                                 }}
                             />
                             <SidebarItem

@@ -374,13 +374,11 @@ export class QualityInspectionService {
         const allCompleted = parentInspection.stages.every(s => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED);
         const someCompleted = parentInspection.stages.some(s => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED || s.status === StageStatus.IN_PROGRESS);
 
-        if (allCompleted) {
-          parentInspection.status = InspectionStatus.APPROVED;
-          parentInspection.inspectionDate = new Date().toISOString().split('T')[0];
-          await this.inspectionRepo.save(parentInspection);
-        } else if (someCompleted) {
-          parentInspection.status = InspectionStatus.PARTIALLY_APPROVED;
-          await this.inspectionRepo.save(parentInspection);
+        if (allCompleted || someCompleted) {
+          if (parentInspection.status === InspectionStatus.PENDING) {
+            parentInspection.status = InspectionStatus.PARTIALLY_APPROVED;
+            await this.inspectionRepo.save(parentInspection);
+          }
         }
       }
     }

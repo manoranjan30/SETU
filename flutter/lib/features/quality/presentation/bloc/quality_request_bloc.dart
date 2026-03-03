@@ -102,9 +102,18 @@ abstract class QualityRequestState extends Equatable {
   List<Object?> get props => [];
 }
 
+/// Identifies what triggered a loading state so the UI can decide whether to
+/// show a full-screen spinner or just an inline indicator over existing data.
+enum QrLoadingSource { listLoad, rfiRaise, rectification, refresh }
+
 class QualityRequestInitial extends QualityRequestState {}
 
-class QualityRequestLoading extends QualityRequestState {}
+class QualityRequestLoading extends QualityRequestState {
+  final QrLoadingSource source;
+  const QualityRequestLoading({this.source = QrLoadingSource.listLoad});
+  @override
+  List<Object?> get props => [source];
+}
 
 class EpsTreeLoaded extends QualityRequestState {
   final List<EpsTreeNode> nodes;
@@ -210,7 +219,7 @@ class QualityRequestBloc
 
   Future<void> _onLoadEpsTree(
       LoadEpsTree event, Emitter<QualityRequestState> emit) async {
-    emit(QualityRequestLoading());
+    emit(const QualityRequestLoading());
     try {
       final raw = await _apiClient.getEpsTreeForProject(event.projectId);
       final nodes = raw
@@ -224,7 +233,7 @@ class QualityRequestBloc
 
   Future<void> _onSelectEpsNode(
       SelectEpsNode event, Emitter<QualityRequestState> emit) async {
-    emit(QualityRequestLoading());
+    emit(const QualityRequestLoading());
     try {
       final raw = await _apiClient.getQualityActivityLists(
         projectId: event.projectId,
@@ -270,7 +279,7 @@ class QualityRequestBloc
     _currentList = event.list;
     _currentProjectId = event.projectId;
     _currentEpsNodeId = event.epsNodeId;
-    emit(QualityRequestLoading());
+    emit(const QualityRequestLoading());
     await _loadActivities(emit,
         list: event.list,
         projectId: event.projectId,
@@ -284,7 +293,7 @@ class QualityRequestBloc
         _currentEpsNodeId == null) {
       return;
     }
-    emit(QualityRequestLoading());
+    emit(const QualityRequestLoading(source: QrLoadingSource.refresh));
     await _loadActivities(emit,
         list: _currentList!,
         projectId: _currentProjectId!,
@@ -298,7 +307,8 @@ class QualityRequestBloc
     required int epsNodeId,
   }) async {
     try {
-      // Fetch activities + inspections in parallel
+      // Fetch activities + inspections in parallel.
+      // 5-second timeout — if exceeded the catch block serves cached data.
       final results = await Future.wait([
         _apiClient.getQualityListActivities(list.id),
         _apiClient.getQualityInspections(
@@ -306,7 +316,7 @@ class QualityRequestBloc
           epsNodeId: epsNodeId,
           listId: list.id,
         ),
-      ]);
+      ]).timeout(const Duration(seconds: 5));
 
       final activitiesRaw = results[0];
       final inspectionsRaw = results[1];
@@ -365,7 +375,7 @@ class QualityRequestBloc
       if (cached.isNotEmpty) {
         final activities = cached
             .map((c) => QualityActivity.fromJson(
-                jsonDecode(c.rawData ?? '{}') as Map<String, dynamic>))
+                jsonDecode(c.rawData) as Map<String, dynamic>))
             .toList();
         final rows = _buildRows(activities, {}, {});
         emit(ActivitiesLoaded(
@@ -449,7 +459,7 @@ class QualityRequestBloc
 
   Future<void> _onRaiseRfi(
       RaiseRfi event, Emitter<QualityRequestState> emit) async {
-    emit(QualityRequestLoading());
+    emit(const QualityRequestLoading(source: QrLoadingSource.rfiRaise));
     try {
       // 1. Queue the action locally first
       await _syncService.addToQueue(
@@ -500,7 +510,7 @@ class QualityRequestBloc
 
   Future<void> _onSubmitRectification(
       SubmitRectification event, Emitter<QualityRequestState> emit) async {
-    emit(QualityRequestLoading());
+    emit(const QualityRequestLoading(source: QrLoadingSource.rectification));
     try {
       await _syncService.addToQueue(
         entityType: 'quality_obs_resolve',

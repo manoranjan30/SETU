@@ -29,13 +29,19 @@ class LoadInspectionDetail extends QualityApprovalEvent {
   List<Object?> get props => [inspection.id];
 }
 
-/// Toggle a checklist item (local state only — no API until save)
-class ToggleChecklistItem extends QualityApprovalEvent {
+/// Set (or clear) a checklist item status — local state only until Save.
+/// Pass null to clear (mark as unevaluated).
+class SetChecklistItemStatus extends QualityApprovalEvent {
   final int stageId;
   final int itemId;
-  const ToggleChecklistItem({required this.stageId, required this.itemId});
+  final ChecklistItemStatus? itemStatus;
+  const SetChecklistItemStatus({
+    required this.stageId,
+    required this.itemId,
+    this.itemStatus,
+  });
   @override
-  List<Object?> get props => [stageId, itemId];
+  List<Object?> get props => [stageId, itemId, itemStatus];
 }
 
 /// Update remarks on a checklist item (local state only)
@@ -148,7 +154,7 @@ class InspectionDetailLoaded extends QualityApprovalState {
 
   bool get allItemsOk =>
       stages.isEmpty ||
-      stages.every((s) => s.items.isEmpty || s.items.every((i) => i.isOk));
+      stages.every((s) => s.items.isEmpty || s.items.every((i) => i.itemStatus != null));
 
   int get pendingObsCount =>
       observations.where((o) => o.isPending).length;
@@ -230,7 +236,7 @@ class QualityApprovalBloc
         super(QualityApprovalInitial()) {
     on<LoadInspections>(_onLoadInspections);
     on<LoadInspectionDetail>(_onLoadInspectionDetail);
-    on<ToggleChecklistItem>(_onToggleChecklistItem);
+    on<SetChecklistItemStatus>(_onSetChecklistItemStatus);
     on<UpdateItemRemarks>(_onUpdateItemRemarks);
     on<SaveChecklistProgress>(_onSaveChecklistProgress);
     on<ApproveInspection>(_onApproveInspection);
@@ -303,8 +309,8 @@ class QualityApprovalBloc
     add(LoadInspectionDetail(_currentInspection!));
   }
 
-  void _onToggleChecklistItem(
-      ToggleChecklistItem event, Emitter<QualityApprovalState> emit) {
+  void _onSetChecklistItemStatus(
+      SetChecklistItemStatus event, Emitter<QualityApprovalState> emit) {
     final current = state;
     if (current is! InspectionDetailLoaded) return;
 
@@ -312,7 +318,7 @@ class QualityApprovalBloc
       if (stage.id != event.stageId) return stage;
       final newItems = stage.items.map((item) {
         if (item.id != event.itemId) return item;
-        return item.copyWith(isOk: !item.isOk);
+        return item.copyWithStatus(event.itemStatus);
       }).toList();
       return stage.copyWithItems(newItems);
     }).toList();

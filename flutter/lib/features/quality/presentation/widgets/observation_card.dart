@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 
 /// Card showing a single activity observation with its status badge
@@ -122,6 +123,12 @@ class ObservationCard extends StatelessWidget {
               style: theme.textTheme.bodyMedium,
             ),
 
+            // Observation photos
+            if (obs.photos.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              PhotoThumbnailStrip(photoUrls: obs.photos),
+            ],
+
             // Rectification notes (if any)
             if (obs.closureText?.isNotEmpty ?? false) ...[
               const SizedBox(height: 8),
@@ -140,11 +147,21 @@ class ObservationCard extends StatelessWidget {
                         size: 14, color: Colors.blue.shade700),
                     const SizedBox(width: 6),
                     Expanded(
-                      child: Text(
-                        obs.closureText!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.blue.shade800,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            obs.closureText!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                          if (obs.closureEvidence.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            PhotoThumbnailStrip(
+                                photoUrls: obs.closureEvidence),
+                          ],
+                        ],
                       ),
                     ),
                   ],

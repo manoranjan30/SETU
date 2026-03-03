@@ -202,6 +202,47 @@ enum ObservationStatus {
   }
 }
 
+/// Status for a single checklist item. null = not yet evaluated.
+enum ChecklistItemStatus {
+  pass,
+  na;
+
+  /// Parse from JSON — supports new `status` string field and old `isOk` bool.
+  static ChecklistItemStatus? fromJson(Map<String, dynamic> json) {
+    final statusStr = json['status'] as String?;
+    if (statusStr != null) {
+      switch (statusStr.toUpperCase()) {
+        case 'PASS':
+          return ChecklistItemStatus.pass;
+        case 'NA':
+        case 'NOT_APPLICABLE':
+          return ChecklistItemStatus.na;
+      }
+    }
+    // Backward compat: old backend sends `isOk: true/false`
+    final isOk = json['isOk'] as bool?;
+    return isOk == true ? ChecklistItemStatus.pass : null;
+  }
+
+  String get apiValue {
+    switch (this) {
+      case ChecklistItemStatus.pass:
+        return 'PASS';
+      case ChecklistItemStatus.na:
+        return 'NA';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ChecklistItemStatus.pass:
+        return 'Yes';
+      case ChecklistItemStatus.na:
+        return 'N/A';
+    }
+  }
+}
+
 // ==================== MODELS ====================
 
 /// Quality activity list (a named checklist template assigned to an EPS node)
@@ -421,9 +462,13 @@ class InspectionStage extends Equatable {
     );
   }
 
+  /// Items marked PASS.
   int get completedCount => items.where((i) => i.isOk).length;
+  /// Items marked PASS or N/A (i.e. evaluated).
+  int get resolvedCount => items.where((i) => i.itemStatus != null).length;
   int get totalCount => items.length;
-  bool get allOk => items.isNotEmpty && items.every((i) => i.isOk);
+  /// True when every item has been evaluated (PASS or N/A).
+  bool get allOk => items.isNotEmpty && items.every((i) => i.itemStatus != null);
 
   InspectionStage copyWithItems(List<ChecklistItem> newItems) {
     return InspectionStage(
@@ -443,7 +488,8 @@ class ChecklistItem extends Equatable {
   final int id;
   final String itemText;
   final int sequence;
-  final bool isOk;
+  /// null = not yet evaluated, pass = Yes, na = Not Applicable
+  final ChecklistItemStatus? itemStatus;
   final String? remarks;
   final String? value;
 
@@ -451,10 +497,13 @@ class ChecklistItem extends Equatable {
     required this.id,
     required this.itemText,
     required this.sequence,
-    this.isOk = false,
+    this.itemStatus,
     this.remarks,
     this.value,
   });
+
+  /// Backward-compatible: true only when explicitly marked as PASS.
+  bool get isOk => itemStatus == ChecklistItemStatus.pass;
 
   factory ChecklistItem.fromJson(Map<String, dynamic> json) {
     final template = json['itemTemplate'] as Map<String, dynamic>?;
@@ -462,32 +511,46 @@ class ChecklistItem extends Equatable {
       id: json['id'] as int,
       itemText: template?['itemText'] as String? ?? 'Checklist Item',
       sequence: template?['sequence'] as int? ?? 0,
-      isOk: json['isOk'] as bool? ?? false,
+      itemStatus: ChecklistItemStatus.fromJson(json),
       remarks: json['remarks'] as String?,
       value: json['value'] as String?,
     );
   }
 
-  ChecklistItem copyWith({bool? isOk, String? remarks}) {
+  /// Copy with updated remarks only.
+  ChecklistItem copyWith({String? remarks}) {
     return ChecklistItem(
       id: id,
       itemText: itemText,
       sequence: sequence,
-      isOk: isOk ?? this.isOk,
+      itemStatus: itemStatus,
       remarks: remarks ?? this.remarks,
+      value: value,
+    );
+  }
+
+  /// Copy with a new status (pass / na / null to clear).
+  ChecklistItem copyWithStatus(ChecklistItemStatus? newStatus) {
+    return ChecklistItem(
+      id: id,
+      itemText: itemText,
+      sequence: sequence,
+      itemStatus: newStatus,
+      remarks: remarks,
       value: value,
     );
   }
 
   Map<String, dynamic> toApiPayload() => {
         'id': id,
-        'isOk': isOk,
+        'isOk': isOk, // backward compat with older backend versions
+        if (itemStatus != null) 'status': itemStatus!.apiValue,
         'remarks': remarks,
         if (value != null) 'value': value,
       };
 
   @override
-  List<Object?> get props => [id, isOk, remarks, value];
+  List<Object?> get props => [id, itemStatus, remarks, value];
 }
 
 /// An observation (defect) logged by QC Inspector

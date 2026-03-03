@@ -4,9 +4,9 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { v4 as uuid } from 'uuid';
 
-@Controller('upload')
+@Controller('files')
 export class UploadController {
-    @Post()
+    @Post('upload')
     @UseInterceptors(
         FileInterceptor('file', {
             storage: diskStorage({

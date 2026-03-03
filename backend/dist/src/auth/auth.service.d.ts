@@ -12,6 +12,7 @@ export declare class AuthService {
         user: {
             id: any;
             username: any;
+            displayName: any;
             roles: any;
             permissions: string[];
             project_ids: number[];

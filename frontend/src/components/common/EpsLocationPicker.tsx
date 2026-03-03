@@ -5,6 +5,7 @@ import api from '../../api/axios';
 interface EpsNode {
     id: number;
     name: string;
+    label?: string;
     type: string;
     children?: EpsNode[];
 }
@@ -33,13 +34,17 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({ projectId, value,
     const fetchTree = async () => {
         setLoading(true);
         try {
-            const resp = await api.get(`/eps/${projectId}`);
-            if (resp.data.children) {
-                setTreeData(resp.data.children);
-                // Expand first level by default
-                const newExpanded = new Set<number>();
-                resp.data.children.forEach((n: EpsNode) => newExpanded.add(n.id));
-                setExpandedNodes(newExpanded);
+            const resp = await api.get(`/eps/${projectId}/tree`);
+            if (resp.data && resp.data.length > 0) {
+                // The root is the project itself, we want its children (Blocks)
+                const projectRoot = resp.data[0];
+                if (projectRoot.children) {
+                    setTreeData(projectRoot.children);
+                    // Expand first level (Blocks) by default
+                    const newExpanded = new Set<number>();
+                    projectRoot.children.forEach((n: any) => newExpanded.add(n.id));
+                    setExpandedNodes(newExpanded);
+                }
             }
         } catch (error) {
             console.error('Failed to fetch EPS tree:', error);
@@ -117,7 +122,7 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({ projectId, value,
                         node.type === 'FLOOR' ? <Layers className="w-4 h-4 text-emerald-500" /> :
                             <MapPin className="w-4 h-4 text-gray-400" />}
 
-                    <span className="text-sm">{node.name}</span>
+                    <span className="text-sm">{node.label || node.name}</span>
                 </div>
                 {isExpanded && !isLeaf && node.children && (
                     <div className="border-l ml-2 pl-2 border-gray-100">

@@ -57,12 +57,16 @@ import { ApprovalWorkflowNode } from './entities/approval-workflow-node.entity';
 import { ApprovalWorkflowEdge } from './entities/approval-workflow-edge.entity';
 import { InspectionWorkflowRun } from './entities/inspection-workflow-run.entity';
 import { InspectionWorkflowStep } from './entities/inspection-workflow-step.entity';
+import { QualityRatingConfig } from './entities/quality-rating-config.entity';
+import { ProjectRating } from './entities/quality-project-rating.entity';
 
 import { ApprovalWorkflowService } from './approval-workflow.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
 import { ApprovalWorkflowController } from './approval-workflow.controller';
 import { UserProjectAssignment } from '../projects/entities/user-project-assignment.entity';
 import { AuditModule } from '../audit/audit.module';
+import { QualityRatingService } from './quality-rating.service';
+import { QualityRatingController } from './quality-rating.controller';
 
 @Module({
   imports: [
@@ -101,6 +105,8 @@ import { AuditModule } from '../audit/audit.module';
       InspectionWorkflowRun,
       InspectionWorkflowStep,
       UserProjectAssignment,
+      QualityRatingConfig,
+      ProjectRating,
     ]),
   ],
   controllers: [
@@ -111,6 +117,7 @@ import { AuditModule } from '../audit/audit.module';
     ChecklistTemplateController,
     ApprovalWorkflowController,
     SiteObservationController,
+    QualityRatingController,
   ],
   providers: [
     QualityService,
@@ -125,6 +132,7 @@ import { AuditModule } from '../audit/audit.module';
     ApprovalWorkflowService,
     InspectionWorkflowService,
     SiteObservationService,
+    QualityRatingService,
   ],
   exports: [
     QualityService,
@@ -137,6 +145,7 @@ import { AuditModule } from '../audit/audit.module';
     ApprovalWorkflowService,
     InspectionWorkflowService,
     SiteObservationService,
+    QualityRatingService,
   ],
 })
 export class QualityModule { }
