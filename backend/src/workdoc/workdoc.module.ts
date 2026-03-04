@@ -33,4 +33,4 @@ import { HttpModule } from '@nestjs/axios';
   providers: [WorkDocService],
   exports: [WorkDocService],
 })
-export class WorkDocModule { }
+export class WorkDocModule {}

@@ -23,7 +23,7 @@ export class ExecutionController {
   constructor(
     private readonly service: ExecutionService,
     private readonly breakdownService: ExecutionBreakdownService,
-  ) { }
+  ) {}
 
   @Post(':projectId/measurements')
   @Permissions('EXECUTION.ENTRY.CREATE')
@@ -87,10 +87,7 @@ export class ExecutionController {
 
   @Post('progress/micro')
   @Permissions('EXECUTION.MICRO.CREATE')
-  async saveMicroProgress(
-    @Body() dto: any,
-    @Request() req,
-  ) {
+  async saveMicroProgress(@Body() dto: any, @Request() req) {
     if (!FEATURES.ENABLE_MICRO_PROGRESS) {
       throw new Error('Feature not enabled');
     }

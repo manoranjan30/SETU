@@ -148,4 +148,4 @@ import { QualityRatingController } from './quality-rating.controller';
     QualityRatingService,
   ],
 })
-export class QualityModule { }
+export class QualityModule {}

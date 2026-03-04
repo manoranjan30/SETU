@@ -44,7 +44,6 @@ export class User {
   @Column({ nullable: true })
   signatureUpdatedAt: Date;
 
-
   @Column({ nullable: true, type: 'text' })
   fcmToken: string | null;
 

@@ -94,6 +94,7 @@ export declare class PlanningController {
     }): Promise<import("./entities/schedule-version.entity").ScheduleVersion>;
     getVersions(projectId: string): Promise<import("./entities/schedule-version.entity").ScheduleVersion[]>;
     getVersionActivities(versionId: string): Promise<import("./entities/activity-version.entity").ActivityVersion[]>;
+    deleteVersion(projectId: number, versionId: number): Promise<import("./entities/schedule-version.entity").ScheduleVersion>;
     updateVersionActivity(versionId: string, activityId: string, body: {
         startDate?: Date;
         finishDate?: Date;

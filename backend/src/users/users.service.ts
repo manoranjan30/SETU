@@ -1,4 +1,10 @@
-import { Injectable, ForbiddenException, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -11,7 +17,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) { }
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     const salt = await bcrypt.genSalt(10);
@@ -97,7 +103,11 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-  async changePassword(id: number, oldPassword: string, newPassword: string): Promise<User> {
+  async changePassword(
+    id: number,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<User> {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('User not found');
 
@@ -121,7 +131,11 @@ export class UsersService {
     };
   }
 
-  async updateSignature(id: number, signatureData: string, signatureImageUrl?: string): Promise<any> {
+  async updateSignature(
+    id: number,
+    signatureData: string,
+    signatureImageUrl?: string,
+  ): Promise<any> {
     console.log(`[UsersService] Updating signature for UserID: ${id}`);
     try {
       const user = await this.usersRepository.findOne({ where: { id } });
@@ -142,11 +156,16 @@ export class UsersService {
       }
 
       const updateResult = await this.usersRepository.update(id, updateData);
-      console.log(`[UsersService] Database updated rows: ${updateResult.affected}`);
+      console.log(
+        `[UsersService] Database updated rows: ${updateResult.affected}`,
+      );
 
       return { success: true };
     } catch (error) {
-      console.error(`[UsersService] Database error while updating signature:`, error);
+      console.error(
+        `[UsersService] Database error while updating signature:`,
+        error,
+      );
       throw error;
     }
   }

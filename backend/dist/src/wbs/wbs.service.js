@@ -104,7 +104,10 @@ let WbsService = class WbsService {
     async delete(projectId, id, userId) {
         const node = await this.findOne(projectId, id);
         await this.wbsRepo.remove(node);
-        await this.auditService.log(userId, 'WBS', 'DELETE_NODE', id, projectId, { code: node.wbsCode, name: node.wbsName });
+        await this.auditService.log(userId, 'WBS', 'DELETE_NODE', id, projectId, {
+            code: node.wbsCode,
+            name: node.wbsName,
+        });
     }
     async createActivity(projectId, wbsNodeId, dto, createdBy) {
         const node = await this.wbsRepo.findOne({

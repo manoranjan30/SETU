@@ -133,6 +133,17 @@ import { TempUserModule } from './temp-user/temp-user.module';
 import { TempRoleTemplate } from './temp-user/entities/temp-role-template.entity';
 import { TempUser } from './temp-user/entities/temp-user.entity';
 
+// Dashboard Builder
+import { CustomDashboard } from './dashboard-builder/entities/custom-dashboard.entity';
+import { DashboardWidget } from './dashboard-builder/entities/dashboard-widget.entity';
+import { DashboardAssignment } from './dashboard-builder/entities/dashboard-assignment.entity';
+import { DashboardTemplate } from './dashboard-builder/entities/dashboard-template.entity';
+import { CustomReport } from './dashboard-builder/entities/custom-report.entity';
+import { ReportSchedule } from './dashboard-builder/entities/report-schedule.entity';
+import { DataSourceMeta } from './dashboard-builder/entities/data-source-meta.entity';
+import { DashboardShareLog } from './dashboard-builder/entities/dashboard-share-log.entity';
+import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.module';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -247,6 +258,15 @@ import { TempUser } from './temp-user/entities/temp-user.entity';
         AuditLog,
         TempRoleTemplate,
         TempUser,
+        // Dashboard Builder
+        CustomDashboard,
+        DashboardWidget,
+        DashboardAssignment,
+        DashboardTemplate,
+        CustomReport,
+        ReportSchedule,
+        DataSourceMeta,
+        DashboardShareLog,
       ],
       synchronize: true,
     }),
@@ -257,7 +277,7 @@ import { TempUser } from './temp-user/entities/temp-user.entity';
       {
         rootPath: join(process.cwd(), 'uploads'),
         serveRoot: '/uploads',
-      }
+      },
     ),
     UsersModule,
     RolesModule,
@@ -282,6 +302,7 @@ import { TempUser } from './temp-user/entities/temp-user.entity';
     MicroScheduleModule,
     AuditModule,
     TempUserModule,
+    DashboardBuilderModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,
@@ -293,4 +314,4 @@ import { TempUser } from './temp-user/entities/temp-user.entity';
   controllers: [AppController],
   providers: [AppService, SeedService],
 })
-export class AppModule { }
+export class AppModule {}

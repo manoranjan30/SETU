@@ -15,7 +15,10 @@ import {
 import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
-import { QualityInspectionStage, StageStatus } from './entities/quality-inspection-stage.entity';
+import {
+  QualityInspectionStage,
+  StageStatus,
+} from './entities/quality-inspection-stage.entity';
 import { QualityExecutionItem } from './entities/quality-execution-item.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
@@ -71,7 +74,7 @@ export class QualityInspectionService {
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
     private readonly pushService: PushNotificationService,
-  ) { }
+  ) {}
 
   async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
     const query = this.inspectionRepo
@@ -117,9 +120,9 @@ export class QualityInspectionService {
       order: {
         stages: {
           stageTemplate: { sequence: 'ASC' },
-          items: { itemTemplate: { sequence: 'ASC' } }
-        }
-      }
+          items: { itemTemplate: { sequence: 'ASC' } },
+        },
+      },
     });
     if (!inspection) throw new NotFoundException('Inspection not found');
     return inspection;
@@ -127,13 +130,19 @@ export class QualityInspectionService {
 
   async create(dto: CreateInspectionDto, userId?: string) {
     // 0. EPS Floor-Level Restriction
-    const epsNode = await this.epsNodeRepo.findOne({ where: { id: dto.epsNodeId } });
+    const epsNode = await this.epsNodeRepo.findOne({
+      where: { id: dto.epsNodeId },
+    });
     if (!epsNode) throw new NotFoundException('EPS node not found');
 
-    const ALLOWED_EPS_TYPES: EpsNodeType[] = [EpsNodeType.FLOOR, EpsNodeType.UNIT, EpsNodeType.ROOM];
+    const ALLOWED_EPS_TYPES: EpsNodeType[] = [
+      EpsNodeType.FLOOR,
+      EpsNodeType.UNIT,
+      EpsNodeType.ROOM,
+    ];
     if (!ALLOWED_EPS_TYPES.includes(epsNode.type)) {
       throw new BadRequestException(
-        `RFI must be raised at Floor level or below. Selected node is "${epsNode.type}". Please select a Floor, Unit, or Room.`
+        `RFI must be raised at Floor level or below. Selected node is "${epsNode.type}". Please select a Floor, Unit, or Room.`,
       );
     }
 
@@ -164,8 +173,13 @@ export class QualityInspectionService {
     }
 
     // 3. CHECKLIST VERIFICATION (mandatory before RFI)
-    if (!activity.assignedChecklistIds || activity.assignedChecklistIds.length === 0) {
-      throw new BadRequestException('At least one checklist must be assigned to the activity before raising an RFI.');
+    if (
+      !activity.assignedChecklistIds ||
+      activity.assignedChecklistIds.length === 0
+    ) {
+      throw new BadRequestException(
+        'At least one checklist must be assigned to the activity before raising an RFI.',
+      );
     }
 
     // 4. SEQUENCE ENFORCEMENT
@@ -206,7 +220,10 @@ export class QualityInspectionService {
     const savedInspection = await this.inspectionRepo.save(inspection);
 
     // 7. Initialize Stages from ALL assigned checklists
-    if (activity.assignedChecklistIds && activity.assignedChecklistIds.length > 0) {
+    if (
+      activity.assignedChecklistIds &&
+      activity.assignedChecklistIds.length > 0
+    ) {
       const templates = await this.checklistTemplateRepo.find({
         where: { id: In(activity.assignedChecklistIds) },
         relations: ['stages', 'stages.items'],
@@ -242,7 +259,10 @@ export class QualityInspectionService {
             const fingerprint = this.complianceService.generateFingerprint({
               stageId: savedStage.id,
               items: items,
-              metadata: { timestamp: new Date(), user: dto.signature.signedBy || userId || 'Unknown' }
+              metadata: {
+                timestamp: new Date(),
+                user: dto.signature.signedBy || userId || 'Unknown',
+              },
             });
             const signature = this.signatureRepo.create({
               stageId: savedStage.id,
@@ -250,7 +270,7 @@ export class QualityInspectionService {
               signedBy: dto.signature.signedBy || userId || 'Unknown',
               signatureData: dto.signature.data,
               lockHash: fingerprint,
-              metadata: { timestamp: new Date() }
+              metadata: { timestamp: new Date() },
             });
             await this.signatureRepo.save(signature);
             isFirstStageForSignature = false;
@@ -260,23 +280,29 @@ export class QualityInspectionService {
     }
 
     // 8. Transition Activity to UNDER_INSPECTION once stages are ready
-    await this.activityRepo.update(activity.id, { status: QualityActivityStatus.UNDER_INSPECTION });
+    await this.activityRepo.update(activity.id, {
+      status: QualityActivityStatus.UNDER_INSPECTION,
+    });
 
     // 9. Start Approval Workflow if template exists
     await this.inspectionWorkflowService.startWorkflowForInspection(
       savedInspection.id,
       activity.listId,
       dto.projectId,
-      userId ? parseInt(userId, 10) : 0
+      userId ? parseInt(userId, 10) : 0,
     );
 
     // 10. Notify QC inspectors of new RFI (fire-and-forget)
-    this.pushService.sendToPermission(
-      'QUALITY.INSPECTION.APPROVE',
-      'New RFI Raised',
-      `Activity: ${activity.activityName} — Seq #${activity.sequence}`,
-      { inspectionId: String(savedInspection.id), type: 'RFI_RAISED' },
-    ).catch(() => { /* non-fatal */ });
+    this.pushService
+      .sendToPermission(
+        'QUALITY.INSPECTION.APPROVE',
+        'New RFI Raised',
+        `Activity: ${activity.activityName} — Seq #${activity.sequence}`,
+        { inspectionId: String(savedInspection.id), type: 'RFI_RAISED' },
+      )
+      .catch(() => {
+        /* non-fatal */
+      });
 
     return this.inspectionRepo.findOne({
       where: { id: savedInspection.id },
@@ -289,7 +315,13 @@ export class QualityInspectionService {
     data: {
       status: StageStatus;
       userId: string;
-      items?: { id: number; value: string; isOk: boolean; remarks?: string; photos?: string[] }[];
+      items?: {
+        id: number;
+        value: string;
+        isOk: boolean;
+        remarks?: string;
+        photos?: string[];
+      }[];
       signature?: { data: string; role: string };
       metadata?: any;
     },
@@ -304,7 +336,8 @@ export class QualityInspectionService {
     // 1. Update Items
     if (data.items && stage.items) {
       for (const itemUpdate of data.items) {
-        const isOkParsed = itemUpdate.isOk === true || String(itemUpdate.isOk) === 'true';
+        const isOkParsed =
+          itemUpdate.isOk === true || String(itemUpdate.isOk) === 'true';
 
         // Update DB directly
         await this.executionItemRepo.update(itemUpdate.id, {
@@ -316,7 +349,7 @@ export class QualityInspectionService {
 
         // Update in-memory item so that subsequent stageRepo.save(stage)
         // doesn't overwrite DB with stale values due to cascade: true.
-        const memItem = stage.items.find(i => i.id === itemUpdate.id);
+        const memItem = stage.items.find((i) => i.id === itemUpdate.id);
         if (memItem) {
           memItem.value = itemUpdate.value ?? '';
           memItem.isOk = isOkParsed;
@@ -328,14 +361,19 @@ export class QualityInspectionService {
 
     // 2. Update Stage
     stage.status = data.status;
-    if (data.status === StageStatus.COMPLETED || data.status === StageStatus.APPROVED) {
+    if (
+      data.status === StageStatus.COMPLETED ||
+      data.status === StageStatus.APPROVED
+    ) {
       stage.completedAt = new Date();
       stage.completedBy = data.userId;
     }
 
     // 3. Handle Signature & Digital Locking
     if (data.signature) {
-      const updatedItems = await this.executionItemRepo.find({ where: { stageId } });
+      const updatedItems = await this.executionItemRepo.find({
+        where: { stageId },
+      });
       const fingerprint = this.complianceService.generateFingerprint({
         stageId,
         items: updatedItems,
@@ -364,15 +402,28 @@ export class QualityInspectionService {
     const savedStage = await this.stageRepo.save(stage);
 
     // 4. Update Parent Inspection Status
-    if (data.status === StageStatus.APPROVED || data.status === StageStatus.COMPLETED || data.status === StageStatus.IN_PROGRESS) {
+    if (
+      data.status === StageStatus.APPROVED ||
+      data.status === StageStatus.COMPLETED ||
+      data.status === StageStatus.IN_PROGRESS
+    ) {
       const parentInspection = await this.inspectionRepo.findOne({
         where: { id: stage.inspection.id },
-        relations: ['stages']
+        relations: ['stages'],
       });
 
       if (parentInspection && parentInspection.stages) {
-        const allCompleted = parentInspection.stages.every(s => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED);
-        const someCompleted = parentInspection.stages.some(s => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED || s.status === StageStatus.IN_PROGRESS);
+        const allCompleted = parentInspection.stages.every(
+          (s) =>
+            s.status === StageStatus.APPROVED ||
+            s.status === StageStatus.COMPLETED,
+        );
+        const someCompleted = parentInspection.stages.some(
+          (s) =>
+            s.status === StageStatus.APPROVED ||
+            s.status === StageStatus.COMPLETED ||
+            s.status === StageStatus.IN_PROGRESS,
+        );
 
         if (allCompleted || someCompleted) {
           if (parentInspection.status === InspectionStatus.PENDING) {
@@ -410,7 +461,10 @@ export class QualityInspectionService {
             for (const item of stage.items) {
               if (item.isOk !== true) {
                 allItemsChecked = false;
-                failingItems.push({ itemId: item.id, itemText: item.itemTemplate?.itemText });
+                failingItems.push({
+                  itemId: item.id,
+                  itemText: item.itemTemplate?.itemText,
+                });
               }
             }
           }
@@ -418,7 +472,12 @@ export class QualityInspectionService {
       }
 
       if (hasItems && !allItemsChecked) {
-        console.error('Approval validation failed for inspection', id, 'Failing items:', failingItems);
+        console.error(
+          'Approval validation failed for inspection',
+          id,
+          'Failing items:',
+          failingItems,
+        );
         throw new BadRequestException(
           `Cannot approve RFI. All checklist items must be verified and checked. (Failed: ${failingItems.length} items)`,
         );
@@ -460,15 +519,23 @@ export class QualityInspectionService {
 
       // Notify the person who raised the RFI (fire-and-forget)
       if (inspection.requestedById) {
-        const resultLabel = dto.status === InspectionStatus.APPROVED ? 'Approved ✓' : 'Rejected ✗';
-        this.pushService.sendToUsers(
-          [inspection.requestedById],
-          `RFI ${resultLabel}`,
-          dto.comments || (dto.status === InspectionStatus.APPROVED
-            ? 'Your inspection request has been approved.'
-            : 'Your inspection request has been rejected.'),
-          { inspectionId: String(id), type: dto.status },
-        ).catch(() => { /* non-fatal */ });
+        const resultLabel =
+          dto.status === InspectionStatus.APPROVED
+            ? 'Approved ✓'
+            : 'Rejected ✗';
+        this.pushService
+          .sendToUsers(
+            [inspection.requestedById],
+            `RFI ${resultLabel}`,
+            dto.comments ||
+              (dto.status === InspectionStatus.APPROVED
+                ? 'Your inspection request has been approved.'
+                : 'Your inspection request has been rejected.'),
+            { inspectionId: String(id), type: dto.status },
+          )
+          .catch(() => {
+            /* non-fatal */
+          });
       }
     }
 
@@ -488,7 +555,8 @@ export class QualityInspectionService {
       where: { id: stageId, inspectionId },
       relations: ['inspection', 'stageTemplate', 'items'],
     });
-    if (!stage) throw new NotFoundException('Stage not found for this inspection');
+    if (!stage)
+      throw new NotFoundException('Stage not found for this inspection');
 
     if (stage.status === StageStatus.APPROVED) {
       throw new BadRequestException('Stage is already approved');
@@ -527,7 +595,8 @@ export class QualityInspectionService {
 
     const totalStages = inspection.stages.length;
     const approvedStages = inspection.stages.filter(
-      (s) => s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED,
+      (s) =>
+        s.status === StageStatus.APPROVED || s.status === StageStatus.COMPLETED,
     ).length;
 
     if (approvedStages > 0 && approvedStages < totalStages) {
@@ -550,12 +619,16 @@ export class QualityInspectionService {
 
     // Notify RFI raiser of progress
     if (inspection.requestedById) {
-      this.pushService.sendToUsers(
-        [inspection.requestedById],
-        'Stage Approved ✓',
-        `Stage "${stage.stageTemplate?.name}" approved for RFI #${inspectionId}. ${approvedStages}/${totalStages} complete.`,
-        { inspectionId: String(inspectionId), type: 'STAGE_APPROVED' },
-      ).catch(() => { /* non-fatal */ });
+      this.pushService
+        .sendToUsers(
+          [inspection.requestedById],
+          'Stage Approved ✓',
+          `Stage "${stage.stageTemplate?.name}" approved for RFI #${inspectionId}. ${approvedStages}/${totalStages} complete.`,
+          { inspectionId: String(inspectionId), type: 'STAGE_APPROVED' },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
     }
 
     return {
@@ -580,10 +653,13 @@ export class QualityInspectionService {
 
     // Guard: All stages must be APPROVED or COMPLETED
     const pendingStages = inspection.stages.filter(
-      (s) => s.status !== StageStatus.APPROVED && s.status !== StageStatus.COMPLETED,
+      (s) =>
+        s.status !== StageStatus.APPROVED && s.status !== StageStatus.COMPLETED,
     );
     if (pendingStages.length > 0) {
-      const pendingNames = pendingStages.map((s) => s.stageTemplate?.name || `Stage #${s.id}`).join(', ');
+      const pendingNames = pendingStages
+        .map((s) => s.stageTemplate?.name || `Stage #${s.id}`)
+        .join(', ');
       throw new BadRequestException(
         `Cannot give final approval. The following stages are not yet approved: ${pendingNames}`,
       );
@@ -630,12 +706,16 @@ export class QualityInspectionService {
 
     // Notify the RFI raiser
     if (inspection.requestedById) {
-      this.pushService.sendToUsers(
-        [inspection.requestedById],
-        'RFI Approved ✅',
-        `Your RFI #${inspectionId} has received final approval.`,
-        { inspectionId: String(inspectionId), type: 'APPROVED' },
-      ).catch(() => { /* non-fatal */ });
+      this.pushService
+        .sendToUsers(
+          [inspection.requestedById],
+          'RFI Approved ✅',
+          `Your RFI #${inspectionId} has received final approval.`,
+          { inspectionId: String(inspectionId), type: 'APPROVED' },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
     }
 
     return { success: true, status: 'APPROVED' };
@@ -685,18 +765,31 @@ export class QualityInspectionService {
       await this.observationRepo.delete({ inspectionId: id });
       this.logger.log(`Cascade deleted observations for inspection #${id}`);
     } catch (e) {
-      this.logger.warn(`No observations to cascade delete for inspection #${id}`);
+      this.logger.warn(
+        `No observations to cascade delete for inspection #${id}`,
+      );
     }
 
     await this.inspectionRepo.remove(inspection);
 
-    const remaining = await this.inspectionRepo.count({ where: { activityId } });
+    const remaining = await this.inspectionRepo.count({
+      where: { activityId },
+    });
     if (remaining === 0) {
-      await this.activityRepo.update(activityId, { status: QualityActivityStatus.NOT_STARTED });
+      await this.activityRepo.update(activityId, {
+        status: QualityActivityStatus.NOT_STARTED,
+      });
     }
 
     if (userId) {
-      await this.auditService.log(parseInt(userId, 10), 'QUALITY', 'DELETE_RFI', String(id), inspection.epsNodeId, { activity: activityId });
+      await this.auditService.log(
+        parseInt(userId, 10),
+        'QUALITY',
+        'DELETE_RFI',
+        String(id),
+        inspection.epsNodeId,
+        { activity: activityId },
+      );
     }
 
     return { success: true };

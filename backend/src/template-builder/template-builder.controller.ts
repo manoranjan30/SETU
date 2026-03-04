@@ -24,7 +24,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('pdf-templates')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TemplateBuilderController {
-  constructor(private readonly templateService: TemplateBuilderService) { }
+  constructor(private readonly templateService: TemplateBuilderService) {}
 
   @Get()
   @Permissions('TEMPLATE.BUILDER.READ')

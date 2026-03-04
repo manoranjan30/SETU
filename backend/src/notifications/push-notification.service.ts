@@ -8,13 +8,13 @@ import { User } from '../users/user.entity';
 @Injectable()
 export class PushNotificationService implements OnModuleInit {
   private readonly logger = new Logger(PushNotificationService.name);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   private messagingInstance: any = null;
 
   constructor(
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
@@ -38,10 +38,8 @@ export class PushNotificationService implements OnModuleInit {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const admin = require('firebase-admin');
       if (!admin.apps.length) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const serviceAccount = require(resolvedPath);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
@@ -50,7 +48,10 @@ export class PushNotificationService implements OnModuleInit {
       this.messagingInstance = admin.messaging();
       this.logger.log('Firebase Admin SDK initialized for push notifications.');
     } catch (err) {
-      this.logger.error('Failed to initialize Firebase Admin SDK. Make sure "firebase-admin" is installed.', err);
+      this.logger.error(
+        'Failed to initialize Firebase Admin SDK. Make sure "firebase-admin" is installed.',
+        err,
+      );
     }
   }
 
@@ -110,14 +111,18 @@ export class PushNotificationService implements OnModuleInit {
         notification: { title, body },
         ...(data ? { data } : {}),
         android: {
-          notification: { channelId: 'quality_notifications', priority: 'high' as const },
+          notification: {
+            channelId: 'quality_notifications',
+            priority: 'high' as const,
+          },
         },
         apns: {
           payload: { aps: { sound: 'default' } },
         },
       };
 
-      const response = await this.messagingInstance.sendEachForMulticast(message);
+      const response =
+        await this.messagingInstance.sendEachForMulticast(message);
       this.logger.log(
         `FCM: ${response.successCount} sent, ${response.failureCount} failed (${tokens.length} tokens)`,
       );

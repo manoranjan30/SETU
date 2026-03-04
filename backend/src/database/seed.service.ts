@@ -23,7 +23,7 @@ export class SeedService implements OnApplicationBootstrap {
     private categoryRepo: Repository<DrawingCategory>,
     @InjectRepository(WorkDocTemplate)
     private templateRepo: Repository<WorkDocTemplate>,
-  ) { }
+  ) {}
 
   async onApplicationBootstrap() {
     await this.seedPermissions();

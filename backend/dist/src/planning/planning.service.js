@@ -893,13 +893,17 @@ let PlanningService = class PlanningService {
                 .getMany();
             console.log(`[PlanningService] Found ${siteExecMeas.length} Site Execution measurements`);
             const elementIds = siteExecMeas.map((m) => m.id);
-            const pendingLogs = elementIds.length > 0 ? await this.measurementProgressRepo.createQueryBuilder('p')
-                .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
-                .andWhere('p.status = :status', { status: 'PENDING' })
-                .getMany() : [];
+            const pendingLogs = elementIds.length > 0
+                ? await this.measurementProgressRepo
+                    .createQueryBuilder('p')
+                    .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
+                    .andWhere('p.status = :status', { status: 'PENDING' })
+                    .getMany()
+                : [];
             const pendingMap = new Map();
             for (const p of pendingLogs) {
-                pendingMap.set(p.measurementElementId, (pendingMap.get(p.measurementElementId) || 0) + Number(p.executedQty || 0));
+                pendingMap.set(p.measurementElementId, (pendingMap.get(p.measurementElementId) || 0) +
+                    Number(p.executedQty || 0));
             }
             for (const m of siteExecMeas) {
                 const approvedQty = Number(m.executedQty || 0);
@@ -994,7 +998,7 @@ let PlanningService = class PlanningService {
                     approvedMeasMap.get(specificKey) ||
                     approvedMeasMap.get(genericKey) ||
                     0;
-                let pendingQty = pendingMeasMap.get(planKey) ||
+                const pendingQty = pendingMeasMap.get(planKey) ||
                     pendingMeasMap.get(specificKey) ||
                     pendingMeasMap.get(genericKey) ||
                     0;

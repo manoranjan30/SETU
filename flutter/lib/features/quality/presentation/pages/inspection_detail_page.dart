@@ -190,15 +190,225 @@ class _ChecklistTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (state.stages.isEmpty) {
+    final hasWorkflow = state.workflow != null;
+
+    if (state.stages.isEmpty && !hasWorkflow) {
       return const Center(child: Text('No checklist stages defined'));
     }
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: state.stages.length,
-      itemBuilder: (context, i) =>
-          _StageSection(stage: state.stages[i], stageIndex: i),
+      children: [
+        if (hasWorkflow) _WorkflowTimeline(workflow: state.workflow!),
+        if (state.stages.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(child: Text('No checklist stages defined')),
+          )
+        else
+          ...List.generate(
+            state.stages.length,
+            (i) => _StageSection(stage: state.stages[i], stageIndex: i),
+          ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workflow Timeline
+// ---------------------------------------------------------------------------
+
+class _WorkflowTimeline extends StatelessWidget {
+  final InspectionWorkflowRun workflow;
+  const _WorkflowTimeline({required this.workflow});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final steps = workflow.steps;
+
+    String runStatusLabel;
+    Color runStatusColor;
+    switch (workflow.status) {
+      case WorkflowRunStatus.completed:
+        runStatusLabel = 'Workflow Completed';
+        runStatusColor = Colors.green;
+      case WorkflowRunStatus.rejected:
+        runStatusLabel = 'Workflow Rejected';
+        runStatusColor = Colors.red;
+      case WorkflowRunStatus.reversed:
+        runStatusLabel = 'Workflow Reversed';
+        runStatusColor = Colors.grey;
+      case WorkflowRunStatus.inProgress:
+        runStatusLabel =
+            'Step ${workflow.currentStepOrder} of ${steps.length}';
+        runStatusColor = Colors.blue;
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_tree_outlined, size: 16),
+                const SizedBox(width: 6),
+                Text('Approval Workflow',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: runStatusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: runStatusColor.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(runStatusLabel,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: runStatusColor)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...steps.asMap().entries.map((entry) {
+              final i = entry.key;
+              final step = entry.value;
+              final isLast = i == steps.length - 1;
+              return _WorkflowStepRow(step: step, isLast: isLast);
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowStepRow extends StatelessWidget {
+  final InspectionWorkflowStep step;
+  final bool isLast;
+  const _WorkflowStepRow({required this.step, required this.isLast});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = step.status.color;
+
+    IconData stepIcon;
+    switch (step.status) {
+      case WorkflowStepStatus.completed:
+        stepIcon = Icons.check_circle;
+      case WorkflowStepStatus.rejected:
+        stepIcon = Icons.cancel;
+      case WorkflowStepStatus.skipped:
+        stepIcon = Icons.remove_circle_outline;
+      case WorkflowStepStatus.pending:
+      case WorkflowStepStatus.inProgress:
+        stepIcon = Icons.radio_button_checked;
+      case WorkflowStepStatus.waiting:
+        stepIcon = Icons.radio_button_unchecked;
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Connector column
+          SizedBox(
+            width: 28,
+            child: Column(
+              children: [
+                Icon(stepIcon, size: 20, color: color),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: theme.dividerColor,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Step content
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          step.stepLabel ??
+                              'Level ${step.stepOrder}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: step.isActive
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: step.isActive
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(step.status.label,
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: color)),
+                      ),
+                    ],
+                  ),
+                  if (step.signedBy != null || step.comments != null) ...[
+                    const SizedBox(height: 2),
+                    if (step.signedBy != null)
+                      Text(
+                        'By: ${step.signedBy}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.5),
+                        ),
+                      ),
+                    if (step.comments != null &&
+                        step.comments!.isNotEmpty)
+                      Text(
+                        step.comments!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.5),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -463,6 +673,8 @@ class _ActionBar extends StatelessWidget {
     final theme = Theme.of(context);
     final canApprove = state.canFinalApprove;
     final hasPendingObs = state.pendingObsCount > 0;
+    final useWorkflow = state.hasActiveWorkflow;
+    final currentStep = state.workflow?.currentStep;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -479,6 +691,26 @@ class _ActionBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Workflow step hint
+          if (useWorkflow && currentStep != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.account_tree_outlined,
+                      size: 14, color: Colors.blue.shade700),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Workflow step ${currentStep.stepOrder}: '
+                      '${currentStep.stepLabel ?? "Pending approval"}',
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.blue.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (hasPendingObs)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -487,19 +719,24 @@ class _ActionBar extends StatelessWidget {
                   Icon(Icons.info_outline,
                       size: 14, color: Colors.orange.shade700),
                   const SizedBox(width: 6),
-                  Text(
-                    '${state.pendingObsCount} pending observation(s) must be closed before final approval',
-                    style: TextStyle(
-                        fontSize: 11, color: Colors.orange.shade700),
+                  Expanded(
+                    child: Text(
+                      '${state.pendingObsCount} pending observation(s) '
+                      'must be closed before final approval',
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.orange.shade700),
+                    ),
                   ),
                 ],
               ),
             ),
           Row(
             children: [
-              // Reject
+              // Reject (workflow or direct)
               OutlinedButton.icon(
-                onPressed: () => _showRejectDialog(context),
+                onPressed: () => useWorkflow
+                    ? _showWorkflowRejectDialog(context)
+                    : _showRejectDialog(context),
                 icon: const Icon(Icons.cancel_outlined, size: 16),
                 label: const Text('Reject'),
                 style: OutlinedButton.styleFrom(
@@ -509,27 +746,35 @@ class _ActionBar extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Provisional approve
-              OutlinedButton.icon(
-                onPressed: () => _showProvisionalDialog(context),
-                icon: const Icon(Icons.check_outlined, size: 16),
-                label: const Text('Provisional'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.teal.shade700,
-                  side: BorderSide(color: Colors.teal.shade400),
-                  textStyle: const TextStyle(fontSize: 12),
+              // Provisional (only for direct approval, not workflow)
+              if (!useWorkflow)
+                OutlinedButton.icon(
+                  onPressed: () => _showProvisionalDialog(context),
+                  icon: const Icon(Icons.check_outlined, size: 16),
+                  label: const Text('Provisional'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.teal.shade700,
+                    side: BorderSide(color: Colors.teal.shade400),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
                 ),
-              ),
               const Spacer(),
-              // Full approve
+              // Approve / Advance workflow step
               FilledButton.icon(
                 onPressed: canApprove
-                    ? () => context
-                        .read<QualityApprovalBloc>()
-                        .add(const ApproveInspection())
+                    ? () => useWorkflow
+                        ? _showWorkflowAdvanceDialog(context)
+                        : context
+                            .read<QualityApprovalBloc>()
+                            .add(const ApproveInspection())
                     : null,
-                icon: const Icon(Icons.verified_outlined, size: 16),
-                label: const Text('Approve'),
+                icon: Icon(
+                  useWorkflow
+                      ? Icons.arrow_forward_rounded
+                      : Icons.verified_outlined,
+                  size: 16,
+                ),
+                label: Text(useWorkflow ? 'Advance' : 'Approve'),
                 style: FilledButton.styleFrom(
                   backgroundColor:
                       canApprove ? Colors.green.shade700 : null,
@@ -570,9 +815,80 @@ class _ActionBar extends StatelessWidget {
                   .add(RejectInspection(ctrl.text.trim()));
               Navigator.pop(ctx);
             },
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade700),
+            style:
+                FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWorkflowRejectDialog(BuildContext context) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject Inspection'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 3,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Reason for rejection *',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isEmpty) return;
+              context
+                  .read<QualityApprovalBloc>()
+                  .add(RejectWorkflowStep(ctrl.text.trim()));
+              Navigator.pop(ctx);
+            },
+            style:
+                FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWorkflowAdvanceDialog(BuildContext context) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Advance Workflow Step'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 3,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Comments (optional)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              context
+                  .read<QualityApprovalBloc>()
+                  .add(AdvanceWorkflowStep(comments: ctrl.text.trim()));
+              Navigator.pop(ctx);
+            },
+            style: FilledButton.styleFrom(
+                backgroundColor: Colors.green.shade700),
+            child: const Text('Advance'),
           ),
         ],
       ),
@@ -592,8 +908,7 @@ class _ActionBar extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Justification *',
             border: OutlineInputBorder(),
-            hintText:
-                'Explain why provisional approval is being granted…',
+            hintText: 'Explain why provisional approval is being granted…',
           ),
         ),
         actions: [

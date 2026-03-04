@@ -7,7 +7,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) { }
+  constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('summary')
   @Permissions('DASHBOARD.SUMMARY.READ')

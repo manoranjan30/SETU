@@ -25,7 +25,7 @@ export class ExecutionService {
     private progressRepo: Repository<MeasurementProgress>,
     @InjectRepository(MeasurementElement)
     private measurementRepo: Repository<MeasurementElement>,
-  ) { }
+  ) {}
 
   async batchSaveMeasurements(
     projectId: number,
@@ -144,10 +144,14 @@ export class ExecutionService {
       .select('COALESCE(SUM(p.executedQty), 0)', 'total')
       .getRawOne();
 
-    await manager.update(MeasurementElement, meId, { executedQty: Number(total) });
+    await manager.update(MeasurementElement, meId, {
+      executedQty: Number(total),
+    });
 
     // 2. Recompute BoqItem.consumedQty from all its MeasurementElements
-    const me = await manager.findOne(MeasurementElement, { where: { id: meId } });
+    const me = await manager.findOne(MeasurementElement, {
+      where: { id: meId },
+    });
     if (me?.boqItemId) {
       const { boqTotal } = await manager
         .createQueryBuilder(MeasurementElement, 'me')
@@ -155,7 +159,9 @@ export class ExecutionService {
         .select('COALESCE(SUM(me.executedQty), 0)', 'boqTotal')
         .getRawOne();
 
-      await manager.update(BoqItem, me.boqItemId, { consumedQty: Number(boqTotal) });
+      await manager.update(BoqItem, me.boqItemId, {
+        consumedQty: Number(boqTotal),
+      });
     }
   }
 

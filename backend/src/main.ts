@@ -35,7 +35,8 @@ export class SpaFallbackFilter implements ExceptionFilter {
       } else {
         response.status(404).json({
           statusCode: 404,
-          message: 'Frontend not found and API endpoint does not exist. Did you forget the /api prefix?',
+          message:
+            'Frontend not found and API endpoint does not exist. Did you forget the /api prefix?',
           path: request.url,
         });
       }

@@ -53,7 +53,7 @@ export class PlanningService {
     private relRepo: Repository<ActivityRelationship>,
     private cpmService: CpmService,
     private readonly auditService: AuditService,
-  ) { }
+  ) {}
 
   async unlinkBoq(
     boqItemId: number,
@@ -80,10 +80,10 @@ export class PlanningService {
     const activityIds = [...new Set(affectedPlans.map((p) => p.activityId))];
     const projectId = affectedPlans[0]?.activityId
       ? (
-        await this.activityRepo.findOne({
-          where: { id: affectedPlans[0].activityId },
-        })
-      )?.projectId
+          await this.activityRepo.findOne({
+            where: { id: affectedPlans[0].activityId },
+          })
+        )?.projectId
       : null;
 
     const result = await this.planRepo.delete(whereClause);
@@ -1220,7 +1220,7 @@ export class PlanningService {
     // Fetch all Site Execution measurements for these combinations
     // Separate maps for approved and pending quantities
     const approvedMeasMap = new Map<string, number>();
-    const pendingMeasMap  = new Map<string, number>();
+    const pendingMeasMap = new Map<string, number>();
 
     if (activityBoqPairs.length > 0) {
       // Get unique boqItemIds
@@ -1241,14 +1241,22 @@ export class PlanningService {
 
       // Also get PENDING progress logs for these elements
       const elementIds = siteExecMeas.map((m: any) => m.id);
-      const pendingLogs = elementIds.length > 0 ? await this.measurementProgressRepo.createQueryBuilder('p')
-        .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
-        .andWhere('p.status = :status', { status: 'PENDING' })
-        .getMany() : [];
+      const pendingLogs =
+        elementIds.length > 0
+          ? await this.measurementProgressRepo
+              .createQueryBuilder('p')
+              .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
+              .andWhere('p.status = :status', { status: 'PENDING' })
+              .getMany()
+          : [];
 
       const pendingMap = new Map<number, number>();
       for (const p of pendingLogs) {
-        pendingMap.set(p.measurementElementId, (pendingMap.get(p.measurementElementId) || 0) + Number(p.executedQty || 0));
+        pendingMap.set(
+          p.measurementElementId,
+          (pendingMap.get(p.measurementElementId) || 0) +
+            Number(p.executedQty || 0),
+        );
       }
 
       for (const m of siteExecMeas as any[]) {
@@ -1267,16 +1275,25 @@ export class PlanningService {
         if (extractedPlanId && extractedPlanId !== 'NOPLAN') {
           // Per-plan tracking key: plan - {planId}
           const key = `plan - ${extractedPlanId} `;
-          approvedMeasMap.set(key, (approvedMeasMap.get(key) || 0) + approvedQty);
-          pendingMeasMap.set(key,  (pendingMeasMap.get(key)  || 0) + pendingQty);
+          approvedMeasMap.set(
+            key,
+            (approvedMeasMap.get(key) || 0) + approvedQty,
+          );
+          pendingMeasMap.set(key, (pendingMeasMap.get(key) || 0) + pendingQty);
           console.log(
             `[PlanningService] Per-Plan approved=${approvedQty} pending=${pendingQty} key=${key}`,
           );
         } else {
           // Fallback to legacy key format: "activityId-boqItemId"
           const legacyKey = `${m.activityId || 'null'} -${m.boqItemId} `;
-          approvedMeasMap.set(legacyKey, (approvedMeasMap.get(legacyKey) || 0) + approvedQty);
-          pendingMeasMap.set(legacyKey,  (pendingMeasMap.get(legacyKey)  || 0) + pendingQty);
+          approvedMeasMap.set(
+            legacyKey,
+            (approvedMeasMap.get(legacyKey) || 0) + approvedQty,
+          );
+          pendingMeasMap.set(
+            legacyKey,
+            (pendingMeasMap.get(legacyKey) || 0) + pendingQty,
+          );
           console.log(
             `[PlanningService] Legacy approved=${approvedQty} pending=${pendingQty} key=${legacyKey}`,
           );
@@ -1378,9 +1395,9 @@ export class PlanningService {
         }
 
         // Lookup approved + pending qty from maps: try plan-specific first, then fallbacks
-        const planKey     = `plan - ${r.plan_id} `;
+        const planKey = `plan - ${r.plan_id} `;
         const specificKey = `${activityId} -${validBoqItemId} `;
-        const genericKey  = `null - ${validBoqItemId} `;
+        const genericKey = `null - ${validBoqItemId} `;
 
         let approvedQty =
           approvedMeasMap.get(planKey) ||
@@ -1388,7 +1405,7 @@ export class PlanningService {
           approvedMeasMap.get(genericKey) ||
           0;
 
-        let pendingQty =
+        const pendingQty =
           pendingMeasMap.get(planKey) ||
           pendingMeasMap.get(specificKey) ||
           pendingMeasMap.get(genericKey) ||
@@ -1406,9 +1423,9 @@ export class PlanningService {
           uom: r.boqItem_uom,
           plannedQuantity: finalPlannedQty,
           totalQty: parseFloat(r.boqItem_qty || 0),
-          consumedQty:  approvedQty + pendingQty, // backward compat (total submitted)
-          approvedQty,                             // approved by manager
-          pendingQty,                              // submitted, awaiting approval
+          consumedQty: approvedQty + pendingQty, // backward compat (total submitted)
+          approvedQty, // approved by manager
+          pendingQty, // submitted, awaiting approval
         });
       }
     }

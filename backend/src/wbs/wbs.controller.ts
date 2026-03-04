@@ -37,7 +37,7 @@ export class WbsController {
   constructor(
     private readonly wbsService: WbsService,
     private readonly importService: WbsImportService,
-  ) { }
+  ) {}
 
   @Post()
   @Permissions('WBS.NODE.CREATE')
@@ -139,10 +139,7 @@ export class WbsController {
 
   @Delete('activities/:activityId')
   @Permissions('WBS.ACTIVITY.DELETE')
-  deleteActivity(
-    @Param('activityId') activityId: string,
-    @Request() req: any,
-  ) {
+  deleteActivity(@Param('activityId') activityId: string, @Request() req: any) {
     return this.wbsService.deleteActivity(+activityId, req.user.id);
   }
 

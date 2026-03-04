@@ -23,7 +23,7 @@ export class EpsService {
     @InjectRepository(ProjectProfile)
     private profileRepository: Repository<ProjectProfile>,
     private permissionService: PermissionResolutionService,
-  ) { }
+  ) {}
 
   async updateProfile(
     nodeId: number,

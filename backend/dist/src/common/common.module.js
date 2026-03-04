@@ -23,7 +23,11 @@ exports.CommonModule = CommonModule = __decorate([
     (0, common_1.Module)({
         imports: [typeorm_1.TypeOrmModule.forFeature([table_view_config_entity_1.TableViewConfig, system_setting_entity_1.SystemSetting])],
         providers: [table_view_service_1.TableViewService, system_settings_service_1.SystemSettingsService],
-        controllers: [table_view_controller_1.TableViewController, system_settings_controller_1.SystemSettingsController, upload_controller_1.UploadController],
+        controllers: [
+            table_view_controller_1.TableViewController,
+            system_settings_controller_1.SystemSettingsController,
+            upload_controller_1.UploadController,
+        ],
         exports: [table_view_service_1.TableViewService, system_settings_service_1.SystemSettingsService],
     })
 ], CommonModule);

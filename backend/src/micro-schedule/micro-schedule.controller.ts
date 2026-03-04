@@ -34,7 +34,7 @@ export class MicroScheduleController {
     private readonly microActivityService: MicroActivityService,
     private readonly dailyLogService: MicroDailyLogService,
     private readonly ledgerService: MicroLedgerService,
-  ) { }
+  ) {}
 
   @Get('delay-reasons')
   @Permissions('MICRO.SCHEDULE.READ')

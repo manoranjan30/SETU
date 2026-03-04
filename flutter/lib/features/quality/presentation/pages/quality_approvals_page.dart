@@ -24,6 +24,12 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
 
+  /// Last successfully loaded inspections — kept so that returning from
+  /// InspectionDetailPage (where the bloc state may be InspectionDetailLoaded /
+  /// ApprovalActionQueued / QualityApprovalLoading) doesn't show a
+  /// full-screen spinner.
+  InspectionsLoaded? _lastInspections;
+
   static const _filters = ['PENDING', 'ALL', 'APPROVED', 'REJECTED'];
   static const _labels = ['Pending', 'All', 'Approved', 'Rejected'];
 
@@ -45,6 +51,47 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
             filter: _filters[_tabCtrl.index],
           ),
         );
+  }
+
+  /// Navigate to detail and reload the list when returning.
+  /// Uses page-level context (always mounted) so the reload is never skipped.
+  Future<void> _openDetail(
+      QualityInspection inspection, String activeFilter) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: context.read<QualityApprovalBloc>(),
+          child: InspectionDetailPage(inspection: inspection),
+        ),
+      ),
+    );
+    if (mounted) {
+      context.read<QualityApprovalBloc>().add(
+            LoadInspections(
+              projectId: widget.projectId,
+              filter: activeFilter,
+            ),
+          );
+    }
+  }
+
+  Widget _buildTabView(InspectionsLoaded state) {
+    return TabBarView(
+      controller: _tabCtrl,
+      physics: const NeverScrollableScrollPhysics(),
+      children: _filters
+          .map((f) => f == state.activeFilter
+              ? _InspectionList(
+                  inspections: state.inspections,
+                  projectId: widget.projectId,
+                  activeFilter: state.activeFilter,
+                  onInspectionTap: (inspection) =>
+                      _openDetail(inspection, state.activeFilter),
+                )
+              : const Center(child: CircularProgressIndicator()))
+          .toList(),
+    );
   }
 
   @override
@@ -118,23 +165,24 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
           }
         },
         builder: (context, state) {
-          if (state is QualityApprovalLoading) {
+          // Cache the last known inspections so returning from detail page
+          // doesn't show a spinner when the bloc state is something else.
+          if (state is InspectionsLoaded) _lastInspections = state;
+
+          // Full-screen spinner only on the very first load (no cached data).
+          if (state is QualityApprovalLoading && _lastInspections == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
           if (state is InspectionsLoaded) {
-            return TabBarView(
-              controller: _tabCtrl,
-              physics: const NeverScrollableScrollPhysics(),
-              children: _filters
-                  .map((f) => f == state.activeFilter
-                      ? _InspectionList(
-                          inspections: state.inspections,
-                          projectId: widget.projectId,
-                        )
-                      : const Center(child: CircularProgressIndicator()))
-                  .toList(),
-            );
+            return _buildTabView(state);
+          }
+
+          // Returned from detail page while bloc is in InspectionDetailLoaded /
+          // ApprovalActionQueued / QualityApprovalLoading(refresh) — show the
+          // cached list instead of a full-screen spinner.
+          if (_lastInspections != null) {
+            return _buildTabView(_lastInspections!);
           }
 
           return const Center(child: CircularProgressIndicator());
@@ -149,10 +197,14 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
 class _InspectionList extends StatelessWidget {
   final List<QualityInspection> inspections;
   final int projectId;
+  final String activeFilter;
+  final void Function(QualityInspection) onInspectionTap;
 
   const _InspectionList({
     required this.inspections,
     required this.projectId,
+    required this.activeFilter,
+    required this.onInspectionTap,
   });
 
   @override
@@ -180,7 +232,7 @@ class _InspectionList extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: () async => context.read<QualityApprovalBloc>().add(
-            LoadInspections(projectId: projectId, filter: 'PENDING'),
+            LoadInspections(projectId: projectId, filter: activeFilter),
           ),
       child: ListView.separated(
         padding: const EdgeInsets.all(12),
@@ -188,7 +240,7 @@ class _InspectionList extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 4),
         itemBuilder: (context, i) => _InspectionCard(
           inspection: inspections[i],
-          projectId: projectId,
+          onTap: () => onInspectionTap(inspections[i]),
         ),
       ),
     );
@@ -199,10 +251,12 @@ class _InspectionList extends StatelessWidget {
 
 class _InspectionCard extends StatelessWidget {
   final QualityInspection inspection;
-  final int projectId;
+  final VoidCallback onTap;
 
-  const _InspectionCard(
-      {required this.inspection, required this.projectId});
+  const _InspectionCard({
+    required this.inspection,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -245,15 +299,7 @@ class _InspectionCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BlocProvider.value(
-              value: context.read<QualityApprovalBloc>(),
-              child: InspectionDetailPage(inspection: inspection),
-            ),
-          ),
-        ),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(

@@ -112,6 +112,22 @@ class CloseObservation extends QualityApprovalEvent {
   List<Object?> get props => [obsId];
 }
 
+/// Approve the current workflow step (multi-level approval)
+class AdvanceWorkflowStep extends QualityApprovalEvent {
+  final String? comments;
+  const AdvanceWorkflowStep({this.comments});
+  @override
+  List<Object?> get props => [comments];
+}
+
+/// Reject the inspection via the workflow (multi-level)
+class RejectWorkflowStep extends QualityApprovalEvent {
+  final String reason;
+  const RejectWorkflowStep(this.reason);
+  @override
+  List<Object?> get props => [reason];
+}
+
 /// Refresh the detail view (reload observations/stages)
 class RefreshInspectionDetail extends QualityApprovalEvent {
   const RefreshInspectionDetail();
@@ -146,10 +162,13 @@ class InspectionDetailLoaded extends QualityApprovalState {
   final QualityInspection inspection;
   final List<InspectionStage> stages; // mutable local copy for checkbox toggling
   final List<ActivityObservation> observations;
+  final InspectionWorkflowRun? workflow; // null when no workflow configured
+
   const InspectionDetailLoaded({
     required this.inspection,
     required this.stages,
     required this.observations,
+    this.workflow,
   });
 
   bool get allItemsOk =>
@@ -161,19 +180,25 @@ class InspectionDetailLoaded extends QualityApprovalState {
 
   bool get canFinalApprove => allItemsOk && pendingObsCount == 0;
 
+  /// True when a workflow is active and awaiting this user's step
+  bool get hasActiveWorkflow =>
+      workflow != null && workflow!.isInProgress;
+
   InspectionDetailLoaded copyWith({
     List<InspectionStage>? stages,
     List<ActivityObservation>? observations,
+    InspectionWorkflowRun? workflow,
   }) {
     return InspectionDetailLoaded(
       inspection: inspection,
       stages: stages ?? this.stages,
       observations: observations ?? this.observations,
+      workflow: workflow ?? this.workflow,
     );
   }
 
   @override
-  List<Object?> get props => [inspection, stages, observations];
+  List<Object?> get props => [inspection, stages, observations, workflow];
 }
 
 class ChecklistProgressSaved extends QualityApprovalState {
@@ -242,6 +267,8 @@ class QualityApprovalBloc
     on<ApproveInspection>(_onApproveInspection);
     on<ProvisionallyApproveInspection>(_onProvisionallyApproveInspection);
     on<RejectInspection>(_onRejectInspection);
+    on<AdvanceWorkflowStep>(_onAdvanceWorkflowStep);
+    on<RejectWorkflowStep>(_onRejectWorkflowStep);
     on<RaiseObservation>(_onRaiseObservation);
     on<UploadObservationPhoto>(_onUploadObservationPhoto);
     on<CloseObservation>(_onCloseObservation);
@@ -279,10 +306,12 @@ class QualityApprovalBloc
       final results = await Future.wait([
         _apiClient.getQualityInspectionDetail(event.inspection.id),
         _apiClient.getActivityObservations(event.inspection.activityId),
+        _apiClient.getInspectionWorkflow(event.inspection.id),
       ]);
 
       final detailRaw = results[0] as Map<String, dynamic>;
       final obsRaw = results[1] as List<dynamic>;
+      final workflowRaw = results[2] as Map<String, dynamic>?;
 
       final detail = QualityInspection.fromJson(detailRaw);
       _currentInspection = detail;
@@ -292,10 +321,92 @@ class QualityApprovalBloc
               ActivityObservation.fromJson(e as Map<String, dynamic>))
           .toList();
 
+      final workflow = workflowRaw != null
+          ? InspectionWorkflowRun.fromJson(workflowRaw)
+          : null;
+
       emit(InspectionDetailLoaded(
         inspection: detail,
         stages: List<InspectionStage>.from(detail.stages),
         observations: observations,
+        workflow: workflow,
+      ));
+    } catch (e) {
+      emit(QualityApprovalError(_friendly(e)));
+    }
+  }
+
+  Future<void> _onAdvanceWorkflowStep(
+      AdvanceWorkflowStep event,
+      Emitter<QualityApprovalState> emit) async {
+    final current = state;
+    if (current is! InspectionDetailLoaded) return;
+
+    emit(QualityApprovalLoading());
+    try {
+      // Save all stage progress first, then advance the workflow step
+      for (final stage in current.stages) {
+        await _syncService.addToQueue(
+          entityType: 'quality_stage_save',
+          entityId: stage.id,
+          operation: 'update',
+          payload: {
+            'stageId': stage.id,
+            'status': 'COMPLETED',
+            'items': stage.items.map((i) => i.toApiPayload()).toList(),
+          },
+          priority: 3,
+        );
+      }
+      await _syncService.addToQueue(
+        entityType: 'quality_workflow_advance',
+        entityId: current.inspection.id,
+        operation: 'update',
+        payload: {
+          'inspectionId': current.inspection.id,
+          if (event.comments != null && event.comments!.isNotEmpty)
+            'comments': event.comments,
+        },
+        priority: 3,
+      );
+
+      final syncResult = await _syncService.syncAll();
+      final pending = await _syncService.getPendingSyncCount();
+      emit(ApprovalActionQueued(
+        action: 'approve',
+        isOffline: !syncResult.success,
+        pendingSyncCount: pending,
+      ));
+    } catch (e) {
+      emit(QualityApprovalError(_friendly(e)));
+    }
+  }
+
+  Future<void> _onRejectWorkflowStep(
+      RejectWorkflowStep event,
+      Emitter<QualityApprovalState> emit) async {
+    final current = state;
+    if (current is! InspectionDetailLoaded) return;
+
+    emit(QualityApprovalLoading());
+    try {
+      await _syncService.addToQueue(
+        entityType: 'quality_workflow_reject',
+        entityId: current.inspection.id,
+        operation: 'update',
+        payload: {
+          'inspectionId': current.inspection.id,
+          'comments': event.reason,
+        },
+        priority: 3,
+      );
+
+      final syncResult = await _syncService.syncAll();
+      final pending = await _syncService.getPendingSyncCount();
+      emit(ApprovalActionQueued(
+        action: 'reject',
+        isOffline: !syncResult.success,
+        pendingSyncCount: pending,
       ));
     } catch (e) {
       emit(QualityApprovalError(_friendly(e)));

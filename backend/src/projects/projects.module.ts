@@ -28,4 +28,4 @@ import { ProjectsController } from './projects.controller';
   providers: [ProjectAssignmentService, PermissionResolutionService],
   controllers: [ProjectsController],
 })
-export class ProjectsModule { }
+export class ProjectsModule {}

@@ -18,22 +18,27 @@ import { ProjectsModule } from '../projects/projects.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([
-            TempRoleTemplate,
-            TempUser,
-            User,
-            Role,
-            Vendor,
-            WorkOrder,
-            Permission,
-        ]),
-        ScheduleModule.forRoot(),
-        forwardRef(() => ProjectsModule),
-        forwardRef(() => AuditModule),
-    ],
-    providers: [TempRoleService, TempUserService, TempUserExpiryCron, TempUserAuthGuard],
-    controllers: [TempRoleController, TempUserController],
-    exports: [TempUserService, TempRoleService, TempUserAuthGuard],
+  imports: [
+    TypeOrmModule.forFeature([
+      TempRoleTemplate,
+      TempUser,
+      User,
+      Role,
+      Vendor,
+      WorkOrder,
+      Permission,
+    ]),
+    ScheduleModule.forRoot(),
+    forwardRef(() => ProjectsModule),
+    forwardRef(() => AuditModule),
+  ],
+  providers: [
+    TempRoleService,
+    TempUserService,
+    TempUserExpiryCron,
+    TempUserAuthGuard,
+  ],
+  controllers: [TempRoleController, TempUserController],
+  exports: [TempUserService, TempRoleService, TempUserAuthGuard],
 })
-export class TempUserModule { }
+export class TempUserModule {}

@@ -18,7 +18,7 @@ export class ProgressService {
     private elementRepo: Repository<MeasurementElement>,
     @InjectRepository(BoqActivityPlan)
     private planRepo: Repository<BoqActivityPlan>,
-  ) { }
+  ) {}
 
   // 1. Burn Rate Stats (Financials)
   async getBurnRateStats(projectId: number) {

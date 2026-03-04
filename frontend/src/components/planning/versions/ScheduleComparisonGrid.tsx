@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import api from '../../../api/axios';
 import { ArrowLeft } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 
 // Register all community modules to avoid missing feature errors
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -11,6 +11,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 const ScheduleComparisonGrid: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const { projectId } = useParams<{ projectId: string }>();
 
     const v1Id = searchParams.get('v1');
     const v2Id = searchParams.get('v2');
@@ -27,7 +28,7 @@ const ScheduleComparisonGrid: React.FC = () => {
         setLoading(true);
         try {
             const res = await api.get('/planning/versions/compare', {
-                params: { v1: v1Id, v2: v2Id }
+                params: { v1: v1Id, v2: v2Id, projectId }
             });
             setData(res.data);
         } catch (err) {

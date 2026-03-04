@@ -38,7 +38,7 @@ export class QualityController {
   constructor(
     private readonly qualityService: QualityService,
     private readonly structureService: QualityStructureService,
-  ) { }
+  ) {}
 
   // ... (Existing endpoints omitted for brevity, keeping all existing methods via replace_file logic) ...
   // Wait, I cannot use "..." in replacement unless I use multi_replace or target specific chunks.

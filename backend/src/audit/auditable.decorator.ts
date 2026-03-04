@@ -3,10 +3,10 @@ import { SetMetadata } from '@nestjs/common';
 export const AUDITABLE_KEY = 'auditable';
 
 export interface AuditableMeta {
-    module: string;
-    action: string;
-    /** Optional: name of the route param or body field to use as recordId */
-    recordIdParam?: string;
+  module: string;
+  action: string;
+  /** Optional: name of the route param or body field to use as recordId */
+  recordIdParam?: string;
 }
 
 /**
@@ -38,7 +38,12 @@ export interface AuditableMeta {
  * ```
  */
 export const Auditable = (
-    module: string,
-    action: string,
-    recordIdParam?: string,
-) => SetMetadata(AUDITABLE_KEY, { module, action, recordIdParam } as AuditableMeta);
+  module: string,
+  action: string,
+  recordIdParam?: string,
+) =>
+  SetMetadata(AUDITABLE_KEY, {
+    module,
+    action,
+    recordIdParam,
+  } as AuditableMeta);

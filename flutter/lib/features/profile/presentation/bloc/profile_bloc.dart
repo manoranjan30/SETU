@@ -119,9 +119,15 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       final sigJson = results[1];
 
       _cachedUser = User.fromJson(userJson);
-      _cachedSignature = sigJson['data'] as String? ??
+      var rawSig = sigJson['data'] as String? ??
           sigJson['signature'] as String? ??
           sigJson['signatureData'] as String?;
+      // Backend may return a data-URL like "data:image/png;base64,<actual>"
+      // base64Decode() only accepts the raw base64 part — strip the prefix.
+      if (rawSig != null && rawSig.contains(';base64,')) {
+        rawSig = rawSig.split(';base64,').last;
+      }
+      _cachedSignature = rawSig;
 
       emit(ProfileLoaded(
         user: _cachedUser!,

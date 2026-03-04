@@ -55,7 +55,7 @@ export class ExecutionBreakdownService {
     private readonly boqRepo: Repository<BoqItem>,
     @InjectRepository(EpsNode)
     private readonly epsNodeRepo: Repository<EpsNode>,
-  ) { }
+  ) {}
 
   /**
    * Returns the given EPS node ID plus all descendant node IDs.
@@ -154,10 +154,15 @@ export class ExecutionBreakdownService {
           if (elementIds.length > 0) {
             const pendingLogs = await this.progressRepo
               .createQueryBuilder('progress')
-              .where('progress.measurementElementId IN (:...ids)', { ids: elementIds })
+              .where('progress.measurementElementId IN (:...ids)', {
+                ids: elementIds,
+              })
               .andWhere('progress.status = :status', { status: 'PENDING' })
               .getMany();
-            executedQty += pendingLogs.reduce((sum, log) => sum + Number(log.executedQty || 0), 0);
+            executedQty += pendingLogs.reduce(
+              (sum, log) => sum + Number(log.executedQty || 0),
+              0,
+            );
           }
           executedQty = Math.max(0, executedQty);
 

@@ -1,155 +1,174 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SiteObservation, SiteObservationStatus, SiteObservationSeverity } from './entities/site-observation.entity';
+import {
+  SiteObservation,
+  SiteObservationStatus,
+  SiteObservationSeverity,
+} from './entities/site-observation.entity';
 import { AuditService } from '../audit/audit.service';
-import { CreateSiteObservationDto, RectifySiteObservationDto, CloseSiteObservationDto } from './dto/site-observation.dto';
+import {
+  CreateSiteObservationDto,
+  RectifySiteObservationDto,
+  CloseSiteObservationDto,
+} from './dto/site-observation.dto';
 
 @Injectable()
 export class SiteObservationService {
-    private readonly logger = new Logger(SiteObservationService.name);
+  private readonly logger = new Logger(SiteObservationService.name);
 
-    constructor(
-        @InjectRepository(SiteObservation)
-        private readonly observationRepo: Repository<SiteObservation>,
-        private readonly auditService: AuditService,
-    ) { }
+  constructor(
+    @InjectRepository(SiteObservation)
+    private readonly observationRepo: Repository<SiteObservation>,
+    private readonly auditService: AuditService,
+  ) {}
 
-    async getAll(projectId: number, status?: string, severity?: string) {
-        const query = this.observationRepo.createQueryBuilder('obs')
-            .leftJoinAndSelect('obs.epsNode', 'epsNode')
-            .where('obs.projectId = :projectId', { projectId });
+  async getAll(projectId: number, status?: string, severity?: string) {
+    const query = this.observationRepo
+      .createQueryBuilder('obs')
+      .leftJoinAndSelect('obs.epsNode', 'epsNode')
+      .where('obs.projectId = :projectId', { projectId });
 
-        if (status) query.andWhere('obs.status = :status', { status });
-        if (severity) query.andWhere('obs.severity = :severity', { severity });
+    if (status) query.andWhere('obs.status = :status', { status });
+    if (severity) query.andWhere('obs.severity = :severity', { severity });
 
-        return query.orderBy('obs.createdAt', 'DESC').getMany();
+    return query.orderBy('obs.createdAt', 'DESC').getMany();
+  }
+
+  async getById(id: string) {
+    const obs = await this.observationRepo.findOne({
+      where: { id },
+      relations: ['epsNode'],
+    });
+    if (!obs) throw new NotFoundException('Site observation not found');
+    return obs;
+  }
+
+  async create(dto: CreateSiteObservationDto, userId?: string) {
+    // Clean up empty strings for date fields to prevent DB errors
+    const cleanedDto = { ...dto };
+    if (cleanedDto.targetDate === '') {
+      delete cleanedDto.targetDate;
     }
 
-    async getById(id: string) {
-        const obs = await this.observationRepo.findOne({
-            where: { id },
-            relations: ['epsNode']
-        });
-        if (!obs) throw new NotFoundException('Site observation not found');
-        return obs;
+    const obs = this.observationRepo.create({
+      ...cleanedDto,
+      status: SiteObservationStatus.OPEN,
+      raisedById: userId,
+    });
+
+    const saved = await this.observationRepo.save(obs);
+
+    if (userId) {
+      await this.auditService.log(
+        parseInt(userId, 10),
+        'QUALITY',
+        'SITE_OBS_CREATE',
+        saved.id.toString(),
+        dto.epsNodeId,
+        { category: dto.category, severity: dto.severity },
+      );
     }
 
-    async create(dto: CreateSiteObservationDto, userId?: string) {
-        // Clean up empty strings for date fields to prevent DB errors
-        const cleanedDto = { ...dto };
-        if (cleanedDto.targetDate === '') {
-            delete cleanedDto.targetDate;
-        }
+    return saved;
+  }
 
-        const obs = this.observationRepo.create({
-            ...cleanedDto,
-            status: SiteObservationStatus.OPEN,
-            raisedById: userId,
-        });
+  async rectify(id: string, dto: RectifySiteObservationDto, userId?: string) {
+    const obs = await this.getById(id);
 
-        const saved = await this.observationRepo.save(obs);
-
-        if (userId) {
-            await this.auditService.log(
-                parseInt(userId, 10),
-                'QUALITY',
-                'SITE_OBS_CREATE',
-                saved.id.toString(),
-                dto.epsNodeId,
-                { category: dto.category, severity: dto.severity }
-            );
-        }
-
-        return saved;
+    if (obs.status !== SiteObservationStatus.OPEN) {
+      throw new BadRequestException('Observation is not OPEN');
     }
 
-    async rectify(id: string, dto: RectifySiteObservationDto, userId?: string) {
-        const obs = await this.getById(id);
+    obs.status = SiteObservationStatus.RECTIFIED;
+    obs.rectificationText = dto.rectificationText;
+    if (dto.rectificationPhotos) {
+      obs.rectificationPhotos = dto.rectificationPhotos;
+    }
+    if (userId) {
+      obs.rectifiedById = userId;
+    }
+    obs.rectifiedAt = new Date();
 
-        if (obs.status !== SiteObservationStatus.OPEN) {
-            throw new BadRequestException('Observation is not OPEN');
-        }
+    const saved = await this.observationRepo.save(obs);
 
-        obs.status = SiteObservationStatus.RECTIFIED;
-        obs.rectificationText = dto.rectificationText;
-        if (dto.rectificationPhotos) {
-            obs.rectificationPhotos = dto.rectificationPhotos;
-        }
-        if (userId) {
-            obs.rectifiedById = userId;
-        }
-        obs.rectifiedAt = new Date();
-
-        const saved = await this.observationRepo.save(obs);
-
-        if (userId) {
-            await this.auditService.log(
-                parseInt(userId, 10),
-                'QUALITY',
-                'SITE_OBS_RECTIFY',
-                saved.id.toString(),
-                obs.epsNodeId,
-                { rectifiedAt: obs.rectifiedAt }
-            );
-        }
-
-        return saved;
+    if (userId) {
+      await this.auditService.log(
+        parseInt(userId, 10),
+        'QUALITY',
+        'SITE_OBS_RECTIFY',
+        saved.id.toString(),
+        obs.epsNodeId,
+        { rectifiedAt: obs.rectifiedAt },
+      );
     }
 
-    async close(id: string, dto: CloseSiteObservationDto, userId?: string) {
-        const obs = await this.getById(id);
+    return saved;
+  }
 
-        if (obs.status === SiteObservationStatus.CLOSED) {
-            throw new BadRequestException('Observation is already CLOSED');
-        }
+  async close(id: string, dto: CloseSiteObservationDto, userId?: string) {
+    const obs = await this.getById(id);
 
-        // INFO severity can be closed directly from OPEN
-        if (obs.severity !== SiteObservationSeverity.INFO && obs.status === SiteObservationStatus.OPEN) {
-            throw new BadRequestException('Observation must be RECTIFIED before closing (unless INFO severity)');
-        }
-
-        obs.status = SiteObservationStatus.CLOSED;
-        if (dto.closureRemarks) {
-            obs.closureRemarks = dto.closureRemarks;
-        }
-        if (userId) {
-            obs.closedById = userId;
-        }
-        obs.closedAt = new Date();
-
-        const saved = await this.observationRepo.save(obs);
-
-        if (userId) {
-            await this.auditService.log(
-                parseInt(userId, 10),
-                'QUALITY',
-                'SITE_OBS_CLOSE',
-                saved.id.toString(),
-                obs.epsNodeId,
-                { closedAt: obs.closedAt }
-            );
-        }
-
-        return saved;
+    if (obs.status === SiteObservationStatus.CLOSED) {
+      throw new BadRequestException('Observation is already CLOSED');
     }
 
-    async delete(id: string, userId?: string) {
-        const obs = await this.getById(id);
-
-        await this.observationRepo.remove(obs);
-
-        if (userId) {
-            await this.auditService.log(
-                parseInt(userId, 10),
-                'QUALITY',
-                'SITE_OBS_DELETE',
-                obs.id.toString(),
-                obs.epsNodeId,
-                { description: obs.description }
-            );
-        }
-
-        return { success: true };
+    // INFO severity can be closed directly from OPEN
+    if (
+      obs.severity !== SiteObservationSeverity.INFO &&
+      obs.status === SiteObservationStatus.OPEN
+    ) {
+      throw new BadRequestException(
+        'Observation must be RECTIFIED before closing (unless INFO severity)',
+      );
     }
+
+    obs.status = SiteObservationStatus.CLOSED;
+    if (dto.closureRemarks) {
+      obs.closureRemarks = dto.closureRemarks;
+    }
+    if (userId) {
+      obs.closedById = userId;
+    }
+    obs.closedAt = new Date();
+
+    const saved = await this.observationRepo.save(obs);
+
+    if (userId) {
+      await this.auditService.log(
+        parseInt(userId, 10),
+        'QUALITY',
+        'SITE_OBS_CLOSE',
+        saved.id.toString(),
+        obs.epsNodeId,
+        { closedAt: obs.closedAt },
+      );
+    }
+
+    return saved;
+  }
+
+  async delete(id: string, userId?: string) {
+    const obs = await this.getById(id);
+
+    await this.observationRepo.remove(obs);
+
+    if (userId) {
+      await this.auditService.log(
+        parseInt(userId, 10),
+        'QUALITY',
+        'SITE_OBS_DELETE',
+        obs.id.toString(),
+        obs.epsNodeId,
+        { description: obs.description },
+      );
+    }
+
+    return { success: true };
+  }
 }

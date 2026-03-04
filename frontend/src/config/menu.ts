@@ -59,6 +59,16 @@ export const MENU_CONFIG: MenuItem[] = [
                 label: 'Vendor Access Templates',
                 path: '/dashboard/admin/vendor-access-templates',
                 permission: PermissionCode.TEMP_ROLE_VIEW
+            },
+            {
+                label: 'Dashboard Builder',
+                path: '/dashboard/admin/dashboard-builder',
+                permission: PermissionCode.ADMIN_DASHBOARD_READ
+            },
+            {
+                label: 'Custom Reports',
+                path: '/dashboard/admin/reports',
+                permission: PermissionCode.ADMIN_REPORT_READ
             }
         ]
     },

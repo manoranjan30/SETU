@@ -36,7 +36,7 @@ export class BoqService {
     private readonly planningService: PlanningService,
     @Inject(forwardRef(() => WorkDocService))
     private readonly workDocService: WorkDocService,
-  ) { }
+  ) {}
 
   // --- Legacy / Compatibility ---
   async create(dto: CreateBoqElementDto): Promise<BoqElement> {
@@ -57,11 +57,18 @@ export class BoqService {
     const item = this.boqItemRepo.create(data);
     const saved = await this.boqItemRepo.save(item);
 
-    await this.auditService.log(userId, 'BOQ', 'CREATE_ITEM', saved.id, saved.projectId, {
-      code: saved.boqCode,
-      name: saved.description,
-      qty: saved.qty,
-    });
+    await this.auditService.log(
+      userId,
+      'BOQ',
+      'CREATE_ITEM',
+      saved.id,
+      saved.projectId,
+      {
+        code: saved.boqCode,
+        name: saved.description,
+        qty: saved.qty,
+      },
+    );
 
     return saved;
   }
@@ -360,11 +367,18 @@ export class BoqService {
     // Trigger Financial Update in Schedule
     await this.planningService.updateActivitiesByBoqItem(saved.id);
 
-    await this.auditService.log(userId, 'BOQ', 'UPDATE_ITEM', id, saved.projectId, {
-      changes: data,
-      previous: oldData,
-      new: { qty: saved.qty, amount: saved.amount },
-    });
+    await this.auditService.log(
+      userId,
+      'BOQ',
+      'UPDATE_ITEM',
+      id,
+      saved.projectId,
+      {
+        changes: data,
+        previous: oldData,
+        new: { qty: saved.qty, amount: saved.amount },
+      },
+    );
 
     return saved;
   }
@@ -373,10 +387,17 @@ export class BoqService {
     const item = await this.boqItemRepo.findOneBy({ id });
     if (!item) throw new NotFoundException('BOQ Item not found');
 
-    await this.auditService.log(userId, 'BOQ', 'DELETE_ITEM', id, item.projectId, {
-      code: item.boqCode,
-      name: item.description,
-    });
+    await this.auditService.log(
+      userId,
+      'BOQ',
+      'DELETE_ITEM',
+      id,
+      item.projectId,
+      {
+        code: item.boqCode,
+        name: item.description,
+      },
+    );
     await this.boqItemRepo.remove(item);
   }
 

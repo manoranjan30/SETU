@@ -271,19 +271,37 @@ if defined BACKEND_URL (
 echo.
 echo  [4/5] Cleaning stale build processes...
 
-:: Kill any lingering Java / Gradle processes that may lock build dirs
-taskkill /F /IM java.exe /T >nul 2>&1
-taskkill /F /IM gradle.exe /T >nul 2>&1
+:: ── Kill processes that commonly lock build / .dart_tool dirs ──────────────
+:: java.exe / gradle.exe  = Gradle daemon
+:: dart.exe / dartvm.exe  = Dart language server (VS Code) or stale flutter run
+taskkill /F /IM java.exe    /T >nul 2>&1
+taskkill /F /IM gradle.exe  /T >nul 2>&1
+taskkill /F /IM dart.exe    /T >nul 2>&1
+taskkill /F /IM dartvm.exe  /T >nul 2>&1
+echo         Stale processes terminated.
 
-:: Remove the Gradle assets staging dir that OneDrive / AV commonly locks
-set "MERGE_ASSETS=%PROJECT_ROOT%\build\app\intermediates\assets\debug\mergeDebugAssets"
-if exist "!MERGE_ASSETS!" (
-  rd /s /q "!MERGE_ASSETS!" >nul 2>&1
-  echo         Cleared locked build assets dir.
-) else (
-  echo         Build assets dir clean  -  nothing to remove.
+:: ── Stop Gradle daemon cleanly (belt-and-suspenders) ─────────────────────
+call flutter pub run :gradlew --stop >nul 2>&1
+
+:: ── Remove known locked intermediate directories ──────────────────────────
+:: These dirs are frequently locked by OneDrive sync, antivirus, or a stale
+:: Gradle / Dart process.  rd /s /q silently skips if the dir does not exist.
+set "INT=%PROJECT_ROOT%\build\app\intermediates"
+
+rd /s /q "!INT!\merged_res_blame_folder"    >nul 2>&1
+rd /s /q "!INT!\assets\debug\mergeDebugAssets" >nul 2>&1
+rd /s /q "!INT!\incremental\mergeDebugResources" >nul 2>&1
+
+:: Sub-plugin build dirs (workmanager, etc.) can also get locked
+for /d %%D in ("%PROJECT_ROOT%\build\*_android") do (
+  rd /s /q "%%D\intermediates" >nul 2>&1
 )
-echo         Stale processes cleared.
+
+:: .dart_tool is locked by the Dart language server; delete so flutter pub get
+:: recreates it cleanly
+rd /s /q "%PROJECT_ROOT%\.dart_tool" >nul 2>&1
+
+echo         Locked build dirs cleared.
 
 :: ===========================================================
 :: STEP 5 - Pub get + Network Whitelist

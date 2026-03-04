@@ -18,7 +18,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('ehs')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class EhsController {
-  constructor(private readonly ehsService: EhsService) { }
+  constructor(private readonly ehsService: EhsService) {}
 
   @Get(':projectId/summary')
   @Permissions('EHS.DASHBOARD.READ')

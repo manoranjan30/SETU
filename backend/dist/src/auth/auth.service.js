@@ -89,10 +89,10 @@ let AuthService = class AuthService {
             });
         }
         const assignments = await this.assignmentService.getUserAssignments(user.id);
-        const assignedProjectIds = assignments.map(a => a.project?.id);
-        assignments.forEach(assignment => {
-            assignment.roles?.forEach(role => {
-                role.permissions?.forEach(p => rawPermissions.add(p.permissionCode));
+        const assignedProjectIds = assignments.map((a) => a.project?.id);
+        assignments.forEach((assignment) => {
+            assignment.roles?.forEach((role) => {
+                role.permissions?.forEach((p) => rawPermissions.add(p.permissionCode));
             });
         });
         const permissions = (0, permission_config_1.expandPermissions)(Array.from(rawPermissions));

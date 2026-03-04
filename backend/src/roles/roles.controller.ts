@@ -22,7 +22,7 @@ import { Roles } from '../auth/roles.decorator';
 @Controller('roles')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RolesController {
-  constructor(private readonly rolesService: RolesService) { }
+  constructor(private readonly rolesService: RolesService) {}
 
   // ─── Permission Preset Endpoints (MUST be before :id routes) ──────────────
 

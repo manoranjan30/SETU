@@ -1,15 +1,21 @@
-import { IsString, IsNotEmpty, IsArray, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsOptional,
+  IsBoolean,
+} from 'class-validator';
 
 export class CreateTempRoleDto {
-    @IsString()
-    @IsNotEmpty()
-    name: string;
+  @IsString()
+  @IsNotEmpty()
+  name: string;
 
-    @IsString()
-    @IsOptional()
-    description?: string;
+  @IsString()
+  @IsOptional()
+  description?: string;
 
-    @IsArray()
-    @IsString({ each: true })
-    allowedPermissions: string[];
+  @IsArray()
+  @IsString({ each: true })
+  allowedPermissions: string[];
 }

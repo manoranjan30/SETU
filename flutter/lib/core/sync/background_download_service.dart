@@ -176,11 +176,16 @@ class BackgroundDownloadService {
     _emit(const DownloadProgress(status: DownloadStatus.starting));
 
     try {
-      var bytesUsed = prefs.getInt(prefTotalBytes) ?? 0;
+      // Always start from 0 — each download upserts (replaces) existing cached
+      // data in SQLite, so the footprint of a re-download is the same as the
+      // first download and should NOT be accumulated on top of prior runs.
+      var bytesUsed = 0;
 
-      if (bytesUsed >= maxStorageBytes) {
+      // Cap guard: if the previous completed run already saturated storage, bail.
+      final prevBytes = prefs.getInt(prefTotalBytes) ?? 0;
+      if (prevBytes >= maxStorageBytes) {
         _emit(DownloadProgress(
-            status: DownloadStatus.capReached, bytesUsed: bytesUsed));
+            status: DownloadStatus.capReached, bytesUsed: prevBytes));
         return;
       }
 
@@ -197,7 +202,7 @@ class BackgroundDownloadService {
             status: DownloadStatus.downloading,
             stepLabel: 'Activity lists…',
             bytesUsed: bytesUsed));
-        bytesUsed += await _downloadActivityLists(prefs);
+        bytesUsed += await _downloadActivityLists(prefs, bytesUsed);
       }
 
       await prefs.setInt(prefTotalBytes, bytesUsed);
@@ -223,7 +228,8 @@ class BackgroundDownloadService {
     }
   }
 
-  Future<int> _downloadActivityLists(SharedPreferences prefs) async {
+  Future<int> _downloadActivityLists(
+      SharedPreferences prefs, int alreadyUsedBytes) async {
     try {
       // Discover known project IDs from the local cache
       final rows = await _database.selectOnlyDistinctProjectIds();
@@ -236,10 +242,7 @@ class BackgroundDownloadService {
             raw.cast<Map<String, dynamic>>(), projectId);
         totalBytes += jsonEncode(raw).length;
 
-        if ((prefs.getInt(prefTotalBytes) ?? 0) + totalBytes >=
-            maxStorageBytes) {
-          break;
-        }
+        if (alreadyUsedBytes + totalBytes >= maxStorageBytes) break;
       }
       return totalBytes;
     } catch (_) {

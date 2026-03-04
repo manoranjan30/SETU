@@ -104,6 +104,9 @@ let PlanningController = class PlanningController {
     getVersionActivities(versionId) {
         return this.versionService.getVersionActivities(+versionId);
     }
+    deleteVersion(projectId, versionId) {
+        return this.versionService.deleteVersion(projectId, versionId);
+    }
     updateVersionActivity(versionId, activityId, body) {
         return this.versionService.updateActivityDate(+versionId, +activityId, body.startDate, body.finishDate, body.actualStart, body.actualFinish);
     }
@@ -334,6 +337,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], PlanningController.prototype, "getVersionActivities", null);
+__decorate([
+    (0, common_1.Delete)(':projectId/versions/:versionId'),
+    (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.DELETE'),
+    __param(0, (0, common_1.Param)('projectId', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Param)('versionId', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Number]),
+    __metadata("design:returntype", void 0)
+], PlanningController.prototype, "deleteVersion", null);
 __decorate([
     (0, common_1.Patch)('versions/:versionId/activities/:activityId'),
     (0, permissions_decorator_1.Permissions)('SCHEDULE.VERSION.UPDATE'),

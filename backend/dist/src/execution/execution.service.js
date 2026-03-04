@@ -118,15 +118,21 @@ let ExecutionService = ExecutionService_1 = class ExecutionService {
             .andWhere('p.status = :status', { status: 'APPROVED' })
             .select('COALESCE(SUM(p.executedQty), 0)', 'total')
             .getRawOne();
-        await manager.update(measurement_element_entity_1.MeasurementElement, meId, { executedQty: Number(total) });
-        const me = await manager.findOne(measurement_element_entity_1.MeasurementElement, { where: { id: meId } });
+        await manager.update(measurement_element_entity_1.MeasurementElement, meId, {
+            executedQty: Number(total),
+        });
+        const me = await manager.findOne(measurement_element_entity_1.MeasurementElement, {
+            where: { id: meId },
+        });
         if (me?.boqItemId) {
             const { boqTotal } = await manager
                 .createQueryBuilder(measurement_element_entity_1.MeasurementElement, 'me')
                 .where('me.boqItemId = :boqId', { boqId: me.boqItemId })
                 .select('COALESCE(SUM(me.executedQty), 0)', 'boqTotal')
                 .getRawOne();
-            await manager.update(boq_item_entity_1.BoqItem, me.boqItemId, { consumedQty: Number(boqTotal) });
+            await manager.update(boq_item_entity_1.BoqItem, me.boqItemId, {
+                consumedQty: Number(boqTotal),
+            });
         }
     }
     async recalculateActivityProgress(activityId, manager) {

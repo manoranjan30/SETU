@@ -505,6 +505,20 @@ class SyncService {
             );
             break;
 
+          case 'quality_workflow_advance':
+            await _apiClient.advanceWorkflowStep(
+              inspectionId: payload['inspectionId'] as int,
+              comments: payload['comments'] as String?,
+            );
+            break;
+
+          case 'quality_workflow_reject':
+            await _apiClient.rejectWorkflowStep(
+              inspectionId: payload['inspectionId'] as int,
+              comments: payload['comments'] as String,
+            );
+            break;
+
           case 'quality_obs_raise':
             await _apiClient.raiseObservation(
               activityId: payload['activityId'] as int,

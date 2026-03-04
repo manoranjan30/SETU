@@ -48,4 +48,4 @@ import { ImportExportService } from './import-export.service';
   ],
   exports: [PlanningService, ScheduleVersionService],
 })
-export class PlanningModule { }
+export class PlanningModule {}

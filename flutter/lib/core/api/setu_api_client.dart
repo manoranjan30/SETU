@@ -356,7 +356,16 @@ class SetuApiClient {
       if (entityId != null) 'entityId': entityId,
     });
     final response = await _dio.post(ApiEndpoints.uploadFile, data: formData);
-    return response.data;
+    final data = Map<String, dynamic>.from(response.data as Map);
+    // Resolve relative paths (e.g. "/uploads/abc.jpg") to absolute URLs so
+    // CachedNetworkImage can load them on physical devices.
+    final rawUrl = data['url'] as String? ?? data['path'] as String? ?? '';
+    if (rawUrl.isNotEmpty) {
+      final resolved = ApiEndpoints.resolveUrl(rawUrl);
+      data['url'] = resolved;
+      data['path'] = resolved;
+    }
+    return data;
   }
 
   // ==================== QUALITY ENDPOINTS ====================
@@ -447,6 +456,44 @@ class SetuApiClient {
         if (comments != null) 'comments': comments,
         if (inspectionDate != null) 'inspectionDate': inspectionDate,
       },
+    );
+    return response.data;
+  }
+
+  /// GET /quality/inspections/:id/workflow — Fetch workflow run with steps.
+  /// Returns null when no workflow exists for this inspection.
+  Future<Map<String, dynamic>?> getInspectionWorkflow(int inspectionId) async {
+    try {
+      final response =
+          await _dio.get(ApiEndpoints.inspectionWorkflow(inspectionId));
+      return response.data as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// POST /quality/inspections/:id/workflow/advance — Approve current step
+  Future<Map<String, dynamic>> advanceWorkflowStep({
+    required int inspectionId,
+    String? comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.advanceWorkflow(inspectionId),
+      data: {
+        if (comments != null && comments.isNotEmpty) 'comments': comments,
+      },
+    );
+    return response.data;
+  }
+
+  /// POST /quality/inspections/:id/workflow/reject — Reject via workflow
+  Future<Map<String, dynamic>> rejectWorkflowStep({
+    required int inspectionId,
+    required String comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.rejectWorkflow(inspectionId),
+      data: {'comments': comments},
     );
     return response.data;
   }

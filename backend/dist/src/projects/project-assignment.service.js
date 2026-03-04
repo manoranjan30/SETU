@@ -55,11 +55,13 @@ let ProjectAssignmentService = class ProjectAssignmentService {
             },
             relations: ['roles'],
         });
-        const oldDetails = assignment ? {
-            roleIds: assignment.roles?.map(r => r.id),
-            status: assignment.status,
-            scopeType: assignment.scopeType
-        } : null;
+        const oldDetails = assignment
+            ? {
+                roleIds: assignment.roles?.map((r) => r.id),
+                status: assignment.status,
+                scopeType: assignment.scopeType,
+            }
+            : null;
         if (!assignment) {
             assignment = this.assignmentRepo.create({
                 user,
@@ -84,9 +86,17 @@ let ProjectAssignmentService = class ProjectAssignmentService {
         if (performedByUserId) {
             await this.logAudit(projectId, oldDetails ? 'UPDATE_MEMBER' : 'ADD_MEMBER', userId, performedByUserId, {
                 old: oldDetails
-                    ? { roleIds: oldDetails.roleIds, scope: oldDetails.scopeType, status: oldDetails.status }
+                    ? {
+                        roleIds: oldDetails.roleIds,
+                        scope: oldDetails.scopeType,
+                        status: oldDetails.status,
+                    }
                     : null,
-                new: { roleIds: roles.map(r => r.id), scope: scopeType, status: saved.status },
+                new: {
+                    roleIds: roles.map((r) => r.id),
+                    scope: scopeType,
+                    status: saved.status,
+                },
             });
         }
         return saved;
@@ -98,7 +108,7 @@ let ProjectAssignmentService = class ProjectAssignmentService {
         if (assignment) {
             await this.assignmentRepo.remove(assignment);
             if (performedByUserId) {
-                await this.logAudit(projectId, 'REMOVE_MEMBER', userId, performedByUserId, { previousRoles: assignment.roles?.map(r => r.id) });
+                await this.logAudit(projectId, 'REMOVE_MEMBER', userId, performedByUserId, { previousRoles: assignment.roles?.map((r) => r.id) });
             }
         }
     }

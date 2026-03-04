@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: ['ag-grid-react', 'ag-grid-community', 'react-pdf', 'pdfjs-dist']
+    include: ['ag-grid-react', 'ag-grid-community', 'react-pdf', 'pdfjs-dist', 'react-grid-layout']
   },
   server: {
     allowedHosts: true

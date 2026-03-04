@@ -171,6 +171,17 @@ class ApiEndpoints {
   /// GET /boq/:id/items
   static String boqItems(int boqId) => '/boq/$boqId/items';
 
+  // ==================== URL RESOLVER ====================
+
+  /// Converts a server-relative path (e.g. "/uploads/abc.jpg") to a full URL
+  /// using the current base URL origin.  Absolute URLs pass through unchanged.
+  static String resolveUrl(String url) {
+    if (url.isEmpty || url.startsWith('http')) return url;
+    final base = Uri.parse(baseUrl);
+    final origin = '${base.scheme}://${base.host}:${base.port}';
+    return url.startsWith('/') ? '$origin$url' : '$origin/$url';
+  }
+
   // ==================== FILE UPLOAD ENDPOINTS ====================
   /// POST /files/upload
   static const String uploadFile = '/files/upload';
@@ -205,6 +216,18 @@ class ApiEndpoints {
   /// PATCH /quality/inspections/stage/:stageId  → Save checklist stage
   static String inspectionStage(int stageId) =>
       '/quality/inspections/stage/$stageId';
+
+  /// GET /quality/inspections/:id/workflow  → Fetch workflow run + steps
+  static String inspectionWorkflow(int id) =>
+      '/quality/inspections/$id/workflow';
+
+  /// POST /quality/inspections/:id/workflow/advance  → Approve current step
+  static String advanceWorkflow(int id) =>
+      '/quality/inspections/$id/workflow/advance';
+
+  /// POST /quality/inspections/:id/workflow/reject  → Reject via workflow
+  static String rejectWorkflow(int id) =>
+      '/quality/inspections/$id/workflow/reject';
 
   /// GET /quality/activities/:id/observations
   static String activityObservations(int activityId) =>

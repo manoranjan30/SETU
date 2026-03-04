@@ -27,5 +27,4 @@ import { ProjectsModule } from '../projects/projects.module';
   providers: [EpsService],
   exports: [EpsService],
 })
-export class EpsModule { }
-
+export class EpsModule {}

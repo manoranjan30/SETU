@@ -31,7 +31,7 @@ export class ProjectAssignmentService {
     @InjectRepository(Role)
     private roleRepo: Repository<Role>,
     private readonly auditService: AuditService,
-  ) { }
+  ) {}
 
   async assignUser(
     projectId: number,
@@ -53,7 +53,8 @@ export class ProjectAssignmentService {
     const user = await this.userRepo.findOneBy({ id: userId });
     const roles = await this.roleRepo.findBy({ id: In(roleIds) });
     if (!user) throw new NotFoundException('User not found');
-    if (roles.length === 0) throw new BadRequestException('At least one valid role must be selected');
+    if (roles.length === 0)
+      throw new BadRequestException('At least one valid role must be selected');
 
     // 3. Check existing assignment
     let assignment = await this.assignmentRepo.findOne({
@@ -64,11 +65,13 @@ export class ProjectAssignmentService {
       relations: ['roles'],
     });
 
-    const oldDetails = assignment ? {
-      roleIds: assignment.roles?.map(r => r.id),
-      status: assignment.status,
-      scopeType: assignment.scopeType
-    } : null;
+    const oldDetails = assignment
+      ? {
+          roleIds: assignment.roles?.map((r) => r.id),
+          status: assignment.status,
+          scopeType: assignment.scopeType,
+        }
+      : null;
 
     if (!assignment) {
       assignment = this.assignmentRepo.create({
@@ -102,9 +105,17 @@ export class ProjectAssignmentService {
         performedByUserId,
         {
           old: oldDetails
-            ? { roleIds: oldDetails.roleIds, scope: oldDetails.scopeType, status: oldDetails.status }
+            ? {
+                roleIds: oldDetails.roleIds,
+                scope: oldDetails.scopeType,
+                status: oldDetails.status,
+              }
             : null,
-          new: { roleIds: roles.map(r => r.id), scope: scopeType, status: saved.status },
+          new: {
+            roleIds: roles.map((r) => r.id),
+            scope: scopeType,
+            status: saved.status,
+          },
         },
       );
     }
@@ -129,7 +140,7 @@ export class ProjectAssignmentService {
           'REMOVE_MEMBER',
           userId,
           performedByUserId,
-          { previousRoles: assignment.roles?.map(r => r.id) },
+          { previousRoles: assignment.roles?.map((r) => r.id) },
         );
       }
     }

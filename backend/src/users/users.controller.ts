@@ -18,7 +18,7 @@ import { RolesGuard } from '../auth/roles.guard';
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @Post()
   @Roles('Admin') // Example
@@ -40,7 +40,11 @@ export class UsersController {
 
   @Put('me/password')
   changePassword(@Request() req, @Body() body: any) {
-    return this.usersService.changePassword(+req.user.id, body.oldPassword, body.newPassword);
+    return this.usersService.changePassword(
+      +req.user.id,
+      body.oldPassword,
+      body.newPassword,
+    );
   }
 
   @Get('me/signature')
@@ -49,21 +53,37 @@ export class UsersController {
   }
 
   @Put('me/signature')
-  async updateSignature(@Request() req, @Body() body: { signatureData: string, signatureImageUrl?: string }) {
+  async updateSignature(
+    @Request() req,
+    @Body() body: { signatureData: string; signatureImageUrl?: string },
+  ) {
     const userId = req.user?.id;
-    console.log(`[UsersController] PUT /me/signature requested by UserID: ${userId}`);
+    console.log(
+      `[UsersController] PUT /me/signature requested by UserID: ${userId}`,
+    );
 
     if (!body.signatureData && !body.signatureImageUrl) {
-      console.warn(`[UsersController] Rejecting request: No signature data provided.`);
+      console.warn(
+        `[UsersController] Rejecting request: No signature data provided.`,
+      );
       return { success: false, message: 'No signature data provided' };
     }
 
     try {
-      const result = await this.usersService.updateSignature(+userId, body.signatureData, body.signatureImageUrl);
-      console.log(`[UsersController] Signature updated successfully for UserID: ${userId}`);
+      const result = await this.usersService.updateSignature(
+        +userId,
+        body.signatureData,
+        body.signatureImageUrl,
+      );
+      console.log(
+        `[UsersController] Signature updated successfully for UserID: ${userId}`,
+      );
       return result;
     } catch (error) {
-      console.error(`[UsersController] Failed to update signature for UserID: ${userId}:`, error.message);
+      console.error(
+        `[UsersController] Failed to update signature for UserID: ${userId}:`,
+        error.message,
+      );
       throw error;
     }
   }

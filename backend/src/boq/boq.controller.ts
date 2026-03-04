@@ -39,7 +39,7 @@ export class BoqController {
   constructor(
     private readonly boqService: BoqService,
     private readonly boqImportService: BoqImportService,
-  ) { }
+  ) {}
 
   @Get('template')
   @Permissions('BOQ.ITEM.IMPORT')
@@ -99,13 +99,13 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     const defaultEpsId = defaultEpsIdStr
       ? parseInt(defaultEpsIdStr, 10)
@@ -157,19 +157,19 @@ export class BoqController {
     if (mappingStr) {
       try {
         mapping = JSON.parse(mappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     let valueMap = undefined;
     if (valueMapStr) {
       try {
         valueMap = JSON.parse(valueMapStr);
-      } catch (e) { }
+      } catch (e) {}
     }
     let hierarchyMapping = undefined;
     if (hierarchyMappingStr) {
       try {
         hierarchyMapping = JSON.parse(hierarchyMappingStr);
-      } catch (e) { }
+      } catch (e) {}
     }
 
     const defaultEpsId = defaultEpsIdStr

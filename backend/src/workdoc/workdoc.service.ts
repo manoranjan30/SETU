@@ -80,7 +80,7 @@ export class WorkDocService {
     private tempUserRepo: Repository<TempUser>,
     private readonly httpService: HttpService,
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   // --- Vendors ---
   async getAllVendors(search?: string) {
@@ -236,7 +236,10 @@ export class WorkDocService {
     return wo;
   }
 
-  async updateWorkOrderStatus(woId: number, status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED') {
+  async updateWorkOrderStatus(
+    woId: number,
+    status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED',
+  ) {
     const wo = await this.woRepo.findOneBy({ id: woId });
     if (!wo) throw new NotFoundException('Work order not found');
 
@@ -246,7 +249,11 @@ export class WorkDocService {
     if (status === 'CLOSED' || status === 'CANCELLED') {
       await this.tempUserRepo.update(
         { workOrder: { id: woId }, status: 'ACTIVE' },
-        { status: 'EXPIRED', suspendedAt: new Date(), suspensionReason: `Work Order ${status}` }
+        {
+          status: 'EXPIRED',
+          suspendedAt: new Date(),
+          suspensionReason: `Work Order ${status}`,
+        },
       );
     }
     return wo;
@@ -550,7 +557,7 @@ export class WorkDocService {
         );
         throw new BadRequestException(
           'Coordinate Extraction Failed: ' +
-          (error.response?.data?.detail || error.message),
+            (error.response?.data?.detail || error.message),
         );
       }
     }
