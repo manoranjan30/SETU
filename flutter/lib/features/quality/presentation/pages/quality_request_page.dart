@@ -25,6 +25,11 @@ class QualityRequestPage extends StatefulWidget {
 class _QualityRequestPageState extends State<QualityRequestPage> {
   EpsTreeNode? _selectedNode;
 
+  /// Last successfully loaded lists — kept so that returning from
+  /// ActivityListDetailPage (where the bloc state may be ActivitiesLoaded /
+  /// QualityRequestLoading(refresh)) doesn't show a full-screen spinner.
+  ActivityListsLoaded? _lastLists;
+
   /// Types at which RFIs can be raised (floor and below).
   static const _rfiLevelTypes = {'FLOOR', 'UNIT', 'ROOM'};
 
@@ -64,7 +69,15 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
           }
         },
         builder: (context, state) {
-          if (state is QualityRequestLoading && _selectedNode == null) {
+          // Cache the last known lists so returning from detail page doesn't
+          // show a spinner when the bloc state is ActivitiesLoaded / Loading.
+          if (state is ActivityListsLoaded) _lastLists = state;
+
+          // Full-screen spinner only before the first load (no cached data yet).
+          if ((state is QualityRequestInitial ||
+                  (state is QualityRequestLoading &&
+                      _selectedNode == null)) &&
+              _lastLists == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -98,11 +111,13 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
             return _buildListsPanel(context, state);
           }
 
-          if (state is QualityRequestInitial) {
-            return const Center(child: CircularProgressIndicator());
+          // Returned from detail page while bloc is in ActivitiesLoaded /
+          // QualityRequestLoading(refresh) / RfiQueued / RectificationQueued —
+          // show the cached lists instead of a full-screen spinner.
+          if (_lastLists != null) {
+            return _buildListsPanel(context, _lastLists!);
           }
 
-          // Loading
           return const Center(child: CircularProgressIndicator());
         },
       ),

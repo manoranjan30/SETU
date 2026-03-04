@@ -195,8 +195,10 @@ class SetuApiClient {
     return response.data;
   }
 
-  /// Save micro progress
-  Future<Map<String, dynamic>> saveMicroProgress({
+  /// Save micro progress.
+  /// Returns dynamic because the backend returns a List (array of saved records),
+  /// not a Map. The caller doesn't use the return value.
+  Future<dynamic> saveMicroProgress({
     required int projectId,
     required int activityId,
     required int epsNodeId,
@@ -354,7 +356,16 @@ class SetuApiClient {
       if (entityId != null) 'entityId': entityId,
     });
     final response = await _dio.post(ApiEndpoints.uploadFile, data: formData);
-    return response.data;
+    final data = Map<String, dynamic>.from(response.data as Map);
+    // Resolve relative paths (e.g. "/uploads/abc.jpg") to absolute URLs so
+    // CachedNetworkImage can load them on physical devices.
+    final rawUrl = data['url'] as String? ?? data['path'] as String? ?? '';
+    if (rawUrl.isNotEmpty) {
+      final resolved = ApiEndpoints.resolveUrl(rawUrl);
+      data['url'] = resolved;
+      data['path'] = resolved;
+    }
+    return data;
   }
 
   // ==================== QUALITY ENDPOINTS ====================
@@ -449,6 +460,44 @@ class SetuApiClient {
     return response.data;
   }
 
+  /// GET /quality/inspections/:id/workflow — Fetch workflow run with steps.
+  /// Returns null when no workflow exists for this inspection.
+  Future<Map<String, dynamic>?> getInspectionWorkflow(int inspectionId) async {
+    try {
+      final response =
+          await _dio.get(ApiEndpoints.inspectionWorkflow(inspectionId));
+      return response.data as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// POST /quality/inspections/:id/workflow/advance — Approve current step
+  Future<Map<String, dynamic>> advanceWorkflowStep({
+    required int inspectionId,
+    String? comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.advanceWorkflow(inspectionId),
+      data: {
+        if (comments != null && comments.isNotEmpty) 'comments': comments,
+      },
+    );
+    return response.data;
+  }
+
+  /// POST /quality/inspections/:id/workflow/reject — Reject via workflow
+  Future<Map<String, dynamic>> rejectWorkflowStep({
+    required int inspectionId,
+    required String comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.rejectWorkflow(inspectionId),
+      data: {'comments': comments},
+    );
+    return response.data;
+  }
+
   /// PATCH /quality/inspections/stage/:stageId — Save checklist items progress
   Future<Map<String, dynamic>> saveInspectionStage({
     required int stageId,
@@ -519,6 +568,43 @@ class SetuApiClient {
       ApiEndpoints.closeObservation(activityId, obsId),
     );
     return response.data;
+  }
+
+  // ==================== USER PROFILE ====================
+
+  /// GET /users/me — Full profile (name, email, phone, designation, roles)
+  Future<Map<String, dynamic>> getUserProfile() async {
+    final response = await _dio.get(ApiEndpoints.userMe);
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// PUT /users/me — Update editable profile fields
+  Future<Map<String, dynamic>> updateUserProfile({
+    required String displayName,
+    required String email,
+    required String phone,
+    required String designation,
+  }) async {
+    final response = await _dio.put(ApiEndpoints.userMe, data: {
+      'displayName': displayName,
+      'email': email,
+      'phone': phone,
+      'designation': designation,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// GET /users/me/signature → {signatureData, signatureUpdatedAt}
+  Future<Map<String, dynamic>> getUserSignature() async {
+    final response = await _dio.get(ApiEndpoints.userSignature);
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// PUT /users/me/signature — Save hand-drawn signature as base64 PNG
+  Future<void> updateUserSignature(String signatureData) async {
+    await _dio.put(ApiEndpoints.userSignature, data: {
+      'signatureData': signatureData,
+    });
   }
 
   // ==================== FCM / PUSH NOTIFICATION ====================
@@ -623,6 +709,9 @@ class _ErrorInterceptor extends Interceptor {
           case 400:
             return ApiException.badRequest(message);
           case 401:
+            if (message == 'TEMP_EXPIRED') {
+              return const ApiException.unauthorized('TEMP_EXPIRED');
+            }
             return const ApiException.unauthorized();
           case 403:
             return const ApiException.forbidden();

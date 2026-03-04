@@ -15,7 +15,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('labor')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class LaborController {
-  constructor(private readonly laborService: LaborService) { }
+  constructor(private readonly laborService: LaborService) {}
 
   @Get('categories')
   @Permissions('LABOR.CATEGORY.READ')

@@ -38,7 +38,7 @@ interface RequestWithUser {
 @Controller('quality')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class QualityActivityController {
-  constructor(private readonly service: QualityActivityService) { }
+  constructor(private readonly service: QualityActivityService) {}
 
   // ── Lists ──────────────────────────────────────────────────────────────
 
@@ -122,7 +122,8 @@ export class QualityActivityController {
     @Param('id', ParseIntPipe) id: number,
     @Body('checklistIds') checklistIds: number[],
   ) {
-    if (!Array.isArray(checklistIds)) throw new BadRequestException('checklistIds must be an array of numbers');
+    if (!Array.isArray(checklistIds))
+      throw new BadRequestException('checklistIds must be an array of numbers');
     return this.service.assignChecklists(id, checklistIds);
   }
 
@@ -141,7 +142,11 @@ export class QualityActivityController {
     @Body() dto: CreateObservationDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.service.createObservation(id, req.user?.id?.toString() || 'system', dto);
+    return this.service.createObservation(
+      id,
+      req.user?.id?.toString() || 'system',
+      dto,
+    );
   }
 
   @Patch('activities/:id/observation/:obsId/resolve')
@@ -152,7 +157,12 @@ export class QualityActivityController {
     @Body() dto: ResolveObservationDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.service.resolveObservation(id, obsId, req.user?.id?.toString() || 'system', dto);
+    return this.service.resolveObservation(
+      id,
+      obsId,
+      req.user?.id?.toString() || 'system',
+      dto,
+    );
   }
 
   @Patch('activities/:id/observation/:obsId/close')
@@ -162,7 +172,20 @@ export class QualityActivityController {
     @Param('obsId') obsId: string,
     @Request() req: RequestWithUser,
   ) {
-    return this.service.closeObservation(id, obsId, req.user?.id?.toString() || 'system');
+    return this.service.closeObservation(
+      id,
+      obsId,
+      req.user?.id?.toString() || 'system',
+    );
+  }
+
+  @Delete('activities/:id/observation/:obsId')
+  @Permissions('QUALITY.OBSERVATION.DELETE')
+  deleteObservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('obsId') obsId: string,
+  ) {
+    return this.service.deleteObservation(id, obsId);
   }
 
   // ── Approval ───────────────────────────────────────────────────────────

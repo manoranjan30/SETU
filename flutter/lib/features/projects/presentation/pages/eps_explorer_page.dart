@@ -706,6 +706,9 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           child: ProgressEntryPage(
             activity: activity,
             project: state.project,
+            // Pass the exact EPS node the user is viewing — mirrors the web
+            // frontend's selectedEpsIds[0] so micro activities are found.
+            currentEpsNodeId: state.currentNode.id,
           ),
         ),
       ),

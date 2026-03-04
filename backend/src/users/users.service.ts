@@ -1,4 +1,10 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -74,6 +80,97 @@ export class UsersService {
 
     return this.usersRepository.save(user);
   }
+
+  // ===== PROFILE METHODS =====
+
+  async getProfile(id: number): Promise<any> {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
+    if (!user) throw new ForbiddenException('User not found');
+    const { passwordHash, ...safeUser } = user;
+    return safeUser;
+  }
+
+  async updateProfile(id: number, updateData: Partial<User>): Promise<User> {
+    const user = await this.usersRepository.findOneBy({ id });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    Object.assign(user, updateData);
+    return this.usersRepository.save(user);
+  }
+
+  async changePassword(
+    id: number,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<User> {
+    const user = await this.usersRepository.findOneBy({ id });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (!user.isFirstLogin && oldPassword) {
+      const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+      if (!isMatch) throw new BadRequestException('Incorrect current password');
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.isFirstLogin = false;
+    return this.usersRepository.save(user);
+  }
+
+  async getSignature(id: number): Promise<any> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new ForbiddenException('User not found');
+    return {
+      signatureData: user.signatureData,
+      signatureImageUrl: user.signatureImageUrl,
+      signatureUpdatedAt: user.signatureUpdatedAt,
+    };
+  }
+
+  async updateSignature(
+    id: number,
+    signatureData: string,
+    signatureImageUrl?: string,
+  ): Promise<any> {
+    console.log(`[UsersService] Updating signature for UserID: ${id}`);
+    try {
+      const user = await this.usersRepository.findOne({ where: { id } });
+      if (!user) {
+        console.error(`[UsersService] User not found (ID: ${id})`);
+        throw new ForbiddenException('User not found');
+      }
+
+      // Use update() to perform a partial update directly in the database
+      // This is safer than save() as it ignores relationships and missing fields
+      const updateData: any = {
+        signatureData: signatureData,
+        signatureUpdatedAt: new Date(),
+      };
+
+      if (signatureImageUrl !== undefined) {
+        updateData.signatureImageUrl = signatureImageUrl;
+      }
+
+      const updateResult = await this.usersRepository.update(id, updateData);
+      console.log(
+        `[UsersService] Database updated rows: ${updateResult.affected}`,
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error(
+        `[UsersService] Database error while updating signature:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  // ============================
 
   async saveFcmToken(userId: number, token: string): Promise<void> {
     await this.usersRepository.update(userId, { fcmToken: token });

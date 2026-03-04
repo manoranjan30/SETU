@@ -29,7 +29,7 @@ export class CalendarsController {
     private workWeekRepo: Repository<WorkWeek>,
     @InjectRepository(ProjectProfile)
     private profileRepo: Repository<ProjectProfile>,
-  ) { }
+  ) {}
 
   @Get()
   @Permissions('SCHEDULE.CALENDAR.READ')

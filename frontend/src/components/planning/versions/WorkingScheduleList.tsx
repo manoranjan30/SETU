@@ -67,7 +67,7 @@ const WorkingScheduleList: React.FC = () => {
 
     const handleExport = async (version: ScheduleVersion) => {
         try {
-            const res = await api.get(`planning/versions/${version.id}/export`, {
+            const res = await api.get(`planning/versions/${version.id}/export?projectId=${projectId}`, {
                 responseType: 'blob'
             });
             const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -97,7 +97,7 @@ const WorkingScheduleList: React.FC = () => {
     const handleRecalculate = async (version: ScheduleVersion) => {
         if (!confirm('Recalculate Schedule CPM dates based on predecessors?')) return;
         try {
-            await api.post(`/planning/versions/${version.id}/recalculate`);
+            await api.post(`/planning/versions/${version.id}/recalculate?projectId=${projectId}`);
             alert('Schedule Recalculated Successfully');
             fetchVersions();
         } catch (err) {

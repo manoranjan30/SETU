@@ -8,7 +8,7 @@ import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/network/network_info.dart';
 
 /// Sync service for offline-first data synchronization
-/// 
+///
 /// Features:
 /// - Local-first writes (all data saved to local DB first)
 /// - FIFO queue processing
@@ -95,10 +95,9 @@ class SyncService {
 
     // Get all pending entries ordered by creation time (FIFO)
     final pendingEntries = await (_database.select(_database.progressEntries)
-          ..where((t) => 
-            t.syncStatus.equals(SyncStatus.pending.value) |
-            t.syncStatus.equals(SyncStatus.syncing.value)
-          )
+          ..where((t) =>
+              t.syncStatus.equals(SyncStatus.pending.value) |
+              t.syncStatus.equals(SyncStatus.syncing.value))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
         .get();
 
@@ -168,17 +167,17 @@ class SyncService {
 
     // Get all pending logs ordered by creation time (FIFO)
     final pendingLogs = await (_database.select(_database.dailyLogs)
-          ..where((t) => 
-            t.syncStatus.equals(SyncStatus.pending.value) |
-            t.syncStatus.equals(SyncStatus.syncing.value)
-          )
+          ..where((t) =>
+              t.syncStatus.equals(SyncStatus.pending.value) |
+              t.syncStatus.equals(SyncStatus.syncing.value))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
         .get();
 
     for (final log in pendingLogs) {
       // Check if we should skip due to backoff
       if (log.retryCount >= maxRetryAttempts) {
-        await _markDailyLogAsPermanentError(log.id, 'Max retry attempts exceeded');
+        await _markDailyLogAsPermanentError(
+            log.id, 'Max retry attempts exceeded');
         result.failed++;
         continue;
       }
@@ -309,7 +308,8 @@ class SyncService {
   }
 
   /// Mark a daily log as permanent error
-  Future<void> _markDailyLogAsPermanentError(int logId, String errorMessage) async {
+  Future<void> _markDailyLogAsPermanentError(
+      int logId, String errorMessage) async {
     await (_database.update(_database.dailyLogs)
           ..where((t) => t.id.equals(logId)))
         .write(
@@ -338,9 +338,19 @@ class SyncService {
     return min(delay.toInt(), maxBackoffDelaySeconds);
   }
 
-  /// Process the sync queue
+  /// Process the sync queue (non-quality items only).
+  /// Quality items are handled exclusively by [_processQualityQueue].
   Future<void> _processSyncQueue() async {
+    const qualityEntityTypes = [
+      'quality_rfi',
+      'quality_obs_resolve',
+      'quality_stage_save',
+      'quality_approve',
+      'quality_obs_raise',
+      'quality_obs_close',
+    ];
     final queueItems = await (_database.select(_database.syncQueue)
+          ..where((t) => t.entityType.isNotIn(qualityEntityTypes))
           ..orderBy([(t) => OrderingTerm.desc(t.priority)])
           ..limit(50))
         .get();
@@ -447,8 +457,8 @@ class SyncService {
       if (item.retryCount >= maxRetryAttempts) {
         await (_database.update(_database.syncQueue)
               ..where((t) => t.id.equals(item.id)))
-            .write(SyncQueueCompanion(
-          lastError: const Value('Max retries exceeded — needs attention'),
+            .write(const SyncQueueCompanion(
+          lastError: Value('Max retries exceeded — needs attention'),
         ));
         continue;
       }
@@ -482,8 +492,7 @@ class SyncService {
             await _apiClient.saveInspectionStage(
               stageId: payload['stageId'] as int,
               status: payload['status'] as String,
-              items: (payload['items'] as List)
-                  .cast<Map<String, dynamic>>(),
+              items: (payload['items'] as List).cast<Map<String, dynamic>>(),
             );
             break;
 
@@ -493,6 +502,20 @@ class SyncService {
               status: payload['status'] as String,
               comments: payload['comments'] as String?,
               inspectionDate: payload['inspectionDate'] as String?,
+            );
+            break;
+
+          case 'quality_workflow_advance':
+            await _apiClient.advanceWorkflowStep(
+              inspectionId: payload['inspectionId'] as int,
+              comments: payload['comments'] as String?,
+            );
+            break;
+
+          case 'quality_workflow_reject':
+            await _apiClient.rejectWorkflowStep(
+              inspectionId: payload['inspectionId'] as int,
+              comments: payload['comments'] as String,
             );
             break;
 
@@ -535,8 +558,7 @@ class SyncService {
           lastAttemptAt: Value(DateTime.now()),
           lastError: Value(_extractErrorMessage(e.response?.data)),
         ));
-        _logger.e(
-            'Quality sync failed: ${item.entityType} #${item.id}',
+        _logger.e('Quality sync failed: ${item.entityType} #${item.id}',
             error: e);
       } catch (e) {
         await (_database.update(_database.syncQueue)
@@ -572,18 +594,16 @@ class SyncService {
   /// Get pending sync count
   Future<int> getPendingSyncCount() async {
     final progressCount = await (_database.select(_database.progressEntries)
-          ..where((t) => 
-            t.syncStatus.equals(SyncStatus.pending.value) |
-            t.syncStatus.equals(SyncStatus.failed.value)
-          ))
+          ..where((t) =>
+              t.syncStatus.equals(SyncStatus.pending.value) |
+              t.syncStatus.equals(SyncStatus.failed.value)))
         .get()
         .then((list) => list.length);
 
     final logsCount = await (_database.select(_database.dailyLogs)
-          ..where((t) => 
-            t.syncStatus.equals(SyncStatus.pending.value) |
-            t.syncStatus.equals(SyncStatus.failed.value)
-          ))
+          ..where((t) =>
+              t.syncStatus.equals(SyncStatus.pending.value) |
+              t.syncStatus.equals(SyncStatus.failed.value)))
         .get()
         .then((list) => list.length);
 
@@ -702,18 +722,22 @@ class SyncStatusInfo {
     this.errorMessage,
   });
 
-  factory SyncStatusInfo.idle() => const SyncStatusInfo._(state: SyncState.idle);
-  factory SyncStatusInfo.synced() => const SyncStatusInfo._(state: SyncState.synced);
-  factory SyncStatusInfo.syncing() => const SyncStatusInfo._(state: SyncState.syncing);
-  factory SyncStatusInfo.offline() => const SyncStatusInfo._(state: SyncState.offline);
+  factory SyncStatusInfo.idle() =>
+      const SyncStatusInfo._(state: SyncState.idle);
+  factory SyncStatusInfo.synced() =>
+      const SyncStatusInfo._(state: SyncState.synced);
+  factory SyncStatusInfo.syncing() =>
+      const SyncStatusInfo._(state: SyncState.syncing);
+  factory SyncStatusInfo.offline() =>
+      const SyncStatusInfo._(state: SyncState.offline);
   factory SyncStatusInfo.error(String message) => SyncStatusInfo._(
-    state: SyncState.error,
-    errorMessage: message,
-  );
+        state: SyncState.error,
+        errorMessage: message,
+      );
   factory SyncStatusInfo.partial(int count) => SyncStatusInfo._(
-    state: SyncState.partial,
-    pendingCount: count,
-  );
+        state: SyncState.partial,
+        pendingCount: count,
+      );
 
   bool get isSynced => state == SyncState.synced;
   bool get isSyncing => state == SyncState.syncing;

@@ -34,7 +34,7 @@ const SchedulePage: React.FC = () => {
 
             if (versionId) {
                 // Fetch Version Data
-                promises.unshift(api.get(`/planning/versions/${versionId}/activities`));
+                promises.unshift(api.get(`/planning/versions/${versionId}/activities?projectId=${projectId}`));
                 // Fetch Relationships (from Master for now)
                 promises.push(api.get(`/planning/${projectId}/relationships`));
             } else {
@@ -136,7 +136,7 @@ const SchedulePage: React.FC = () => {
                     payload.finishDate = field === 'finishDatePlanned' ? value : currentActivity.finishDatePlanned;
                 }
 
-                await api.patch(`/planning/versions/${versionId}/activities/${activityId}`, payload);
+                await api.patch(`/planning/versions/${versionId}/activities/${activityId}?projectId=${projectId}`, payload);
 
             } else {
                 // MASTER MODE UPDATE

@@ -15,7 +15,7 @@ export class PermissionResolutionService {
     private assignmentRepo: Repository<UserProjectAssignment>,
     @InjectRepository(EpsNode)
     private epsRepo: TreeRepository<EpsNode>,
-  ) { }
+  ) {}
 
   /**
    * Resolves if a user has a specific permission on a specific EPS Node.

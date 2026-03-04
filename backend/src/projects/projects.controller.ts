@@ -28,7 +28,7 @@ export class ProjectsController {
   constructor(
     private readonly assignmentService: ProjectAssignmentService,
     private readonly permissionService: PermissionResolutionService,
-  ) { }
+  ) {}
 
   // Team Management
 

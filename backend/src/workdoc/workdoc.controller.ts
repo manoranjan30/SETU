@@ -31,7 +31,7 @@ const ensureDir = (dir: string) => {
 @Controller('workdoc')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class WorkDocController {
-  constructor(private readonly workService: WorkDocService) { }
+  constructor(private readonly workService: WorkDocService) {}
 
   @Get('vendors')
   @Permissions('WORKORDER.VENDOR.READ')

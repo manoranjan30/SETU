@@ -17,7 +17,7 @@ export class ProjectAssignmentGuard implements CanActivate {
     private reflector: Reflector,
     @InjectRepository(EpsNode)
     private epsRepo: TreeRepository<EpsNode>,
-  ) { }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -70,10 +70,14 @@ export class ProjectAssignmentGuard implements CanActivate {
       if (node && node.type !== EpsNodeType.PROJECT) {
         // Find project root for this node
         const ancestors = await this.epsRepo.findAncestors(node);
-        const projectRoot = ancestors.find((a) => a.type === EpsNodeType.PROJECT);
+        const projectRoot = ancestors.find(
+          (a) => a.type === EpsNodeType.PROJECT,
+        );
 
         if (projectRoot) {
-          hasAssignment = assignments.some((a) => a.project?.id === projectRoot.id);
+          hasAssignment = assignments.some(
+            (a) => a.project?.id === projectRoot.id,
+          );
           if (hasAssignment) {
             console.log(
               `[ProjectAssignmentGuard] Access granted for node ${projectId} via Project Root ${projectRoot.id}`,

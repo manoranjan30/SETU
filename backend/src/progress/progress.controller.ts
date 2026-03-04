@@ -7,7 +7,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('progress')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProgressController {
-  constructor(private readonly progressService: ProgressService) { }
+  constructor(private readonly progressService: ProgressService) {}
 
   @Get('stats/:projectId')
   @Permissions('PROGRESS.DASHBOARD.READ')

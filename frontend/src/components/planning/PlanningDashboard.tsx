@@ -1,5 +1,4 @@
-import React from 'react';
-import { Calendar, Table, CheckSquare, Layers, Split, FileText, ListChecks } from 'lucide-react';
+import { Calendar, Table, CheckSquare, Layers, Split, FileText, ListChecks, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface PlanningDashboardProps {
@@ -50,6 +49,11 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ children, current
             key: 'recovery',
             icon: <CheckSquare size={18} />,
             label: 'Recovery Plans',
+        },
+        {
+            key: 'temp_users',
+            icon: <Users size={18} />,
+            label: 'Vendor Users',
         },
     ];
 

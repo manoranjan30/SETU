@@ -23,7 +23,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('resources')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ResourcesController {
-  constructor(private readonly resourcesService: ResourcesService) { }
+  constructor(private readonly resourcesService: ResourcesService) {}
 
   // Resources
   @Get('master')

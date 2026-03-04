@@ -40,7 +40,7 @@ export class PlanningController {
     private readonly planningService: PlanningService,
     private readonly versionService: ScheduleVersionService,
     private readonly importService: ImportExportService,
-  ) { }
+  ) {}
 
   @Get(':projectId/matrix')
   @Permissions('PLANNING.MATRIX.READ')
@@ -237,6 +237,15 @@ export class PlanningController {
   @Permissions('SCHEDULE.VERSION.READ')
   getVersionActivities(@Param('versionId') versionId: string) {
     return this.versionService.getVersionActivities(+versionId);
+  }
+
+  @Delete(':projectId/versions/:versionId')
+  @Permissions('SCHEDULE.VERSION.DELETE')
+  deleteVersion(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('versionId', ParseIntPipe) versionId: number,
+  ) {
+    return this.versionService.deleteVersion(projectId, versionId);
   }
 
   @Patch('versions/:versionId/activities/:activityId')

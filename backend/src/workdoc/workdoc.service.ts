@@ -21,6 +21,7 @@ import { WorkOrderBoqMap } from './entities/work-order-boq-map.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { WorkDocTemplate } from './entities/work-doc-template.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
 
 export interface ExcelItem {
   serialNumber: string;
@@ -75,6 +76,8 @@ export class WorkDocService {
     private boqSubItemRepo: Repository<BoqSubItem>,
     @InjectRepository(WorkDocTemplate)
     private templateRepo: Repository<WorkDocTemplate>,
+    @InjectRepository(TempUser)
+    private tempUserRepo: Repository<TempUser>,
     private readonly httpService: HttpService,
     private dataSource: DataSource,
   ) {}
@@ -229,7 +232,30 @@ export class WorkDocService {
       where: { id: woId },
       relations: ['vendor', 'items'],
     });
-    if (!wo) throw new NotFoundException('Work Order not found');
+    if (!wo) throw new NotFoundException('Work order not found');
+    return wo;
+  }
+
+  async updateWorkOrderStatus(
+    woId: number,
+    status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED',
+  ) {
+    const wo = await this.woRepo.findOneBy({ id: woId });
+    if (!wo) throw new NotFoundException('Work order not found');
+
+    wo.status = status;
+    await this.woRepo.save(wo);
+
+    if (status === 'CLOSED' || status === 'CANCELLED') {
+      await this.tempUserRepo.update(
+        { workOrder: { id: woId }, status: 'ACTIVE' },
+        {
+          status: 'EXPIRED',
+          suspendedAt: new Date(),
+          suspensionReason: `Work Order ${status}`,
+        },
+      );
+    }
     return wo;
   }
 

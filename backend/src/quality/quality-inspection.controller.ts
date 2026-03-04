@@ -31,7 +31,7 @@ export class QualityInspectionController {
     private readonly service: QualityInspectionService,
     private readonly reportService: QualityReportService,
     private readonly workflowService: InspectionWorkflowService,
-  ) { }
+  ) {}
 
   @Get()
   @Permissions('QUALITY.INSPECTION.READ')
@@ -62,7 +62,10 @@ export class QualityInspectionController {
 
   @Get(':id/report')
   @Permissions('QUALITY.INSPECTION.READ')
-  async getInspectionReport(@Param('id', ParseIntPipe) id: number, @Res() res: any) {
+  async getInspectionReport(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: any,
+  ) {
     const pdfBuffer = await this.reportService.generateInspectionReport(id);
     res.set({
       'Content-Type': 'application/pdf',
@@ -115,8 +118,14 @@ export class QualityInspectionController {
   @Permissions('QUALITY.INSPECTION.APPROVE')
   advanceWorkflow(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { signatureId: number; signedBy: string; comments?: string; signatureData?: string },
-    @Request() req
+    @Body()
+    body: {
+      signatureId: number;
+      signedBy: string;
+      comments?: string;
+      signatureData?: string;
+    },
+    @Request() req,
   ) {
     return this.workflowService.advanceWorkflow(
       id,
@@ -125,7 +134,7 @@ export class QualityInspectionController {
       body.signedBy,
       body.comments,
       body.signatureData,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin')
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
     );
   }
 
@@ -134,13 +143,13 @@ export class QualityInspectionController {
   rejectWorkflow(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { comments: string },
-    @Request() req
+    @Request() req,
   ) {
     return this.workflowService.rejectWorkflow(
       id,
       req.user?.userId || req.user?.id,
       body.comments,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin')
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
     );
   }
 
@@ -150,20 +159,74 @@ export class QualityInspectionController {
   reverseWorkflow(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason: string },
-    @Request() req
+    @Request() req,
   ) {
     return this.workflowService.reverseWorkflow(
       id,
       req.user?.userId || req.user?.id,
       body.reason,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin')
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+    );
+  }
+
+  @Post(':id/workflow/delegate')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
+  delegateWorkflowStep(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { targetUserId: number; comments: string },
+    @Request() req,
+  ) {
+    return this.workflowService.delegateWorkflowStep(
+      id,
+      req.user?.userId || req.user?.id,
+      body.targetUserId,
+      body.comments,
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
     );
   }
 
   // ==================================
 
+  // ===== STAGE-WISE APPROVAL =====
+
+  @Post(':id/stages/:stageId/approve')
+  @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
+  @Auditable('QUALITY', 'STAGE_APPROVE_RFI', 'id')
+  approveStage(
+    @Param('id', ParseIntPipe) inspectionId: number,
+    @Param('stageId', ParseIntPipe) stageId: number,
+    @Body() body: { signatureData?: string; comments?: string },
+    @Request() req,
+  ) {
+    return this.service.approveStage(
+      inspectionId,
+      stageId,
+      req.user?.userId || req.user?.id,
+      body.signatureData,
+      body.comments,
+    );
+  }
+
+  @Post(':id/final-approve')
+  @Permissions('QUALITY.INSPECTION.FINAL_APPROVE')
+  @Auditable('QUALITY', 'FINAL_APPROVE_RFI', 'id')
+  finalApprove(
+    @Param('id', ParseIntPipe) inspectionId: number,
+    @Body() body: { signatureData?: string; comments?: string },
+    @Request() req,
+  ) {
+    return this.service.finalApprove(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      body.signatureData,
+      body.comments,
+    );
+  }
+
+  // ===== ADMIN DELETE =====
+
   @Delete(':id')
-  @Permissions('ADMIN.Settings.Manage')
+  @Permissions('QUALITY.INSPECTION.DELETE')
   @Auditable('QUALITY', 'DELETE_RFI', 'id')
   deleteInspection(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.service.deleteInspection(id, req.user?.id);

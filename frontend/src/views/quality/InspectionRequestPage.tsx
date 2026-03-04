@@ -52,6 +52,7 @@ interface ActivityList {
 interface EpsNode {
     id: number;
     label: string;
+    nodeType?: string;
     children?: EpsNode[];
 }
 
@@ -61,7 +62,6 @@ export default function InspectionRequestPage() {
     const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
     const [lists, setLists] = useState<ActivityList[]>([]);
     const [selectedListId, setSelectedListId] = useState<number | null>(null);
-
     const [activities, setActivities] = useState<QualityActivity[]>([]);
     const [inspections, setInspections] = useState<QualityInspection[]>([]);
     const [observationsMap, setObservationsMap] = useState<Record<number, ActivityObservation[]>>({});
@@ -71,6 +71,7 @@ export default function InspectionRequestPage() {
     const [closurePhotos, setClosurePhotos] = useState<Record<string, string[]>>({});
     const [uploading, setUploading] = useState<string | null>(null); // obsId being uploaded for
     const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh
+    const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>({});
 
     // Helper for correct image URLs
     const getFileUrl = (path: string) => {
@@ -182,7 +183,26 @@ export default function InspectionRequestPage() {
         });
     }, [activities, inspections]);
 
+    const findNodeById = (nodes: EpsNode[], id: number): EpsNode | null => {
+        for (const node of nodes) {
+            if (node.id === id) return node;
+            if (node.children) {
+                const found = findNodeById(node.children, id);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
     const handleRaiseRFI = async (activity: QualityActivity) => {
+        if (!selectedNodeId) return;
+
+        const node = findNodeById(epsNodes, selectedNodeId);
+        if (node && node.nodeType && !['FLOOR', 'UNIT', 'ROOM'].includes(node.nodeType)) {
+            alert('RFIs can only be raised at the FLOOR, UNIT, or ROOM level. Please drill down to a more specific location.');
+            return;
+        }
+
         if (!confirm(`Raise Request for Inspection for "${activity.activityName}"?`)) return;
         try {
             await api.post('/quality/inspections', {
@@ -268,19 +288,32 @@ export default function InspectionRequestPage() {
     // Recursive EPS Renderer
     const renderTree = (nodes: EpsNode[], depth = 0) => (
         <ul className="space-y-1">
-            {nodes.map(node => (
-                <li key={node.id}>
-                    <div
-                        onClick={() => setSelectedNodeId(node.id)}
-                        className={`flex items-center px-2 py-1.5 rounded-md cursor-pointer text-sm transition-colors ${selectedNodeId === node.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
-                        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-                    >
-                        {node.children?.length ? <ChevronRight className="w-3 h-3 mr-1 text-gray-400" /> : <span className="w-4" />}
-                        {node.label}
-                    </div>
-                    {node.children && renderTree(node.children, depth + 1)}
-                </li>
-            ))}
+            {nodes.map(node => {
+                const isExpanded = !!expandedNodes[node.id];
+                return (
+                    <li key={node.id}>
+                        <div
+                            onClick={() => setSelectedNodeId(node.id)}
+                            className={`flex items-center px-2 py-1.5 rounded-md cursor-pointer text-sm transition-colors ${selectedNodeId === node.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                        >
+                            {node.children?.length ? (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedNodes(prev => ({ ...prev, [node.id]: !prev[node.id] }));
+                                    }}
+                                    className="p-1 hover:bg-gray-200 rounded mr-1"
+                                >
+                                    <ChevronRight className={`w-3 h-3 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                </button>
+                            ) : <span className="w-5 mr-1" />}
+                            {node.label}
+                        </div>
+                        {node.children && isExpanded && renderTree(node.children, depth + 1)}
+                    </li>
+                );
+            })}
         </ul>
     );
 

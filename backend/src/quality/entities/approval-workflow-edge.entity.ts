@@ -1,40 +1,42 @@
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    JoinColumn,
-    CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
 } from 'typeorm';
 import { ApprovalWorkflowTemplate } from './approval-workflow-template.entity';
 import { ApprovalWorkflowNode } from './approval-workflow-node.entity';
 
 @Entity('approval_workflow_edges')
 export class ApprovalWorkflowEdge {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-    @Column()
-    workflowId: number;
+  @Column()
+  workflowId: number;
 
-    @ManyToOne(() => ApprovalWorkflowTemplate, template => template.edges, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'workflowId' })
-    workflow: ApprovalWorkflowTemplate;
+  @ManyToOne(() => ApprovalWorkflowTemplate, (template) => template.edges, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'workflowId' })
+  workflow: ApprovalWorkflowTemplate;
 
-    @Column()
-    sourceNodeId: number;
+  @Column()
+  sourceNodeId: number;
 
-    @ManyToOne(() => ApprovalWorkflowNode, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'sourceNodeId' })
-    sourceNode: ApprovalWorkflowNode;
+  @ManyToOne(() => ApprovalWorkflowNode, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'sourceNodeId' })
+  sourceNode: ApprovalWorkflowNode;
 
-    @Column()
-    targetNodeId: number;
+  @Column()
+  targetNodeId: number;
 
-    @ManyToOne(() => ApprovalWorkflowNode, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'targetNodeId' })
-    targetNode: ApprovalWorkflowNode;
+  @ManyToOne(() => ApprovalWorkflowNode, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'targetNodeId' })
+  targetNode: ApprovalWorkflowNode;
 
-    @CreateDateColumn()
-    createdAt: Date;
+  @CreateDateColumn()
+  createdAt: Date;
 }

@@ -43,7 +43,7 @@ export class WbsService {
     private templateActivityRepo: Repository<WbsTemplateActivity>,
     private dataSource: DataSource,
     private readonly auditService: AuditService,
-  ) { }
+  ) {}
 
   async create(
     projectId: number,
@@ -141,14 +141,10 @@ export class WbsService {
     const node = await this.findOne(projectId, id);
     await this.wbsRepo.remove(node);
 
-    await this.auditService.log(
-      userId,
-      'WBS',
-      'DELETE_NODE',
-      id,
-      projectId,
-      { code: node.wbsCode, name: node.wbsName },
-    );
+    await this.auditService.log(userId, 'WBS', 'DELETE_NODE', id, projectId, {
+      code: node.wbsCode,
+      name: node.wbsName,
+    });
   }
 
   // --- Activity Methods ---

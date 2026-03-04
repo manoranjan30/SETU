@@ -16,7 +16,7 @@ class ApiException implements Exception {
   // Factory constructors for common errors
   const factory ApiException.networkError(String message) = NetworkException;
   const factory ApiException.badRequest(String message) = BadRequestException;
-  const factory ApiException.unauthorized() = UnauthorizedException;
+  const factory ApiException.unauthorized([String message]) = UnauthorizedException;
   const factory ApiException.forbidden() = ForbiddenException;
   const factory ApiException.notFound() = NotFoundException;
   const factory ApiException.serverError() = ServerErrorException;
@@ -34,7 +34,7 @@ class BadRequestException extends ApiException {
 }
 
 class UnauthorizedException extends ApiException {
-  const UnauthorizedException() : super(message: 'Unauthorized', statusCode: 401);
+  const UnauthorizedException([String message = 'Unauthorized']) : super(message: message, statusCode: 401);
 }
 
 class ForbiddenException extends ApiException {

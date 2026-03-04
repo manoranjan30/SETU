@@ -85,17 +85,39 @@ const WorkflowDesignerPage: React.FC = () => {
         setSelectedNode(null);
     }, []);
 
+    const deleteNode = useCallback((nodeId: string) => {
+        setNodes((nds: Node[]) => nds.filter(n => n.id !== nodeId));
+        setEdges((eds: Edge[]) => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
+        if (selectedNode?.id === nodeId) setSelectedNode(null);
+    }, [setNodes, setEdges, selectedNode]);
+
+    const displayNodes = React.useMemo(() => {
+        const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
+        return nodes.map(n => ({
+            ...n,
+            data: {
+                ...n.data,
+                canDelete: nodes.length > 2 && (n.data.stepOrder as number) === maxOrder,
+                onDelete: deleteNode
+            }
+        }));
+    }, [nodes, deleteNode]);
+
     const addNode = () => {
+        const sortedNodes = [...nodes].sort((a, b) => ((a.data.stepOrder as number) || 0) - ((b.data.stepOrder as number) || 0));
+        const lastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+        const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
+
         const newNodeId = `node_${Date.now()}`;
         const newNode: Node = {
             id: newNodeId,
             type: 'approvalNode',
-            position: { x: 250, y: 150 },
+            position: lastNode ? { x: lastNode.position.x + 300, y: lastNode.position.y } : { x: 250, y: 150 },
             data: {
-                label: `New Step ${nodes.length + 1}`,
+                label: `New Step ${maxOrder + 1}`,
                 stepType: 'APPROVE',
                 assignmentMode: 'USER',
-                stepOrder: nodes.length + 1,
+                stepOrder: maxOrder + 1,
                 isOptional: false,
                 canDelegate: false,
                 allowRaiseRFI: false,
@@ -105,7 +127,18 @@ const WorkflowDesignerPage: React.FC = () => {
                 allowObservation: false,
             },
         };
+
         setNodes((nds: Node[]) => nds.concat(newNode));
+
+        if (lastNode) {
+            setEdges((eds: Edge[]) => eds.concat({
+                id: `e-${lastNode.id}-${newNodeId}`,
+                source: lastNode.id,
+                target: newNodeId,
+                type: 'smoothstep',
+                markerEnd: { type: MarkerType.ArrowClosed }
+            }));
+        }
     };
 
     const handleSave = async () => {
@@ -153,7 +186,7 @@ const WorkflowDesignerPage: React.FC = () => {
     return (
         <div className="flex flex-col h-screen bg-gray-50">
             {/* Header */}
-            <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
+            <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-20 relative">
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={() => navigate(`/dashboard/projects/${projectId}/quality/activity-lists`)}
@@ -193,7 +226,7 @@ const WorkflowDesignerPage: React.FC = () => {
                         <div className="flex h-full items-center justify-center">Loading workflow...</div>
                     ) : (
                         <ReactFlow
-                            nodes={nodes}
+                            nodes={displayNodes}
                             edges={edges}
                             onNodesChange={onNodesChange}
                             onEdgesChange={onEdgesChange}
@@ -212,7 +245,7 @@ const WorkflowDesignerPage: React.FC = () => {
 
                 {/* Properties Panel */}
                 {selectedNode ? (
-                    <div className="w-80 border-l bg-white flex flex-col shadow-lg z-10">
+                    <div className="w-80 border-l bg-white flex flex-col shadow-lg z-10 overflow-y-auto">
                         <NodePropertiesPanel
                             node={selectedNode}
                             onChange={(updatedData: any) => handleNodeUpdate(selectedNode.id, updatedData)}

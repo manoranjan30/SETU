@@ -97,6 +97,7 @@ import { QualityExecutionItem } from './quality/entities/quality-execution-item.
 import { QualitySignature } from './quality/entities/quality-signature.entity';
 import { ActivityObservation } from './quality/entities/activity-observation.entity';
 import { InspectionApproval } from './quality/entities/inspection-approval.entity';
+import { SiteObservation } from './quality/entities/site-observation.entity';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './quality/entities/approval-workflow-template.entity';
@@ -104,6 +105,8 @@ import { ApprovalWorkflowNode } from './quality/entities/approval-workflow-node.
 import { ApprovalWorkflowEdge } from './quality/entities/approval-workflow-edge.entity';
 import { InspectionWorkflowRun } from './quality/entities/inspection-workflow-run.entity';
 import { InspectionWorkflowStep } from './quality/entities/inspection-workflow-step.entity';
+import { QualityRatingConfig } from './quality/entities/quality-rating-config.entity';
+import { ProjectRating } from './quality/entities/quality-project-rating.entity';
 
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
@@ -125,6 +128,21 @@ import { MicroQuantityLedger } from './micro-schedule/entities/micro-quantity-le
 import { DelayReason } from './micro-schedule/entities/delay-reason.entity';
 import { AuditModule } from './audit/audit.module';
 import { AuditLog } from './audit/audit-log.entity';
+
+import { TempUserModule } from './temp-user/temp-user.module';
+import { TempRoleTemplate } from './temp-user/entities/temp-role-template.entity';
+import { TempUser } from './temp-user/entities/temp-user.entity';
+
+// Dashboard Builder
+import { CustomDashboard } from './dashboard-builder/entities/custom-dashboard.entity';
+import { DashboardWidget } from './dashboard-builder/entities/dashboard-widget.entity';
+import { DashboardAssignment } from './dashboard-builder/entities/dashboard-assignment.entity';
+import { DashboardTemplate } from './dashboard-builder/entities/dashboard-template.entity';
+import { CustomReport } from './dashboard-builder/entities/custom-report.entity';
+import { ReportSchedule } from './dashboard-builder/entities/report-schedule.entity';
+import { DataSourceMeta } from './dashboard-builder/entities/data-source-meta.entity';
+import { DashboardShareLog } from './dashboard-builder/entities/dashboard-share-log.entity';
+import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.module';
 
 @Module({
   imports: [
@@ -207,12 +225,15 @@ import { AuditLog } from './audit/audit-log.entity';
         QualitySignature,
         ActivityObservation,
         InspectionApproval,
+        SiteObservation,
         // Workflow Designer
         ApprovalWorkflowTemplate,
         ApprovalWorkflowNode,
         ApprovalWorkflowEdge,
         InspectionWorkflowRun,
         InspectionWorkflowStep,
+        QualityRatingConfig,
+        ProjectRating,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -235,6 +256,17 @@ import { AuditLog } from './audit/audit-log.entity';
         QuantityProgressRecord,
         UserRoleNodeAssignment,
         AuditLog,
+        TempRoleTemplate,
+        TempUser,
+        // Dashboard Builder
+        CustomDashboard,
+        DashboardWidget,
+        DashboardAssignment,
+        DashboardTemplate,
+        CustomReport,
+        ReportSchedule,
+        DataSourceMeta,
+        DashboardShareLog,
       ],
       synchronize: true,
     }),
@@ -245,7 +277,7 @@ import { AuditLog } from './audit/audit-log.entity';
       {
         rootPath: join(process.cwd(), 'uploads'),
         serveRoot: '/uploads',
-      }
+      },
     ),
     UsersModule,
     RolesModule,
@@ -269,6 +301,8 @@ import { AuditLog } from './audit/audit-log.entity';
     TemplateBuilderModule,
     MicroScheduleModule,
     AuditModule,
+    TempUserModule,
+    DashboardBuilderModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,
@@ -280,4 +314,4 @@ import { AuditLog } from './audit/audit-log.entity';
   controllers: [AppController],
   providers: [AppService, SeedService],
 })
-export class AppModule { }
+export class AppModule {}

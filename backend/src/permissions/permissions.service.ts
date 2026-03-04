@@ -1,10 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  Permission,
-  PermissionScope,
-} from './permission.entity';
+import { Permission, PermissionScope } from './permission.entity';
 import { ALL_PERMISSIONS, MIGRATION_MAP } from '../auth/permission-registry';
 
 @Injectable()
@@ -14,7 +11,7 @@ export class PermissionsService implements OnModuleInit {
   constructor(
     @InjectRepository(Permission)
     private permissionsRepository: Repository<Permission>,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     await this.migrateOldPermissionCodes();

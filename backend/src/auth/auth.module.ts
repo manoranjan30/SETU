@@ -24,5 +24,4 @@ import { ProjectsModule } from '../projects/projects.module';
   controllers: [AuthController],
   exports: [AuthService],
 })
-export class AuthModule { }
-
+export class AuthModule {}

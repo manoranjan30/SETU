@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/media/image_annotation_page.dart';
+import 'package:setu_mobile/core/media/photo_compressor.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
+import 'package:setu_mobile/core/network/connectivity_banner.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/activity_card.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
+import 'package:setu_mobile/injection_container.dart';
 
 /// Shows the activities inside a selected checklist, allowing the site engineer
 /// to raise RFIs and submit rectifications for pending observations.
-class ActivityListDetailPage extends StatelessWidget {
+class ActivityListDetailPage extends StatefulWidget {
   final QualityActivityList list;
   final int projectId;
   final int epsNodeId;
@@ -21,17 +27,26 @@ class ActivityListDetailPage extends StatelessWidget {
   });
 
   @override
+  State<ActivityListDetailPage> createState() =>
+      _ActivityListDetailPageState();
+}
+
+class _ActivityListDetailPageState extends State<ActivityListDetailPage> {
+  /// Last successfully loaded state — shown while background refresh runs.
+  ActivitiesLoaded? _lastActivities;
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(list.name,
+            Text(widget.list.name,
                 style: const TextStyle(
                     fontSize: 15, fontWeight: FontWeight.bold)),
-            if (list.description != null)
-              Text(list.description!,
+            if (widget.list.description != null)
+              Text(widget.list.description!,
                   style: const TextStyle(
                       fontSize: 11, fontWeight: FontWeight.normal)),
           ],
@@ -46,52 +61,84 @@ class ActivityListDetailPage extends StatelessWidget {
           ),
         ],
       ),
-      body: BlocConsumer<QualityRequestBloc, QualityRequestState>(
-        listener: (context, state) {
-          if (state is RfiQueued) {
-            final msg = state.isOffline
-                ? 'RFI queued — will sync when online'
-                : 'RFI raised successfully';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(msg),
-              backgroundColor:
-                  state.isOffline ? Colors.orange.shade700 : Colors.green.shade700,
-            ));
-          }
-          if (state is RectificationQueued) {
-            final msg = state.isOffline
-                ? 'Rectification queued — will sync when online'
-                : 'Rectification submitted successfully';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(msg),
-              backgroundColor:
-                  state.isOffline ? Colors.orange.shade700 : Colors.green.shade700,
-            ));
-          }
-          if (state is QualityRequestError) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red.shade700,
-            ));
-          }
-        },
-        builder: (context, state) {
-          if (state is QualityRequestLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Column(
+        children: [
+          const ConnectivityBanner(),
+          Expanded(
+            child: BlocConsumer<QualityRequestBloc, QualityRequestState>(
+              listener: (context, state) {
+                if (state is RfiQueued) {
+                  final msg = state.isOffline
+                      ? 'RFI queued — will sync when online'
+                      : 'RFI raised successfully';
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(msg),
+                    backgroundColor: state.isOffline
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+                  ));
+                }
+                if (state is RectificationQueued) {
+                  final msg = state.isOffline
+                      ? 'Rectification queued — will sync when online'
+                      : 'Rectification submitted successfully';
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(msg),
+                    backgroundColor: state.isOffline
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+                  ));
+                }
+                if (state is QualityRequestError) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.red.shade700,
+                  ));
+                }
+              },
+              builder: (context, state) {
+                // Cache last loaded state for use during background operations
+                if (state is ActivitiesLoaded) _lastActivities = state;
 
-          if (state is ActivitiesLoaded) {
-            return _ActivityListBody(
-              state: state,
-              projectId: projectId,
-              epsNodeId: epsNodeId,
-              listId: list.id,
-            );
-          }
+                // Full-screen spinner only on initial list load with no cache
+                if (state is QualityRequestLoading &&
+                    state.source == QrLoadingSource.listLoad &&
+                    _lastActivities == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          // Still loading — show spinner
-          return const Center(child: CircularProgressIndicator());
-        },
+                final display = state is ActivitiesLoaded
+                    ? state
+                    : _lastActivities;
+
+                if (display != null) {
+                  // Show thin progress bar for background operations
+                  final showBar = state is QualityRequestLoading &&
+                      state.source != QrLoadingSource.listLoad;
+                  return Stack(
+                    children: [
+                      _ActivityListBody(
+                        state: display,
+                        projectId: widget.projectId,
+                        epsNodeId: widget.epsNodeId,
+                        listId: widget.list.id,
+                      ),
+                      if (showBar)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: LinearProgressIndicator(),
+                        ),
+                    ],
+                  );
+                }
+
+                return const Center(child: CircularProgressIndicator());
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -164,7 +211,8 @@ class _ActivityListBody extends StatelessWidget {
                             ? () => _showRfiDialog(context, row.activity)
                             : null,
                         onFixObservation: hasPendingObs
-                            ? () => _showObservationsSheet(context, row)
+                            ? (obs) =>
+                                _showRectificationSheet(context, row.activity, obs)
                             : null,
                       );
                     },
@@ -224,11 +272,8 @@ class _ActivityListBody extends StatelessWidget {
     );
   }
 
-  void _showObservationsSheet(BuildContext context, ActivityRow row) {
-    final pendingObs = row.observations
-        .where((o) => o.status == ObservationStatus.pending)
-        .toList();
-
+  void _showRectificationSheet(
+      BuildContext context, QualityActivity activity, ActivityObservation obs) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -239,8 +284,8 @@ class _ActivityListBody extends StatelessWidget {
       builder: (_) => BlocProvider.value(
         value: context.read<QualityRequestBloc>(),
         child: _RectificationSheet(
-          activity: row.activity,
-          observations: pendingObs,
+          activity: activity,
+          observations: [obs],
           projectId: projectId,
         ),
       ),
@@ -324,6 +369,7 @@ class _RectificationSheetState extends State<_RectificationSheet> {
   final _textCtrl = TextEditingController();
   final List<String> _photoUrls = [];
   bool _submitting = false;
+  bool _uploadingPhoto = false;
 
   @override
   void initState() {
@@ -340,21 +386,41 @@ class _RectificationSheetState extends State<_RectificationSheet> {
   }
 
   Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final xfile =
-        await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+    final xfile = await ImagePicker().pickImage(source: ImageSource.camera);
     if (xfile == null || !mounted) return;
-    context
-        .read<QualityRequestBloc>()
-        .add(UploadRectificationPhoto(obsId: _selectedObs!.id, filePath: xfile.path));
 
-    final sub = context.read<QualityRequestBloc>().stream.listen((s) {
-      if (s is PhotoUploaded && s.obsId == _selectedObs!.id && mounted) {
-        setState(() => _photoUrls.add(s.url));
+    // Open annotation editor before uploading
+    final annotatedPath =
+        await ImageAnnotationPage.show(context, xfile.path);
+    final uploadPath = annotatedPath ?? xfile.path;
+
+    if (!mounted) return;
+    setState(() => _uploadingPhoto = true);
+    String? compressedPath;
+    try {
+      compressedPath = await PhotoCompressor.compress(uploadPath);
+      final result =
+          await sl<SetuApiClient>().uploadFile(filePath: compressedPath);
+      final url =
+          result['url'] as String? ?? result['path'] as String? ?? '';
+      if (mounted && url.isNotEmpty) setState(() => _photoUrls.add(url));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Photo upload failed. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+        ));
       }
-    });
-    await Future.delayed(const Duration(seconds: 10));
-    sub.cancel();
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+      if (compressedPath != null) {
+        await PhotoCompressor.deleteTempFile(compressedPath);
+      }
+      await PhotoCompressor.deleteTempFile(xfile.path);
+      if (annotatedPath != null) {
+        await PhotoCompressor.deleteTempFile(annotatedPath);
+      }
+    }
   }
 
   void _submit() {
@@ -424,25 +490,28 @@ class _RectificationSheetState extends State<_RectificationSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            if (_photoUrls.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                children: _photoUrls
-                    .map((url) => Chip(
-                          avatar: const Icon(Icons.photo, size: 16),
-                          label: Text('Photo ${_photoUrls.indexOf(url) + 1}',
-                              style: const TextStyle(fontSize: 12)),
-                          onDeleted: () =>
-                              setState(() => _photoUrls.remove(url)),
-                        ))
-                    .toList(),
+            if (_photoUrls.isNotEmpty) ...[
+              PhotoThumbnailStrip(
+                photoUrls: _photoUrls,
+                canDelete: true,
+                onDelete: (url) => setState(() => _photoUrls.remove(url)),
               ),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 TextButton.icon(
-                  onPressed: _pickPhoto,
-                  icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                  label: const Text('Add Evidence'),
+                  onPressed:
+                      (_uploadingPhoto || _submitting) ? null : _pickPhoto,
+                  icon: _uploadingPhoto
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.camera_alt_outlined, size: 18),
+                  label:
+                      Text(_uploadingPhoto ? 'Uploading…' : 'Add Evidence'),
                 ),
                 const Spacer(),
                 OutlinedButton(
@@ -451,10 +520,11 @@ class _RectificationSheetState extends State<_RectificationSheet> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  onPressed: _submitting ? null : _submit,
+                  onPressed: (_submitting || _uploadingPhoto) ? null : _submit,
                   child: _submitting
                       ? const SizedBox(
-                          width: 18, height: 18,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Text('Submit'),

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
 
 // ==================== ENUMS ====================
 
@@ -198,6 +199,47 @@ enum ObservationStatus {
         return Colors.blue;
       case ObservationStatus.closed:
         return Colors.green;
+    }
+  }
+}
+
+/// Status for a single checklist item. null = not yet evaluated.
+enum ChecklistItemStatus {
+  pass,
+  na;
+
+  /// Parse from JSON — supports new `status` string field and old `isOk` bool.
+  static ChecklistItemStatus? fromJson(Map<String, dynamic> json) {
+    final statusStr = json['status'] as String?;
+    if (statusStr != null) {
+      switch (statusStr.toUpperCase()) {
+        case 'PASS':
+          return ChecklistItemStatus.pass;
+        case 'NA':
+        case 'NOT_APPLICABLE':
+          return ChecklistItemStatus.na;
+      }
+    }
+    // Backward compat: old backend sends `isOk: true/false`
+    final isOk = json['isOk'] as bool?;
+    return isOk == true ? ChecklistItemStatus.pass : null;
+  }
+
+  String get apiValue {
+    switch (this) {
+      case ChecklistItemStatus.pass:
+        return 'PASS';
+      case ChecklistItemStatus.na:
+        return 'NA';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ChecklistItemStatus.pass:
+        return 'Yes';
+      case ChecklistItemStatus.na:
+        return 'N/A';
     }
   }
 }
@@ -421,9 +463,13 @@ class InspectionStage extends Equatable {
     );
   }
 
+  /// Items marked PASS.
   int get completedCount => items.where((i) => i.isOk).length;
+  /// Items marked PASS or N/A (i.e. evaluated).
+  int get resolvedCount => items.where((i) => i.itemStatus != null).length;
   int get totalCount => items.length;
-  bool get allOk => items.isNotEmpty && items.every((i) => i.isOk);
+  /// True when every item has been evaluated (PASS or N/A).
+  bool get allOk => items.isNotEmpty && items.every((i) => i.itemStatus != null);
 
   InspectionStage copyWithItems(List<ChecklistItem> newItems) {
     return InspectionStage(
@@ -443,7 +489,8 @@ class ChecklistItem extends Equatable {
   final int id;
   final String itemText;
   final int sequence;
-  final bool isOk;
+  /// null = not yet evaluated, pass = Yes, na = Not Applicable
+  final ChecklistItemStatus? itemStatus;
   final String? remarks;
   final String? value;
 
@@ -451,10 +498,15 @@ class ChecklistItem extends Equatable {
     required this.id,
     required this.itemText,
     required this.sequence,
-    this.isOk = false,
+    this.itemStatus,
     this.remarks,
     this.value,
   });
+
+  /// True when marked as PASS or N/A — both satisfy checklist requirements.
+  bool get isOk =>
+      itemStatus == ChecklistItemStatus.pass ||
+      itemStatus == ChecklistItemStatus.na;
 
   factory ChecklistItem.fromJson(Map<String, dynamic> json) {
     final template = json['itemTemplate'] as Map<String, dynamic>?;
@@ -462,32 +514,46 @@ class ChecklistItem extends Equatable {
       id: json['id'] as int,
       itemText: template?['itemText'] as String? ?? 'Checklist Item',
       sequence: template?['sequence'] as int? ?? 0,
-      isOk: json['isOk'] as bool? ?? false,
+      itemStatus: ChecklistItemStatus.fromJson(json),
       remarks: json['remarks'] as String?,
       value: json['value'] as String?,
     );
   }
 
-  ChecklistItem copyWith({bool? isOk, String? remarks}) {
+  /// Copy with updated remarks only.
+  ChecklistItem copyWith({String? remarks}) {
     return ChecklistItem(
       id: id,
       itemText: itemText,
       sequence: sequence,
-      isOk: isOk ?? this.isOk,
+      itemStatus: itemStatus,
       remarks: remarks ?? this.remarks,
+      value: value,
+    );
+  }
+
+  /// Copy with a new status (pass / na / null to clear).
+  ChecklistItem copyWithStatus(ChecklistItemStatus? newStatus) {
+    return ChecklistItem(
+      id: id,
+      itemText: itemText,
+      sequence: sequence,
+      itemStatus: newStatus,
+      remarks: remarks,
       value: value,
     );
   }
 
   Map<String, dynamic> toApiPayload() => {
         'id': id,
-        'isOk': isOk,
+        'isOk': isOk, // backward compat with older backend versions
+        if (itemStatus != null) 'status': itemStatus!.apiValue,
         'remarks': remarks,
         if (value != null) 'value': value,
       };
 
   @override
-  List<Object?> get props => [id, isOk, remarks, value];
+  List<Object?> get props => [id, itemStatus, remarks, value];
 }
 
 /// An observation (defect) logged by QC Inspector
@@ -524,12 +590,12 @@ class ActivityObservation extends Equatable {
       type: json['type'] as String? ?? 'Minor',
       remarks: json['remarks'] as String?,
       photos: (json['photos'] as List<dynamic>?)
-              ?.map((e) => e.toString())
+              ?.map((e) => ApiEndpoints.resolveUrl(e.toString()))
               .toList() ??
           [],
       closureText: json['closureText'] as String?,
       closureEvidence: (json['closureEvidence'] as List<dynamic>?)
-              ?.map((e) => e.toString())
+              ?.map((e) => ApiEndpoints.resolveUrl(e.toString()))
               .toList() ??
           [],
       status: ObservationStatus.fromString(
@@ -547,6 +613,179 @@ class ActivityObservation extends Equatable {
   List<Object?> get props =>
       [id, activityId, observationText, status, closureText];
 }
+
+// ==================== WORKFLOW MODELS ====================
+
+enum WorkflowRunStatus {
+  inProgress,
+  completed,
+  rejected,
+  reversed;
+
+  static WorkflowRunStatus fromString(String v) {
+    switch (v.toUpperCase()) {
+      case 'COMPLETED':
+        return WorkflowRunStatus.completed;
+      case 'REJECTED':
+        return WorkflowRunStatus.rejected;
+      case 'REVERSED':
+        return WorkflowRunStatus.reversed;
+      default:
+        return WorkflowRunStatus.inProgress;
+    }
+  }
+}
+
+enum WorkflowStepStatus {
+  waiting,
+  pending,
+  inProgress,
+  completed,
+  rejected,
+  skipped;
+
+  static WorkflowStepStatus fromString(String v) {
+    switch (v.toUpperCase()) {
+      case 'PENDING':
+        return WorkflowStepStatus.pending;
+      case 'IN_PROGRESS':
+        return WorkflowStepStatus.inProgress;
+      case 'COMPLETED':
+        return WorkflowStepStatus.completed;
+      case 'REJECTED':
+        return WorkflowStepStatus.rejected;
+      case 'SKIPPED':
+        return WorkflowStepStatus.skipped;
+      default:
+        return WorkflowStepStatus.waiting;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case WorkflowStepStatus.waiting:
+        return 'Waiting';
+      case WorkflowStepStatus.pending:
+        return 'Pending';
+      case WorkflowStepStatus.inProgress:
+        return 'In Progress';
+      case WorkflowStepStatus.completed:
+        return 'Approved';
+      case WorkflowStepStatus.rejected:
+        return 'Rejected';
+      case WorkflowStepStatus.skipped:
+        return 'Skipped';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case WorkflowStepStatus.waiting:
+        return Colors.grey;
+      case WorkflowStepStatus.pending:
+        return Colors.orange;
+      case WorkflowStepStatus.inProgress:
+        return Colors.blue;
+      case WorkflowStepStatus.completed:
+        return Colors.green;
+      case WorkflowStepStatus.rejected:
+        return Colors.red;
+      case WorkflowStepStatus.skipped:
+        return Colors.grey;
+    }
+  }
+}
+
+/// A single step in an inspection approval workflow run
+class InspectionWorkflowStep extends Equatable {
+  final int id;
+  final int stepOrder;
+  final WorkflowStepStatus status;
+  final String? stepLabel;
+  final String? assignedUserName;
+  final String? signedBy;
+  final String? comments;
+  final String? completedAt;
+
+  const InspectionWorkflowStep({
+    required this.id,
+    required this.stepOrder,
+    required this.status,
+    this.stepLabel,
+    this.assignedUserName,
+    this.signedBy,
+    this.comments,
+    this.completedAt,
+  });
+
+  factory InspectionWorkflowStep.fromJson(Map<String, dynamic> json) {
+    final node = json['workflowNode'] as Map<String, dynamic>?;
+    return InspectionWorkflowStep(
+      id: json['id'] as int,
+      stepOrder: json['stepOrder'] as int? ?? 0,
+      status: WorkflowStepStatus.fromString(
+          json['status'] as String? ?? 'WAITING'),
+      stepLabel: node?['label'] as String? ?? node?['name'] as String?,
+      assignedUserName: json['assignedUserName'] as String?,
+      signedBy: json['signedBy'] as String?,
+      comments: json['comments'] as String?,
+      completedAt: json['completedAt'] as String?,
+    );
+  }
+
+  bool get isActive =>
+      status == WorkflowStepStatus.pending ||
+      status == WorkflowStepStatus.inProgress;
+
+  @override
+  List<Object?> get props =>
+      [id, stepOrder, status, signedBy, comments];
+}
+
+/// The running workflow for an inspection (multi-level approval)
+class InspectionWorkflowRun extends Equatable {
+  final int id;
+  final int inspectionId;
+  final int currentStepOrder;
+  final WorkflowRunStatus status;
+  final List<InspectionWorkflowStep> steps;
+
+  const InspectionWorkflowRun({
+    required this.id,
+    required this.inspectionId,
+    required this.currentStepOrder,
+    required this.status,
+    this.steps = const [],
+  });
+
+  factory InspectionWorkflowRun.fromJson(Map<String, dynamic> json) {
+    return InspectionWorkflowRun(
+      id: json['id'] as int,
+      inspectionId: json['inspectionId'] as int? ?? 0,
+      currentStepOrder: json['currentStepOrder'] as int? ?? 1,
+      status: WorkflowRunStatus.fromString(
+          json['status'] as String? ?? 'IN_PROGRESS'),
+      steps: (json['steps'] as List<dynamic>?)
+              ?.map((e) => InspectionWorkflowStep.fromJson(
+                  e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+  }
+
+  InspectionWorkflowStep? get currentStep =>
+      steps.where((s) => s.stepOrder == currentStepOrder).firstOrNull;
+
+  bool get isCompleted => status == WorkflowRunStatus.completed;
+  bool get isRejected => status == WorkflowRunStatus.rejected;
+  bool get isInProgress => status == WorkflowRunStatus.inProgress;
+
+  @override
+  List<Object?> get props =>
+      [id, inspectionId, currentStepOrder, status, steps];
+}
+
+// ==================== EPS MODELS ====================
 
 /// EPS tree node (for location selection)
 class EpsTreeNode extends Equatable {

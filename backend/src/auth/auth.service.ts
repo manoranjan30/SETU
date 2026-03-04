@@ -11,7 +11,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private assignmentService: ProjectAssignmentService,
-  ) { }
+  ) {}
 
   async validateUser(username: string, pass: string): Promise<any> {
     console.log(`[AuthService] Validating user: '${username}'`);
@@ -55,13 +55,15 @@ export class AuthService {
     }
 
     // Fetch Project Assignments to add Project-specific permissions and Project IDs
-    const assignments = await this.assignmentService.getUserAssignments(user.id);
-    const assignedProjectIds = assignments.map(a => a.project?.id);
+    const assignments = await this.assignmentService.getUserAssignments(
+      user.id,
+    );
+    const assignedProjectIds = assignments.map((a) => a.project?.id);
 
     // Merge project-specific role permissions into the raw permissions set
-    assignments.forEach(assignment => {
-      assignment.roles?.forEach(role => {
-        role.permissions?.forEach(p => rawPermissions.add(p.permissionCode));
+    assignments.forEach((assignment) => {
+      assignment.roles?.forEach((role) => {
+        role.permissions?.forEach((p) => rawPermissions.add(p.permissionCode));
       });
     });
 
@@ -71,20 +73,29 @@ export class AuthService {
     const payload = {
       username: user.username,
       sub: user.id,
-      roles: user.roles?.map((r) => r.name),
+      roles: user.roles?.map((r: any) => r.name),
       permissions: permissions,
       project_ids: assignedProjectIds,
+      isTempUser: user.isTempUser,
+      isFirstLogin: user.isFirstLogin,
     };
 
+    const tokenOptions: any = {};
+    if (user.isTempUser) {
+      tokenOptions.expiresIn = '8h';
+    }
+
     return {
-      access_token: this.jwtService.sign(payload),
-      // We can also return user data here if needed by frontend directly
+      access_token: this.jwtService.sign(payload, tokenOptions),
       user: {
         id: user.id,
         username: user.username,
+        displayName: user.displayName,
         roles: payload.roles,
         permissions: payload.permissions,
         project_ids: assignedProjectIds,
+        isTempUser: user.isTempUser,
+        isFirstLogin: user.isFirstLogin,
       },
     };
   }

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/media/image_annotation_page.dart';
+import 'package:setu_mobile/core/media/photo_compressor.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
+import 'package:setu_mobile/injection_container.dart';
 
 /// Modal bottom sheet for QC inspector to raise a new observation.
 /// Dispatches [RaiseObservation] to [QualityApprovalBloc].
@@ -34,6 +39,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
   String _type = 'Minor';
   final List<String> _photoUrls = [];
   bool _submitting = false;
+  bool _uploadingPhoto = false;
 
   static const _types = ['Minor', 'Major', 'Critical'];
 
@@ -44,24 +50,41 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
   }
 
   Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final xfile =
-        await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+    final xfile = await ImagePicker().pickImage(source: ImageSource.camera);
     if (xfile == null || !mounted) return;
 
-    // Upload via bloc then capture URL
-    final bloc = context.read<QualityApprovalBloc>();
-    bloc.add(UploadObservationPhoto(xfile.path));
+    // Open annotation editor — user can draw/crop before uploading
+    final annotatedPath =
+        await ImageAnnotationPage.show(context, xfile.path);
+    final uploadPath = annotatedPath ?? xfile.path;
 
-    // Listen for the uploaded URL in the next state
-    final subscription = bloc.stream.listen((state) {
-      if (state is ObservationPhotoUploaded && mounted) {
-        setState(() => _photoUrls.add(state.url));
+    if (!mounted) return;
+    setState(() => _uploadingPhoto = true);
+    String? compressedPath;
+    try {
+      compressedPath = await PhotoCompressor.compress(uploadPath);
+      final result =
+          await sl<SetuApiClient>().uploadFile(filePath: compressedPath);
+      final url =
+          result['url'] as String? ?? result['path'] as String? ?? '';
+      if (mounted && url.isNotEmpty) setState(() => _photoUrls.add(url));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Photo upload failed. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+        ));
       }
-    });
-    // Cancel subscription after first upload response
-    await Future.delayed(const Duration(seconds: 10));
-    subscription.cancel();
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+      if (compressedPath != null) {
+        await PhotoCompressor.deleteTempFile(compressedPath);
+      }
+      await PhotoCompressor.deleteTempFile(xfile.path);
+      if (annotatedPath != null) {
+        await PhotoCompressor.deleteTempFile(annotatedPath);
+      }
+    }
   }
 
   void _submit() {
@@ -141,29 +164,29 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
             ),
             const SizedBox(height: 12),
 
-            // Photos
-            if (_photoUrls.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                children: _photoUrls
-                    .map((url) => Chip(
-                          avatar: const Icon(Icons.photo, size: 16),
-                          label: Text(
-                            'Photo ${_photoUrls.indexOf(url) + 1}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          onDeleted: () =>
-                              setState(() => _photoUrls.remove(url)),
-                        ))
-                    .toList(),
+            // Photo thumbnails with delete
+            if (_photoUrls.isNotEmpty) ...[
+              PhotoThumbnailStrip(
+                photoUrls: _photoUrls,
+                canDelete: true,
+                onDelete: (url) => setState(() => _photoUrls.remove(url)),
               ),
+              const SizedBox(height: 8),
+            ],
 
             Row(
               children: [
                 TextButton.icon(
-                  onPressed: _pickPhoto,
-                  icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                  label: const Text('Add Photo'),
+                  onPressed:
+                      (_uploadingPhoto || _submitting) ? null : _pickPhoto,
+                  icon: _uploadingPhoto
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.camera_alt_outlined, size: 18),
+                  label: Text(_uploadingPhoto ? 'Uploading…' : 'Add Photo'),
                 ),
                 const Spacer(),
                 OutlinedButton(
@@ -172,7 +195,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  onPressed: _submitting ? null : _submit,
+                  onPressed: (_submitting || _uploadingPhoto) ? null : _submit,
                   child: _submitting
                       ? const SizedBox(
                           width: 18,

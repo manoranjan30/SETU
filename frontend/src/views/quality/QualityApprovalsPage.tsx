@@ -1,18 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { PermissionCode } from '../../config/permissions';
 import {
     ClipboardCheck, AlertCircle, CheckCircle2, Clock,
-    Save, ShieldCheck, UserCheck, CheckSquare, Square,
+    Save, ShieldCheck, UserCheck,
     MessageSquareWarning, X, Camera, FileDown, RotateCcw,
     Trash2, AlertTriangle
 } from 'lucide-react';
 import api from '../../api/axios';
+import SignatureModal from '../../components/quality/SignatureModal';
 
 interface QualityInspection {
     id: number;
     activityId: number;
     epsNodeId: number;
-    status: 'PENDING' | 'APPROVED' | 'PROVISIONALLY_APPROVED' | 'REJECTED' | 'CANCELED' | 'REVERSED';
+    status: 'PENDING' | 'APPROVED' | 'PROVISIONALLY_APPROVED' | 'REJECTED' | 'CANCELED' | 'REVERSED' | 'PARTIALLY_APPROVED';
     requestDate: string;
     inspectionDate?: string;
     comments?: string;
@@ -36,9 +39,17 @@ export default function QualityApprovalsPage() {
     const [loadingDetail, setLoadingDetail] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // Workflow State
+    const [workflowState, setWorkflowState] = useState<any>(null);
+
     // Observations State
     const [observations, setObservations] = useState<any[]>([]);
+    const [obsTab, setObsTab] = useState<'PENDING' | 'RECTIFIED' | 'CLOSED' | 'ALL'>('PENDING');
     const [showObsModal, setShowObsModal] = useState(false);
+    const [showDelegationModal, setShowDelegationModal] = useState(false);
+    const [delegating, setDelegating] = useState(false);
+    const [eligibleUsers, setEligibleUsers] = useState<any[]>([]);
+    const [selectedDelegateId, setSelectedDelegateId] = useState<number | null>(null);
     const [obsText, setObsText] = useState('');
     const [obsType, setObsType] = useState('Minor');
     const [currentPhotos, setCurrentPhotos] = useState<string[]>([]);
@@ -50,9 +61,15 @@ export default function QualityApprovalsPage() {
     const [reversalReason, setReversalReason] = useState('');
     const [reversalLoading, setReversalLoading] = useState(false);
 
+    // Signature Modals
+    const [showFinalApproveSig, setShowFinalApproveSig] = useState(false);
+    // showReversalSig could also be added if reversal needs digital signature, but reason is already captured in modal.
+
+
     // User info
-    const userRole = localStorage.getItem('userRole') || '';
-    const isAdmin = userRole === 'Admin';
+    const { user, hasPermission } = useAuth();
+    const [showDraftOrSignModal, setShowDraftOrSignModal] = useState(false);
+    const isAdmin = hasPermission(PermissionCode.QUALITY_INSPECTION_DELETE);
 
     // Helper for correct image URLs
     const getFileUrl = (path: string) => {
@@ -79,17 +96,26 @@ export default function QualityApprovalsPage() {
     useEffect(() => {
         if (selectedInspectionId) {
             setLoadingDetail(true);
-            api.get(`/quality/inspections/${selectedInspectionId}`).then(res => {
-                setInspectionDetail(res.data);
+
+            // Bring down detail, workflow, and observations
+            Promise.all([
+                api.get(`/quality/inspections/${selectedInspectionId}`),
+                api.get(`/quality/inspections/${selectedInspectionId}/workflow`).catch(() => ({ data: null }))
+            ]).then(([detailRes, flowRes]) => {
+                setInspectionDetail(detailRes.data);
+                setWorkflowState(flowRes.data);
+
                 // Fetch observations for this activity
-                if (res.data.activityId) {
-                    api.get(`/quality/activities/${res.data.activityId}/observations`)
+                if (detailRes.data.activityId) {
+                    api.get(`/quality/activities/${detailRes.data.activityId}/observations`)
                         .then(obsRes => setObservations(obsRes.data))
                         .catch(err => console.error('Failed to load observations', err));
                 }
             }).finally(() => setLoadingDetail(false));
+
         } else {
             setInspectionDetail(null);
+            setWorkflowState(null);
             setObservations([]);
         }
     }, [selectedInspectionId, refreshKey]);
@@ -98,13 +124,29 @@ export default function QualityApprovalsPage() {
         return inspections.filter(i => filterStatus === 'ALL' || i.status === filterStatus);
     }, [inspections, filterStatus]);
 
-    const handleItemToggle = (itemId: number) => {
+    const filteredObservations = useMemo(() => {
+        if (obsTab === 'PENDING') return observations.filter(o => o.status === 'PENDING' || o.status === 'OPEN');
+        if (obsTab === 'RECTIFIED') return observations.filter(o => o.status === 'RECTIFIED');
+        if (obsTab === 'CLOSED') return observations.filter(o => o.status === 'CLOSED' || o.status === 'RESOLVED');
+        return observations;
+    }, [observations, obsTab]);
+
+    const getDaysOpen = (createdAt: string) => {
+        const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+        if (days === 0) return { text: 'Today', color: 'text-emerald-600' };
+        if (days === 1) return { text: '1 day ago', color: 'text-emerald-600' };
+        if (days <= 3) return { text: `${days} days ago`, color: 'text-emerald-600' };
+        if (days <= 7) return { text: `${days} days ago`, color: 'text-amber-600' };
+        return { text: `${days} days ago`, color: 'text-red-500 font-bold' };
+    };
+
+    const handleItemValueChange = (itemId: number, val: string) => {
         setInspectionDetail((prev: any) => {
             if (!prev) return prev;
             const newStages = prev.stages.map((stage: any) => ({
                 ...stage,
                 items: stage.items.map((item: any) =>
-                    item.id === itemId ? { ...item, isOk: !item.isOk } : item
+                    item.id === itemId ? { ...item, value: val, isOk: val === 'YES' || val === 'NA' } : item
                 )
             }));
             return { ...prev, stages: newStages };
@@ -129,12 +171,22 @@ export default function QualityApprovalsPage() {
         try {
             // Must save each stage sequentially
             for (const stage of inspectionDetail.stages) {
+                const checkedCount = stage.items.filter((it: any) => it.value === 'YES' || it.value === 'NA' || it.isOk).length;
+                const totalCount = stage.items.length;
+
+                let stageStatus = stage.status;
+                if (checkedCount > 0 && checkedCount < totalCount) {
+                    stageStatus = 'IN_PROGRESS';
+                } else if (checkedCount === totalCount && totalCount > 0) {
+                    stageStatus = 'COMPLETED';
+                }
+
                 await api.patch(`/quality/inspections/stage/${stage.id}`, {
-                    status: stage.status, // Keep existing status or update to IN_PROGRESS
+                    status: stageStatus, // Keep existing status or update to IN_PROGRESS
                     items: stage.items.map((it: any) => ({
                         id: it.id,
                         value: it.value,
-                        isOk: it.isOk,
+                        isOk: it.value === 'YES' || it.value === 'NA' || it.isOk,
                         remarks: it.remarks,
                     }))
                 });
@@ -146,35 +198,76 @@ export default function QualityApprovalsPage() {
         }
     };
 
-    const handleApprove = async () => {
-        if (!confirm('Are you sure you want to approve this RFI? All checklist items must be checked.')) return;
+    const fetchEligibleUsers = async () => {
         try {
-            // First save the checklist progress
-            for (const stage of inspectionDetail.stages) {
-                await api.patch(`/quality/inspections/stage/${stage.id}`, {
-                    status: 'COMPLETED',
-                    items: stage.items.map((it: any) => ({
-                        id: it.id,
-                        value: it.value,
-                        isOk: it.isOk,
-                        remarks: it.remarks,
-                    }))
+            const res = await api.get('/users/list'); // Assuming a user list endpoint exists
+            setEligibleUsers(res.data);
+        } catch (err) {
+            console.error('Failed to fetch users', err);
+        }
+    };
+
+    const handleDelegate = async () => {
+        if (!selectedDelegateId || !selectedInspectionId || !workflowState) return;
+        setDelegating(true);
+        try {
+            await api.post(`/quality/inspections/${selectedInspectionId}/workflow/delegate`, {
+                targetUserId: selectedDelegateId,
+                comments: 'Delegated via UI'
+            });
+            setShowDelegationModal(false);
+            // Refresh
+            const [inspRes, wfRes] = await Promise.all([
+                api.get(`/quality/inspections/${selectedInspectionId}`),
+                api.get(`/quality/inspections/${selectedInspectionId}/workflow`)
+            ]);
+            setInspectionDetail(inspRes.data);
+            setWorkflowState(wfRes.data);
+            alert('Step successfully delegated.');
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Delegation failed.');
+        } finally {
+            setDelegating(false);
+        }
+    };
+    const handleInitiateApprove = async () => {
+        // Just save progress and show signature modal
+        await saveChecklistProgress();
+        setShowFinalApproveSig(true);
+    };
+
+    const executeFinalApprove = async (signatureData: string) => {
+        try {
+            if (workflowState) {
+                const currentStep = workflowState.steps.find((s: any) => s.stepOrder === workflowState.currentStepOrder);
+                const wfRes = await api.post(`/quality/inspections/${inspectionDetail.id}/workflow/advance`, {
+                    signatureData,
+                    signedBy: user?.displayName || user?.username || currentStep?.workflowNode?.label || 'Approver',
+                    comments: 'Approved digitally',
                 });
+
+                if (wfRes.data?.isFinal) {
+                    alert('All workflow steps completed. Inspection is now Final Approved!');
+                } else {
+                    alert('Workflow Step Approved!');
+                }
+            } else {
+                // Legacy / Direct final approve
+                await api.post(`/quality/inspections/${inspectionDetail.id}/final-approve`, {
+                    signatureData,
+                    comments: 'Final Approval given digitally',
+                });
+                alert('Inspection Final Approved!');
             }
 
-            // Then approve the inspection
-            await api.patch(`/quality/inspections/${inspectionDetail.id}/status`, {
-                status: 'APPROVED',
-                comments: 'Approved after completing checklist',
-                inspectionDate: new Date().toISOString().split('T')[0]
-            });
-            alert('Inspection Approved!');
+            setShowFinalApproveSig(false);
             setSelectedInspectionId(null);
             setRefreshKey(k => k + 1);
         } catch (err: any) {
             alert(err.response?.data?.message || 'Failed to approve RFI.');
         }
     };
+
 
     const handleReject = async () => {
         const reason = prompt('Please enter rejection reason:');
@@ -194,11 +287,17 @@ export default function QualityApprovalsPage() {
                 });
             }
 
-            await api.patch(`/quality/inspections/${inspectionDetail.id}/status`, {
-                status: 'REJECTED',
-                comments: reason || 'Rejected during checklist execution',
-                inspectionDate: new Date().toISOString().split('T')[0]
-            });
+            if (workflowState && workflowState.status === 'IN_PROGRESS') {
+                await api.post(`/quality/inspections/${inspectionDetail.id}/workflow/reject`, {
+                    comments: reason || 'Rejected during checklist execution'
+                });
+            } else {
+                await api.patch(`/quality/inspections/${inspectionDetail.id}/status`, {
+                    status: 'REJECTED',
+                    comments: reason || 'Rejected during checklist execution',
+                    inspectionDate: new Date().toISOString().split('T')[0]
+                });
+            }
             alert('Inspection Rejected.');
             setSelectedInspectionId(null);
             setRefreshKey(k => k + 1);
@@ -289,14 +388,24 @@ export default function QualityApprovalsPage() {
         }
     };
 
+    const handleDeleteObservation = async (obsId: string) => {
+        if (!confirm('Permanently delete this observation?')) return;
+        try {
+            await api.delete(`/quality/activities/${inspectionDetail.activityId}/observation/${obsId}`);
+            setRefreshKey(k => k + 1);
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to delete observation.');
+        }
+    };
+
     const allChecked = useMemo(() => {
         if (!inspectionDetail?.stages) return false;
         if (inspectionDetail.stages.length === 0) return true; // Empty checklist can be approved
-        return inspectionDetail.stages.every((s: any) => s.items?.every((i: any) => i.isOk));
+        return inspectionDetail.stages.every((s: any) => s.items?.every((i: any) => i.value === 'YES' || i.value === 'NA' || i.isOk));
     }, [inspectionDetail]);
 
     const pendingObservationsCount = useMemo(() => {
-        return observations.filter(o => o.status === 'PENDING').length;
+        return observations.filter(o => o.status !== 'CLOSED').length;
     }, [observations]);
 
     return (
@@ -319,14 +428,14 @@ export default function QualityApprovalsPage() {
                         <div className="p-4 border-b">
                             <div className="flex bg-gray-100 p-1 rounded-lg">
                                 <button
+                                    className={`px-4 py-2 font-medium text-sm flex-1 sm:flex-none border-b-2 transition-colors ${filterStatus === 'PENDING' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                                     onClick={() => setFilterStatus('PENDING')}
-                                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${filterStatus === 'PENDING' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     Pending QC
                                 </button>
                                 <button
+                                    className={`px-4 py-2 font-medium text-sm flex-1 sm:flex-none border-b-2 transition-colors ${filterStatus === 'ALL' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                                     onClick={() => setFilterStatus('ALL')}
-                                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${filterStatus === 'ALL' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
                                     All RFIs
                                 </button>
@@ -347,11 +456,12 @@ export default function QualityApprovalsPage() {
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${insp.status === 'APPROVED' ? 'bg-green-100 text-green-700' :
-                                                insp.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                                                    insp.status === 'REVERSED' ? 'bg-amber-100 text-amber-800' :
-                                                        'bg-amber-100 text-amber-700'
+                                                insp.status === 'PARTIALLY_APPROVED' ? 'bg-blue-100 text-blue-700' :
+                                                    insp.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                                                        insp.status === 'REVERSED' ? 'bg-amber-100 text-amber-800' :
+                                                            'bg-amber-100 text-amber-700'
                                                 }`}>
-                                                {insp.status}
+                                                {insp.status === 'PARTIALLY_APPROVED' ? 'PARTIALLY APPROVED - REVIEW UNDER PROGRESS' : insp.status}
                                             </span>
                                             <span className="text-xs text-gray-500">{insp.requestDate}</span>
                                         </div>
@@ -393,33 +503,32 @@ export default function QualityApprovalsPage() {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <button
-                                            onClick={saveChecklistProgress}
-                                            disabled={inspectionDetail.status !== 'PENDING'}
+                                            onClick={() => setShowDraftOrSignModal(true)}
+                                            disabled={inspectionDetail.status !== 'PENDING' && inspectionDetail.status !== 'PARTIALLY_APPROVED'}
                                             className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 shadow-sm disabled:opacity-50"
                                         >
                                             <Save className="w-4 h-4" /> Save Progress
                                         </button>
                                         {/* PDF Download */}
-                                        {['APPROVED', 'PARTIALLY_APPROVED', 'REVERSED', 'PROVISIONALLY_APPROVED'].includes(inspectionDetail.status) && (
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const res = await api.get(`/quality/inspections/${inspectionDetail.id}/report`, { responseType: 'blob' });
-                                                        const url = URL.createObjectURL(res.data);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `RFI_Report_${inspectionDetail.id}.pdf`;
-                                                        document.body.appendChild(a);
-                                                        a.click();
-                                                        document.body.removeChild(a);
-                                                        URL.revokeObjectURL(url);
-                                                    } catch { alert('Failed to download report.'); }
-                                                }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 shadow-sm"
-                                            >
-                                                <FileDown className="w-4 h-4" /> PDF Report
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await api.get(`/quality/inspections/${inspectionDetail.id}/report`, { responseType: 'blob' });
+                                                    const url = URL.createObjectURL(res.data);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    const isApproved = inspectionDetail.status === 'APPROVED';
+                                                    a.download = `RFI_${isApproved ? 'Final' : 'WIP'}_Report_${inspectionDetail.id}.pdf`;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    URL.revokeObjectURL(url);
+                                                } catch { alert('Failed to download report.'); }
+                                            }}
+                                            className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium shadow-sm ${inspectionDetail.status === 'APPROVED' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+                                        >
+                                            <FileDown className="w-4 h-4" /> {inspectionDetail.status === 'APPROVED' ? 'Final Report' : 'WIP Report'}
+                                        </button>
                                         {/* Reverse for Approved */}
                                         {inspectionDetail.status === 'APPROVED' && (
                                             <button
@@ -449,9 +558,60 @@ export default function QualityApprovalsPage() {
                                     </div>
                                 </div>
 
+                                {/* Final Action Bar (Desktop only, or keep sticky bottom as is) */}
+
+                                {/* Workflow Status Indicator */}
+                                {workflowState && (
+                                    <div className="bg-white px-8 py-4 border-b shrink-0 flex items-center justify-between border-t border-gray-100">
+                                        <div className="flex gap-4 items-center flex-1">
+                                            <div className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Workflow</div>
+                                            <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-1">
+                                                {workflowState.steps.sort((a: any, b: any) => a.stepOrder - b.stepOrder).map((step: any, sIdx: number) => {
+                                                    const isCurrent = workflowState.currentStepOrder === step.stepOrder;
+                                                    const isCompleted = step.status === 'COMPLETED';
+                                                    const isRejected = step.status === 'REJECTED';
+                                                    const isLastStepNode = step.stepOrder === Math.max(...workflowState.steps.map((s: any) => s.stepOrder));
+
+                                                    let colorClass = "bg-gray-100 text-gray-500 border-gray-200";
+                                                    if (isCompleted) colorClass = "bg-green-100 text-green-700 border-green-200";
+                                                    if (isRejected) colorClass = "bg-red-100 text-red-700 border-red-200";
+                                                    if (isCurrent) colorClass = "bg-indigo-100 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200";
+
+                                                    return (
+                                                        <div key={step.id} className="flex items-center gap-2 shrink-0">
+                                                            <div className={`flex flex-col border rounded-lg px-3 py-1.5 ${colorClass}`}>
+                                                                <span className="text-[10px] font-bold uppercase">{isLastStepNode ? 'Final Approval' : (step.workflowNode?.label || `Step ${step.stepOrder}`)}</span>
+                                                                <span className="text-[10px] truncate max-w-[120px]">
+                                                                    {isCompleted ? `Signed by ${step.signedBy}` :
+                                                                        isRejected ? `Rejected` :
+                                                                            isCurrent ? `Pending Approval` : `Waiting`}
+                                                                </span>
+                                                            </div>
+                                                            {sIdx < workflowState.steps.length - 1 && (
+                                                                <div className={`h-0.5 w-4 ${isCompleted ? 'bg-green-500' : 'bg-gray-200'}`} />
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Checklist Area */}
                                 <div className="flex-1 overflow-y-auto p-8">
                                     <div className="max-w-4xl mx-auto space-y-6 pb-20">
+
+                                        {/* Workflow Completed Banner */}
+                                        {workflowState?.status === 'COMPLETED' && (
+                                            <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-6 py-4 flex items-center gap-3 text-emerald-800">
+                                                <CheckCircle2 className="w-6 h-6 shrink-0" />
+                                                <div>
+                                                    <h4 className="font-bold text-sm">Workflow Fully Approved</h4>
+                                                    <p className="text-xs mt-1">All {workflowState.steps.length} approval levels have been completed and signed.</p>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Observation Banner */}
                                         {pendingObservationsCount > 0 && (
@@ -476,24 +636,33 @@ export default function QualityApprovalsPage() {
                                                             Stage {sIdx + 1}: {stage.stageTemplate?.name || 'General Checks'}
                                                         </h3>
                                                         <span className="text-xs text-gray-500">
-                                                            {stage.items?.filter((i: any) => i.isOk).length} / {stage.items?.length} Completed
+                                                            {stage.items?.filter((i: any) => i.value === 'YES' || i.value === 'NA' || i.isOk).length} / {stage.items?.length} Completed
                                                         </span>
                                                     </div>
                                                     <div className="divide-y">
                                                         {[...(stage.items || [])].sort((a: any, b: any) => (a.itemTemplate?.sequence || 0) - (b.itemTemplate?.sequence || 0)).map((item: any) => (
                                                             <div key={item.id} className="p-4 flex gap-4 hover:bg-gray-50 transition-colors">
-                                                                <button
-                                                                    onClick={() => handleItemToggle(item.id)}
-                                                                    disabled={inspectionDetail.status !== 'PENDING'}
-                                                                    className="mt-0.5 shrink-0 text-gray-400 hover:text-indigo-600 disabled:opacity-50"
-                                                                >
-                                                                    {item.isOk ? <CheckSquare className="w-6 h-6 text-indigo-600" /> : <Square className="w-6 h-6" />}
-                                                                </button>
+                                                                <div className="mt-0.5 shrink-0 flex gap-2">
+                                                                    <button
+                                                                        onClick={() => handleItemValueChange(item.id, item.value === 'YES' ? '' : 'YES')}
+                                                                        disabled={!['PENDING', 'PARTIALLY_APPROVED'].includes(inspectionDetail.status)}
+                                                                        className={`px-3 py-1 rounded text-[10px] font-bold tracking-wider transition-colors disabled:opacity-50 border ${item.value === 'YES' || item.isOk && item.value !== 'NA' ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                                                                    >
+                                                                        YES
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleItemValueChange(item.id, item.value === 'NA' ? '' : 'NA')}
+                                                                        disabled={!['PENDING', 'PARTIALLY_APPROVED'].includes(inspectionDetail.status)}
+                                                                        className={`px-3 py-1 rounded text-[10px] font-bold tracking-wider transition-colors disabled:opacity-50 border ${item.value === 'NA' ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                                                                    >
+                                                                        NA
+                                                                    </button>
+                                                                </div>
                                                                 <div className="flex-1">
-                                                                    <p className={`text-sm ${item.isOk ? 'text-gray-700 font-medium' : 'text-gray-900'}`}>
+                                                                    <p className={`text-sm ${(item.value === 'YES' || item.value === 'NA' || item.isOk) ? 'text-gray-700 font-medium' : 'text-gray-900'}`}>
                                                                         {item.itemTemplate?.itemText || 'Checklist Item'}
                                                                     </p>
-                                                                    {inspectionDetail.status === 'PENDING' ? (
+                                                                    {['PENDING', 'PARTIALLY_APPROVED'].includes(inspectionDetail.status) ? (
                                                                         <input
                                                                             type="text"
                                                                             placeholder="Add remarks..."
@@ -515,7 +684,7 @@ export default function QualityApprovalsPage() {
                                 </div>
 
                                 {/* Final Action Bar */}
-                                {inspectionDetail.status === 'PENDING' && (
+                                {['PENDING', 'PARTIALLY_APPROVED'].includes(inspectionDetail.status) && (
                                     <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
                                         <div className="max-w-4xl mx-auto flex items-center justify-between">
                                             <div className="text-sm">
@@ -539,18 +708,32 @@ export default function QualityApprovalsPage() {
                                                 >
                                                     Reject
                                                 </button>
+                                                {workflowState && (
+                                                    <button
+                                                        onClick={() => {
+                                                            fetchEligibleUsers();
+                                                            setShowDelegationModal(true);
+                                                        }}
+                                                        className="px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 focus:ring-2 focus:ring-indigo-200 font-medium text-sm flex items-center gap-2"
+                                                    >
+                                                        <UserCheck className="w-4 h-4" /> Delegate
+                                                    </button>
+                                                )}
+                                                {!workflowState && (
+                                                    <button
+                                                        onClick={handleProvisionallyApprove}
+                                                        className="px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 focus:ring-2 focus:ring-blue-200 font-medium text-sm"
+                                                    >
+                                                        Provisional Approval
+                                                    </button>
+                                                )}
                                                 <button
-                                                    onClick={handleProvisionallyApprove}
-                                                    className="px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 focus:ring-2 focus:ring-blue-200 font-medium text-sm"
-                                                >
-                                                    Provisional Approval
-                                                </button>
-                                                <button
-                                                    onClick={handleApprove}
+                                                    onClick={handleInitiateApprove}
                                                     disabled={!allChecked || pendingObservationsCount > 0}
-                                                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-all text-sm"
+                                                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm shadow-indigo-200 transition-all text-sm flex items-center gap-2"
                                                 >
-                                                    Final Approve
+                                                    <ShieldCheck className="w-4 h-4" />
+                                                    {workflowState ? 'Approve Workflow Step' : 'Final Approve'}
                                                 </button>
                                             </div>
                                         </div>
@@ -576,65 +759,103 @@ export default function QualityApprovalsPage() {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50">
-                                {/* Existing Observations */}
+                                {/* Observations Header / Tabs */}
                                 <div className="space-y-4">
-                                    <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wider">Current Log ({observations.length})</h4>
-                                    {observations.length === 0 ? (
-                                        <div className="text-gray-500 text-sm italic">No observations raised yet.</div>
+                                    <div className="flex gap-2 border-b border-gray-200 pb-2">
+                                        {(['PENDING', 'RECTIFIED', 'CLOSED', 'ALL'] as const).map(tab => (
+                                            <button
+                                                key={tab}
+                                                onClick={() => setObsTab(tab)}
+                                                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${obsTab === tab
+                                                    ? 'border-amber-600 text-amber-700'
+                                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-t'
+                                                    }`}
+                                            >
+                                                {tab === 'PENDING' ? 'Pending' : tab === 'RECTIFIED' ? 'Rectified' : tab === 'CLOSED' ? 'Closed' : 'All'}
+                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                                                    {tab === 'ALL'
+                                                        ? observations.length
+                                                        : tab === 'PENDING'
+                                                            ? observations.filter(o => o.status === 'PENDING' || o.status === 'OPEN').length
+                                                            : observations.filter(o => o.status === 'CLOSED' || o.status === 'RECTIFIED' || o.status === 'RESOLVED').length
+                                                    }
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {filteredObservations.length === 0 ? (
+                                        <div className="text-gray-500 text-sm italic py-4">No observations match the selected tab.</div>
                                     ) : (
-                                        observations.map((obs, idx) => (
-                                            <div key={obs.id} className="bg-white rounded-xl p-4 shadow-sm border">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${obs.status === 'PENDING' ? 'bg-amber-100 text-amber-800' :
-                                                            obs.status === 'RECTIFIED' ? 'bg-blue-100 text-blue-800' :
-                                                                'bg-gray-100 text-gray-600'
-                                                            }`}>
-                                                            {obs.status}
-                                                        </span>
-                                                        <span className="text-xs font-semibold text-gray-500">[{obs.type || 'Minor'}] #{idx + 1}</span>
-                                                    </div>
-                                                    <span className="text-xs text-gray-400">{new Date(obs.createdAt).toLocaleString()}</span>
-                                                </div>
-                                                <p className="text-sm font-medium text-gray-900 mt-2">{obs.observationText}</p>
-
-                                                {obs.photos && obs.photos.length > 0 && (
-                                                    <div className="mt-3 flex flex-wrap gap-2">
-                                                        {obs.photos.map((url: string, pIdx: number) => (
-                                                            <a key={pIdx} href={getFileUrl(url)} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-md border overflow-hidden hover:opacity-80 transition-opacity">
-                                                                <img src={getFileUrl(url)} alt="Observation" className="w-full h-full object-cover" />
-                                                            </a>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {obs.status === 'RECTIFIED' && (
-                                                    <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                                                        <p className="text-xs font-bold text-blue-900 mb-1">Rectification Details (From Site Team):</p>
-                                                        <p className="text-sm text-blue-800">{obs.closureText || 'No remarks provided.'}</p>
-
-                                                        {obs.closureEvidence && obs.closureEvidence.length > 0 && (
-                                                            <div className="mt-2 flex flex-wrap gap-2">
-                                                                {obs.closureEvidence.map((url: string, pIdx: number) => (
-                                                                    <a key={pIdx} href={getFileUrl(url)} target="_blank" rel="noreferrer" className="w-12 h-12 rounded border border-blue-200 overflow-hidden">
-                                                                        <img src={getFileUrl(url)} alt="Rectification" className="w-full h-full object-cover" />
-                                                                    </a>
-                                                                ))}
+                                        filteredObservations.map((obs, idx) => {
+                                            const ageInfo = getDaysOpen(obs.createdAt);
+                                            return (
+                                                <div key={obs.id} className="bg-white rounded-xl p-4 shadow-sm border">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${obs.status === 'PENDING' ? 'bg-amber-100 text-amber-800' :
+                                                                obs.status === 'RECTIFIED' ? 'bg-blue-100 text-blue-800' :
+                                                                    'bg-gray-100 text-gray-600'
+                                                                }`}>
+                                                                {obs.status}
+                                                            </span>
+                                                            <span className="text-xs font-semibold text-gray-500">[{obs.type || 'Minor'}] #{idx + 1}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            {hasPermission(PermissionCode.QUALITY_OBSERVATION_DELETE) && (
+                                                                <button
+                                                                    onClick={() => handleDeleteObservation(obs.id)}
+                                                                    className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            )}
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-xs text-gray-400">{new Date(obs.createdAt).toLocaleString()}</span>
+                                                                <span className={`text-[10px] ${ageInfo.color}`}>{ageInfo.text}</span>
                                                             </div>
-                                                        )}
-
-                                                        <div className="mt-3">
-                                                            <button
-                                                                onClick={() => handleCloseObservation(obs.id)}
-                                                                className="px-4 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 shadow-sm transition-all"
-                                                            >
-                                                                Verify & Close Observation
-                                                            </button>
                                                         </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        ))
+                                                    <p className="text-sm font-medium text-gray-900 mt-2">{obs.observationText}</p>
+
+                                                    {obs.photos && obs.photos.length > 0 && (
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            {obs.photos.map((url: string, pIdx: number) => (
+                                                                <a key={pIdx} href={getFileUrl(url)} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-md border overflow-hidden hover:opacity-80 transition-opacity">
+                                                                    <img src={getFileUrl(url)} alt="Observation" className="w-full h-full object-cover" />
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {obs.status === 'RECTIFIED' && (
+                                                        <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                                            <p className="text-xs font-bold text-blue-900 mb-1">Rectification Details (From Site Team):</p>
+                                                            <p className="text-sm text-blue-800">{obs.closureText || 'No remarks provided.'}</p>
+
+                                                            {obs.closureEvidence && obs.closureEvidence.length > 0 && (
+                                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                                    {obs.closureEvidence.map((url: string, pIdx: number) => (
+                                                                        <a key={pIdx} href={getFileUrl(url)} target="_blank" rel="noreferrer" className="w-12 h-12 rounded border border-blue-200 overflow-hidden">
+                                                                            <img src={getFileUrl(url)} alt="Rectification" className="w-full h-full object-cover" />
+                                                                        </a>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="mt-3">
+                                                                <button
+                                                                    onClick={() => handleCloseObservation(obs.id)}
+                                                                    className="px-4 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 shadow-sm transition-all"
+                                                                >
+                                                                    Verify & Close Observation
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
                                     )}
                                 </div>
 
@@ -761,6 +982,97 @@ export default function QualityApprovalsPage() {
                     </div>
                 )
             }
+            {/* Signature Modals */}
+            <SignatureModal
+                isOpen={showFinalApproveSig}
+                onClose={() => setShowFinalApproveSig(false)}
+                onSign={executeFinalApprove}
+                title="Final Approval Signature"
+                description="Sign to grant final approval for this RFI."
+            />
+            {/* Delegation Modal */}
+            {showDelegationModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6">
+                        <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <UserCheck className="w-6 h-6 text-indigo-600" />
+                            Delegate Approval Step
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-6">Select a user to delegate this approval step to. They will be notified and can approve on your behalf.</p>
+
+                        <div className="space-y-4 mb-8">
+                            <label className="block text-xs font-bold text-gray-500 uppercase">Select Approver</label>
+                            <select
+                                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                                onChange={(e) => setSelectedDelegateId(Number(e.target.value))}
+                                value={selectedDelegateId || ''}
+                            >
+                                <option value="">-- Choose User --</option>
+                                {eligibleUsers.map(u => (
+                                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDelegationModal(false)}
+                                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDelegate}
+                                disabled={!selectedDelegateId || delegating}
+                                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {delegating ? 'Delegating...' : 'Confirm Delegation'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Draft vs Sign Modal */}
+            {showDraftOrSignModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-gray-200">
+                        <div className="p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">Save Progress</h3>
+                            <p className="text-sm text-gray-500 mb-6">
+                                Would you like to just save this checklist as a draft, or sign and approve this stage?
+                            </p>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={async () => {
+                                        setShowDraftOrSignModal(false);
+                                        await saveChecklistProgress();
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                                >
+                                    <Save className="w-4 h-4" /> Save as Draft
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowDraftOrSignModal(false);
+                                        handleInitiateApprove();
+                                    }}
+                                    disabled={!allChecked || pendingObservationsCount > 0}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium disabled:opacity-50 shadow-sm"
+                                    title={(!allChecked || pendingObservationsCount > 0) ? "You must complete all checklist items and close all observations before approving." : ""}
+                                >
+                                    <ShieldCheck className="w-4 h-4" /> Sign & Approve Step
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => setShowDraftOrSignModal(false)}
+                                className="mt-4 w-full text-center text-sm text-gray-400 hover:text-gray-600 font-medium"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

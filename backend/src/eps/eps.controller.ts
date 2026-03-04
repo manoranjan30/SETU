@@ -24,7 +24,7 @@ import { Roles } from '../auth/roles.decorator';
 @Controller('eps')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EpsController {
-  constructor(private readonly epsService: EpsService) { }
+  constructor(private readonly epsService: EpsService) {}
 
   @Get(':id/profile')
   getProfile(@Param('id', ParseIntPipe) id: number) {

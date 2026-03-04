@@ -7,7 +7,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @Controller('admin/settings')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SystemSettingsController {
-  constructor(private readonly settingsService: SystemSettingsService) { }
+  constructor(private readonly settingsService: SystemSettingsService) {}
 
   @Get()
   @Permissions('ADMIN.SETTINGS.MANAGE')

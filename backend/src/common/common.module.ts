@@ -11,7 +11,11 @@ import { UploadController } from './upload.controller';
 @Module({
   imports: [TypeOrmModule.forFeature([TableViewConfig, SystemSetting])],
   providers: [TableViewService, SystemSettingsService],
-  controllers: [TableViewController, SystemSettingsController, UploadController],
+  controllers: [
+    TableViewController,
+    SystemSettingsController,
+    UploadController,
+  ],
   exports: [TableViewService, SystemSettingsService],
 })
-export class CommonModule { }
+export class CommonModule {}

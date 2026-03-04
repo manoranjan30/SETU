@@ -21,7 +21,6 @@ import ProgressDashboard from './views/progress/ProgressDashboard';
 import PlanningPage from './pages/PlanningPage';
 import ScheduleComparisonGrid from './components/planning/versions/ScheduleComparisonGrid';
 import LaborCountView from './views/labor/LaborCountView';
-import ManagementDashboard from './views/dashboard/ManagementDashboard';
 import EhsProjectDashboard from './views/ehs/EhsProjectDashboard';
 import QualityProjectDashboard from './views/quality/QualityProjectDashboard';
 import ActivityListsPage from './views/quality/ActivityListsPage';
@@ -36,6 +35,16 @@ import SystemLogs from './views/admin/SystemLogs';
 import VendorMappingPage from './pages/VendorMappingPage';
 import ApprovalsPage from './pages/execution/ApprovalsPage';
 import WorkflowDesignerPage from './views/quality/workflow/WorkflowDesignerPage';
+import UserProfilePage from './pages/UserProfilePage';
+import { VendorAccessTemplatesPage } from './pages/admin/VendorAccessTemplatesPage';
+import { VendorUserManagementPage } from './pages/planning/VendorUserManagementPage';
+import DashboardBuilderHome from './views/dashboard-builder/DashboardBuilderHome';
+import DashboardDesigner from './views/dashboard-builder/DashboardDesigner';
+import DashboardViewer from './views/dashboard-builder/DashboardViewer';
+import ReportBuilderHome from './views/dashboard-builder/ReportBuilderHome';
+import ReportDesigner from './views/dashboard-builder/ReportDesigner';
+import ReportViewer from './views/dashboard-builder/ReportViewer';
+import DashboardRouter from './DashboardRouter';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -64,7 +73,7 @@ const AppRoutes = () => {
           <Dashboard />
         </ProtectedRoute>
       }>
-        <Route index element={<ManagementDashboard />} />
+        <Route index element={<DashboardRouter />} />
         <Route path="execution" element={
           <ProtectedRoute permission="EXECUTION.ENTRY.READ">
             <ExecutionDashboard />
@@ -100,9 +109,59 @@ const AppRoutes = () => {
             <TemplateBuilder />
           </ProtectedRoute>
         } />
+        <Route path="admin/vendor-access-templates" element={
+          <ProtectedRoute permission="TEMP_ROLE.VIEW">
+            <VendorAccessTemplatesPage />
+          </ProtectedRoute>
+        } />
         <Route path="admin/logs" element={
           <ProtectedRoute permission="AUDIT.READ">
             <SystemLogs />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/dashboard-builder" element={
+          <ProtectedRoute permission="ADMIN.DASHBOARD.READ">
+            <DashboardBuilderHome />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/dashboard-builder/:id/edit" element={
+          <ProtectedRoute permission="ADMIN.DASHBOARD.UPDATE">
+            <DashboardDesigner />
+          </ProtectedRoute>
+        } />
+        <Route path="viewer" element={
+          <ProtectedRoute>
+            <DashboardViewer />
+          </ProtectedRoute>
+        } />
+        <Route path="viewer/:id" element={
+          <ProtectedRoute>
+            <DashboardViewer />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/reports" element={
+          <ProtectedRoute permission="ADMIN.REPORT.READ">
+            <ReportBuilderHome />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/reports/new" element={
+          <ProtectedRoute permission="ADMIN.REPORT.CREATE">
+            <ReportDesigner />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/reports/:id/edit" element={
+          <ProtectedRoute permission="ADMIN.REPORT.UPDATE">
+            <ReportDesigner />
+          </ProtectedRoute>
+        } />
+        <Route path="admin/reports/:id" element={
+          <ProtectedRoute permission="ADMIN.REPORT.READ">
+            <ReportViewer />
+          </ProtectedRoute>
+        } />
+        <Route path="profile" element={
+          <ProtectedRoute>
+            <UserProfilePage />
           </ProtectedRoute>
         } />
         <Route path="calendars/new" element={
@@ -148,6 +207,11 @@ const AppRoutes = () => {
         <Route path="projects/:projectId/planning" element={
           <ProtectedRoute permission="SCHEDULE.READ">
             <PlanningPage />
+          </ProtectedRoute>
+        } />
+        <Route path="projects/:projectId/planning/temp-users" element={
+          <ProtectedRoute permission="TEMP_USER.VIEW">
+            <VendorUserManagementPage />
           </ProtectedRoute>
         } />
         <Route path="projects/:projectId/planning/compare" element={

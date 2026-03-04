@@ -20,4 +20,4 @@ import { AuditInterceptor } from './audit.interceptor';
   ],
   exports: [AuditService],
 })
-export class AuditModule { }
+export class AuditModule {}

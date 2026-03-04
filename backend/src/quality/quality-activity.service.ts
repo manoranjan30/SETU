@@ -4,11 +4,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, Not } from 'typeorm';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
-import { QualityActivity, QualityActivityStatus } from './entities/quality-activity.entity';
+import {
+  QualityActivity,
+  QualityActivityStatus,
+} from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
-import { ActivityObservation, ActivityObservationStatus } from './entities/activity-observation.entity';
+import {
+  ActivityObservation,
+  ActivityObservationStatus,
+} from './entities/activity-observation.entity';
 import { InspectionApproval } from './entities/inspection-approval.entity';
 import * as crypto from 'crypto';
 
@@ -32,7 +38,7 @@ export interface CreateActivityDto {
   activityName: string;
   description?: string;
   previousActivityId?: number; // Legacy single predecessor
-  predecessorIds?: number[];    // Multi-predecessor support
+  predecessorIds?: number[]; // Multi-predecessor support
   holdPoint?: boolean;
   witnessPoint?: boolean;
   responsibleParty?: string;
@@ -93,7 +99,7 @@ export class QualityActivityService {
     @InjectRepository(InspectionApproval)
     private readonly approvalRepo: Repository<InspectionApproval>,
     private readonly dataSource: DataSource,
-  ) { }
+  ) {}
 
   // ── Lists ──────────────────────────────────────────────────────────────
 
@@ -202,7 +208,10 @@ export class QualityActivityService {
     return saved;
   }
 
-  async assignChecklists(id: number, checklistIds: number[]): Promise<QualityActivity> {
+  async assignChecklists(
+    id: number,
+    checklistIds: number[],
+  ): Promise<QualityActivity> {
     const activity = await this.activityRepo.findOne({ where: { id } });
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
 
@@ -219,12 +228,18 @@ export class QualityActivityService {
     });
   }
 
-  async createObservation(id: number, userId: string, dto: CreateObservationDto): Promise<ActivityObservation> {
+  async createObservation(
+    id: number,
+    userId: string,
+    dto: CreateObservationDto,
+  ): Promise<ActivityObservation> {
     const activity = await this.activityRepo.findOne({ where: { id } });
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
 
     if (activity.status === QualityActivityStatus.APPROVED) {
-      throw new BadRequestException('Cannot add observation to an already approved activity.');
+      throw new BadRequestException(
+        'Cannot add observation to an already approved activity.',
+      );
     }
 
     const obs = this.obsRepo.create({
@@ -246,12 +261,25 @@ export class QualityActivityService {
     return saved;
   }
 
-  async resolveObservation(id: number, obsId: string, userId: string, dto: ResolveObservationDto): Promise<ActivityObservation> {
-    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId: id } });
+  async resolveObservation(
+    id: number,
+    obsId: string,
+    userId: string,
+    dto: ResolveObservationDto,
+  ): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({
+      where: { id: obsId, activityId: id },
+    });
     if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
 
-    if (obs.status === ActivityObservationStatus.RECTIFIED || obs.status === ActivityObservationStatus.CLOSED || obs.status === ActivityObservationStatus.RESOLVED) {
-      throw new BadRequestException('This observation is already rectified or closed.');
+    if (
+      obs.status === ActivityObservationStatus.RECTIFIED ||
+      obs.status === ActivityObservationStatus.CLOSED ||
+      obs.status === ActivityObservationStatus.RESOLVED
+    ) {
+      throw new BadRequestException(
+        'This observation is already rectified or closed.',
+      );
     }
 
     obs.status = ActivityObservationStatus.RECTIFIED;
@@ -270,36 +298,95 @@ export class QualityActivityService {
 
     if (pendingCount === 0) {
       // All observations are at least RECTIFIED, push back to QC
-      await this.activityRepo.update(id, { status: QualityActivityStatus.UNDER_INSPECTION });
+      await this.activityRepo.update(id, {
+        status: QualityActivityStatus.UNDER_INSPECTION,
+      });
     }
 
     return saved;
   }
 
-  async closeObservation(id: number, obsId: string, userId: string): Promise<ActivityObservation> {
-    const obs = await this.obsRepo.findOne({ where: { id: obsId, activityId: id } });
+  async closeObservation(
+    id: number,
+    obsId: string,
+    userId: string,
+  ): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({
+      where: { id: obsId, activityId: id },
+    });
     if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
 
-    if (obs.status !== ActivityObservationStatus.RECTIFIED && obs.status !== ActivityObservationStatus.RESOLVED) {
-      throw new BadRequestException('Only rectified observations can be closed by QC.');
+    if (
+      obs.status !== ActivityObservationStatus.RECTIFIED &&
+      obs.status !== ActivityObservationStatus.RESOLVED
+    ) {
+      throw new BadRequestException(
+        'Only rectified observations can be closed by QC.',
+      );
     }
 
     obs.status = ActivityObservationStatus.CLOSED;
     const saved = await this.obsRepo.save(obs);
 
-    // Again check if all pending are clear...
+    // Check if any more non-closed observations exist for this activity
+    const remainingCount = await this.obsRepo.count({
+      where: {
+        activityId: id,
+        status: Not(ActivityObservationStatus.CLOSED),
+      } as any,
+    });
+
+    if (remainingCount === 0) {
+      await this.activityRepo.update(id, {
+        status: QualityActivityStatus.UNDER_INSPECTION,
+      });
+    }
+
     return saved;
+  }
+
+  async deleteObservation(activityId: number, obsId: string): Promise<void> {
+    const obs = await this.obsRepo.findOne({
+      where: { id: obsId, activityId },
+    });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    await this.obsRepo.remove(obs);
+
+    // Re-check status: if no more pending obs, move back to UNDER_INSPECTION
+    const pendingCount = await this.obsRepo.count({
+      where: { activityId, status: ActivityObservationStatus.PENDING },
+    });
+
+    if (pendingCount === 0) {
+      const activity = await this.activityRepo.findOne({
+        where: { id: activityId },
+      });
+      if (
+        activity &&
+        activity.status === QualityActivityStatus.PENDING_OBSERVATION
+      ) {
+        await this.activityRepo.update(activityId, {
+          status: QualityActivityStatus.UNDER_INSPECTION,
+        });
+      }
+    }
   }
 
   // ── Approval ───────────────────────────────────────────────────────────
 
-  async approveActivity(id: number, dto: ApproveActivityDto): Promise<InspectionApproval> {
+  async approveActivity(
+    id: number,
+    dto: ApproveActivityDto,
+  ): Promise<InspectionApproval> {
     const activity = await this.activityRepo.findOne({ where: { id } });
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
 
     // Guard: prevent double-approval
     if (activity.status === QualityActivityStatus.APPROVED) {
-      throw new BadRequestException('Activity is already approved and digitally locked.');
+      throw new BadRequestException(
+        'Activity is already approved and digitally locked.',
+      );
     }
 
     // Validation: Check pending observations
@@ -308,10 +395,15 @@ export class QualityActivityService {
     });
 
     if (pendingCount > 0) {
-      throw new BadRequestException('Cannot approve activity. There are unresolved observations.');
+      throw new BadRequestException(
+        'Cannot approve activity. There are unresolved observations.',
+      );
     }
 
-    const hash = crypto.createHash('sha256').update(`${id}-${new Date().toISOString()}-${dto.inspectorName}`).digest('hex');
+    const hash = crypto
+      .createHash('sha256')
+      .update(`${id}-${new Date().toISOString()}-${dto.inspectorName}`)
+      .digest('hex');
 
     const approval = this.approvalRepo.create({
       activityId: id,
@@ -334,20 +426,22 @@ export class QualityActivityService {
 
     // Create new edges
     if (predecessorIds.length > 0) {
-      const edges = predecessorIds.map(sourceId => this.edgeRepo.create({
-        sourceId: Number(sourceId),
-        targetId,
-        constraintType: 'HARD'
-      }));
+      const edges = predecessorIds.map((sourceId) =>
+        this.edgeRepo.create({
+          sourceId: Number(sourceId),
+          targetId,
+          constraintType: 'HARD',
+        }),
+      );
       await this.edgeRepo.save(edges);
 
       // Legacy sync: set previousActivityId to the first predecessor
       await this.activityRepo.update(targetId, {
-        previousActivityId: Number(predecessorIds[0])
+        previousActivityId: Number(predecessorIds[0]),
       });
     } else {
       await this.activityRepo.update(targetId, {
-        previousActivityId: null as any
+        previousActivityId: null as any,
       });
     }
   }
@@ -438,12 +532,16 @@ export class QualityActivityService {
   }
 
   /** Clone an existing list to a target project */
-  async cloneList(sourceListId: number, targetProjectId: number): Promise<QualityActivityList> {
+  async cloneList(
+    sourceListId: number,
+    targetProjectId: number,
+  ): Promise<QualityActivityList> {
     const sourceList = await this.listRepo.findOne({
       where: { id: sourceListId },
       relations: ['activities'],
     });
-    if (!sourceList) throw new NotFoundException(`Source list #${sourceListId} not found`);
+    if (!sourceList)
+      throw new NotFoundException(`Source list #${sourceListId} not found`);
 
     // 1. Create newList object
     const newList = this.listRepo.create({
@@ -480,19 +578,21 @@ export class QualityActivityService {
         where: { sourceId: In(oldIds) },
       });
 
-      const newEdges = sourceEdges.map(edge => {
-        const newSourceId = oldToNewMap.get(edge.sourceId);
-        const newTargetId = oldToNewMap.get(edge.targetId);
-        if (newSourceId && newTargetId) {
-          return this.edgeRepo.create({
-            sourceId: newSourceId,
-            targetId: newTargetId,
-            constraintType: edge.constraintType,
-            lagMinutes: edge.lagMinutes,
-          });
-        }
-        return null;
-      }).filter(Boolean);
+      const newEdges = sourceEdges
+        .map((edge) => {
+          const newSourceId = oldToNewMap.get(edge.sourceId);
+          const newTargetId = oldToNewMap.get(edge.targetId);
+          if (newSourceId && newTargetId) {
+            return this.edgeRepo.create({
+              sourceId: newSourceId,
+              targetId: newTargetId,
+              constraintType: edge.constraintType,
+              lagMinutes: edge.lagMinutes,
+            });
+          }
+          return null;
+        })
+        .filter(Boolean);
 
       if (newEdges.length > 0) {
         await this.edgeRepo.save(newEdges as QualitySequenceEdge[]);
@@ -505,7 +605,9 @@ export class QualityActivityService {
         const newId = oldToNewMap.get(act.id);
         const newPrevId = oldToNewMap.get(act.previousActivityId);
         if (newId && newPrevId) {
-          await this.activityRepo.update(newId, { previousActivityId: newPrevId });
+          await this.activityRepo.update(newId, {
+            previousActivityId: newPrevId,
+          });
         }
       }
     }

@@ -13,6 +13,7 @@ import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { MicroScheduleActivity } from '../micro-schedule/entities/micro-schedule-activity.entity';
 import { MicroDailyLog } from '../micro-schedule/entities/micro-daily-log.entity';
 import { MicroQuantityLedger } from '../micro-schedule/entities/micro-quantity-ledger.entity';
+import { EpsNode } from '../eps/eps.entity';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { MicroQuantityLedger } from '../micro-schedule/entities/micro-quantity-l
       MicroScheduleActivity,
       MicroDailyLog,
       MicroQuantityLedger,
+      EpsNode,
     ]),
     BoqModule,
   ],

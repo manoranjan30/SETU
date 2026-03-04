@@ -451,34 +451,32 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     emit(currentState.copyWith(isLoadingChildren: true));
 
     try {
-      // Re-fetch activities for the project
-      final activitiesResponse = await _apiClient.getProjectActivities(currentState.project.id);
-      final allActivities = activitiesResponse
-          .map<Activity>((json) => Activity.fromJson(json))
+      // Re-fetch activities for the CURRENT node — same endpoint as navigation.
+      // (The old code wrongly called getProjectActivities which is deprecated.)
+      final activitiesResponse = await _apiClient
+          .getExecutionReadyActivities(currentState.currentNode.id);
+      final activities = activitiesResponse
+          .map<Activity>(
+              (json) => Activity.fromJson(json as Map<String, dynamic>))
           .toList();
 
-      // Rebuild activity index
-      final activityIndex = <int, List<Activity>>{};
-      for (final activity in allActivities) {
-        if (activity.epsNodeId != null) {
-          activityIndex.putIfAbsent(activity.epsNodeId!, () => []);
-          activityIndex[activity.epsNodeId!]!.add(activity);
-        }
-      }
-
-      // Get activities for current node
-      final nodeActivities = activityIndex[currentState.currentNode.id] ?? [];
+      // Update only this node's slice in the in-memory index
+      final updatedIndex = Map<int, List<Activity>>.from(
+        currentState.activityIndexByEpsNode,
+      )..[currentState.currentNode.id] = activities;
 
       emit(currentState.copyWith(
-        activities: nodeActivities,
-        activityIndexByEpsNode: activityIndex,
+        activities: activities,
+        activityIndexByEpsNode: updatedIndex,
         isLoadingChildren: false,
         isOffline: false,
       ));
     } catch (e) {
+      // Don't flash "Offline" on a transient error — only mark offline if
+      // there's genuinely nothing to show (the list was already empty).
       emit(currentState.copyWith(
         isLoadingChildren: false,
-        isOffline: true,
+        isOffline: currentState.activities.isEmpty,
       ));
     }
   }
@@ -547,12 +545,23 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   }
 
   /// Recursively attaches `children` lists to a node map using the index.
+  /// Children are sorted by: explicit `order` field first, then natural name order.
   Map<String, dynamic> _attachChildrenRecursive(
     Map<String, dynamic> node,
     Map<int, List<Map<String, dynamic>>> childrenByParentId,
   ) {
     final id = node['id'] as int? ?? 0;
-    final children = childrenByParentId[id] ?? [];
+    final children = List<Map<String, dynamic>>.from(
+      childrenByParentId[id] ?? [],
+    );
+    children.sort((a, b) {
+      final aOrder = (a['order'] as num?)?.toInt() ?? 999999;
+      final bOrder = (b['order'] as num?)?.toInt() ?? 999999;
+      if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+      final aName = a['name'] as String? ?? a['label'] as String? ?? '';
+      final bName = b['name'] as String? ?? b['label'] as String? ?? '';
+      return _naturalCompare(aName, bName);
+    });
     return {
       ...node,
       'children': children
@@ -562,6 +571,28 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
               ))
           .toList(),
     };
+  }
+
+  /// Natural string comparison: "Floor 2" < "Floor 10" < "Floor 20".
+  /// Splits strings into runs of digits and non-digits and compares each
+  /// numeric segment numerically, so "10" > "2" rather than "10" < "2".
+  int _naturalCompare(String a, String b) {
+    final regex = RegExp(r'(\d+|\D+)');
+    final aParts = regex.allMatches(a).map((m) => m.group(0)!).toList();
+    final bParts = regex.allMatches(b).map((m) => m.group(0)!).toList();
+    for (int i = 0; i < aParts.length && i < bParts.length; i++) {
+      final ap = aParts[i];
+      final bp = bParts[i];
+      final an = int.tryParse(ap);
+      final bn = int.tryParse(bp);
+      if (an != null && bn != null) {
+        if (an != bn) return an.compareTo(bn);
+      } else {
+        final cmp = ap.compareTo(bp);
+        if (cmp != 0) return cmp;
+      }
+    }
+    return aParts.length.compareTo(bParts.length);
   }
 
   // ---------------------------------------------------------------------------
@@ -642,7 +673,8 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       final cachedNode = nodeById[nodeId]!;
       final children = (childIdsByParent[nodeId] ?? <int>[])
           .map(buildNode)
-          .toList(growable: false);
+          .toList(growable: true)
+          ..sort((a, b) => _naturalCompare(a.name, b.name));
 
       return EpsNode(
         id: cachedNode.id,
@@ -658,7 +690,8 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     // Direct children of the project have parentId == projectId, not null.
     final rootNodes = (childIdsByParent[projectId] ?? <int>[])
         .map(buildNode)
-        .toList(growable: false);
+        .toList(growable: true)
+        ..sort((a, b) => _naturalCompare(a.name, b.name));
 
     final project = Project(
       id: projectId,

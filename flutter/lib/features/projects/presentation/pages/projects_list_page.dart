@@ -7,7 +7,11 @@ import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/module_selection_page.dart';
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart';
+import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
+import 'package:setu_mobile/features/profile/presentation/pages/user_profile_page.dart';
+import 'package:setu_mobile/features/settings/offline_data_page.dart';
 import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart';
+import 'package:setu_mobile/injection_container.dart';
 import 'package:shimmer/shimmer.dart';
 
 class ProjectsListPage extends StatefulWidget {
@@ -53,6 +57,33 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ],
         ),
         actions: [
+          // User profile
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined),
+            tooltip: 'My Profile',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider<ProfileBloc>(
+                    create: (_) => sl<ProfileBloc>(),
+                    child: const UserProfilePage(),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Offline data / download settings
+          IconButton(
+            icon: const Icon(Icons.download_for_offline_outlined),
+            tooltip: 'Offline Data',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OfflineDataPage()),
+              );
+            },
+          ),
           // Sync status indicator
           LiveSyncStatusIndicator(
             onTap: () {
