@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { tempUserService, type TempUser } from '../../services/tempUser.service';
 import { CreateTempUserWizard } from '../../components/temp-user/CreateTempUserWizard';
 
 export const VendorUserManagementPage = () => {
-    // In a real app we'd get this from context or URL
-    const projectId = 1;
+    const { projectId } = useParams();
+    const pId = Number(projectId);
 
     const [users, setUsers] = useState<TempUser[]>([]);
     const [showWizard, setShowWizard] = useState(false);
 
     const loadUsers = async () => {
+        if (!pId) return;
         try {
-            const data = await tempUserService.getTempUsersInProject(projectId);
+            const data = await tempUserService.getTempUsersInProject(pId);
             setUsers(data || []);
         } catch (e) {
             console.error(e);
@@ -20,7 +22,7 @@ export const VendorUserManagementPage = () => {
 
     useEffect(() => {
         loadUsers();
-    }, [projectId]);
+    }, [pId]);
 
     const handleSuspend = async (user: TempUser) => {
         const reason = prompt('Enter suspension reason:');
@@ -76,7 +78,7 @@ export const VendorUserManagementPage = () => {
                                     <div className="text-xs text-gray-400">{u.user.designation}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="text-sm text-gray-900">{u.vendor?.vendorName || '-'}</div>
+                                    <div className="text-sm text-gray-900">{u.vendor?.name || '-'}</div>
                                     <div className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded inline-block mt-1">
                                         WO: {u.workOrder?.woNumber || '-'}
                                     </div>
@@ -125,7 +127,7 @@ export const VendorUserManagementPage = () => {
 
             {showWizard && (
                 <CreateTempUserWizard
-                    projectId={projectId}
+                    projectId={pId}
                     onClose={() => setShowWizard(false)}
                     onSuccess={() => {
                         setShowWizard(false);

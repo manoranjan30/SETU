@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../api/axios';
-import { FileText, Import as ImportIcon, Loader2, Trash2, Eye, Calendar } from 'lucide-react';
+import { FileText, Import as ImportIcon, Loader2, Trash2, Eye, Calendar, PlusCircle, CheckCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import WorkOrderUploadModal from './WorkOrderUploadModal';
 import WorkOrderDetailModal from './WorkOrderDetailModal';
+import WorkOrderManualEntryModal from './WorkOrderManualEntryModal';
 
 import type { WorkOrder } from '../../types/workdoc';
 
@@ -14,6 +15,7 @@ const WorkOrderList: React.FC = () => {
     const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
     const [loading, setLoading] = useState(true);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
     const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
@@ -28,6 +30,16 @@ const WorkOrderList: React.FC = () => {
             toast.error('Failed to load work orders');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleUpdateStatus = async (woId: number, status: string) => {
+        try {
+            await api.post(`/workdoc/work-orders/${woId}/status`, { status });
+            toast.success(`Work Order marked as ${status}`);
+            fetchWorkOrders();
+        } catch (error) {
+            toast.error('Failed to update status');
         }
     };
 
@@ -73,13 +85,22 @@ const WorkOrderList: React.FC = () => {
                     <h2 className="text-2xl font-black text-slate-900 tracking-tight">Work Orders</h2>
                     <p className="text-slate-500 text-sm font-medium">Manage and review SAP imported orders</p>
                 </div>
-                <button
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95"
-                >
-                    <ImportIcon size={20} />
-                    Import SAP Work Order
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setIsManualEntryOpen(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 transition-all shadow-xl shadow-green-100 active:scale-95"
+                    >
+                        <PlusCircle size={20} />
+                        Manual Entry
+                    </button>
+                    <button
+                        onClick={() => setIsUploadModalOpen(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95"
+                    >
+                        <ImportIcon size={20} />
+                        Import SAP Work Order
+                    </button>
+                </div>
             </div>
 
             {workOrders.length === 0 ? (
@@ -101,6 +122,15 @@ const WorkOrderList: React.FC = () => {
                                     <FileText size={24} />
                                 </div>
                                 <div className="flex gap-2">
+                                    {wo.status === 'DRAFT' && (
+                                        <button
+                                            onClick={() => handleUpdateStatus(wo.id, 'ACTIVE')}
+                                            className="p-2 text-orange-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all"
+                                            title="Activate Work Order"
+                                        >
+                                            <CheckCircle size={20} />
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => handleViewDetails(wo.id)}
                                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
@@ -172,6 +202,12 @@ const WorkOrderList: React.FC = () => {
                 onClose={() => setIsDetailModalOpen(false)}
                 workOrder={selectedWO}
                 onRefresh={fetchWorkOrders}
+            />
+
+            <WorkOrderManualEntryModal
+                isOpen={isManualEntryOpen}
+                onClose={() => setIsManualEntryOpen(false)}
+                onSuccess={fetchWorkOrders}
             />
         </div>
     );

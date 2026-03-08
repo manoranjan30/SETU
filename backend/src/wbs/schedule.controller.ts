@@ -9,6 +9,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CpmService } from './cpm.service';
@@ -17,9 +18,15 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { ProjectAssignmentGuard } from '../projects/guards/project-assignment.guard';
+import { ProjectContextGuard } from '../projects/guards/project-context.guard';
 
 @Controller('projects/:projectId/schedule')
-@UseGuards(JwtAuthGuard, ProjectAssignmentGuard, PermissionsGuard)
+@UseGuards(
+  JwtAuthGuard,
+  ProjectContextGuard,
+  ProjectAssignmentGuard,
+  PermissionsGuard,
+)
 export class ScheduleController {
   constructor(
     private readonly cpmService: CpmService,
@@ -28,27 +35,27 @@ export class ScheduleController {
 
   @Get()
   @Permissions('SCHEDULE.READ')
-  async getSchedule(@Param('projectId') projectId: number) {
+  async getSchedule(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.cpmService.getProjectSchedule(projectId);
   }
 
   @Post('calculate')
   @Permissions('SCHEDULE.UPDATE')
-  async calculate(@Param('projectId') projectId: number) {
+  async calculate(@Param('projectId', ParseIntPipe) projectId: number) {
     await this.cpmService.calculateSchedule(projectId);
     return { message: 'Schedule calculated successfully' };
   }
 
   @Post('repair-durations')
   @Permissions('SCHEDULE.UPDATE')
-  async repairDurations(@Param('projectId') projectId: number) {
+  async repairDurations(@Param('projectId', ParseIntPipe) projectId: number) {
     await this.cpmService.repairDurations(projectId);
     return { message: 'Durations repaired successfully' };
   }
 
   @Post('reschedule')
   @Permissions('SCHEDULE.UPDATE')
-  async reschedule(@Param('projectId') projectId: number) {
+  async reschedule(@Param('projectId', ParseIntPipe) projectId: number) {
     await this.cpmService.rescheduleProject(projectId);
     return { message: 'Project rescheduled successfully' };
   }
@@ -57,7 +64,7 @@ export class ScheduleController {
   @Permissions('SCHEDULE.IMPORT')
   @UseInterceptors(FileInterceptor('file'))
   async importSchedule(
-    @Param('projectId') projectId: number,
+    @Param('projectId', ParseIntPipe) projectId: number,
     @UploadedFile(
       new ParseFilePipe({
         validators: [

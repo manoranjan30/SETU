@@ -115,7 +115,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({ projectId }
         for (const file of files) {
             const fd = new FormData();
             fd.append('file', file);
-            const resp = await api.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+            const resp = await api.post('/files/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
             urls.push(resp.data.url);
         }
         return urls;

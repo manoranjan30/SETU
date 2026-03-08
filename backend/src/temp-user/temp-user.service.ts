@@ -33,21 +33,27 @@ export class TempUserService {
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     private readonly projectAssignmentService: ProjectAssignmentService,
-  ) {}
+  ) { }
 
   async getVendorsForProject(projectId: number) {
     const workOrders = await this.workOrderRepo.find({
       where: [
         { projectId, status: 'ACTIVE' },
-        { projectId, status: 'IN_PROGRESS' }, // Or however it's represented
+        { projectId, status: 'IN_PROGRESS' },
+        { projectId, status: 'DRAFT' }, // Add DRAFT for testing/visibility
       ],
       relations: ['vendor'],
     });
 
     const today = new Date();
-    const validWOs = workOrders.filter(
-      (wo) => wo.orderValidityEnd && new Date(wo.orderValidityEnd) >= today,
-    );
+    today.setHours(0, 0, 0, 0); // Start of today
+
+    const validWOs = workOrders.filter((wo) => {
+      if (!wo.orderValidityEnd) return true; // If no validity specified, assume valid
+      const expiry = new Date(wo.orderValidityEnd);
+      expiry.setHours(0, 0, 0, 0); // Compare date part only
+      return expiry >= today;
+    });
 
     const vendorMap = new Map<number, Vendor>();
     for (const wo of validWOs) {
@@ -63,13 +69,19 @@ export class TempUserService {
       where: [
         { vendor: { id: vendorId }, projectId, status: 'ACTIVE' },
         { vendor: { id: vendorId }, projectId, status: 'IN_PROGRESS' },
+        { vendor: { id: vendorId }, projectId, status: 'DRAFT' },
       ],
     });
 
     const today = new Date();
-    return workOrders.filter(
-      (wo) => wo.orderValidityEnd && new Date(wo.orderValidityEnd) >= today,
-    );
+    today.setHours(0, 0, 0, 0);
+
+    return workOrders.filter((wo) => {
+      if (!wo.orderValidityEnd) return true; // If no validity specified, assume valid
+      const expiry = new Date(wo.orderValidityEnd);
+      expiry.setHours(0, 0, 0, 0);
+      return expiry >= today;
+    });
   }
 
   async create(dto: CreateTempUserDto, createdByUserId: number) {
@@ -84,15 +96,24 @@ export class TempUserService {
 
     if (
       !workOrder ||
-      (workOrder.status !== 'ACTIVE' && workOrder.status !== 'IN_PROGRESS')
+      (workOrder.status !== 'ACTIVE' &&
+        workOrder.status !== 'IN_PROGRESS' &&
+        workOrder.status !== 'DRAFT')
     ) {
       throw new BadRequestException('Invalid/inactive Work Order');
     }
-    const expiryDate = new Date(workOrder.orderValidityEnd);
-    if (!workOrder.orderValidityEnd || expiryDate < new Date()) {
-      throw new BadRequestException(
-        'Work order is expired or has no validity end date',
-      );
+    let expiryDate = workOrder.orderValidityEnd
+      ? new Date(workOrder.orderValidityEnd)
+      : null;
+
+    if (expiryDate && expiryDate < new Date()) {
+      throw new BadRequestException('Work order is expired');
+    }
+
+    // Default expiry if none set on Work Order (e.g. 1 year)
+    if (!expiryDate) {
+      expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
     }
 
     // 2. Validate template

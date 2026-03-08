@@ -58,4 +58,4 @@ import { ALL_DATA_SOURCES } from './data-sources';
     QueryExecutorService,
   ],
 })
-export class DashboardBuilderModule { }
+export class DashboardBuilderModule {}

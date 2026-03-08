@@ -15,6 +15,7 @@ import { WbsNode } from '../wbs/entities/wbs.entity';
 import { ScheduleVersion } from './entities/schedule-version.entity';
 import { ActivityRelationship } from '../wbs/entities/activity-relationship.entity';
 import { WbsModule } from '../wbs/wbs.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ActivityVersion } from './entities/activity-version.entity';
 import { ScheduleVersionService } from './schedule-version.service';
 import { SchedulingEngineService } from './scheduling-engine.service';
@@ -38,6 +39,7 @@ import { ImportExportService } from './import-export.service';
       ActivityVersion,
     ]),
     WbsModule,
+    NotificationsModule,
   ],
   controllers: [PlanningController],
   providers: [

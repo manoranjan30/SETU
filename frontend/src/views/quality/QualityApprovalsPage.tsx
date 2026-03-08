@@ -315,7 +315,7 @@ export default function QualityApprovalsPage() {
         formData.append('file', file);
 
         try {
-            const res = await api.post('/upload', formData, {
+            const res = await api.post('/files/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setCurrentPhotos(prev => [...prev, res.data.url]);

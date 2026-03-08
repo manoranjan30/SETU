@@ -366,10 +366,9 @@ export const DESIGN_PERMISSIONS: PermissionDef[] = [
 
 export const WORKORDER_PERMISSIONS: PermissionDef[] = [
   ...crud('WORKORDER', 'VENDOR', 'Vendor'),
-  perm('WORKORDER.ORDER.READ', 'View Work Orders', 'WORKORDER', R),
-  perm('WORKORDER.ORDER.CREATE', 'Analyse WO PDF', 'WORKORDER', C),
+  ...crud('WORKORDER', 'ORDER', 'Work Order'),
+  perm('WORKORDER.ORDER.CREATE', 'Analyse WO PDF', 'WORKORDER', C), // Keep specialized for clearer UI labels if needed
   perm('WORKORDER.ORDER.IMPORT', 'Import WO Excel', 'WORKORDER', C),
-  perm('WORKORDER.ORDER.DELETE', 'Delete Work Order', 'WORKORDER', D),
   perm('WORKORDER.MAPPING.READ', 'View Mapping Suggestions', 'WORKORDER', R),
   perm('WORKORDER.MAPPING.MANAGE', 'Manage WO-BOQ Mapping', 'WORKORDER', S),
   perm('WORKORDER.TEMPLATE.MANAGE', 'Manage WO Templates', 'WORKORDER', S),

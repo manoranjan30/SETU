@@ -227,7 +227,7 @@ export default function InspectionRequestPage() {
         formData.append('file', file);
 
         try {
-            const res = await api.post('/upload', formData, {
+            const res = await api.post('/files/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setClosurePhotos(prev => ({

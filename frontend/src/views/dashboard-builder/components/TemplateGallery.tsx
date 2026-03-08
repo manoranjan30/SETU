@@ -69,6 +69,12 @@ export default function TemplateGallery({ onApply }: Props) {
         }
     };
 
+    const handleTemplateClick = async () => {
+        if (!selectedTemplate) return;
+        
+        onApply(selectedTemplate);
+    };
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div style={{ padding: '0 0 24px' }}>
@@ -136,7 +142,7 @@ export default function TemplateGallery({ onApply }: Props) {
             <div style={{ marginTop: 32, padding: '20px 0', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
                 <button
                     disabled={!selectedTemplate}
-                    onClick={() => selectedTemplate && onApply(selectedTemplate)}
+                    onClick={handleTemplateClick}
                     style={{
                         padding: '12px 32px', borderRadius: 8, background: selectedTemplate ? '#2563eb' : '#94a3b8',
                         color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, cursor: selectedTemplate ? 'pointer' : 'default',

@@ -140,7 +140,7 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
                                         >
                                             <option value="">-- Choose Vendor --</option>
                                             {vendors.map(v => (
-                                                <option key={v.id} value={v.id}>{v.vendorName}</option>
+                                                <option key={v.id} value={v.id}>{v.name}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -271,7 +271,7 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
                                         <div className="p-4 flex gap-4">
                                             <div className="w-1/3 text-sm text-slate-500">Vendor</div>
                                             <div className="w-2/3 text-sm font-medium text-slate-900">
-                                                {vendors.find(v => String(v.id) === form.vendorId)?.vendorName}
+                                                {vendors.find(v => String(v.id) === form.vendorId)?.name}
                                             </div>
                                         </div>
                                         <div className="p-4 flex gap-4">

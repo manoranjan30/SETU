@@ -671,7 +671,7 @@ export class WorkDocService {
       invoiceTo: woInfo.invoiceTo,
       scopeOfWork: woInfo.scopeOfWork,
       vendor: vendor,
-      status: 'DRAFT',
+      status: 'ACTIVE',
       pdfPath,
       originalFileName,
       totalAmount: items.reduce(

@@ -12,9 +12,9 @@ export { ProjectPortfolioSource } from './project-portfolio.source';
 
 /** All data source provider classes for DI registration */
 export const ALL_DATA_SOURCES = [
-    ActivityListSource,
-    BoqBurnSource,
-    LaborDailySource,
-    ProgressDailySource,
-    ProjectPortfolioSource,
+  ActivityListSource,
+  BoqBurnSource,
+  LaborDailySource,
+  ProgressDailySource,
+  ProjectPortfolioSource,
 ];

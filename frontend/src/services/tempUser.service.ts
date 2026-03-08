@@ -21,7 +21,7 @@ export interface TempUser {
     };
     vendor: {
         id: number;
-        vendorName: string;
+        name: string;
     };
     workOrder: {
         id: number;

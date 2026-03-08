@@ -17,6 +17,7 @@ services:
       DATABASE_NAME: setu_db
       JWT_SECRET: supersecretkey
       PDF_TOOL_URL: http://pdf-tool:8002
+      FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
     volumes:
       - ./backend:/app/backend
       - /app/backend/node_modules

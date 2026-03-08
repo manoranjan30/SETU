@@ -236,6 +236,15 @@ export class WorkDocController {
   async deleteWorkOrder(@Param('woId', ParseIntPipe) woId: number) {
     return this.workService.deleteWorkOrder(woId);
   }
+  
+  @Post('work-orders/:woId/status')
+  @Permissions('WORKORDER.ORDER.UPDATE')
+  async updateWorkOrderStatus(
+    @Param('woId', ParseIntPipe) woId: number,
+    @Body('status') status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED',
+  ) {
+    return this.workService.updateWorkOrderStatus(woId, status);
+  }
 
   // --- Linkage & Pending Board ---
   @Get(':projectId/linkage-data')

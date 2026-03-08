@@ -110,32 +110,56 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ),
         ],
       ),
-      body: BlocConsumer<ProjectBloc, ProjectState>(
-        listener: (context, state) {
-          if (state is ProjectError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: AppColors.error,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        },
-        builder: (context, state) {
-          if (state is ProjectLoading) {
-            return _buildLoadingShimmer();
-          }
+      body: Column(
+        children: [
+          // Role-based pending approvals banner — only visible to approvers
+          BlocBuilder<AuthBloc, AuthState>(
+            builder: (context, authState) {
+              if (authState is! AuthAuthenticated) return const SizedBox.shrink();
+              final user = authState.user;
+              final isQualityApprover =
+                  user.hasPermission('QUALITY.INSPECTION.APPROVE');
+              final isProgressApprover =
+                  user.hasPermission('EXECUTION.ENTRY.APPROVE');
+              if (!isQualityApprover && !isProgressApprover) {
+                return const SizedBox.shrink();
+              }
+              return _PendingApprovalsBanner(
+                showQuality: isQualityApprover,
+                showProgress: isProgressApprover,
+              );
+            },
+          ),
+          Expanded(
+            child: BlocConsumer<ProjectBloc, ProjectState>(
+              listener: (context, state) {
+                if (state is ProjectError) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: AppColors.error,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              builder: (context, state) {
+                if (state is ProjectLoading) {
+                  return _buildLoadingShimmer();
+                }
 
-          if (state is ProjectsLoaded) {
-            if (state.projects.isEmpty) {
-              return _buildEmptyState();
-            }
-            return _buildProjectsList(state.projects);
-          }
+                if (state is ProjectsLoaded) {
+                  if (state.projects.isEmpty) {
+                    return _buildEmptyState();
+                  }
+                  return _buildProjectsList(state.projects);
+                }
 
-          return _buildEmptyState();
-        },
+                return _buildEmptyState();
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -500,6 +524,95 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               ),
             ),
             child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown at the top of the projects list for users who have approval permissions.
+/// Reminds approvers that pending items await action in their projects.
+class _PendingApprovalsBanner extends StatelessWidget {
+  final bool showQuality;
+  final bool showProgress;
+
+  const _PendingApprovalsBanner({
+    required this.showQuality,
+    required this.showProgress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.06),
+        border: const Border(
+          bottom: BorderSide(color: AppColors.divider),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.pending_actions_outlined,
+                  size: 14, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                'You have approval access for:',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.2,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            children: [
+              if (showQuality)
+                _buildChip(
+                  Icons.assignment_outlined,
+                  'Quality Approvals',
+                  Colors.orange,
+                ),
+              if (showProgress)
+                _buildChip(
+                  Icons.bar_chart_outlined,
+                  'Progress Review',
+                  Colors.teal,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

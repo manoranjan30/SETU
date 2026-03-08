@@ -36,7 +36,7 @@ export class CpmService {
     @InjectRepository(WorkWeek)
     private workWeekRepo: Repository<WorkWeek>,
     private dataSource: DataSource,
-  ) {}
+  ) { }
 
   async calculateSchedule(projectId: number): Promise<void> {
     this.logger.log(`Starting CPM Calculation for Project ${projectId}`);
@@ -844,7 +844,7 @@ export class CpmService {
     const activities = await this.activityRepo.find({
       where: { projectId },
       relations: ['schedule', 'wbsNode'],
-      order: { wbsNode: { wbsCode: 'ASC' }, activityCode: 'ASC' },
+      order: { activityCode: 'ASC' },
     });
 
     const relationships = await this.relationshipRepo.find({

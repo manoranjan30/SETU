@@ -503,10 +503,8 @@ class ChecklistItem extends Equatable {
     this.value,
   });
 
-  /// True when marked as PASS or N/A — both satisfy checklist requirements.
-  bool get isOk =>
-      itemStatus == ChecklistItemStatus.pass ||
-      itemStatus == ChecklistItemStatus.na;
+  /// True only when marked as PASS (backend uses this field exclusively).
+  bool get isOk => itemStatus == ChecklistItemStatus.pass;
 
   factory ChecklistItem.fromJson(Map<String, dynamic> json) {
     final template = json['itemTemplate'] as Map<String, dynamic>?;
@@ -702,6 +700,7 @@ class InspectionWorkflowStep extends Equatable {
   final int stepOrder;
   final WorkflowStepStatus status;
   final String? stepLabel;
+  final int? assignedUserId;
   final String? assignedUserName;
   final String? signedBy;
   final String? comments;
@@ -712,6 +711,7 @@ class InspectionWorkflowStep extends Equatable {
     required this.stepOrder,
     required this.status,
     this.stepLabel,
+    this.assignedUserId,
     this.assignedUserName,
     this.signedBy,
     this.comments,
@@ -726,6 +726,7 @@ class InspectionWorkflowStep extends Equatable {
       status: WorkflowStepStatus.fromString(
           json['status'] as String? ?? 'WAITING'),
       stepLabel: node?['label'] as String? ?? node?['name'] as String?,
+      assignedUserId: json['assignedUserId'] as int?,
       assignedUserName: json['assignedUserName'] as String?,
       signedBy: json['signedBy'] as String?,
       comments: json['comments'] as String?,
@@ -739,7 +740,7 @@ class InspectionWorkflowStep extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, stepOrder, status, signedBy, comments];
+      [id, stepOrder, status, assignedUserId, signedBy, comments];
 }
 
 /// The running workflow for an inspection (multi-level approval)
