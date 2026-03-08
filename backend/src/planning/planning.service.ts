@@ -25,6 +25,7 @@ import { WbsNode } from '../wbs/entities/wbs.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { CpmService } from '../wbs/cpm.service';
 import { AuditService } from '../audit/audit.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 @Injectable()
 export class PlanningService {
@@ -53,6 +54,7 @@ export class PlanningService {
     private relRepo: Repository<ActivityRelationship>,
     private cpmService: CpmService,
     private readonly auditService: AuditService,
+    private readonly pushService: PushNotificationService,
   ) {}
 
   async unlinkBoq(
@@ -229,6 +231,17 @@ export class PlanningService {
       where: { projectId },
       relations: ['predecessor', 'successor'],
     });
+  }
+
+  async getProjectSchedule(projectId: number) {
+    const [activities, relationships] = await Promise.all([
+      this.activityRepo.find({
+        where: { projectId },
+        relations: ['wbsNode'],
+      }),
+      this.getProjectRelationships(projectId),
+    ]);
+    return { activities, relationships };
   }
 
   // --- Mapper Logic ---
@@ -413,7 +426,21 @@ export class PlanningService {
     });
     const savedRecord = await this.progressRepo.save(record);
 
-    // 2. Trigger Schedule Recalculation for affected activities
+    // 2. Notify progress approvers (fire-and-forget)
+    this.pushService
+      .sendToPermission(
+        'EXECUTION.ENTRY.APPROVE',
+        'Progress Entry Submitted',
+        `New progress recorded — BOQ item #${savedRecord.boqItemId}`,
+        {
+          type: 'PROGRESS_SUBMITTED',
+          projectId: String(savedRecord.projectId ?? ''),
+          recordId: String(savedRecord.id),
+        },
+      )
+      .catch(() => { /* non-fatal */ });
+
+    // 3. Trigger Schedule Recalculation for affected activities
     await this.recalculateScheduleFromBoq(savedRecord.boqItemId);
 
     return savedRecord;

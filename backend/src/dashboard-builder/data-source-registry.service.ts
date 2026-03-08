@@ -1,4 +1,10 @@
-import { Injectable, OnModuleInit, Logger, Inject, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  Logger,
+  Inject,
+  Optional,
+} from '@nestjs/common';
 import { IDataSource } from './data-sources/base.data-source';
 import { ActivityListSource } from './data-sources/activity-list.source';
 import { BoqBurnSource } from './data-sources/boq-burn.source';
@@ -12,12 +18,18 @@ export class DataSourceRegistryService implements OnModuleInit {
   private sources: Map<string, IDataSource> = new Map();
 
   constructor(
-    @Optional() @Inject(ActivityListSource) private activityList?: ActivityListSource,
+    @Optional()
+    @Inject(ActivityListSource)
+    private activityList?: ActivityListSource,
     @Optional() @Inject(BoqBurnSource) private boqBurn?: BoqBurnSource,
     @Optional() @Inject(LaborDailySource) private laborDaily?: LaborDailySource,
-    @Optional() @Inject(ProgressDailySource) private progressDaily?: ProgressDailySource,
-    @Optional() @Inject(ProjectPortfolioSource) private projectPortfolio?: ProjectPortfolioSource,
-  ) { }
+    @Optional()
+    @Inject(ProgressDailySource)
+    private progressDaily?: ProgressDailySource,
+    @Optional()
+    @Inject(ProjectPortfolioSource)
+    private projectPortfolio?: ProjectPortfolioSource,
+  ) {}
 
   onModuleInit() {
     // Auto-register all injected data sources

@@ -22,7 +22,7 @@ export class DashboardBuilderService {
     private readonly templateRepo: Repository<DashboardTemplate>,
     private readonly registry: DataSourceRegistryService,
     private readonly queryExecutor: QueryExecutorService,
-  ) { }
+  ) {}
 
   // ─── Dashboard CRUD ─────────────────────────────────────────────────────
 
@@ -122,44 +122,80 @@ export class DashboardBuilderService {
 
   // ─── Assignment Operations ──────────────────────────────────────────────
 
-  async assignDashboard(dashboardId: number, dto: Partial<DashboardAssignment>) {
+  async getAllAssignments() {
+    return this.assignmentRepo.find({
+      relations: ['dashboard', 'role', 'user', 'project'],
+    });
+  }
+
+  async saveAssignment(dto: any) {
+    if (dto.dashboardId) {
+      await this.findOne(dto.dashboardId); // verify dashboard exists
+    }
+
+    if (dto.id) {
+      const assignment = await this.assignmentRepo.findOne({ where: { id: dto.id } });
+      if (!assignment) throw new NotFoundException(`Assignment #${dto.id} not found`);
+      Object.assign(assignment, dto);
+      return this.assignmentRepo.save(assignment);
+    }
+
+    const assignment = this.assignmentRepo.create(dto);
+    return this.assignmentRepo.save(assignment);
+  }
+
+  async assignDashboard(
+    dashboardId: number,
+    dto: Partial<DashboardAssignment>,
+  ) {
     await this.findOne(dashboardId);
     const assignment = this.assignmentRepo.create({
       ...dto,
-      dashboard: { id: dashboardId } as any,
+      dashboardId,
     });
     return this.assignmentRepo.save(assignment);
   }
 
   async removeAssignment(assignmentId: number) {
-    const assignment = await this.assignmentRepo.findOneBy({ id: assignmentId });
-    if (!assignment) throw new NotFoundException(`Assignment #${assignmentId} not found`);
+    const assignment = await this.assignmentRepo.findOneBy({
+      id: assignmentId,
+    });
+    if (!assignment)
+      throw new NotFoundException(`Assignment #${assignmentId} not found`);
     return this.assignmentRepo.remove(assignment);
   }
 
-  async getDefaultDashboard(userId: number, roleId: number, projectId?: number) {
+  async getDefaultDashboard(
+    userId: number,
+    roleId: number,
+    projectId?: number,
+  ) {
     // Priority: User-specific > Role-specific > Project default > Global default
-    const qb = this.assignmentRepo.createQueryBuilder('a')
+    const qb = this.assignmentRepo
+      .createQueryBuilder('a')
       .leftJoinAndSelect('a.dashboard', 'd')
       .leftJoinAndSelect('d.widgets', 'w')
       .where('d.isActive = true')
       .orderBy('a.priority', 'ASC');
 
     // Try user-specific first
-    let assignment = await qb.clone()
+    let assignment = await qb
+      .clone()
       .andWhere('a.userId = :uid', { uid: userId })
       .getOne();
 
     if (!assignment) {
       // Try role-specific
-      assignment = await qb.clone()
+      assignment = await qb
+        .clone()
         .andWhere('a.roleId = :rid', { rid: roleId })
         .getOne();
     }
 
     if (!assignment && projectId) {
       // Try project default
-      assignment = await qb.clone()
+      assignment = await qb
+        .clone()
         .andWhere("a.assignmentType = 'DEFAULT_PROJECT'")
         .andWhere('a.projectId = :pid', { pid: projectId })
         .getOne();
@@ -167,7 +203,8 @@ export class DashboardBuilderService {
 
     if (!assignment) {
       // Try global default
-      assignment = await qb.clone()
+      assignment = await qb
+        .clone()
         .andWhere("a.assignmentType = 'DEFAULT_GLOBAL'")
         .getOne();
     }
@@ -182,22 +219,60 @@ export class DashboardBuilderService {
   }
 
   async applyTemplate(templateId: number, userId: number) {
-    const template = await this.templateRepo.findOneBy({ id: templateId });
-    if (!template) throw new NotFoundException(`Template #${templateId} not found`);
+    let template: Partial<DashboardTemplate> | null = null;
+    let isSystemFallback = false;
+
+    // Check virtual memory templates (IDs under 0)
+    if (templateId < 0) {
+      isSystemFallback = true;
+      const SYSTEM_TEMPLATES = {
+        [-1]: {
+            name: 'Construction Overview',
+            description: 'Comprehensive dashboard for project managers covering progress, issues, and budget tracking.',
+            layoutConfig: { cols: 12, rowHeight: 80 },
+            widgetsConfig: []
+        },
+        [-2]: {
+            name: 'Quality Control Metrics',
+            description: 'Track QA/QC approvals, site observations, and defect rates over time.',
+            layoutConfig: { cols: 12, rowHeight: 80 },
+            widgetsConfig: []
+        },
+        [-3]: {
+            name: 'Procurement Strategy & Status',
+            description: 'Overview of purchase orders, supplier performance, and inventory levels.',
+            layoutConfig: { cols: 12, rowHeight: 80 },
+            widgetsConfig: []  
+        },
+        [-4]: {
+            name: 'Financial Health & Budgeting',
+            description: 'Executive view of cashflow, budgets vs actuals, and P&L charts.',
+            layoutConfig: { cols: 12, rowHeight: 80 },
+            widgetsConfig: []
+        }
+      };
+      
+      template = SYSTEM_TEMPLATES[templateId as keyof typeof SYSTEM_TEMPLATES];
+    } else {
+      template = await this.templateRepo.findOneBy({ id: templateId });
+    }
+
+    if (!template)
+      throw new NotFoundException(`Template #${templateId} not found`);
 
     const dashboard = this.dashboardRepo.create({
       name: `${template.name}`,
       description: template.description,
-      layoutConfig: template.layoutConfig,
+      layoutConfig: template.layoutConfig || { cols: 12, rowHeight: 80 },
       scope: 'PROJECT',
       isActive: true,
       createdBy: { id: userId } as any,
     });
     const saved = await this.dashboardRepo.save(dashboard);
 
-    // Create widgets from template config
-    const widgetsConfig = template.widgetsConfig as any[];
-    if (widgetsConfig?.length) {
+    // Create widgets from template config (only if not a fallback or if it has widgets setup)
+    const widgetsConfig = template.widgetsConfig;
+    if (widgetsConfig && widgetsConfig.length) {
       const widgets = widgetsConfig.map((wc) =>
         this.widgetRepo.create({
           dashboard: saved,
@@ -217,7 +292,11 @@ export class DashboardBuilderService {
     return this.findOne(saved.id);
   }
 
-  async saveAsTemplate(dashboardId: number, dto: { name: string; category: string; description?: string }, userId: number) {
+  async saveAsTemplate(
+    dashboardId: number,
+    dto: { name: string; category: string; description?: string },
+    userId: number,
+  ) {
     const dashboard = await this.findOne(dashboardId);
     const template = this.templateRepo.create({
       name: dto.name,

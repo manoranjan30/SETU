@@ -112,7 +112,7 @@ export class PushNotificationService implements OnModuleInit {
         ...(data ? { data } : {}),
         android: {
           notification: {
-            channelId: 'quality_notifications',
+            channelId: 'setu_quality',
             priority: 'high' as const,
           },
         },

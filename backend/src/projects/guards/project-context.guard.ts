@@ -26,9 +26,14 @@ export class ProjectContextGuard implements CanActivate {
       projectId = request.query.projectId;
     }
 
+    // 4. Try Body Param
+    if (!projectId && request.body && request.body.projectId) {
+      projectId = request.body.projectId;
+    }
+
     if (!projectId) {
       throw new BadRequestException(
-        'Project Context Missing: projectId required in Header (x-project-id) or Path/Query',
+        'Project Context Missing: projectId required in Header, Path, Query, or Body',
       );
     }
 

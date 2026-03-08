@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/network/connectivity_banner.dart';
+import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/checklist_item_tile.dart';
@@ -676,6 +677,14 @@ class _ActionBar extends StatelessWidget {
     final useWorkflow = state.hasActiveWorkflow;
     final currentStep = state.workflow?.currentStep;
 
+    // Permission check: only the assigned approver can advance/reject the step
+    final authState = context.read<AuthBloc>().state;
+    final currentUserId =
+        authState is AuthAuthenticated ? authState.user.id : null;
+    final isAssignedApprover = !useWorkflow ||
+        currentStep?.assignedUserId == null ||
+        currentUserId == currentStep?.assignedUserId;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: BoxDecoration(
@@ -691,7 +700,7 @@ class _ActionBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Workflow step hint
+          // Workflow step hint with assignee info
           if (useWorkflow && currentStep != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -702,10 +711,16 @@ class _ActionBar extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Workflow step ${currentStep.stepOrder}: '
-                      '${currentStep.stepLabel ?? "Pending approval"}',
+                      isAssignedApprover
+                          ? 'Step ${currentStep.stepOrder}: '
+                              '${currentStep.stepLabel ?? "Pending approval"}'
+                          : 'Awaiting: ${currentStep.assignedUserName ?? "assigned approver"} '
+                              '(Step ${currentStep.stepOrder})',
                       style: TextStyle(
-                          fontSize: 11, color: Colors.blue.shade700),
+                          fontSize: 11,
+                          color: isAssignedApprover
+                              ? Colors.blue.shade700
+                              : Colors.orange.shade700),
                     ),
                   ),
                 ],
@@ -734,9 +749,11 @@ class _ActionBar extends StatelessWidget {
             children: [
               // Reject (workflow or direct)
               OutlinedButton.icon(
-                onPressed: () => useWorkflow
-                    ? _showWorkflowRejectDialog(context)
-                    : _showRejectDialog(context),
+                onPressed: isAssignedApprover
+                    ? () => useWorkflow
+                        ? _showWorkflowRejectDialog(context)
+                        : _showRejectDialog(context)
+                    : null,
                 icon: const Icon(Icons.cancel_outlined, size: 16),
                 label: const Text('Reject'),
                 style: OutlinedButton.styleFrom(
@@ -761,7 +778,7 @@ class _ActionBar extends StatelessWidget {
               const Spacer(),
               // Approve / Advance workflow step
               FilledButton.icon(
-                onPressed: canApprove
+                onPressed: canApprove && isAssignedApprover
                     ? () => useWorkflow
                         ? _showWorkflowAdvanceDialog(context)
                         : context
@@ -776,8 +793,9 @@ class _ActionBar extends StatelessWidget {
                 ),
                 label: Text(useWorkflow ? 'Advance' : 'Approve'),
                 style: FilledButton.styleFrom(
-                  backgroundColor:
-                      canApprove ? Colors.green.shade700 : null,
+                  backgroundColor: canApprove && isAssignedApprover
+                      ? Colors.green.shade700
+                      : null,
                   textStyle: const TextStyle(fontSize: 12),
                 ),
               ),

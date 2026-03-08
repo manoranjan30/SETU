@@ -77,7 +77,7 @@ const LookAheadView: React.FC = () => {
             if (latestWorking) {
                 sourceLabel = `Revision ${latestWorking.versionCode}${latestWorking.isActive ? ' (Active)' : ''}`;
                 const [actRes, relRes] = await Promise.all([
-                    api.get(`/planning/versions/${latestWorking.id}/activities`),
+                    api.get(`/planning/versions/${latestWorking.id}/activities?projectId=${projectId}`),
                     api.get(`/planning/${projectId}/relationships`)
                 ]);
 

@@ -7,6 +7,7 @@ class User extends Equatable {
   final String email;
   final String fullName;
   final List<String> roles;
+  final List<String> permissions;
   final List<int> projectIds;
   final String? phone;
   final String? designation;
@@ -18,6 +19,7 @@ class User extends Equatable {
     required this.email,
     required this.fullName,
     this.roles = const [],
+    this.permissions = const [],
     this.projectIds = const [],
     this.phone,
     this.designation,
@@ -31,6 +33,10 @@ class User extends Equatable {
       email: json['email'] as String? ?? '',
       fullName: json['fullName'] as String? ?? json['full_name'] as String? ?? '',
       roles: (json['roles'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      permissions: (json['permissions'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
@@ -51,6 +57,7 @@ class User extends Equatable {
       'email': email,
       'fullName': fullName,
       'roles': roles,
+      'permissions': permissions,
       'projectIds': projectIds,
       'phone': phone,
       'designation': designation,
@@ -60,6 +67,9 @@ class User extends Equatable {
 
   /// Check if user has a specific role
   bool hasRole(String role) => roles.contains(role);
+
+  /// Check if user has a specific permission code (e.g. 'QUALITY.INSPECTION.APPROVE')
+  bool hasPermission(String code) => permissions.contains(code);
 
   /// Check if user has any of the specified roles
   bool hasAnyRole(List<String> roleList) =>
@@ -86,6 +96,7 @@ class User extends Equatable {
         email,
         fullName,
         roles,
+        permissions,
         projectIds,
         phone,
         designation,

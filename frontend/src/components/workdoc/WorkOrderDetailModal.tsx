@@ -427,7 +427,17 @@ const WorkOrderDetailModal: React.FC<Props> = ({ isOpen, onClose, workOrder, onU
                     </div>
                     <div>
                         <p className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Details</p>
-                        <p className="text-sm font-bold text-slate-700 mt-1">{workOrder.woNumber}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="text-sm font-bold text-slate-700">{workOrder.woNumber}</p>
+                            <span className={clsx(
+                                "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shadow-sm",
+                                workOrder.status === 'ACTIVE' ? "bg-green-100 text-green-700 border border-green-200" :
+                                workOrder.status === 'DRAFT' ? "bg-orange-100 text-orange-700 border border-orange-200" :
+                                "bg-slate-100 text-slate-600 border border-slate-200"
+                            )}>
+                                {workOrder.status}
+                            </span>
+                        </div>
                         <p className="text-[10px] text-slate-500">{new Date(workOrder.woDate).toLocaleDateString()}</p>
                     </div>
                     <div className="col-span-2">

@@ -18,9 +18,7 @@ import { Permissions } from '../auth/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('dashboard-builder')
 export class DashboardBuilderController {
-  constructor(
-    private readonly service: DashboardBuilderService,
-  ) { }
+  constructor(private readonly service: DashboardBuilderService) {}
 
   // ═══ Static routes MUST come before :id param routes ═══════════════════
 
@@ -90,11 +88,34 @@ export class DashboardBuilderController {
     return this.service.applyTemplate(templateId, req.user.id);
   }
 
+  // ─── Assignments (must be before :id) ───────────────────────────────────
+
+  @Get('assignments')
+  @Permissions('ADMIN.DASHBOARD.READ')
+  getAssignments() {
+    return this.service.getAllAssignments();
+  }
+
+  @Post('assignments')
+  @Permissions('ADMIN.DASHBOARD.UPDATE')
+  saveAssignment(@Body() dto: any) {
+    return this.service.saveAssignment(dto);
+  }
+
+  @Delete('assignments/:id')
+  @Permissions('ADMIN.DASHBOARD.UPDATE')
+  deleteAssignment(@Param('id', ParseIntPipe) id: number) {
+    return this.service.removeAssignment(id);
+  }
+
   // ─── Widget operations (static path before :id) ─────────────────────────
 
   @Patch('widgets/:widgetId')
   @Permissions('ADMIN.DASHBOARD.UPDATE')
-  updateWidget(@Param('widgetId', ParseIntPipe) widgetId: number, @Body() dto: any) {
+  updateWidget(
+    @Param('widgetId', ParseIntPipe) widgetId: number,
+    @Body() dto: any,
+  ) {
     return this.service.updateWidget(widgetId, dto);
   }
 
