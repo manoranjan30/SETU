@@ -3,54 +3,65 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // Primary colors (construction + property tone)
-  static const Color primary = Color(0xFF1F5D8B);
-  static const Color primaryLight = Color(0xFF3C7BAA);
-  static const Color primaryDark = Color(0xFF134264);
-  static const Color accent = Color(0xFFE2A93B);
-  static const Color accentSoft = Color(0xFFF9F1E0);
+  // ── Primary — deep navy (CRED-style premium dark)
+  static const Color primary = Color(0xFF0F3460);
+  static const Color primaryLight = Color(0xFF1A5276);
+  static const Color primaryDark = Color(0xFF091F3C);
 
-  // Secondary colors
-  static const Color secondary = Color(0xFF2E7D6F);
-  static const Color secondaryLight = Color(0xFF4E9E90);
-  static const Color secondaryDark = Color(0xFF1D5B50);
+  // ── Accent — warm gold (construction premium)
+  static const Color accent = Color(0xFFC9912A);
+  static const Color accentSoft = Color(0xFFF8F2E6);
 
-  // Status colors
-  static const Color success = Color(0xFF2E9B62);
-  static const Color warning = Color(0xFFC5851F);
-  static const Color error = Color(0xFFD14C3F);
-  static const Color info = Color(0xFF2F76B7);
+  // ── Secondary — teal
+  static const Color secondary = Color(0xFF0E7490);
+  static const Color secondaryLight = Color(0xFF1A91AE);
+  static const Color secondaryDark = Color(0xFF0A5567);
 
-  // Background colors
-  static const Color background = Color(0xFFF4F6F8);
-  static const Color backgroundDark = Color(0xFF121212);
+  // ── Status
+  static const Color success = Color(0xFF0D8050);
+  static const Color successSoft = Color(0xFFE6F4EE);
+  static const Color warning = Color(0xFFD97706);
+  static const Color warningSoft = Color(0xFFFEF3C7);
+  static const Color error = Color(0xFFDC2626);
+  static const Color errorSoft = Color(0xFFFEE2E2);
+  static const Color info = Color(0xFF1D4ED8);
+  static const Color infoSoft = Color(0xFFEFF6FF);
+
+  // ── Backgrounds
+  static const Color background = Color(0xFFF5F4F0);   // warm cream
+  static const Color backgroundDark = Color(0xFF111111);
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceDark = Color(0xFF1E1E1E);
+  static const Color surfaceVariant = Color(0xFFF0EEE9); // section headers
+  static const Color surfaceDark = Color(0xFF1C1C1E);
 
-  // Text colors
-  static const Color textPrimary = Color(0xFF212121);
-  static const Color textSecondary = Color(0xFF757575);
-  static const Color textHint = Color(0xFF9E9E9E);
-  static const Color textPrimaryDark = Color(0xFFFFFFFF);
-  static const Color textSecondaryDark = Color(0xFFB0B0B0);
+  // ── Text
+  static const Color textPrimary = Color(0xFF111111);
+  static const Color textSecondary = Color(0xFF6B7280);
+  static const Color textHint = Color(0xFFADB5BD);
+  static const Color textPrimaryDark = Color(0xFFF9FAFB);
+  static const Color textSecondaryDark = Color(0xFF9CA3AF);
 
-  // Border and divider
-  static const Color outline = Color(0xFFE0E0E0);
-  static const Color outlineDark = Color(0xFF424242);
-  static const Color divider = Color(0xFFE0E0E0);
-  static const Color dividerDark = Color(0xFF424242);
+  // ── Borders / dividers
+  static const Color outline = Color(0xFFD1D5DB);
+  static const Color outlineDark = Color(0xFF374151);
+  static const Color divider = Color(0xFFEBEBEB);
+  static const Color dividerDark = Color(0xFF2D2D2D);
 
-  // Hint color
-  static const Color hint = Color(0xFF9E9E9E);
+  // ── Hint
+  static const Color hint = Color(0xFFADB5BD);
 
-  // Sync status colors
-  static const Color syncPending = Color(0xFFFF9800);
-  static const Color syncSynced = Color(0xFF4CAF50);
-  static const Color syncFailed = Color(0xFFE53935);
+  // ── Sync status
+  static const Color syncPending = Color(0xFFF59E0B);
+  static const Color syncSynced = Color(0xFF10B981);
+  static const Color syncFailed = Color(0xFFEF4444);
 
-  // Progress status colors
-  static const Color progressNotStarted = Color(0xFF9E9E9E);
-  static const Color progressInProgress = Color(0xFF2196F3);
-  static const Color progressCompleted = Color(0xFF4CAF50);
-  static const Color progressDelayed = Color(0xFFE53935);
+  // ── Progress status
+  static const Color progressNotStarted = Color(0xFF9CA3AF);
+  static const Color progressInProgress = Color(0xFF3B82F6);
+  static const Color progressCompleted = Color(0xFF10B981);
+  static const Color progressDelayed = Color(0xFFEF4444);
+
+  // ── Shadow helper (use with BoxShadow)
+  static const Color shadowColor = Color(0x12000000); // 7% black
+  static const Color shadowColorMd = Color(0x1A000000); // 10% black
 }

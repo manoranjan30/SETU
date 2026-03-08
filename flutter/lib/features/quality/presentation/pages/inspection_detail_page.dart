@@ -7,6 +7,7 @@ import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_
 import 'package:setu_mobile/features/quality/presentation/widgets/checklist_item_tile.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/raise_observation_sheet.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 
 /// QC Inspector detail page for a single inspection.
 /// Shows checklist stages (expandable), observations, and approval actions.
@@ -879,38 +880,7 @@ class _ActionBar extends StatelessWidget {
   }
 
   void _showWorkflowAdvanceDialog(BuildContext context) {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Advance Workflow Step'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Comments (optional)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              context
-                  .read<QualityApprovalBloc>()
-                  .add(AdvanceWorkflowStep(comments: ctrl.text.trim()));
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.green.shade700),
-            child: const Text('Advance'),
-          ),
-        ],
-      ),
-    );
+    SignatureApprovalSheet.show(context);
   }
 
   void _showProvisionalDialog(BuildContext context) {

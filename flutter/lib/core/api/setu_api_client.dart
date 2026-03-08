@@ -473,13 +473,20 @@ class SetuApiClient {
   }
 
   /// POST /quality/inspections/:id/workflow/advance — Approve current step
+  ///
+  /// [signatureData] is required by the backend (base64 PNG or data URI).
+  /// [signedBy] is the approver's display name recorded on the workflow step.
   Future<Map<String, dynamic>> advanceWorkflowStep({
     required int inspectionId,
+    String? signatureData,
+    String? signedBy,
     String? comments,
   }) async {
     final response = await _dio.post(
       ApiEndpoints.advanceWorkflow(inspectionId),
       data: {
+        if (signatureData != null) 'signatureData': signatureData,
+        if (signedBy != null) 'signedBy': signedBy,
         if (comments != null && comments.isNotEmpty) 'comments': comments,
       },
     );

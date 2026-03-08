@@ -56,7 +56,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
               Text(
                 widget.project.name,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withOpacity(0.8),
+                      color: const Color(0xFF6B7280),
                     ),
               ),
             ],

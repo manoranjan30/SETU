@@ -65,7 +65,7 @@ export class WorkOrder {
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalAmount: number;
 
-  @Column({ default: 'DRAFT' })
+  @Column({ default: 'ACTIVE' })
   status: string; // DRAFT, ACTIVE, CLOSED, CANCELLED
 
   @Column({ nullable: true })

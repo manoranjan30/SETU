@@ -23,21 +23,21 @@ class AppDimensions {
   static const double radiusXL = 24.0;
   static const double radiusFull = 999.0;
 
-  // Card
-  static const double cardRadius = 12.0;
-  static const double cardElevation = 2.0;
+  // Card — larger radius, no border (shadow only)
+  static const double cardRadius = 16.0;
+  static const double cardElevation = 0.0;
   static const double cardPadding = 16.0;
 
-  // Button
-  static const double buttonRadius = 8.0;
+  // Button — pill-shaped
+  static const double buttonRadius = 50.0;
   static const double buttonPaddingHorizontal = 24.0;
-  static const double buttonPaddingVertical = 12.0;
-  static const double buttonHeight = 48.0;
+  static const double buttonPaddingVertical = 14.0;
+  static const double buttonHeight = 52.0;
 
-  // Input
-  static const double inputRadius = 8.0;
+  // Input — slightly rounder than before
+  static const double inputRadius = 12.0;
   static const double inputPaddingHorizontal = 16.0;
-  static const double inputPaddingVertical = 12.0;
+  static const double inputPaddingVertical = 14.0;
   static const double inputHeight = 56.0;
 
   // Icon sizes
