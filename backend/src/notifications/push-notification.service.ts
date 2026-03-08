@@ -4,6 +4,10 @@ import { Repository, In } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { User } from '../users/user.entity';
+import {
+  UserProjectAssignment,
+  AssignmentStatus,
+} from '../projects/entities/user-project-assignment.entity';
 
 @Injectable()
 export class PushNotificationService implements OnModuleInit {
@@ -14,6 +18,8 @@ export class PushNotificationService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
+    @InjectRepository(UserProjectAssignment)
+    private readonly assignmentRepo: Repository<UserProjectAssignment>,
   ) {}
 
   async onModuleInit() {
@@ -75,7 +81,8 @@ export class PushNotificationService implements OnModuleInit {
 
   /**
    * Send a notification to all active users who have a given permissionCode
-   * via any of their roles.
+   * via any of their roles. WARNING: This is GLOBAL (not project-scoped).
+   * Prefer sendToProjectRole() for project-specific notifications.
    */
   async sendToPermission(
     permissionCode: string,
@@ -97,6 +104,73 @@ export class PushNotificationService implements OnModuleInit {
     if (tokens.length === 0) return;
 
     await this._send(tokens, title, body, data);
+  }
+
+  /**
+   * Project-Scoped: Send notification to all ACTIVE users assigned
+   * to a specific project with a specific role.
+   * This ensures notifications never leak across projects.
+   */
+  async sendToProjectRole(
+    projectId: number,
+    roleId: number,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<void> {
+    if (!this.messagingInstance) return;
+
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        project: { id: projectId },
+        status: AssignmentStatus.ACTIVE,
+      },
+      relations: ['user', 'roles'],
+    });
+
+    const matchingUserIds = assignments
+      .filter((a) => a.roles?.some((r) => r.id === roleId))
+      .map((a) => a.user?.id)
+      .filter((id): id is number => !!id);
+
+    if (matchingUserIds.length === 0) {
+      this.logger.debug(
+        `[sendToProjectRole] No users found for project=${projectId}, role=${roleId}`,
+      );
+      return;
+    }
+
+    const users = await this.usersRepo.findBy({ id: In(matchingUserIds) });
+    const tokens = users.map((u) => u.fcmToken).filter((t): t is string => !!t);
+    if (tokens.length === 0) return;
+
+    this.logger.log(
+      `[sendToProjectRole] Sending to ${tokens.length} token(s) for project=${projectId}, role=${roleId}`,
+    );
+    await this._send(tokens, title, body, data);
+  }
+
+  /**
+   * Project-Scoped: Resolve ALL users matching a workflow node's
+   * assigned role within that project and return their user IDs.
+   * Used by InspectionWorkflowService for multi-user approval resolution.
+   */
+  async resolveProjectRoleUsers(
+    projectId: number,
+    roleId: number,
+  ): Promise<number[]> {
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        project: { id: projectId },
+        status: AssignmentStatus.ACTIVE,
+      },
+      relations: ['user', 'roles'],
+    });
+
+    return assignments
+      .filter((a) => a.roles?.some((r) => r.id === roleId))
+      .map((a) => a.user?.id)
+      .filter((id): id is number => !!id);
   }
 
   private async _send(
@@ -131,3 +205,4 @@ export class PushNotificationService implements OnModuleInit {
     }
   }
 }
+

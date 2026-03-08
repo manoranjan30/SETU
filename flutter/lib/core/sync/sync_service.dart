@@ -508,6 +508,8 @@ class SyncService {
           case 'quality_workflow_advance':
             await _apiClient.advanceWorkflowStep(
               inspectionId: payload['inspectionId'] as int,
+              signatureData: payload['signatureData'] as String?,
+              signedBy: payload['signedBy'] as String?,
               comments: payload['comments'] as String?,
             );
             break;

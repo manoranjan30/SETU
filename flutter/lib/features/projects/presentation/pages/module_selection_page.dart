@@ -36,32 +36,32 @@ class ModuleSelectionPage extends StatelessWidget {
           ],
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
-          _ModuleCard(
+          _ModuleRow(
             icon: Icons.timeline_rounded,
             title: 'Progress Reporting',
-            subtitle: 'Report daily activity progress and quantities',
+            subtitle: 'Report daily activity progress',
             color: const Color(0xFF1565C0),
             onTap: () => _navigateToEpsExplorer(context),
           ),
-          const SizedBox(height: 12),
-          _ModuleCard(
+          const Divider(height: 1),
+          _ModuleRow(
             icon: Icons.task_alt_rounded,
             title: 'Quality Request',
-            subtitle: 'Raise Request for Inspection (RFI) — navigate to Floor level',
-            color: Colors.teal.shade700,
+            subtitle: 'Raise RFI — navigate to Floor level',
+            color: const Color(0xFF0E7490),
             onTap: () => _navigateToQualityRequest(context),
           ),
-          const SizedBox(height: 12),
-          _ModuleCard(
+          const Divider(height: 1),
+          _ModuleRow(
             icon: Icons.verified_rounded,
             title: 'Quality Approvals',
-            subtitle: 'Review and approve pending inspection requests',
-            color: Colors.indigo.shade700,
+            subtitle: 'Review and approve inspection requests',
+            color: const Color(0xFF3730A3),
             onTap: () => _navigateToQualityApprovals(context),
           ),
+          const Divider(height: 1),
         ],
       ),
     );
@@ -112,14 +112,14 @@ class ModuleSelectionPage extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 
-class _ModuleCard extends StatelessWidget {
+class _ModuleRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
 
-  const _ModuleCard({
+  const _ModuleRow({
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -129,57 +129,53 @@ class _ModuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: color.withValues(alpha: 0.3)),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 26),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(
+          children: [
+            // Icon circle
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        color: color,
-                      ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 16),
+            // Text
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Color(0xFF111111),
+                      letterSpacing: -0.1,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF6B7280),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded,
-                  color: color.withValues(alpha: 0.7)),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded,
+                color: color.withValues(alpha: 0.6), size: 22),
+          ],
         ),
       ),
     );

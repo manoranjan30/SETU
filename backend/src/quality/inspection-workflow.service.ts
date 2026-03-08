@@ -17,7 +17,10 @@ import {
 } from './entities/inspection-workflow-step.entity';
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
 import { AssignmentMode } from './entities/approval-workflow-node.entity';
-import { UserProjectAssignment } from '../projects/entities/user-project-assignment.entity';
+import {
+  UserProjectAssignment,
+  AssignmentStatus,
+} from '../projects/entities/user-project-assignment.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
 import {
   QualityInspection,
@@ -58,6 +61,7 @@ export class InspectionWorkflowService {
   /**
    * Instantiates a workflow run for a newly created RFI if an Approval Template exists for the project.
    * Resolves ROLE-based assignments to specific users based on Project Teams.
+   * Notifies ALL eligible approvers for step 2 (next after raiser) via project-scoped push.
    */
   async startWorkflowForInspection(
     inspectionId: number,
@@ -87,8 +91,12 @@ export class InspectionWorkflowService {
 
     const savedRun = await this.runRepo.save(run);
 
+    // Fetch ONLY ACTIVE project team members (project-scoped isolation)
     const teamMembers = await this.assignmentRepo.find({
-      where: { project: { id: projectId } },
+      where: {
+        project: { id: projectId },
+        status: AssignmentStatus.ACTIVE,
+      },
       relations: ['user', 'roles'],
     });
 
@@ -96,14 +104,24 @@ export class InspectionWorkflowService {
       let resolvedUserId = node.assignedUserId;
 
       if (node.assignmentMode === AssignmentMode.ROLE && node.assignedRoleId) {
-        const eligibleMember = teamMembers.find((member) =>
+        // Find ALL eligible members with matching role in this project
+        const eligibleMembers = teamMembers.filter((member) =>
           member.roles.some((r) => r.id === node.assignedRoleId),
         );
-        if (eligibleMember) {
-          resolvedUserId = eligibleMember.user.id;
+
+        if (eligibleMembers.length > 0) {
+          // Assign first eligible member as primary (first-come-first-approve)
+          resolvedUserId = eligibleMembers[0].user.id;
+        } else {
+          // No member found for this role — leave as null, admin can delegate
+          console.warn(
+            `[Workflow] No project team member found for role=${node.assignedRoleId} in project=${projectId}. Step ${node.stepOrder} will have no assigned user.`,
+          );
+          resolvedUserId = null;
         }
       }
 
+      // Step 1 is always the raiser
       if (node.stepOrder === 1) {
         resolvedUserId = raiserUserId;
       }
@@ -121,6 +139,34 @@ export class InspectionWorkflowService {
     });
 
     await this.stepRepo.save(steps);
+
+    // Notify ALL eligible approvers for step 2 (the first approval level)
+    const secondNode = template.nodes.find((n) => n.stepOrder === 2);
+    if (secondNode && secondNode.assignmentMode === AssignmentMode.ROLE && secondNode.assignedRoleId) {
+      // Send project-scoped notification to ALL users with this role in this project
+      this.pushService
+        .sendToProjectRole(
+          projectId,
+          secondNode.assignedRoleId,
+          'New RFI Awaiting Approval 📋',
+          `RFI #${inspectionId} has been raised and requires your approval.`,
+          { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
+        )
+        .catch(() => { /* non-fatal */ });
+    } else if (secondNode) {
+      // Direct user assignment — notify that specific user
+      const step2 = steps.find((s) => s.stepOrder === 2);
+      if (step2?.assignedUserId) {
+        this.pushService
+          .sendToUsers(
+            [step2.assignedUserId],
+            'New RFI Awaiting Approval 📋',
+            `RFI #${inspectionId} has been raised and requires your approval.`,
+            { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
+          )
+          .catch(() => { /* non-fatal */ });
+      }
+    }
 
     return this.runRepo.findOne({
       where: { id: savedRun.id },
@@ -252,6 +298,34 @@ export class InspectionWorkflowService {
           await this.inspectionRepo.save(inspection);
         }
       }
+
+      // PROJECT-SCOPED: Notify the next approver(s)
+      // If step is role-based, notify ALL project team members with that role
+      // If step is user-based, notify that specific user
+      const nextNode = nextStep.workflowNode;
+      if (nextNode && nextNode.assignmentMode === AssignmentMode.ROLE && nextNode.assignedRoleId) {
+        const projectId = inspection?.projectId;
+        if (projectId) {
+          this.pushService
+            .sendToProjectRole(
+              projectId,
+              nextNode.assignedRoleId,
+              'Approval Required 📋',
+              `RFI #${inspectionId} is awaiting your approval at Step ${nextStep.stepOrder}.`,
+              { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
+            )
+            .catch(() => { /* non-fatal */ });
+        }
+      } else if (nextStep.assignedUserId) {
+        this.pushService
+          .sendToUsers(
+            [nextStep.assignedUserId],
+            'Approval Required 📋',
+            `RFI #${inspectionId} is awaiting your approval at Step ${nextStep.stepOrder}.`,
+            { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
+          )
+          .catch(() => { /* non-fatal */ });
+      }
     } else {
       run.status = WorkflowRunStatus.COMPLETED;
       isFinal = true;
@@ -265,6 +339,18 @@ export class InspectionWorkflowService {
         inspection.inspectionDate = now.toISOString().split('T')[0];
         inspection.inspectedBy = String(userId);
         await this.inspectionRepo.save(inspection);
+
+        // Notify the RFI raiser that workflow is fully approved
+        if (inspection.requestedById) {
+          this.pushService
+            .sendToUsers(
+              [inspection.requestedById],
+              'RFI Fully Approved ✅',
+              `Your RFI #${inspectionId} has been approved through all workflow levels.`,
+              { inspectionId: String(inspectionId), type: 'APPROVED' },
+            )
+            .catch(() => { /* non-fatal */ });
+        }
       }
     }
 

@@ -114,10 +114,12 @@ class CloseObservation extends QualityApprovalEvent {
 
 /// Approve the current workflow step (multi-level approval)
 class AdvanceWorkflowStep extends QualityApprovalEvent {
+  final String? signatureData; // base64 or data URI — required by backend
+  final String? signedBy;      // approver display name
   final String? comments;
-  const AdvanceWorkflowStep({this.comments});
+  const AdvanceWorkflowStep({this.signatureData, this.signedBy, this.comments});
   @override
-  List<Object?> get props => [comments];
+  List<Object?> get props => [signatureData, signedBy, comments];
 }
 
 /// Reject the inspection via the workflow (multi-level)
@@ -364,6 +366,8 @@ class QualityApprovalBloc
         operation: 'update',
         payload: {
           'inspectionId': current.inspection.id,
+          if (event.signatureData != null) 'signatureData': event.signatureData,
+          if (event.signedBy != null) 'signedBy': event.signedBy,
           if (event.comments != null && event.comments!.isNotEmpty)
             'comments': event.comments,
         },

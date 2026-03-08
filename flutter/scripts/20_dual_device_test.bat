@@ -252,12 +252,14 @@ echo.
 echo  [5/6] Building release APK...
 echo.
 echo         flutter build apk --release
+echo         --target-platform android-arm64
+echo         --split-debug-info=build\debug-info
 echo         --dart-define=SETU_BASE_URL=!BACKEND_URL!
 echo.
-echo         This may take 2-5 minutes on first build...
+echo         This may take 3-8 minutes on first build (arm64-only, faster than full ABI)...
 echo.
 
-call flutter build apk --release --dart-define=SETU_BASE_URL=!BACKEND_URL!
+call flutter build apk --release --target-platform android-arm64 --split-debug-info=build\debug-info --dart-define=SETU_BASE_URL=!BACKEND_URL!
 
 if errorlevel 1 (
   echo.

@@ -28,12 +28,10 @@ class _LoginPageState extends State<LoginPage> {
 
   void _handleLogin() {
     if (_formKey.currentState!.validate()) {
-      context.read<AuthBloc>().add(
-            Login(
-              username: _usernameController.text.trim(),
-              password: _passwordController.text,
-            ),
-          );
+      context.read<AuthBloc>().add(Login(
+            username: _usernameController.text.trim(),
+            password: _passwordController.text,
+          ));
     }
   }
 
@@ -41,39 +39,32 @@ class _LoginPageState extends State<LoginPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.error_outline, color: Colors.red),
+            Icon(Icons.error_outline, color: AppColors.error, size: 20),
             SizedBox(width: 8),
-            Text('Login Failed'),
+            Text('Login Failed', style: TextStyle(fontSize: 17)),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                message,
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                'Troubleshooting Tips:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '- Ensure phone is on same WiFi as server\n'
-                '- Check server is running (docker ps)\n'
-                '- Verify firewall allows the backend port\n'
-                '- Confirm SETU_ENV / SETU_BASE_URL is correct',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-            ],
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Text('Troubleshooting Tips:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 4),
+            const Text(
+              '• Ensure phone is on same WiFi as server\n'
+              '• Check server is running (docker ps)\n'
+              '• Verify firewall allows the backend port',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -88,159 +79,182 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
-          if (state is AuthError) {
-            _showErrorDialog(context, state.message);
-          }
+          if (state is AuthError) _showErrorDialog(context, state.message);
         },
         builder: (context, state) {
           _isLoading = state is AuthLoading;
-
           return SafeArea(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.background, AppColors.accentSoft],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+            child: Column(
+              children: [
+                // Top: brand section (cream bg)
+                Expanded(
+                  flex: 42,
+                  child: Container(
+                    color: AppColors.background,
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.construction_rounded,
+                            size: 30,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'SETU',
+                          style: TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -1.0,
+                            height: 1.0,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Construction Project Management',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppDimensions.paddingLG),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 400),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildHeader(),
-                          const SizedBox(height: 48),
-                          _buildUsernameField(),
-                          const SizedBox(height: 16),
-                          _buildPasswordField(),
-                          const SizedBox(height: 24),
-                          _buildLoginButton(),
-                          const SizedBox(height: 16),
-                          _buildServerInfo(),
-                          const SizedBox(height: 24),
-                          _buildVersionInfo(),
-                        ],
+
+                // Bottom: white card with form
+                Expanded(
+                  flex: 58,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(28)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.shadowColorMd,
+                          blurRadius: 24,
+                          offset: Offset(0, -4),
+                        ),
+                      ],
+                    ),
+                    child: SingleChildScrollView(
+                      padding:
+                          const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Sign in to continue',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Username
+                            TextFormField(
+                              controller: _usernameController,
+                              enabled: !_isLoading,
+                              decoration: const InputDecoration(
+                                labelText: 'Username',
+                                prefixIcon:
+                                    Icon(Icons.person_outline_rounded),
+                              ),
+                              textInputAction: TextInputAction.next,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Required'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Password
+                            TextFormField(
+                              controller: _passwordController,
+                              enabled: !_isLoading,
+                              obscureText: _obscurePassword,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon:
+                                    const Icon(Icons.lock_outline_rounded),
+                                suffixIcon: IconButton(
+                                  icon: Icon(_obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined),
+                                  onPressed: () => setState(
+                                      () => _obscurePassword = !_obscurePassword),
+                                ),
+                              ),
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) => _handleLogin(),
+                              validator: (v) =>
+                                  (v == null || v.isEmpty) ? 'Required' : null,
+                            ),
+                            const SizedBox(height: 28),
+
+                            // Login button
+                            SizedBox(
+                              height: AppDimensions.buttonHeight,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _handleLogin,
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          valueColor: AlwaysStoppedAnimation(
+                                              Colors.white),
+                                        ),
+                                      )
+                                    : const Text('Login'),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Server info
+                            _buildServerInfo(),
+                            const SizedBox(height: 16),
+
+                            const Center(
+                              child: Text(
+                                'Version 1.1.0  ·  © 2026 SETU',
+                                style: TextStyle(
+                                    fontSize: 11, color: AppColors.textHint),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        // Logo placeholder
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(
-            Icons.construction,
-            size: 48,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          'SETU',
-          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Construction Project Management',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUsernameField() {
-    return TextFormField(
-      controller: _usernameController,
-      enabled: !_isLoading,
-      decoration: const InputDecoration(
-        labelText: 'Username',
-        prefixIcon: Icon(Icons.person_outline),
-      ),
-      textInputAction: TextInputAction.next,
-      validator: (value) {
-        if (value == null || value.trim().isEmpty) {
-          return 'Please enter your username';
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildPasswordField() {
-    return TextFormField(
-      controller: _passwordController,
-      enabled: !_isLoading,
-      obscureText: _obscurePassword,
-      decoration: InputDecoration(
-        labelText: 'Password',
-        prefixIcon: const Icon(Icons.lock_outline),
-        suffixIcon: IconButton(
-          icon: Icon(
-            _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-          ),
-          onPressed: () {
-            setState(() {
-              _obscurePassword = !_obscurePassword;
-            });
-          },
-        ),
-      ),
-      textInputAction: TextInputAction.done,
-      onFieldSubmitted: (_) => _handleLogin(),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter your password';
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildLoginButton() {
-    return SizedBox(
-      height: AppDimensions.buttonHeight,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _handleLogin,
-        child: _isLoading
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : const Text('Login'),
       ),
     );
   }
@@ -249,54 +263,20 @@ class _LoginPageState extends State<LoginPage> {
     final uri = Uri.tryParse(ApiEndpoints.baseUrl);
     final host = uri?.host ?? ApiEndpoints.baseUrl;
     final port = uri?.port ?? 0;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.outline),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.dns_outlined, size: 16, color: Colors.grey.shade600),
-              const SizedBox(width: 8),
-              Text(
-                port > 0 ? 'Server: $host:$port' : 'Server: $host',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVersionInfo() {
-    return Column(
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        const Icon(Icons.dns_outlined, size: 13, color: AppColors.textHint),
+        const SizedBox(width: 6),
         Text(
-          'Version 1.1.0',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '(c) 2026 SETU Project Management',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-              ),
+          port > 0 ? '$host:$port' : host,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.textHint,
+            fontFamily: 'monospace',
+          ),
         ),
       ],
     );
   }
 }
-

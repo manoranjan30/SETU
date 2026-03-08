@@ -54,7 +54,7 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
                 ...form,
                 vendorId: Number(form.vendorId),
                 workOrderId: Number(form.workOrderId),
-                projectId,
+                projectId: Number(projectId),
                 templateId: Number(form.templateId),
             });
             setCreatedPassword(res.generatedPassword);

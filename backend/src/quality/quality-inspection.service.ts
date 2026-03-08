@@ -285,24 +285,15 @@ export class QualityInspectionService {
     });
 
     // 9. Start Approval Workflow if template exists
+    // The workflow service handles project-scoped notifications internally —
+    // it notifies ONLY users assigned to THIS project with the matching workflow role.
+    // No separate global notification needed here.
     await this.inspectionWorkflowService.startWorkflowForInspection(
       savedInspection.id,
       activity.listId,
       dto.projectId,
       userId ? parseInt(userId, 10) : 0,
     );
-
-    // 10. Notify QC inspectors of new RFI (fire-and-forget)
-    this.pushService
-      .sendToPermission(
-        'QUALITY.INSPECTION.APPROVE',
-        'New RFI Raised',
-        `Activity: ${activity.activityName} — Seq #${activity.sequence}`,
-        { inspectionId: String(savedInspection.id), type: 'RFI_RAISED' },
-      )
-      .catch(() => {
-        /* non-fatal */
-      });
 
     return this.inspectionRepo.findOne({
       where: { id: savedInspection.id },

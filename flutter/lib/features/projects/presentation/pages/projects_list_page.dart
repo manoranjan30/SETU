@@ -36,23 +36,24 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
         title: Row(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: AppColors.primary,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Center(
                 child: Text(
                   'S',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: Colors.white,
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             const Text('SETU'),
           ],
         ),
@@ -225,18 +226,23 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     final progress = project.progress ?? 0;
     final progressPercent = (progress * 100).toStringAsFixed(0);
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginMD),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
-        side: const BorderSide(color: AppColors.divider),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.shadowColor,
+            blurRadius: 14,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: () {
-          _navigateToModuleSelection(project);
-        },
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
+        child: InkWell(
+        onTap: () => _navigateToModuleSelection(project),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -367,6 +373,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -429,9 +436,11 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       margin: const EdgeInsets.only(bottom: AppDimensions.marginMD),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
-        border: Border.all(color: AppColors.divider),
+        boxShadow: const [
+          BoxShadow(color: AppColors.shadowColor, blurRadius: 14, offset: Offset(0, 3)),
+        ],
       ),
       child: Shimmer.fromColors(
         baseColor: Colors.grey[300]!,
@@ -547,46 +556,40 @@ class _PendingApprovalsBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.06),
-        border: const Border(
+      decoration: const BoxDecoration(
+        color: AppColors.warningSoft,
+        border: Border(
+          left: BorderSide(color: AppColors.warning, width: 4),
           bottom: BorderSide(color: AppColors.divider),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(Icons.pending_actions_outlined,
-                  size: 14, color: AppColors.textSecondary),
-              const SizedBox(width: 6),
-              Text(
-                'You have approval access for:',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.textSecondary,
-                      letterSpacing: 0.2,
-                    ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            children: [
-              if (showQuality)
-                _buildChip(
-                  Icons.assignment_outlined,
-                  'Quality Approvals',
-                  Colors.orange,
+          const Icon(Icons.pending_actions_rounded,
+              size: 16, color: AppColors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  'Approvals pending:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              if (showProgress)
-                _buildChip(
-                  Icons.bar_chart_outlined,
-                  'Progress Review',
-                  Colors.teal,
-                ),
-            ],
+                if (showQuality)
+                  _buildChip(Icons.assignment_outlined, 'Quality',
+                      AppColors.warning),
+                if (showProgress)
+                  _buildChip(Icons.bar_chart_outlined, 'Progress',
+                      AppColors.secondary),
+              ],
+            ),
           ),
         ],
       ),
@@ -595,23 +598,22 @@ class _PendingApprovalsBanner extends StatelessWidget {
 
   Widget _buildChip(IconData icon, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 5),
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
               color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

@@ -242,13 +242,13 @@ export class TempUserService {
     });
     if (
       !workOrder ||
-      (workOrder.status !== 'ACTIVE' && workOrder.status !== 'IN_PROGRESS')
+      (workOrder.status !== 'ACTIVE' && workOrder.status !== 'IN_PROGRESS' && workOrder.status !== 'DRAFT')
     ) {
       throw new BadRequestException('Work order is not active');
     }
 
     if (
-      !workOrder.orderValidityEnd ||
+      workOrder.orderValidityEnd &&
       new Date(workOrder.orderValidityEnd) < new Date()
     ) {
       throw new BadRequestException('Work order is already expired');
