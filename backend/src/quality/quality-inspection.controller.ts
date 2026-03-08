@@ -44,6 +44,12 @@ export class QualityInspectionController {
     return this.service.getInspections(projectId, epsNodeId, listId);
   }
 
+  @Get('active-vendors')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getActiveVendors(@Query('projectId', ParseIntPipe) projectId: number) {
+    return this.service.getActiveVendors(projectId);
+  }
+
   @Get('my-pending')
   @Permissions('QUALITY.INSPECTION.READ')
   getMyPendingInspections(

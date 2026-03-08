@@ -11,6 +11,20 @@ import { ALL_PERMISSIONS } from '../auth/permission-registry';
 import { Role } from '../roles/role.entity';
 import { Permission } from '../permissions/permission.entity';
 
+const TEMP_USER_PERMISSION_ALLOWLIST = new Set<string>([
+  'QUALITY.INSPECTION.RAISE',
+  'QUALITY.INSPECTION.READ',
+  'QUALITY.SITE_OBS.READ',
+  'QUALITY.SITE_OBS.RECTIFY',
+  'QUALITY.DOCUMENT.MANAGE',
+  'QUALITY.CHECKLIST.CREATE',
+  'EXECUTION.ENTRY.CREATE',
+  'EXECUTION.MICRO.CREATE',
+  'PROGRESS.DASHBOARD.READ',
+  'QUALITY.SNAG.READ',
+  'QUALITY.SNAG.UPDATE',
+]);
+
 @Injectable()
 export class TempRoleService {
   constructor(
@@ -23,13 +37,7 @@ export class TempRoleService {
   ) {}
 
   async create(dto: CreateTempRoleDto, userId: number) {
-    // Validate that provided permissions actually exist in the registry
-    const validCodes = ALL_PERMISSIONS.map((p) => p.code);
-    for (const perm of dto.allowedPermissions) {
-      if (!validCodes.includes(perm)) {
-        throw new BadRequestException(`Invalid permission code: ${perm}`);
-      }
-    }
+    this.validateAllowedPermissions(dto.allowedPermissions);
 
     const template = this.repo.create({
       ...dto,
@@ -52,12 +60,7 @@ export class TempRoleService {
     if (!template) throw new NotFoundException('Template not found');
 
     if (dto.allowedPermissions) {
-      const validCodes = ALL_PERMISSIONS.map((p) => p.code);
-      for (const perm of dto.allowedPermissions) {
-        if (!validCodes.includes(perm)) {
-          throw new BadRequestException(`Invalid permission code: ${perm}`);
-        }
-      }
+      this.validateAllowedPermissions(dto.allowedPermissions);
     }
 
     Object.assign(template, dto);
@@ -110,5 +113,20 @@ export class TempRoleService {
     }
 
     await this.roleRepo.save(role);
+  }
+
+  private validateAllowedPermissions(permissionCodes: string[]) {
+    const validCodes = new Set(ALL_PERMISSIONS.map((p) => p.code));
+
+    for (const code of permissionCodes) {
+      if (!validCodes.has(code)) {
+        throw new BadRequestException(`Invalid permission code: ${code}`);
+      }
+      if (!TEMP_USER_PERMISSION_ALLOWLIST.has(code)) {
+        throw new BadRequestException(
+          `Permission not allowed for temporary vendor users: ${code}`,
+        );
+      }
+    }
   }
 }

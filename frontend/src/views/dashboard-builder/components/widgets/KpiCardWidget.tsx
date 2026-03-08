@@ -11,10 +11,18 @@ export default function KpiCardWidget({ data, widget }: Props) {
         return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: 12 }}>No data</div>;
     }
 
-    const firstNumericKey = Object.keys(data[0]).find(
+    const configuredField = widget?.queryConfig?.valueField as string | undefined;
+    const firstNumericKey = configuredField || Object.keys(data[0]).find(
         (k) => typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])),
     );
-    const value = firstNumericKey ? data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0) : data.length;
+    const aggregation = widget?.queryConfig?.aggregation || 'SUM';
+    const value = firstNumericKey
+        ? aggregation === 'COUNT'
+            ? data.length
+            : aggregation === 'AVG'
+                ? data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0) / Math.max(data.length, 1)
+                : data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0)
+        : data.length;
     const label = widget.displayConfig?.label || firstNumericKey || 'Total';
     const formatted = value >= 1000000
         ? `${(value / 1000000).toFixed(1)}M`

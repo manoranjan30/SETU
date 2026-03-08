@@ -81,4 +81,12 @@ export const tempUserService = {
         const res = await api.put(`/temp-users/${id}/reactivate`);
         return res.data;
     },
+    updateStatus: async (id: number, isActive: boolean) => {
+        const res = await api.put(`/temp-users/${id}/status`, { isActive });
+        return res.data;
+    },
+    resetPassword: async (id: number, password: string) => {
+        const res = await api.put(`/temp-users/${id}/reset-password`, { password });
+        return res.data;
+    },
 };

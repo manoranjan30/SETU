@@ -28,6 +28,10 @@ import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-
 import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
 import { QualityExecutionItem } from './entities/quality-execution-item.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { User } from '../users/user.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
 
 import { QualityInspectionService } from './quality-inspection.service';
 import { QualityInspectionController } from './quality-inspection.controller';
@@ -107,6 +111,10 @@ import { QualityRatingController } from './quality-rating.controller';
       UserProjectAssignment,
       QualityRatingConfig,
       ProjectRating,
+      TempUser,
+      User,
+      Vendor,
+      WorkOrder,
     ]),
   ],
   controllers: [

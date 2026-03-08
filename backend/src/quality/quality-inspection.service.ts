@@ -12,6 +12,10 @@ import {
   QualityInspection,
   InspectionStatus,
 } from './entities/quality-inspection.entity';
+import { User } from '../users/user.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
@@ -36,6 +40,8 @@ export interface CreateInspectionDto {
   comments?: string;
   requestDate?: string;
   signature?: { data: string; role: string; signedBy: string };
+  vendorId?: number;
+  vendorName?: string;
 }
 
 export interface UpdateInspectionStatusDto {
@@ -70,11 +76,47 @@ export class QualityInspectionService {
     private readonly epsNodeRepo: Repository<EpsNode>,
     @InjectRepository(ActivityObservation)
     private readonly observationRepo: Repository<ActivityObservation>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Vendor)
+    private readonly vendorRepo: Repository<Vendor>,
+    @InjectRepository(TempUser)
+    private readonly tempUserRepo: Repository<TempUser>,
+    @InjectRepository(WorkOrder)
+    private readonly workOrderRepo: Repository<WorkOrder>,
     private readonly complianceService: ComplianceService,
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
     private readonly pushService: PushNotificationService,
   ) {}
+
+  async getActiveVendors(projectId: number) {
+    const workOrders = await this.workOrderRepo.find({
+      where: [
+        { projectId, status: 'ACTIVE' },
+        { projectId, status: 'IN_PROGRESS' },
+      ],
+      relations: ['vendor'],
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const validWOs = workOrders.filter((wo) => {
+      if (!wo.orderValidityEnd) return false;
+      const expiry = new Date(wo.orderValidityEnd);
+      expiry.setHours(0, 0, 0, 0);
+      return expiry >= today;
+    });
+
+    const vendorMap = new Map<number, Vendor>();
+    for (const wo of validWOs) {
+      if (wo.vendor && !vendorMap.has(wo.vendor.id)) {
+        vendorMap.set(wo.vendor.id, wo.vendor);
+      }
+    }
+    return Array.from(vendorMap.values());
+  }
 
   async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
     const query = this.inspectionRepo
@@ -128,7 +170,7 @@ export class QualityInspectionService {
     return inspection;
   }
 
-  async create(dto: CreateInspectionDto, userId?: string) {
+  async create(dto: CreateInspectionDto, userId?: number) {
     // 0. EPS Floor-Level Restriction
     const epsNode = await this.epsNodeRepo.findOne({
       where: { id: dto.epsNodeId },
@@ -153,9 +195,6 @@ export class QualityInspectionService {
     if (!activity) throw new NotFoundException('Activity not found');
 
     // 2. Check if there is already a PENDING inspection for this activity at this location
-    // Actually, we should check if there is an OPEN inspection (PENDING/IN_PROGRESS)
-    // Or check if latest is NOT Rejected/Canceled?
-    // Let's stick to checking PENDING for now.
     const existingPending = await this.inspectionRepo.findOne({
       where: {
         activityId: dto.activityId,
@@ -165,8 +204,6 @@ export class QualityInspectionService {
     });
 
     if (existingPending) {
-      // Check if user is trying to update/re-request?
-      // If so, update logic is needed. But for "Create", throwing error is safer.
       throw new BadRequestException(
         'A pending inspection request already exists for this activity at this location.',
       );
@@ -200,18 +237,46 @@ export class QualityInspectionService {
     activity.status = QualityActivityStatus.RFI_RAISED;
     await this.activityRepo.save(activity);
 
-    // 6. Create Inspection
+    // 6. Resolve Vendor Information
+    let finalVendorId = dto.vendorId;
+    let finalVendorName = dto.vendorName;
+
+    if (userId) {
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (user?.isTempUser) {
+        // Auto-capture vendor for temporary users
+        const tempUser = await this.tempUserRepo.findOne({
+          where: { user: { id: userId } },
+          relations: ['vendor'],
+        });
+        if (tempUser?.vendor) {
+          finalVendorId = tempUser.vendor.id;
+          finalVendorName = tempUser.vendor.name;
+        }
+      } else if (dto.vendorId && !finalVendorName) {
+        // Fetch name for manually selected vendor if not provided
+        const vendor = await this.vendorRepo.findOne({
+          where: { id: dto.vendorId },
+        });
+        if (vendor) {
+          finalVendorName = vendor.name;
+        }
+      }
+    }
+
+    // 7. Create Inspection
     const inspection = this.inspectionRepo.create({
       projectId: dto.projectId,
       epsNodeId: dto.epsNodeId,
-      listId: dto.listId, // We trust frontend passed correct listId matching activity? Or fetch from activity?
-      // Better to use activity.listId for consistency
+      listId: activity.listId,
       activityId: dto.activityId,
       sequence: activity.sequence,
       comments: dto.comments,
       requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
       status: InspectionStatus.PENDING,
-      requestedById: userId ? parseInt(userId, 10) : undefined,
+      requestedById: userId,
+      vendorId: finalVendorId,
+      vendorName: finalVendorName,
     });
 
     // Ensure listId matches activity
@@ -261,13 +326,13 @@ export class QualityInspectionService {
               items: items,
               metadata: {
                 timestamp: new Date(),
-                user: dto.signature.signedBy || userId || 'Unknown',
+                user: dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
               },
             });
             const signature = this.signatureRepo.create({
               stageId: savedStage.id,
               role: dto.signature.role || 'Site Engineer',
-              signedBy: dto.signature.signedBy || userId || 'Unknown',
+              signedBy: dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
               signatureData: dto.signature.data,
               lockHash: fingerprint,
               metadata: { timestamp: new Date() },
@@ -292,7 +357,7 @@ export class QualityInspectionService {
       savedInspection.id,
       activity.listId,
       dto.projectId,
-      userId ? parseInt(userId, 10) : 0,
+      userId || 0,
     );
 
     return this.inspectionRepo.findOne({

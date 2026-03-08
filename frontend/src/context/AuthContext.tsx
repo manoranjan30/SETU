@@ -7,6 +7,8 @@ interface User {
     roles: string[];
     permissions: string[];
     project_ids?: number[];
+    isTempUser?: boolean;
+    vendor?: { id: number; name: string };
 }
 
 interface AuthContextType {
@@ -49,7 +51,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!user) return false;
         // Optimization: Admin role bypass
         if (user.roles.includes('Admin')) return true;
-        return user.permissions.includes(permission);
+        
+        // 1. Strict match
+        if (user.permissions.includes(permission)) return true;
+
+        // 2. Modular prefix match (if user has any sub-permission in this module, allow access to parent)
+        // Modular code example: QUALITY.INSPECTION.READ
+        const parts = permission.split('.');
+        if (parts.length > 0) {
+            const prefix = parts[0];
+            return user.permissions.some(p => p.startsWith(prefix + '.'));
+        }
+
+        return false;
     };
 
     return (

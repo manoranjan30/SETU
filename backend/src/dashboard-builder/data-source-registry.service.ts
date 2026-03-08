@@ -11,6 +11,8 @@ import { BoqBurnSource } from './data-sources/boq-burn.source';
 import { LaborDailySource } from './data-sources/labor-daily.source';
 import { ProgressDailySource } from './data-sources/progress-daily.source';
 import { ProjectPortfolioSource } from './data-sources/project-portfolio.source';
+import { ProjectProgressSummarySource } from './data-sources/project-progress-summary.source';
+import { QualityRatingSummarySource } from './data-sources/quality-rating-summary.source';
 
 @Injectable()
 export class DataSourceRegistryService implements OnModuleInit {
@@ -29,6 +31,12 @@ export class DataSourceRegistryService implements OnModuleInit {
     @Optional()
     @Inject(ProjectPortfolioSource)
     private projectPortfolio?: ProjectPortfolioSource,
+    @Optional()
+    @Inject(ProjectProgressSummarySource)
+    private projectProgressSummary?: ProjectProgressSummarySource,
+    @Optional()
+    @Inject(QualityRatingSummarySource)
+    private qualityRatingSummary?: QualityRatingSummarySource,
   ) {}
 
   onModuleInit() {
@@ -39,6 +47,8 @@ export class DataSourceRegistryService implements OnModuleInit {
       this.laborDaily,
       this.progressDaily,
       this.projectPortfolio,
+      this.projectProgressSummary,
+      this.qualityRatingSummary,
     ];
 
     for (const source of builtInSources) {

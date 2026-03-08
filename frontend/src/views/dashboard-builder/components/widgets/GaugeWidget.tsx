@@ -4,12 +4,13 @@ interface Props {
     isDesignMode?: boolean;
 }
 
-export default function GaugeWidget({ data }: Props) {
+export default function GaugeWidget({ data, widget }: Props) {
+    const configuredField = widget?.queryConfig?.valueField as string | undefined;
     const firstNumericKey = data.length
-        ? Object.keys(data[0]).find((k) => typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])))
+        ? configuredField || Object.keys(data[0]).find((k) => typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])))
         : undefined;
     const value = firstNumericKey && data.length
-        ? Number(data[0][firstNumericKey] || 0)
+        ? Number(data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0) / Math.max(data.length, 1))
         : 0;
 
     const percentage = Math.min(Math.max(value, 0), 100);

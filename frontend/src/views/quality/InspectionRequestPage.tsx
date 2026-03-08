@@ -6,8 +6,14 @@ import {
     MessageSquareWarning, CheckCircle2, Camera, X
 } from 'lucide-react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 
 // Reuse types or define local interfaces if shared types file not available
+interface Vendor {
+    id: number;
+    name: string;
+}
+
 interface QualityActivity {
     id: number;
     sequence: number;
@@ -58,6 +64,7 @@ interface EpsNode {
 
 export default function InspectionRequestPage() {
     const { projectId } = useParams();
+    const { user } = useAuth();
     const [epsNodes, setEpsNodes] = useState<EpsNode[]>([]);
     const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
     const [lists, setLists] = useState<ActivityList[]>([]);
@@ -72,6 +79,18 @@ export default function InspectionRequestPage() {
     const [uploading, setUploading] = useState<string | null>(null); // obsId being uploaded for
     const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh
     const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>({});
+    
+    // Vendor selection for RFI
+    const [vendors, setVendors] = useState<Vendor[]>([]);
+    const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+
+    // Load active vendors for internal users
+    useEffect(() => {
+        if (projectId && !user?.isTempUser) {
+            api.get('/quality/inspections/active-vendors', { params: { projectId } })
+                .then(res => setVendors(res.data));
+        }
+    }, [projectId, user]);
 
     // Helper for correct image URLs
     const getFileUrl = (path: string) => {
@@ -197,6 +216,11 @@ export default function InspectionRequestPage() {
     const handleRaiseRFI = async (activity: QualityActivity) => {
         if (!selectedNodeId) return;
 
+        if (!user?.isTempUser && !selectedVendorId) {
+            alert('Please select a vendor before raising an RFI.');
+            return;
+        }
+
         const node = findNodeById(epsNodes, selectedNodeId);
         if (node && node.nodeType && !['FLOOR', 'UNIT', 'ROOM'].includes(node.nodeType)) {
             alert('RFIs can only be raised at the FLOOR, UNIT, or ROOM level. Please drill down to a more specific location.');
@@ -211,6 +235,7 @@ export default function InspectionRequestPage() {
                 listId: selectedListId,
                 activityId: activity.id,
                 comments: 'Requested via Web',
+                vendorId: selectedVendorId
             });
             setRefreshKey(k => k + 1);
         } catch (err: any) {
@@ -391,6 +416,38 @@ export default function InspectionRequestPage() {
                                     <div className="text-2xl font-bold text-indigo-600">
                                         {Math.round((activities.filter(a => activityRows.find(r => r.id === a.id)?.statusState === 'APPROVED').length / (activities.length || 1)) * 100)}%
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* Vendor Selector */}
+                            <div className="mb-8 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-indigo-100 rounded-lg">
+                                        <FileText className="w-5 h-5 text-indigo-600" />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Contractor / Vendor</div>
+                                        <div className="text-sm text-indigo-700/70">Select the party responsible for this execution</div>
+                                    </div>
+                                </div>
+
+                                <div className="w-64">
+                                    {user?.isTempUser ? (
+                                        <div className="bg-white border border-indigo-200 px-3 py-2 rounded-lg text-sm font-semibold text-gray-900 shadow-sm">
+                                            {user?.vendor?.name || 'Assigned Vendor'}
+                                        </div>
+                                    ) : (
+                                        <select
+                                            className="w-full bg-white border border-indigo-200 px-3 py-2 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm cursor-pointer"
+                                            value={selectedVendorId || ''}
+                                            onChange={(e) => setSelectedVendorId(Number(e.target.value) || null)}
+                                        >
+                                            <option value="">Select Vendor...</option>
+                                            {vendors.map(v => (
+                                                <option key={v.id} value={v.id}>{v.name}</option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 

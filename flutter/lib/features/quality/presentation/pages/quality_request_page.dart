@@ -81,6 +81,11 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
+          // Error state — always show a proper error widget instead of a spinner
+          if (state is QualityRequestError && _lastLists == null) {
+            return _buildErrorPanel(context, state.message);
+          }
+
           if (state is EpsTreeLoaded) {
             return Column(
               children: [
@@ -120,6 +125,57 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
 
           return const Center(child: CircularProgressIndicator());
         },
+      ),
+    );
+  }
+
+  Widget _buildErrorPanel(BuildContext context, String message) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 56, color: theme.colorScheme.error),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+              onPressed: () {
+                if (_selectedNode != null) {
+                  context.read<QualityRequestBloc>().add(SelectEpsNode(
+                        projectId: widget.projectId,
+                        epsNodeId: _selectedNode!.id,
+                      ));
+                } else {
+                  context
+                      .read<QualityRequestBloc>()
+                      .add(LoadEpsTree(widget.projectId));
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() => _selectedNode = null);
+                context
+                    .read<QualityRequestBloc>()
+                    .add(LoadEpsTree(widget.projectId));
+              },
+              child: const Text('Change Location'),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -11,15 +11,26 @@ import { User } from './user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcryptjs';
 import { Role } from '../roles/role.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(TempUser)
+    private tempUserRepository: Repository<TempUser>,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
+    const existing = await this.usersRepository.findOneBy({ username: createUserDto.username });
+    if (existing) {
+      if (existing.isTempUser) {
+        throw new ConflictException('This username is already associated with a temporary vendor user.');
+      }
+      throw new ConflictException('Username is already taken.');
+    }
+
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(createUserDto.password, salt);
 
@@ -52,7 +63,10 @@ export class UsersService {
   }
 
   async findAll(): Promise<User[]> {
-    return this.usersRepository.find({ relations: ['roles'] });
+    return this.usersRepository.createQueryBuilder('user')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .where('user.isTempUser = :isTemp OR user.isTempUser IS NULL', { isTemp: false })
+      .getMany();
   }
 
   async update(id: number, updateUserDto: any): Promise<User | null> {
@@ -61,6 +75,10 @@ export class UsersService {
       relations: ['roles'],
     });
     if (!user) return null;
+
+    if (user.isTempUser) {
+      throw new BadRequestException('Cannot modify temporary users through the permanent user management module.');
+    }
 
     if (updateUserDto.password) {
       const salt = await bcrypt.genSalt(10);
@@ -89,7 +107,20 @@ export class UsersService {
       relations: ['roles'],
     });
     if (!user) throw new ForbiddenException('User not found');
+
     const { passwordHash, ...safeUser } = user;
+
+    if (user.isTempUser) {
+      const tempInfo = await this.tempUserRepository.findOne({
+        where: { user: { id: user.id } },
+        relations: ['vendor'],
+      });
+      return {
+        ...safeUser,
+        vendor: tempInfo?.vendor,
+      };
+    }
+
     return safeUser;
   }
 
@@ -178,8 +209,12 @@ export class UsersService {
 
   async remove(id: number): Promise<void> {
     const user = await this.usersRepository.findOneBy({ id });
-    if (user && user.username === 'admin') {
+    if (!user) return;
+    if (user.username === 'admin') {
       throw new ForbiddenException('Cannot delete the Admin user');
+    }
+    if (user.isTempUser) {
+      throw new BadRequestException('Cannot delete temporary users through the permanent user management module.');
     }
     await this.usersRepository.delete(id);
   }

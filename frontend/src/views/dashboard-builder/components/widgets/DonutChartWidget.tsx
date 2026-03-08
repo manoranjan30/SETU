@@ -8,14 +8,16 @@ interface Props {
 
 const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
-export default function DonutChartWidget({ data }: Props) {
+export default function DonutChartWidget({ data, widget }: Props) {
     if (!data.length) {
         return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: 12 }}>No data</div>;
     }
 
     const keys = Object.keys(data[0]);
-    const labelKey = keys.find((k) => typeof data[0][k] === 'string') || keys[0];
-    const valueKey = keys.find((k) => k !== labelKey && (typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])))) || keys[1];
+    const configuredLabel = widget?.queryConfig?.labelField as string | undefined;
+    const configuredValue = widget?.queryConfig?.valueField as string | undefined;
+    const labelKey = configuredLabel || keys.find((k) => typeof data[0][k] === 'string') || keys[0];
+    const valueKey = configuredValue || keys.find((k) => k !== labelKey && (typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])))) || keys[1];
 
     const chartData = data.slice(0, 8).map((row) => ({
         name: String(row[labelKey] || 'N/A').substring(0, 20),

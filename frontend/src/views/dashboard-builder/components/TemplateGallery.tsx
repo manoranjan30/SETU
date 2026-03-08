@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, Info, LayoutTemplate, Briefcase, TrendingUp, AlertCircle, ShoppingCart } from 'lucide-react';
+import { Check, Info, LayoutTemplate, Briefcase, TrendingUp, AlertCircle, ShoppingCart, Crown } from 'lucide-react';
 import { dashboardBuilderApi, type DashboardTemplate } from '../../../services/dashboard-builder.service';
 
 interface Props {
@@ -7,6 +7,13 @@ interface Props {
 }
 
 const SYSTEM_TEMPLATES: DashboardTemplate[] = [
+    {
+        id: -5,
+        name: 'Company Command Center',
+        category: 'Executive',
+        description: 'Beautiful multi-widget executive board for all projects: site progress, cash flow, quality rating, and quality progress.',
+        isSystemTemplate: true
+    },
     {
         id: -1,
         name: 'Construction Overview',
@@ -61,6 +68,7 @@ export default function TemplateGallery({ onApply }: Props) {
 
     const getIcon = (category: string) => {
         switch (category) {
+            case 'Executive': return <Crown size={20} color="#7c3aed" />;
             case 'Operations': return <Briefcase size={20} color="#2563eb" />;
             case 'Quality': return <AlertCircle size={20} color="#dc2626" />;
             case 'Procurement': return <ShoppingCart size={20} color="#10b981" />;

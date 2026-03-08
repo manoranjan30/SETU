@@ -143,7 +143,7 @@ import { ReportSchedule } from './dashboard-builder/entities/report-schedule.ent
 import { DataSourceMeta } from './dashboard-builder/entities/data-source-meta.entity';
 import { DashboardShareLog } from './dashboard-builder/entities/dashboard-share-log.entity';
 import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.module';
-
+import { NotificationsModule } from './notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -303,6 +303,7 @@ import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.mo
     AuditModule,
     TempUserModule,
     DashboardBuilderModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/api/api_exceptions.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
@@ -252,8 +254,13 @@ class QualityRequestBloc
         projectId: event.projectId,
         epsNodeId: event.epsNodeId,
       ));
-    } catch (_) {
-      // Serve from cache
+    } catch (e) {
+      // Non-network errors must surface immediately — don't fall through to cache.
+      if (_isNonNetworkError(e)) {
+        emit(QualityRequestError(_friendly(e)));
+        return;
+      }
+      // Network / timeout errors → serve from cache
       final cached = await _database.getCachedActivityLists(
           event.projectId, event.epsNodeId);
       if (cached.isNotEmpty) {
@@ -369,8 +376,13 @@ class QualityRequestBloc
         projectId: projectId,
         epsNodeId: epsNodeId,
       ));
-    } catch (_) {
-      // Serve from cache
+    } catch (e) {
+      // Non-network errors must surface immediately — don't fall through to cache.
+      if (_isNonNetworkError(e)) {
+        emit(QualityRequestError(_friendly(e)));
+        return;
+      }
+      // Network / timeout errors → serve from cache
       final cached = await _database.getCachedQualityActivities(list.id);
       if (cached.isNotEmpty) {
         final activities = cached
@@ -536,7 +548,38 @@ class QualityRequestBloc
     }
   }
 
+  /// Unwraps DioException → ApiException (set by _ErrorInterceptor in .error).
+  /// Returns the ApiException if available, otherwise the original error.
+  dynamic _unwrap(dynamic e) {
+    if (e is DioException && e.error is ApiException) return e.error;
+    return e;
+  }
+
+  /// Returns true for errors that should short-circuit cache fallback.
+  bool _isNonNetworkError(dynamic e) {
+    final err = _unwrap(e);
+    return err is ForbiddenException ||
+        err is UnauthorizedException ||
+        err is BadRequestException ||
+        err is ServerErrorException;
+  }
+
   String _friendly(dynamic e) {
+    final err = _unwrap(e);
+    if (err is ForbiddenException) {
+      return 'You do not have permission for this action.';
+    }
+    if (err is UnauthorizedException) {
+      return 'Session expired. Please log in again.';
+    }
+    if (err is BadRequestException) {
+      return err.message.isNotEmpty
+          ? err.message
+          : 'Invalid request. Please check and try again.';
+    }
+    if (err is ServerErrorException) {
+      return 'Server error. Please try again later.';
+    }
     final s = e.toString().toLowerCase();
     if (s.contains('connection') || s.contains('network') || s.contains('socket')) {
       return 'No connection to server. Data saved and will sync when online.';
@@ -545,7 +588,6 @@ class QualityRequestBloc
       return 'You do not have permission for this action.';
     }
     if (s.contains('400') || s.contains('bad request')) {
-      // Try to extract backend message
       final msg = RegExp(r'"message":"([^"]+)"').firstMatch(e.toString());
       return msg?.group(1) ?? 'Invalid request. Please check and try again.';
     }

@@ -108,8 +108,6 @@ if not errorlevel 1 (
       if not errorlevel 1 echo        TCP mode enabled on %%D
     )
   )
-  :: Parse phone IP from TLS device ID (format: adb-SERIAL-HASH...)
-  :: Try to connect via detected IP, fallback to user input
   echo.
 )
 
@@ -157,72 +155,124 @@ echo        Using device: !SELECTED_DEVICE!
 :found_device
 
 :: ===========================================================
-:: STEP 4 - Build Release APK + Install + Whitelist
+:: STEP 4 - Build + Install + Launch
 :: ===========================================================
 echo.
-echo  [4/4] Building Release APK...
 echo        Backend = !BACKEND_URL!
 echo.
 
 call flutter pub get
 echo.
 
-call flutter build apk --release "--dart-define=SETU_BASE_URL=!BACKEND_URL!"
-if errorlevel 1 (
-  echo.
-  echo        Build FAILED. See errors above.
-  pause & exit /b 1
-)
+call :build_apk
+if errorlevel 1 ( pause & exit /b 1 )
 
 :install_only
+call :install_and_launch
 
-:: Install the APK (covers both normal flow and install-only mode)
-echo.
-echo        Installing APK on device...
-adb -s "!SELECTED_DEVICE!" install -r "build\app\outputs\flutter-apk\app-release.apk"
-if errorlevel 1 (
-  echo.
-  echo        Install FAILED. Try uninstalling first:
-  echo          adb uninstall com.example.setu_mobile
-  pause & exit /b 1
-)
-echo        Install SUCCESS.
-
-:: Whitelist the app in Android's network policy
-echo.
-echo        Whitelisting app in Android network policy...
-echo        ^(removes RESTRICT_ALL block that blocks all connections^)
-for /f "tokens=2 delims=:=" %%U in ('adb -s "!SELECTED_DEVICE!" shell "pm list packages --uid 2>/dev/null | grep setu_mobile" 2^>nul') do (
-  set "APP_UID=%%U"
-  set "APP_UID=!APP_UID: =!"
-)
-if defined APP_UID (
-  adb -s "!SELECTED_DEVICE!" shell "cmd netpolicy add restrict-background-whitelist !APP_UID!" >nul 2>&1
-  adb -s "!SELECTED_DEVICE!" shell "cmd netpolicy add app-idle-whitelist !APP_UID!" >nul 2>&1
-  adb -s "!SELECTED_DEVICE!" shell "am set-standby-bucket com.example.setu_mobile active" >nul 2>&1
-  echo        Network policy whitelisted for UID !APP_UID!.
-) else (
-  echo        WARNING: Could not detect app UID. Run manually:
-  echo          adb shell cmd netpolicy add restrict-background-whitelist ^<UID^>
-)
-
-:: Launch the app
-echo.
-echo        Launching SETU Mobile...
-adb -s "!SELECTED_DEVICE!" shell "am start -n com.example.setu_mobile/.MainActivity" >nul 2>&1
-echo        App started!
-
+:: ===========================================================
+:: DONE + QUICK REBUILD LOOP
+:: ===========================================================
 echo.
 echo  ============================================================
 echo    DONE!
-echo    Backend: !BACKEND_URL!
-echo    Device:  !SELECTED_DEVICE!
+echo    Backend : !BACKEND_URL!
+echo    Device  : !SELECTED_DEVICE!
 echo.
 echo    TIP: To make network access permanent on the phone:
 echo         Settings ^> Apps ^> SETU Mobile ^> Battery ^> Unrestricted
 echo.
 echo    To check logs:
-echo      adb -s !SELECTED_DEVICE! logcat | findstr flutter
+echo      adb -s !SELECTED_DEVICE! logcat ^| findstr flutter
 echo  ============================================================
 echo.
-pause
+echo  ============================================================
+echo    QUICK REBUILD  ^(no wizard -- reuses same backend + device^)
+echo      R  =  Rebuild APK + Reinstall
+echo      Any other key  =  Exit this window
+echo  ============================================================
+echo.
+
+:rebuild_loop
+set "RK="
+set /p "RK=  [R = Rebuild+Reinstall  /  other key = Exit]: "
+set "RK=!RK:~0,1!"
+if /i "!RK!"=="R" (
+  echo.
+  echo  -------------------------------------------------------------------
+  echo    Quick Rebuild  ^(backend: !BACKEND_URL!^)
+  echo  -------------------------------------------------------------------
+  echo.
+  call :build_apk
+  if not errorlevel 1 (
+    call :install_and_launch
+    echo.
+    echo    Rebuild complete. Press R to rebuild again or any key to exit.
+    echo.
+  ) else (
+    echo.
+    echo    Build failed. Check error lines above.
+    echo    Fix the issue then press R to try again, or any key to exit.
+    echo.
+  )
+  goto :rebuild_loop
+)
+goto :eof
+
+:: ──────────────────────────────────────────────────────────────
+:: SUBROUTINE: Build APK with animated progress bar
+:: ──────────────────────────────────────────────────────────────
+:build_apk
+echo.
+echo  Building release APK...
+echo.
+echo         Backend : !BACKEND_URL!
+echo         Tip     : First build 3-8 min / Rebuild 1-3 min
+echo.
+
+set "MONITOR=%~dp0_build_monitor.ps1"
+flutter build apk --release --dart-define=SETU_BASE_URL=!BACKEND_URL! 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -File "!MONITOR!"
+
+echo.
+
+if not exist "build\app\outputs\flutter-apk\app-release.apk" (
+  echo.
+  echo  ============================================================
+  echo    BUILD FAILED  -  APK not found. Check error lines above.
+  echo  ============================================================
+  echo.
+  exit /b 1
+)
+echo        APK ready.
+exit /b 0
+
+:: ──────────────────────────────────────────────────────────────
+:: SUBROUTINE: Install APK + whitelist + launch
+:: ──────────────────────────────────────────────────────────────
+:install_and_launch
+echo.
+echo        Installing APK on !SELECTED_DEVICE!...
+adb -s "!SELECTED_DEVICE!" install -r "build\app\outputs\flutter-apk\app-release.apk"
+if errorlevel 1 (
+  echo        Install FAILED. Try:  adb uninstall com.example.setu_mobile
+  exit /b 1
+)
+echo        Install SUCCESS.
+
+:: Whitelist network policy
+for /f "tokens=2 delims=:=" %%U in ('adb -s "!SELECTED_DEVICE!" shell "pm list packages --uid 2>/dev/null | grep setu_mobile" 2^>nul') do (
+  set "APP_UID=%%U" & set "APP_UID=!APP_UID: =!"
+)
+if defined APP_UID (
+  adb -s "!SELECTED_DEVICE!" shell "cmd netpolicy add restrict-background-whitelist !APP_UID!" >nul 2>&1
+  adb -s "!SELECTED_DEVICE!" shell "cmd netpolicy add app-idle-whitelist !APP_UID!" >nul 2>&1
+  adb -s "!SELECTED_DEVICE!" shell "am set-standby-bucket com.example.setu_mobile active" >nul 2>&1
+  echo        Network whitelisted ^(UID !APP_UID!^).
+) else (
+  echo        WARNING: Could not detect UID. Set manually: Settings -^> Apps -^> SETU Mobile -^> Battery -^> Unrestricted
+)
+
+echo        Launching app...
+adb -s "!SELECTED_DEVICE!" shell "am start -n com.example.setu_mobile/.MainActivity" >nul 2>&1
+echo        App started.
+exit /b 0
