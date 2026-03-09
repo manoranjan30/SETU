@@ -8,7 +8,8 @@ import { Repository } from 'typeorm';
 import { MicroQuantityLedger } from './entities/micro-quantity-ledger.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
-import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 
 @Injectable()
 export class MicroLedgerService {
@@ -19,34 +20,35 @@ export class MicroLedgerService {
     private readonly activityRepo: Repository<Activity>,
     @InjectRepository(BoqItem)
     private readonly boqRepo: Repository<BoqItem>,
-    @InjectRepository(BoqActivityPlan)
-    private readonly planRepo: Repository<BoqActivityPlan>,
+    @InjectRepository(WorkOrderItem)
+    private readonly woItemRepo: Repository<WorkOrderItem>,
+    @InjectRepository(WoActivityPlan)
+    private readonly planRepo: Repository<WoActivityPlan>,
   ) {}
 
   /**
-   * Get or create ledger for a parent activity + BOQ combination
+   * Get or create ledger for a parent activity + WO Item combination
+   * (Previously was Activity + BOQ Item)
    */
   async getOrCreateLedger(
     parentActivityId: number,
-    boqItemId: number,
-    workOrderId?: number,
+    workOrderItemId: number,
   ): Promise<MicroQuantityLedger> {
-    // 1. Resolve Planned Quantity for this Activity (Source of Truth)
+    // 1. Resolve Planned Qty from WoActivityPlan (Source of Truth)
     const plans = await this.planRepo.find({
-      where: { activityId: parentActivityId, boqItemId },
+      where: { activityId: parentActivityId, workOrderItemId },
     });
     const totalPlannedQty = plans.reduce(
       (sum, p) => sum + Number(p.plannedQuantity),
       0,
     );
 
-    // Debug
     console.log(
-      `[MicroLedger] Resolved Planned Qty for Activity ${parentActivityId} / BOQ ${boqItemId}: ${totalPlannedQty}`,
+      `[MicroLedger] Resolved Planned Qty for Activity ${parentActivityId} / WO Item ${workOrderItemId}: ${totalPlannedQty}`,
     );
 
     let ledger = await this.ledgerRepo.findOne({
-      where: { parentActivityId, boqItemId },
+      where: { parentActivityId, workOrderItemId },
     });
 
     if (ledger) {
@@ -56,39 +58,38 @@ export class MicroLedgerService {
           `[MicroLedger] Syncing Ledger total from ${ledger.totalParentQty} to ${totalPlannedQty}`,
         );
         ledger.totalParentQty = totalPlannedQty;
-        // Recalculate balance
         ledger.balanceQty =
           Number(ledger.totalParentQty) - Number(ledger.allocatedQty);
         await this.ledgerRepo.save(ledger);
       }
     } else {
-      // Fetch parent activity to get total quantity
       const activity = await this.activityRepo.findOne({
         where: { id: parentActivityId },
       });
-
-      if (!activity) {
+      if (!activity)
         throw new NotFoundException(`Activity ${parentActivityId} not found`);
-      }
 
-      const boqItem = await this.boqRepo.findOne({
-        where: { id: boqItemId },
+      // Fetch WO Item to get vendor and BOQ context
+      const woItem = await this.woItemRepo.findOne({
+        where: { id: workOrderItemId },
+        relations: ['workOrder', 'workOrder.vendor'],
       });
+      if (!woItem)
+        throw new NotFoundException(
+          `Work Order Item ${workOrderItemId} not found`,
+        );
 
-      if (!boqItem) {
-        throw new NotFoundException(`BOQ Item ${boqItemId} not found`);
-      }
-
-      // Create new ledger
       ledger = this.ledgerRepo.create({
         parentActivityId,
-        boqItemId,
-        workOrderId,
-        totalParentQty: totalPlannedQty, // Use resolved planned qty
+        workOrderItemId,
+        workOrderId: woItem.workOrder?.id,
+        vendorId: woItem.workOrder?.vendor?.id,
+        boqItemId: woItem.boqItemId,
+        totalParentQty: totalPlannedQty,
         allocatedQty: 0,
         consumedQty: 0,
         balanceQty: totalPlannedQty,
-        uom: boqItem.uom,
+        uom: woItem.uom || 'NOS',
       });
 
       await this.ledgerRepo.save(ledger);
@@ -102,10 +103,13 @@ export class MicroLedgerService {
    */
   async validateAllocation(
     parentActivityId: number,
-    boqItemId: number,
+    workOrderItemId: number,
     newAllocationQty: number,
   ): Promise<{ allowed: boolean; message?: string; balance?: number }> {
-    const ledger = await this.getOrCreateLedger(parentActivityId, boqItemId);
+    const ledger = await this.getOrCreateLedger(
+      parentActivityId,
+      workOrderItemId,
+    );
 
     const newTotal = Number(ledger.allocatedQty) + Number(newAllocationQty);
     const parentQty = Number(ledger.totalParentQty);
@@ -129,10 +133,13 @@ export class MicroLedgerService {
    */
   async updateAllocatedQty(
     parentActivityId: number,
-    boqItemId: number,
+    workOrderItemId: number,
     deltaQty: number,
   ): Promise<void> {
-    const ledger = await this.getOrCreateLedger(parentActivityId, boqItemId);
+    const ledger = await this.getOrCreateLedger(
+      parentActivityId,
+      workOrderItemId,
+    );
 
     ledger.allocatedQty = Number(ledger.allocatedQty) + Number(deltaQty);
     ledger.balanceQty =
@@ -146,10 +153,13 @@ export class MicroLedgerService {
    */
   async updateConsumedQty(
     parentActivityId: number,
-    boqItemId: number,
+    workOrderItemId: number,
     deltaQty: number,
   ): Promise<void> {
-    const ledger = await this.getOrCreateLedger(parentActivityId, boqItemId);
+    const ledger = await this.getOrCreateLedger(
+      parentActivityId,
+      workOrderItemId,
+    );
 
     ledger.consumedQty = Number(ledger.consumedQty) + Number(deltaQty);
     ledger.lastReconciled = new Date();
@@ -159,57 +169,55 @@ export class MicroLedgerService {
 
   /**
    * Get ledger status for a parent activity
-   * Auto-syncs with Planning module to ensure all planned items are available
-   * Removes Ghost Ledgers (0 planned qty and unused)
+   * Auto-syncs with WoActivityPlan to ensure all planned WO items are available
    */
   async getLedgerStatus(
     parentActivityId: number,
   ): Promise<MicroQuantityLedger[]> {
-    // 1. Fetch all planned items for this activity (with Qty)
+    // 1. Fetch all planned WO Items for this activity
     const plans = await this.planRepo.find({
       where: { activityId: parentActivityId },
-      select: ['boqItemId', 'plannedQuantity'],
+      select: ['workOrderItemId', 'plannedQuantity'],
     });
 
-    // Map for quick lookup
     const planMap = new Map<number, number>();
     plans.forEach((p) => {
-      const current = planMap.get(p.boqItemId) || 0;
-      planMap.set(p.boqItemId, current + Number(p.plannedQuantity));
+      const current = planMap.get(p.workOrderItemId) || 0;
+      planMap.set(p.workOrderItemId, current + Number(p.plannedQuantity));
     });
 
-    // 2. Fetch existing ledgers (Detailed, to check usage)
+    // 2. Fetch existing ledgers
     const existingLedgers = await this.ledgerRepo.find({
       where: { parentActivityId },
     });
 
-    // 3. Sync all items (Unique Set of BOQ IDs)
-    const uniqueBoqIds = [
+    // 3. Sync all items
+    const uniqueWoItemIds = [
       ...new Set([
-        ...plans.map((p) => p.boqItemId),
-        ...existingLedgers.map((l) => l.boqItemId),
+        ...plans.map((p) => p.workOrderItemId),
+        ...existingLedgers
+          .map((l) => l.workOrderItemId)
+          .filter((id) => id != null),
       ]),
     ];
 
-    for (const boqItemId of uniqueBoqIds) {
-      // Check if planned
-      const plannedQty = planMap.get(boqItemId) || 0;
+    for (const woItemId of uniqueWoItemIds) {
+      const plannedQty = planMap.get(woItemId) || 0;
 
       if (plannedQty === 0) {
-        // Try to delete ghost ledger
-        const ledger = existingLedgers.find((l) => l.boqItemId === boqItemId);
+        const ledger = existingLedgers.find(
+          (l) => l.workOrderItemId === woItemId,
+        );
         if (ledger) {
           if (
             Number(ledger.allocatedQty) === 0 &&
             Number(ledger.consumedQty) === 0
           ) {
-            // Unused ghost -> DELETE
             console.log(
-              `[MicroLedger] Deleting Ghost Ledger for Activity ${parentActivityId} / BOQ ${boqItemId}`,
+              `[MicroLedger] Deleting Ghost Ledger for Activity ${parentActivityId} / WO Item ${woItemId}`,
             );
             await this.ledgerRepo.remove(ledger);
           } else {
-            // Used ghost -> Update to 0
             if (Number(ledger.totalParentQty) !== 0) {
               ledger.totalParentQty = 0;
               ledger.balanceQty = -Number(ledger.allocatedQty);
@@ -218,28 +226,34 @@ export class MicroLedgerService {
           }
         }
       } else {
-        // Valid plan -> Update/Create
-        await this.getOrCreateLedger(parentActivityId, boqItemId);
+        await this.getOrCreateLedger(parentActivityId, woItemId);
       }
     }
 
-    // 4. Return all remaining ledgers
+    // 4. Return all remaining ledgers with relations
     return await this.ledgerRepo.find({
       where: { parentActivityId },
-      relations: ['boqItem', 'parentActivity', 'workOrder'],
+      relations: [
+        'boqItem',
+        'parentActivity',
+        'workOrder',
+        'workOrderItem',
+        'vendor',
+      ],
     });
   }
 
   /**
-   * Reconcile ledger (recalculate from micro activities and daily logs)
+   * Reconcile ledger
    */
   async reconcileLedger(
     parentActivityId: number,
-    boqItemId: number,
+    workOrderItemId: number,
   ): Promise<void> {
-    // This will be implemented when we have micro activities and daily logs
-    // For now, just update the timestamp
-    const ledger = await this.getOrCreateLedger(parentActivityId, boqItemId);
+    const ledger = await this.getOrCreateLedger(
+      parentActivityId,
+      workOrderItemId,
+    );
     ledger.lastReconciled = new Date();
     await this.ledgerRepo.save(ledger);
   }

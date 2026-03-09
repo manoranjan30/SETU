@@ -38,6 +38,7 @@ interface Activity {
     witnessPoint: boolean;
     responsibleParty: string;
     allowBreak: boolean;
+    applicabilityLevel: 'FLOOR' | 'UNIT' | 'ROOM';
     status: string;
     assignedChecklistIds?: number[];
 }
@@ -143,6 +144,11 @@ const SortableRow = ({
                                 })}
                             </div>
                         )}
+                        <div className="mt-1.5">
+                            <span className="inline-flex items-center gap-1 text-xs bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded border border-sky-100 font-medium">
+                                Applicability: {activity.applicabilityLevel || 'FLOOR'}
+                            </span>
+                        </div>
                     </div>
 
                     {/* Responsible Party */}
@@ -245,6 +251,7 @@ const ActivityForm = ({
         witnessPoint: initial?.witnessPoint || false,
         responsibleParty: initial?.responsibleParty || 'Contractor',
         allowBreak: initial?.allowBreak || false,
+        applicabilityLevel: initial?.applicabilityLevel || 'FLOOR',
         assignedChecklistIds: initial?.assignedChecklistIds || [] as number[],
     });
     const [saving, setSaving] = useState(false);
@@ -316,6 +323,18 @@ const ActivityForm = ({
                         <option>Contractor</option>
                         <option>Consultant</option>
                         <option>Client</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Applicability</label>
+                    <select
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+                        value={form.applicabilityLevel}
+                        onChange={e => set('applicabilityLevel', e.target.value)}
+                    >
+                        <option value="FLOOR">Floor Level</option>
+                        <option value="UNIT">Unit Level</option>
+                        <option value="ROOM">Room Level</option>
                     </select>
                 </div>
                 <div className="col-span-2">

@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  Query,
   ParseIntPipe,
 } from '@nestjs/common';
 import { DashboardBuilderService } from './dashboard-builder.service';
@@ -35,20 +36,22 @@ export class DashboardBuilderController {
   }
 
   @Get('my')
-  getMyDashboard(@Request() req: any) {
+  getMyDashboard(@Request() req: any, @Query('projectId') projectId: string) {
+    const pId = projectId ? parseInt(projectId, 10) : undefined;
     return this.service.getDefaultDashboard(
       req.user.id,
-      req.user.roleId,
-      req.user.activeProjectId,
+      req.user.roles,
+      pId,
     );
   }
 
-  @Get('defaults')
-  getDefaults(@Request() req: any) {
+  @Get('defaults/my')
+  getDefaultsMy(@Request() req: any, @Query('projectId') projectId: string) {
+    const pId = projectId ? parseInt(projectId, 10) : undefined;
     return this.service.getDefaultDashboard(
       req.user.id,
-      req.user.roleId,
-      req.user.activeProjectId,
+      req.user.roles,
+      pId,
     );
   }
 

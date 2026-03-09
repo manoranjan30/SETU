@@ -39,11 +39,11 @@ export class MicroActivityService {
       );
     }
 
-    // Validate quantity allocation if BOQ item is linked
-    if (dto.boqItemId) {
+    // Validate quantity allocation if WO item is linked
+    if (dto.workOrderItemId) {
       const validation = await this.ledgerService.validateAllocation(
         dto.parentActivityId,
-        dto.boqItemId,
+        dto.workOrderItemId,
         dto.allocatedQty,
       );
 
@@ -75,7 +75,9 @@ export class MicroActivityService {
       microScheduleId: dto.microScheduleId,
       parentActivityId: dto.parentActivityId,
       boqItemId: dto.boqItemId,
+      workOrderItemId: dto.workOrderItemId,
       workOrderId: dto.workOrderId,
+      vendorId: dto.vendorId, // Pass vendor if available
       epsNodeId: dto.epsNodeId,
       name: dto.name,
       description: dto.description,
@@ -89,10 +91,10 @@ export class MicroActivityService {
     const saved = await this.activityRepo.save(activity);
 
     // Update ledger
-    if (dto.boqItemId) {
+    if (dto.workOrderItemId) {
       await this.ledgerService.updateAllocatedQty(
         dto.parentActivityId,
-        dto.boqItemId,
+        dto.workOrderItemId,
         dto.allocatedQty,
       );
     }
@@ -110,7 +112,9 @@ export class MicroActivityService {
         'microSchedule',
         'parentActivity',
         'boqItem',
+        'workOrderItem',
         'workOrder',
+        'vendor',
         'epsNode',
         'dailyLogs',
       ],
@@ -131,7 +135,7 @@ export class MicroActivityService {
   ): Promise<MicroScheduleActivity[]> {
     return await this.activityRepo.find({
       where: { microScheduleId, deletedAt: IsNull() },
-      relations: ['epsNode', 'boqItem', 'workOrder'],
+      relations: ['epsNode', 'boqItem', 'workOrderItem', 'workOrder', 'vendor'],
       order: { plannedStart: 'ASC' },
     });
   }
@@ -151,14 +155,14 @@ export class MicroActivityService {
     }
 
     // Handle quantity changes
-    if (updates.allocatedQty && activity.boqItemId) {
+    if (updates.allocatedQty && activity.workOrderItemId) {
       const delta =
         Number(updates.allocatedQty) - Number(activity.allocatedQty);
 
       if (delta !== 0) {
         const validation = await this.ledgerService.validateAllocation(
           activity.parentActivityId,
-          activity.boqItemId,
+          activity.workOrderItemId,
           delta,
         );
 
@@ -169,7 +173,7 @@ export class MicroActivityService {
         // Update ledger
         await this.ledgerService.updateAllocatedQty(
           activity.parentActivityId,
-          activity.boqItemId,
+          activity.workOrderItemId,
           delta,
         );
       }
@@ -306,10 +310,10 @@ export class MicroActivityService {
     }
 
     // Update ledger (return allocated quantity)
-    if (activity.boqItemId) {
+    if (activity.workOrderItemId) {
       await this.ledgerService.updateAllocatedQty(
         activity.parentActivityId,
-        activity.boqItemId,
+        activity.workOrderItemId,
         -Number(activity.allocatedQty),
       );
     }

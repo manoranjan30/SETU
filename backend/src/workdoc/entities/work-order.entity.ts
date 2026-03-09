@@ -68,8 +68,24 @@ export class WorkOrder {
   @Column({ default: 'ACTIVE' })
   status: string; // DRAFT, ACTIVE, CLOSED, CANCELLED
 
+  // === WO Reference Fields (External monitoring) ===
+
+  @Column({ type: 'text', nullable: true })
+  woRefText: string; // External WO reference text
+
   @Column({ nullable: true })
-  pdfPath: string; // Path to original file
+  woRefNumber: string; // External WO reference number
+
+  @Column({ type: 'date', nullable: true })
+  woRefDate: Date; // External WO reference date
+
+  // Source: how this WO was created
+  @Column({ default: 'BOQ_DERIVED' })
+  source: string; // 'MANUAL', 'BOQ_DERIVED'
+
+  // Legacy PDF fields (deprecated - kept for migration safety)
+  @Column({ nullable: true })
+  pdfPath: string;
 
   @Column({ nullable: true })
   originalFileName: string;

@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { MENU_CONFIG, type MenuItem } from '../../config/menu';
-import { LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, User } from 'lucide-react';
+import { Bell, Clock, AlertCircle, X, LogOut, ChevronDown, ChevronRight, Database, Layers, Layout, Grid, Box, Users, ShieldAlert, ChevronLeft, CheckCircle, FileText, User } from 'lucide-react';
+import { notificationService, type PendingTasksResponse } from '../../services/notification.service';
+import { useEffect } from 'react';
 
 const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?: number; isCollapsed: boolean }) => {
     const location = useLocation();
@@ -22,17 +24,14 @@ const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?:
     const hasVisibleChildren = visibleChildren.length > 0;
 
     // 3. Final Visibility Decision
+    // If it's a parent/group, it is visible if it has ANY visible sub-item 
+    // OR if its own direct permission matches.
     if (item.children) {
-        // If it's a parent/group, it is visible ONLY if it has visible children
-        // regardless of its own permission (since we treat parents as containers)
-        if (!hasVisibleChildren) return null;
+        if (!hasVisibleChildren && !hasItemPermission) return null;
     } else {
-        // High-level check: access denied if permission exists and user lacks it
+        // If it's a leaf node, strict permission match is required
         if (!hasItemPermission) return null;
     }
-
-    // Double check (redundant but safe)
-    if (item.permission && !hasPermission(item.permission)) return null;
 
     const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
     const paddingLeft = isCollapsed ? 0 : (depth * 16 + 24); // Base padding 24px
@@ -103,11 +102,29 @@ const SidebarItem = ({ item, depth = 0, isCollapsed }: { item: MenuItem; depth?:
 const Sidebar = () => {
     const { user, logout } = useAuth();
     const location = useLocation();
+    const navigate = useNavigate();
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [pendingData, setPendingData] = useState<PendingTasksResponse | null>(null);
+    const [showNotifications, setShowNotifications] = useState(false);
 
     // Extract project ID from path if present
     const match = location.pathname.match(/\/dashboard\/projects\/(\d+)/);
-    const activeProjectId = match ? match[1] : null;
+    const activeProjectId = match ? parseInt(match[1], 10) : undefined;
+
+    useEffect(() => {
+        const fetchPending = async () => {
+            try {
+                const data = await notificationService.getPendingTasks(activeProjectId);
+                setPendingData(data);
+            } catch (err) {
+                console.error('Error fetching notifications:', err);
+            }
+        };
+        fetchPending();
+        // Refresh every 5 mins
+        const interval = setInterval(fetchPending, 5 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, [activeProjectId]);
 
     return (
         <aside className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white shadow-md flex flex-col h-full transition-all duration-300 relative`}>
@@ -234,6 +251,19 @@ const Sidebar = () => {
             </nav>
 
             <div className={`p-4 border-t bg-gray-50 flex flex-col gap-2 ${isCollapsed ? 'items-center' : ''}`}>
+                <button
+                    onClick={() => setShowNotifications(true)}
+                    className={`flex items-center text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors relative ${isCollapsed ? 'p-2' : 'w-full px-4 py-2'}`}
+                    title={isCollapsed ? "Notifications" : ""}
+                >
+                    <Bell className={`w-4 h-4 ${isCollapsed ? '' : 'mr-3'} text-gray-500`} />
+                    {!isCollapsed && <span>Pending Tasks</span>}
+                    {pendingData && pendingData.totalCount > 0 && (
+                        <span className={`absolute ${isCollapsed ? 'top-1 right-1' : 'right-4'} bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.2rem] flex items-center justify-center`}>
+                            {pendingData.totalCount > 9 ? '9+' : pendingData.totalCount}
+                        </span>
+                    )}
+                </button>
                 <Link
                     to="/dashboard/profile"
                     className={`flex items-center text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors ${isCollapsed ? 'p-2' : 'w-full px-4 py-2'}`}
@@ -251,6 +281,71 @@ const Sidebar = () => {
                     {!isCollapsed && <span>Logout</span>}
                 </button>
             </div>
+
+            {/* Notification Slide-out Panel */}
+            {showNotifications && (
+                <div className="fixed inset-0 z-[100] flex justify-end">
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowNotifications(false)} />
+                    <div className="relative w-full max-w-sm bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                        <div className="p-6 border-b flex items-center justify-between bg-blue-600 text-white">
+                            <div>
+                                <h2 className="text-xl font-bold">Pending Tasks</h2>
+                                <p className="text-xs text-blue-100 opacity-80">Action required for these items</p>
+                            </div>
+                            <button onClick={() => setShowNotifications(false)} className="p-2 hover:bg-blue-700 rounded-lg transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+                            {!pendingData || pendingData.items.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-48 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+                                    <CheckCircle size={32} className="mb-2 opacity-50 text-green-500" />
+                                    <p className="text-sm">You are all caught up!</p>
+                                </div>
+                            ) : (
+                                pendingData.items.map((item) => (
+                                    <div 
+                                        key={`${item.type}-${item.id}`} 
+                                        onClick={() => {
+                                            setShowNotifications(false);
+                                            if (item.type.startsWith('RFI')) {
+                                                navigate(`/dashboard/projects/${activeProjectId}/quality`);
+                                            } else {
+                                                navigate(`/dashboard/projects/${activeProjectId}/quality`);
+                                            }
+                                        }}
+                                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-4 hover:border-blue-200 transition-all cursor-pointer group"
+                                    >
+                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                            item.type === 'RFI_APPROVAL' ? 'bg-indigo-50 text-indigo-600' :
+                                            item.type === 'RFI_RAISED' ? 'bg-blue-50 text-blue-600' :
+                                            item.type === 'OBS_CLOSE' ? 'bg-green-50 text-green-600' :
+                                            'bg-orange-50 text-orange-600'
+                                        }`}>
+                                            {item.type.startsWith('RFI') ? <FileText size={20} /> : <AlertCircle size={20} />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="text-sm font-bold text-gray-800 truncate group-hover:text-blue-600">{item.title}</h4>
+                                            <p className="text-xs text-gray-500 truncate mt-1">{item.subtitle}</p>
+                                            <div className="flex items-center mt-2 text-[10px] text-gray-400">
+                                                <Clock size={10} className="mr-1" />
+                                                {new Date(item.date).toLocaleDateString()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="p-6 border-t bg-gray-50 text-center">
+                            <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1">
+                                {pendingData?.totalCount || 0} Total Actions
+                            </p>
+                            <p className="text-[10px] text-gray-400 italic">Latest updates from your project workspace</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </aside>
     );
 };

@@ -65,4 +65,20 @@ export class TempUserController {
   reactivate(@Param('id') id: string, @Request() req) {
     return this.service.reactivate(+id, req.user.id);
   }
+
+  @Put(':id/status')
+  @Permissions('TEMP_USER.SUSPEND')
+  updateStatus(
+    @Param('id') id: string,
+    @Body('isActive') isActive: boolean,
+    @Request() req,
+  ) {
+    return this.service.updateStatus(+id, isActive, req.user.id);
+  }
+
+  @Put(':id/reset-password')
+  @Permissions('TEMP_USER.CREATE') // Same permission as create usually implies editing
+  resetPassword(@Param('id') id: string, @Body('password') password: string) {
+    return this.service.adminResetPassword(+id, password);
+  }
 }

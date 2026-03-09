@@ -152,9 +152,9 @@ const WorkOrderBoqLinkage: React.FC<Props> = ({ workOrder, onRefresh }) => {
                                     )}
                                 </div>
                             </div>
-                            <h4 className="text-sm font-bold text-slate-800 line-clamp-1">{item.shortText}</h4>
+                            <h4 className="text-sm font-bold text-slate-800 line-clamp-1">{item.description}</h4>
                             <div className="mt-2 flex items-center justify-between">
-                                <span className="text-xs text-slate-500">{item.quantity} {item.uom} @ ₹{item.rate}</span>
+                                <span className="text-xs text-slate-500">{item.allocatedQty} {item.uom} @ ₹{item.rate}</span>
                                 {selectedWoItem?.id === item.id && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); saveMapping(item.id); }}

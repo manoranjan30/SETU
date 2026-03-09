@@ -12,9 +12,14 @@ import {
   QualityInspection,
   InspectionStatus,
 } from './entities/quality-inspection.entity';
+import { User } from '../users/user.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
+import { QualityFloorStructure } from './entities/quality-floor-structure.entity';
 import {
   QualityInspectionStage,
   StageStatus,
@@ -23,6 +28,7 @@ import { QualityExecutionItem } from './entities/quality-execution-item.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import { QualityActivityStatus } from './entities/quality-activity.entity';
+import { QualityApplicabilityLevel } from './entities/quality-activity.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
@@ -33,9 +39,16 @@ export interface CreateInspectionDto {
   epsNodeId: number;
   listId: number;
   activityId: number;
+  qualityUnitId?: number;
+  qualityRoomId?: number;
+  partNo?: number;
+  totalParts?: number;
+  partLabel?: string;
   comments?: string;
   requestDate?: string;
   signature?: { data: string; role: string; signedBy: string };
+  vendorId?: number;
+  vendorName?: string;
 }
 
 export interface UpdateInspectionStatusDto {
@@ -58,6 +71,8 @@ export class QualityInspectionService {
     private readonly listRepo: Repository<QualityActivityList>,
     @InjectRepository(QualityChecklistTemplate)
     private readonly checklistTemplateRepo: Repository<QualityChecklistTemplate>,
+    @InjectRepository(QualityFloorStructure)
+    private readonly floorStructureRepo: Repository<QualityFloorStructure>,
     @InjectRepository(QualityInspectionStage)
     private readonly stageRepo: Repository<QualityInspectionStage>,
     @InjectRepository(QualityExecutionItem)
@@ -70,11 +85,47 @@ export class QualityInspectionService {
     private readonly epsNodeRepo: Repository<EpsNode>,
     @InjectRepository(ActivityObservation)
     private readonly observationRepo: Repository<ActivityObservation>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Vendor)
+    private readonly vendorRepo: Repository<Vendor>,
+    @InjectRepository(TempUser)
+    private readonly tempUserRepo: Repository<TempUser>,
+    @InjectRepository(WorkOrder)
+    private readonly workOrderRepo: Repository<WorkOrder>,
     private readonly complianceService: ComplianceService,
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
     private readonly pushService: PushNotificationService,
   ) {}
+
+  async getActiveVendors(projectId: number) {
+    const workOrders = await this.workOrderRepo.find({
+      where: [
+        { projectId, status: 'ACTIVE' },
+        { projectId, status: 'IN_PROGRESS' },
+      ],
+      relations: ['vendor'],
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const validWOs = workOrders.filter((wo) => {
+      if (!wo.orderValidityEnd) return false;
+      const expiry = new Date(wo.orderValidityEnd);
+      expiry.setHours(0, 0, 0, 0);
+      return expiry >= today;
+    });
+
+    const vendorMap = new Map<number, Vendor>();
+    for (const wo of validWOs) {
+      if (wo.vendor && !vendorMap.has(wo.vendor.id)) {
+        vendorMap.set(wo.vendor.id, wo.vendor);
+      }
+    }
+    return Array.from(vendorMap.values());
+  }
 
   async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
     const query = this.inspectionRepo
@@ -128,7 +179,82 @@ export class QualityInspectionService {
     return inspection;
   }
 
-  async create(dto: CreateInspectionDto, userId?: string) {
+  async getUnitProgress(projectId: number, epsNodeId: number, activityId: number) {
+    const activity = await this.activityRepo.findOne({ where: { id: activityId } });
+    if (!activity) throw new NotFoundException('Activity not found');
+
+    const selectedNode = await this.epsNodeRepo.findOne({ where: { id: epsNodeId } });
+    if (!selectedNode) throw new NotFoundException('EPS node not found');
+
+    const floorId =
+      selectedNode.type === EpsNodeType.FLOOR
+        ? selectedNode.id
+        : selectedNode.type === EpsNodeType.UNIT
+          ? selectedNode.parentId
+          : selectedNode.type === EpsNodeType.ROOM
+            ? (await this.epsNodeRepo.findOne({ where: { id: selectedNode.parentId } }))?.parentId
+            : null;
+
+    if (!floorId) {
+      throw new BadRequestException('Unit progress is only available in floor/unit/room context.');
+    }
+
+    const floorStructure = await this.floorStructureRepo.findOne({
+      where: { projectId, floorId },
+      relations: ['units'],
+    });
+
+    const units = [...(floorStructure?.units || [])].sort((a, b) => a.sequence - b.sequence);
+    const unitIds = units.map((u) => u.id);
+
+    if (unitIds.length === 0) {
+      return {
+        activityId,
+        floorId,
+        totalUnits: 0,
+        raisedUnitIds: [],
+        pendingUnitIds: [],
+        units: [],
+      };
+    }
+
+    const inspections = await this.inspectionRepo.find({
+      where: {
+        projectId,
+        activityId,
+        epsNodeId: floorId,
+      } as any,
+      order: { createdAt: 'DESC' },
+    });
+
+    const latestByUnit = new Map<number, QualityInspection>();
+    for (const insp of inspections) {
+      if (!insp.qualityUnitId) continue;
+      if (!unitIds.includes(insp.qualityUnitId)) continue;
+      if (!latestByUnit.has(insp.qualityUnitId)) {
+        latestByUnit.set(insp.qualityUnitId, insp);
+      }
+    }
+
+    const raisedUnitIds = Array.from(latestByUnit.keys()).sort((a, b) => a - b);
+    const pendingUnitIds = unitIds.filter((id) => !latestByUnit.has(id));
+
+    return {
+      activityId,
+      floorId,
+      totalUnits: unitIds.length,
+      raisedUnitIds,
+      pendingUnitIds,
+      units: units.map((u) => ({
+        id: u.id,
+        name: u.name,
+        latestInspectionStatus: latestByUnit.get(u.id)?.status || null,
+        inspectionId: latestByUnit.get(u.id)?.id || null,
+      })),
+    };
+  }
+
+  async create(dto: CreateInspectionDto, userId?: number) {
     // 0. EPS Floor-Level Restriction
     const epsNode = await this.epsNodeRepo.findOne({
       where: { id: dto.epsNodeId },
@@ -152,21 +278,62 @@ export class QualityInspectionService {
     });
     if (!activity) throw new NotFoundException('Activity not found');
 
+    const applicability =
+      (activity.applicabilityLevel as QualityApplicabilityLevel) ||
+      QualityApplicabilityLevel.FLOOR;
+
+    if (applicability === QualityApplicabilityLevel.FLOOR) {
+      if (epsNode.type !== EpsNodeType.FLOOR) {
+        throw new BadRequestException(
+          'Activity is FLOOR level. Please select a FLOOR node to raise RFI.',
+        );
+      }
+    } else if (applicability === QualityApplicabilityLevel.UNIT) {
+      if (![EpsNodeType.FLOOR, EpsNodeType.UNIT].includes(epsNode.type)) {
+        throw new BadRequestException(
+          'Activity is UNIT level. Please select a FLOOR/UNIT context to raise RFI.',
+        );
+      }
+      if (!dto.qualityUnitId) {
+        throw new BadRequestException(
+          'Unit-level activity requires qualityUnitId while raising RFI.',
+        );
+      }
+    } else if (applicability === QualityApplicabilityLevel.ROOM) {
+      if (
+        ![EpsNodeType.FLOOR, EpsNodeType.UNIT, EpsNodeType.ROOM].includes(
+          epsNode.type,
+        )
+      ) {
+        throw new BadRequestException(
+          'Activity is ROOM level. Please select a FLOOR/UNIT/ROOM context to raise RFI.',
+        );
+      }
+      if (!dto.qualityUnitId || !dto.qualityRoomId) {
+        throw new BadRequestException(
+          'Room-level activity requires qualityUnitId and qualityRoomId while raising RFI.',
+        );
+      }
+    }
+
     // 2. Check if there is already a PENDING inspection for this activity at this location
-    // Actually, we should check if there is an OPEN inspection (PENDING/IN_PROGRESS)
-    // Or check if latest is NOT Rejected/Canceled?
-    // Let's stick to checking PENDING for now.
+    const existingWhere: any = {
+      activityId: dto.activityId,
+      epsNodeId: dto.epsNodeId,
+      status: InspectionStatus.PENDING,
+      partNo: dto.partNo || 1,
+    };
+    if (typeof dto.qualityUnitId === 'number') {
+      existingWhere.qualityUnitId = dto.qualityUnitId;
+    }
+    if (typeof dto.qualityRoomId === 'number') {
+      existingWhere.qualityRoomId = dto.qualityRoomId;
+    }
     const existingPending = await this.inspectionRepo.findOne({
-      where: {
-        activityId: dto.activityId,
-        epsNodeId: dto.epsNodeId,
-        status: InspectionStatus.PENDING,
-      },
+      where: existingWhere,
     });
 
     if (existingPending) {
-      // Check if user is trying to update/re-request?
-      // If so, update logic is needed. But for "Create", throwing error is safer.
       throw new BadRequestException(
         'A pending inspection request already exists for this activity at this location.',
       );
@@ -200,18 +367,53 @@ export class QualityInspectionService {
     activity.status = QualityActivityStatus.RFI_RAISED;
     await this.activityRepo.save(activity);
 
-    // 6. Create Inspection
+    // 6. Resolve Vendor Information
+    let finalVendorId = dto.vendorId;
+    let finalVendorName = dto.vendorName;
+
+    if (userId) {
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (user?.isTempUser) {
+        // Auto-capture vendor for temporary users
+        const tempUser = await this.tempUserRepo.findOne({
+          where: { user: { id: userId } },
+          relations: ['vendor'],
+        });
+        if (tempUser?.vendor) {
+          finalVendorId = tempUser.vendor.id;
+          finalVendorName = tempUser.vendor.name;
+        }
+      } else if (dto.vendorId && !finalVendorName) {
+        // Fetch name for manually selected vendor if not provided
+        const vendor = await this.vendorRepo.findOne({
+          where: { id: dto.vendorId },
+        });
+        if (vendor) {
+          finalVendorName = vendor.name;
+        }
+      }
+    }
+
+    // 7. Create Inspection
     const inspection = this.inspectionRepo.create({
       projectId: dto.projectId,
       epsNodeId: dto.epsNodeId,
-      listId: dto.listId, // We trust frontend passed correct listId matching activity? Or fetch from activity?
-      // Better to use activity.listId for consistency
+      listId: activity.listId,
       activityId: dto.activityId,
       sequence: activity.sequence,
+      qualityUnitId: dto.qualityUnitId,
+      qualityRoomId: dto.qualityRoomId,
+      partNo: dto.partNo || 1,
+      totalParts: dto.totalParts || 1,
+      partLabel:
+        dto.partLabel ||
+        ((dto.totalParts || 1) > 1 ? `Part ${dto.partNo || 1}` : null),
       comments: dto.comments,
       requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
       status: InspectionStatus.PENDING,
-      requestedById: userId ? parseInt(userId, 10) : undefined,
+      requestedById: userId,
+      vendorId: finalVendorId,
+      vendorName: finalVendorName,
     });
 
     // Ensure listId matches activity
@@ -261,13 +463,13 @@ export class QualityInspectionService {
               items: items,
               metadata: {
                 timestamp: new Date(),
-                user: dto.signature.signedBy || userId || 'Unknown',
+                user: dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
               },
             });
             const signature = this.signatureRepo.create({
               stageId: savedStage.id,
               role: dto.signature.role || 'Site Engineer',
-              signedBy: dto.signature.signedBy || userId || 'Unknown',
+              signedBy: dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
               signatureData: dto.signature.data,
               lockHash: fingerprint,
               metadata: { timestamp: new Date() },
@@ -292,7 +494,7 @@ export class QualityInspectionService {
       savedInspection.id,
       activity.listId,
       dto.projectId,
-      userId ? parseInt(userId, 10) : 0,
+      userId || 0,
     );
 
     return this.inspectionRepo.findOne({

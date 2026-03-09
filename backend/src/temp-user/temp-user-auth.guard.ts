@@ -7,13 +7,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TempUser } from './entities/temp-user.entity';
-import { WorkOrder } from '../workdoc/entities/work-order.entity';
 
 @Injectable()
 export class TempUserAuthGuard implements CanActivate {
   constructor(
     @InjectRepository(TempUser) private tempUserRepo: Repository<TempUser>,
-    @InjectRepository(WorkOrder) private workOrderRepo: Repository<WorkOrder>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -41,7 +39,12 @@ export class TempUserAuthGuard implements CanActivate {
 
     // Work order status check
     const wo = tempUser.workOrder;
-    if (wo.status === 'CANCELLED' || wo.status === 'CLOSED') {
+    if (!wo || (wo.status !== 'ACTIVE' && wo.status !== 'IN_PROGRESS')) {
+      await this.tempUserRepo.update(tempUser.id, { status: 'EXPIRED' });
+      throw new UnauthorizedException('TEMP_EXPIRED');
+    }
+
+    if (!wo.orderValidityEnd || new Date() > new Date(wo.orderValidityEnd)) {
       await this.tempUserRepo.update(tempUser.id, { status: 'EXPIRED' });
       throw new UnauthorizedException('TEMP_EXPIRED');
     }

@@ -700,6 +700,7 @@ class InspectionWorkflowStep extends Equatable {
   final int stepOrder;
   final WorkflowStepStatus status;
   final String? stepLabel;
+  final String? stepType; // e.g. 'RAISE_RFI', 'APPROVE'
   final int? assignedUserId;
   final String? assignedUserName;
   final String? signedBy;
@@ -711,6 +712,7 @@ class InspectionWorkflowStep extends Equatable {
     required this.stepOrder,
     required this.status,
     this.stepLabel,
+    this.stepType,
     this.assignedUserId,
     this.assignedUserName,
     this.signedBy,
@@ -726,6 +728,7 @@ class InspectionWorkflowStep extends Equatable {
       status: WorkflowStepStatus.fromString(
           json['status'] as String? ?? 'WAITING'),
       stepLabel: node?['label'] as String? ?? node?['name'] as String?,
+      stepType: node?['stepType'] as String?,
       assignedUserId: json['assignedUserId'] as int?,
       assignedUserName: json['assignedUserName'] as String?,
       signedBy: json['signedBy'] as String?,
@@ -734,13 +737,15 @@ class InspectionWorkflowStep extends Equatable {
     );
   }
 
+  bool get isRaiseStep => stepType == 'RAISE_RFI';
+
   bool get isActive =>
       status == WorkflowStepStatus.pending ||
       status == WorkflowStepStatus.inProgress;
 
   @override
   List<Object?> get props =>
-      [id, stepOrder, status, assignedUserId, signedBy, comments];
+      [id, stepOrder, status, stepType, assignedUserId, signedBy, comments];
 }
 
 /// The running workflow for an inspection (multi-level approval)

@@ -1,415 +1,490 @@
-import React, { useMemo, useEffect, useRef, useCallback, useState } from 'react';
-import { AgGridReact } from 'ag-grid-react';
-import type { ColDef } from 'ag-grid-community';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
-    ModuleRegistry,
-    ClientSideRowModelModule,
-    ValidationModule,
-    TextFilterModule,
-    NumberFilterModule,
-    TooltipModule,
-    RowSelectionModule,
-    themeQuartz
-} from 'ag-grid-community';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+    ChevronRight, ChevronDown,
+    Building2, FileText, Layers, Ruler, Package,
+    CheckSquare, Square, Search
+} from 'lucide-react';
 
-// Register Modules
-ModuleRegistry.registerModules([
-    ClientSideRowModelModule,
-    ValidationModule,
-    TextFilterModule,
-    NumberFilterModule,
-    TooltipModule,
-    RowSelectionModule
-]);
-
-interface MapperBoqItem {
-    id: number;
-    description: string;
-    qty: number;
-    uom: string;
-    subItems?: any[];
-    [key: string]: any;
-}
-
-interface GridRow {
-    uniqueId: string;
-    displayId: string;
-    description: string;
-    type: 'MAIN' | 'SUB' | 'MEAS';
-    qty: number;
-    uom: string;
-    status: string;
-    linkedActivity?: string;
-    level: number;
-    parentUniqueId?: string; // To check expansion status of parent
-    hasChildren: boolean;
-    location?: string;
-    data: any;
-}
+/**
+ * Tree Structure from Backend:
+ * Vendor[] → WorkOrder[] → BoqItem[] → SubItem[] → Measurement[]
+ *
+ * Each leaf (Measurement, SubItem.woItem, or directWoItem) has a workOrderItemId
+ * which is the selectable/linkable unit.
+ */
 
 interface Props {
-    projectId: number;
-    items: MapperBoqItem[];
-    selectedIds: (number | string)[];
-    onSelectionChange: (ids: (number | string)[]) => void;
-    epsNodes: any[]; // New Prop
+    vendorTree: any[];
+    selectedWoItemIds: number[];
+    onSelectionChange: (ids: number[]) => void;
 }
 
-const BoqGridPanel: React.FC<Props> = ({ projectId: _projectId, items, selectedIds, onSelectionChange, epsNodes }) => {
-    const gridRef = useRef<AgGridReact>(null);
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+// Flattened row for rendering
+interface TreeRow {
+    key: string;
+    level: number;       // 0=Vendor, 1=WO, 2=BOQ, 3=Sub, 4=Meas
+    type: 'VENDOR' | 'WO' | 'BOQ' | 'SUB' | 'MEAS' | 'DIRECT';
+    label: string;
+    subtitle?: string;
+    qty?: number;
+    uom?: string;
+    rate?: number;
+    amount?: number;
+    mappingStatus?: string;
+    linkedActivities?: string;
+    workOrderItemId?: number;  // Only leaf items have this
+    hasChildren: boolean;
+    parentKey?: string;
+    childCount?: number;
+}
 
-    // --- EPS Lookup Map & Resolver ---
-    const epsNodeMap = useMemo(() => {
-        const map = new Map();
-        if (epsNodes) {
-            epsNodes.forEach((n: any) => map.set(n.id, n));
-        }
-        return map;
-    }, [epsNodes]);
-
-    const resolveEpsPath = useCallback((nodeId: number | string | undefined | null) => {
-        if (!nodeId) return '';
-        let current = epsNodeMap.get(Number(nodeId));
-        if (!current) return '';
-
-        const path = [current.name];
-        let parentId = current.parentId;
-        let visited = new Set([current.id]);
-
-        while (parentId && !visited.has(parentId)) {
-            const parent = epsNodeMap.get(parentId);
-            if (parent) {
-                path.unshift(parent.name);
-                visited.add(parent.id);
-                parentId = parent.parentId;
-            } else {
-                break;
-            }
-        }
-        return path.join(' > ');
-    }, [epsNodeMap]);
-
-    // --- Data Flattening Logic (Memoized) ---
-    const allRows = useMemo(() => {
-        const rows: GridRow[] = [];
-
-        const processItem = (item: any, level: number, parentIds: string[], inheritedLocation: string = '') => {
-            // Unique ID construction
-            let uniqueIdStr = String(item.id);
-            if (level === 1) uniqueIdStr = `SUB:${parentIds[parentIds.length - 1]}:${item.id}`;
-            if (level === 2) uniqueIdStr = `MEAS:${parentIds[parentIds.length - 2]}:${parentIds[parentIds.length - 1]}:${item.id}`;
-
-            let type: any = 'MAIN';
-            if (level === 1) type = 'SUB';
-            if (level === 2) type = 'MEAS';
-
-            // Resolve Location ID (prioritize self, else inherit)
-            // We use the full EPS tree map to generate the path
-            const selfEpsId = item.epsNode?.id;
-            const location = selfEpsId ? resolveEpsPath(selfEpsId) : inheritedLocation;
-
-            const hasSub = item.subItems && item.subItems.length > 0;
-            const hasMeas = item.measurements && item.measurements.length > 0;
-            const hasChildren = hasSub || hasMeas;
-
-            // Determine parent uniqueID for filtering
-            let parentUniqueId: string | undefined;
-            // Level 1: Parent is Main Item (ID: "1")
-            if (level === 1) parentUniqueId = parentIds[0];
-            // Level 2: Parent is Sub Item (ID: "SUB:MainID:SubID")
-            if (level === 2) parentUniqueId = `SUB:${parentIds[0]}:${parentIds[1]}`;
-
-            rows.push({
-                uniqueId: uniqueIdStr,
-                displayId: item.boqCode || '',
-                description: item.description || item.elementName || 'Item',
-                type,
-                qty: item.qty || 0,
-                uom: item.uom || '',
-                status: item.mappingStatus || 'UNMAPPED',
-                linkedActivity: item.mappedActivities || '',
-                level,
-                parentUniqueId,
-                hasChildren,
-                location,
-                data: item
-            });
-
-            const newParentIds = [...parentIds, String(item.id)];
-
-            if (item.subItems) {
-                item.subItems.forEach((sub: any) => processItem(sub, level + 1, newParentIds, location));
-            }
-            if (item.measurements) {
-                item.measurements.forEach((meas: any) => processItem(meas, level + 1, newParentIds, location));
-            }
-        };
-
-        const sortedItems = [...items].sort((a, b) => (a.boqCode || '').localeCompare(b.boqCode || '', undefined, { numeric: true }));
-        sortedItems.forEach(item => processItem(item, 0, [], ''));
-
-        return rows;
-    }, [items, resolveEpsPath]);
-
-    // --- Search & Filter Logic ---
+const BoqGridPanel: React.FC<Props> = ({ vendorTree, selectedWoItemIds, onSelectionChange }) => {
+    const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
     const [searchText, setSearchText] = useState('');
 
-    // Derived Maps for Graph Traversal
-    const { idToRowMap, parentToChildrenMap, childToParentMap } = useMemo(() => {
-        const idToRow = new Map<string, GridRow>();
-        const parentToChildren = new Map<string, string[]>();
-        const childToParent = new Map<string, string>();
-
-        allRows.forEach(row => {
-            idToRow.set(row.uniqueId, row);
-            if (row.parentUniqueId) {
-                if (!parentToChildren.has(row.parentUniqueId)) {
-                    parentToChildren.set(row.parentUniqueId, []);
-                }
-                parentToChildren.get(row.parentUniqueId)?.push(row.uniqueId);
-                childToParent.set(row.uniqueId, row.parentUniqueId);
-            }
-        });
-        return { idToRowMap: idToRow, parentToChildrenMap: parentToChildren, childToParentMap: childToParent };
-    }, [allRows]);
-
-    const filteredAndVisibleRows = useMemo(() => {
-        // 1. Search Logic
-        if (!searchText.trim()) {
-            // Apply Standard Expansion Logic if no search
-            return allRows.filter(row => {
-                if (row.level === 0) return true;
-                // Check if ALL ancestors are expanded
-                let current = row;
-                while (current.parentUniqueId) {
-                    if (!expandedIds.has(current.parentUniqueId)) return false;
-                    const parent = idToRowMap.get(current.parentUniqueId);
-                    if (!parent) break;
-                    current = parent;
-                }
-                return true;
-            });
-        }
-
-        // 2. Smart Tree Search
-        const lowerText = searchText.toLowerCase();
-        const keptIds = new Set<string>();
-
-        // Pass 1: Find Direct Matches
-        const directMatches = allRows.filter(r =>
-            r.description?.toLowerCase().includes(lowerText) ||
-            r.uniqueId.includes(lowerText) // Optional: Search by ID too
-        );
-
-        // Queue for processing (to handle propagation)
-
-
-        // Helper to add node and all descendants
-        const addNodeAndDescendants = (id: string) => {
-            if (keptIds.has(id)) return; // Optimization
-            keptIds.add(id);
-
-            const children = parentToChildrenMap.get(id) || [];
-            children.forEach(childId => addNodeAndDescendants(childId));
-        };
-
-        // Helper to add node and all ancestors
-        const addNodeAndAncestors = (id: string) => {
-            let currentId: string | undefined = id;
-            while (currentId) {
-                keptIds.add(currentId);
-                currentId = childToParentMap.get(currentId);
-            }
-        };
-
-        // Process Direct Matches
-        directMatches.forEach(row => {
-            // Requirement A: "if parent matches child also shold be shown"
-            // -> Add Self + Descendants
-            addNodeAndDescendants(row.uniqueId);
-
-            // Requirement B: Show Path (Ancestors)
-            // -> Add Self + Ancestors
-            addNodeAndAncestors(row.uniqueId);
-        });
-
-        // Return sorted rows that are in the Keep Set
-        return allRows.filter(r => keptIds.has(r.uniqueId));
-
-    }, [allRows, searchText, expandedIds, idToRowMap, parentToChildrenMap, childToParentMap]);
-
-    // Sync external selection props to grid
-    useEffect(() => {
-        if (gridRef.current && gridRef.current.api) {
-            // Slight optimization: select only if needed
-            const api = gridRef.current.api;
-            api.forEachNode((node) => {
-                // Check if node data exists (filtering might remove it)
-                if (node.data) {
-                    const isSelected = selectedIds.some(id => String(id) === node.data.uniqueId);
-                    if (node.isSelected() !== isSelected) {
-                        node.setSelected(isSelected);
-                    }
-                }
-            });
-        }
-    }, [selectedIds, filteredAndVisibleRows]); // Dep on filtered rows
-
-    const toggleExpand = useCallback((id: string) => {
-        setExpandedIds(prev => {
+    // Toggle expand/collapse
+    const toggleExpand = useCallback((key: string) => {
+        setExpandedKeys(prev => {
             const next = new Set(prev);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return next;
         });
     }, []);
 
-    // --- Custom Cell Renderer for Description with Tree Controls ---
-    const DescriptionRenderer = (params: any) => {
-        const { level, hasChildren, uniqueId, description, type } = params.data;
-        const paddingLeft = level * 24; // 24px indent
-        const isExpanded = expandedIds.has(uniqueId);
 
-        return (
-            <div style={{ paddingLeft: `${paddingLeft}px` }} className="flex items-center gap-2 h-full">
-                {/* Expander Icon - Only for items with children */}
-                <div
-                    className="w-4 h-4 flex items-center justify-center cursor-pointer text-gray-500 hover:text-gray-800"
-                    onClick={(e) => {
-                        e.stopPropagation(); // Prevent row selection
-                        if (hasChildren) toggleExpand(uniqueId);
-                    }}
-                >
-                    {hasChildren ? (
-                        isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
-                    ) : <span className="w-4" />}
-                </div>
+    // Build flat rows from tree
+    const allRows = useMemo<TreeRow[]>(() => {
+        const rows: TreeRow[] = [];
+        if (!vendorTree || vendorTree.length === 0) return rows;
 
-                {/* Type Icon */}
-                <span className="text-gray-400 text-xs font-mono select-none">
-                    {type === 'MAIN' && '📁'}
-                    {type === 'SUB' && '↳'}
-                    {type === 'MEAS' && '📏'}
-                </span>
+        for (const vendor of vendorTree) {
+            const vendorKey = `V:${vendor.vendorId}`;
+            let vendorChildCount = 0;
 
-                <span className="truncate font-medium text-gray-700" title={description}>
-                    {description}
-                </span>
-            </div>
+            // Count total WO items under this vendor
+            for (const wo of (vendor.workOrders || [])) {
+                for (const boq of (wo.boqItems || [])) {
+                    vendorChildCount += (boq.directWoItems || []).length;
+                    for (const sub of (boq.subItems || [])) {
+                        if (sub.woItem) vendorChildCount++;
+                        vendorChildCount += (sub.measurements || []).length;
+                    }
+                }
+            }
+
+            rows.push({
+                key: vendorKey,
+                level: 0,
+                type: 'VENDOR',
+                label: vendor.vendorName,
+                hasChildren: (vendor.workOrders || []).length > 0,
+                childCount: vendorChildCount,
+            });
+
+            for (const wo of (vendor.workOrders || [])) {
+                const woKey = `${vendorKey}|WO:${wo.workOrderId}`;
+                let woChildCount = 0;
+                for (const boq of (wo.boqItems || [])) {
+                    woChildCount += (boq.directWoItems || []).length;
+                    for (const sub of (boq.subItems || [])) {
+                        if (sub.woItem) woChildCount++;
+                        woChildCount += (sub.measurements || []).length;
+                    }
+                }
+
+                rows.push({
+                    key: woKey,
+                    level: 1,
+                    type: 'WO',
+                    label: wo.woNumber,
+                    hasChildren: (wo.boqItems || []).length > 0,
+                    parentKey: vendorKey,
+                    childCount: woChildCount,
+                });
+
+                for (const boq of (wo.boqItems || [])) {
+                    const boqKey = `${woKey}|BOQ:${boq.boqItemId}`;
+                    const boqDirectCount = (boq.directWoItems || []).length;
+                    const boqSubCount = (boq.subItems || []).reduce((acc: number, s: any) =>
+                        acc + (s.woItem ? 1 : 0) + (s.measurements || []).length, 0);
+
+                    rows.push({
+                        key: boqKey,
+                        level: 2,
+                        type: 'BOQ',
+                        label: boq.description,
+                        subtitle: boq.boqCode,
+                        uom: boq.uom,
+                        hasChildren: boqDirectCount + boqSubCount > 0 || (boq.subItems || []).length > 0,
+                        parentKey: woKey,
+                        childCount: boqDirectCount + boqSubCount,
+                    });
+
+                    // Direct WO items at BOQ Main level
+                    for (let i = 0; i < (boq.directWoItems || []).length; i++) {
+                        const d = boq.directWoItems[i];
+                        rows.push({
+                            key: `${boqKey}|D:${d.workOrderItemId}`,
+                            level: 3,
+                            type: 'DIRECT',
+                            label: d.description,
+                            qty: d.qty,
+                            uom: d.uom,
+                            rate: d.rate,
+                            amount: d.amount,
+                            mappingStatus: d.mappingStatus,
+                            linkedActivities: d.linkedActivities,
+                            workOrderItemId: d.workOrderItemId,
+                            hasChildren: false,
+                            parentKey: boqKey,
+                        });
+                    }
+
+                    // Sub items
+                    for (const sub of (boq.subItems || [])) {
+                        const subKey = `${boqKey}|SUB:${sub.boqSubItemId}`;
+                        const measCount = (sub.measurements || []).length;
+                        const hasMeas = measCount > 0;
+
+                        rows.push({
+                            key: subKey,
+                            level: 3,
+                            type: 'SUB',
+                            label: sub.description,
+                            qty: sub.woItem?.qty,
+                            uom: sub.woItem?.uom,
+                            rate: sub.woItem?.rate,
+                            amount: sub.woItem?.amount,
+                            mappingStatus: sub.woItem?.mappingStatus,
+                            linkedActivities: sub.woItem?.linkedActivities,
+                            workOrderItemId: sub.woItem?.workOrderItemId,
+                            hasChildren: hasMeas,
+                            parentKey: boqKey,
+                            childCount: measCount,
+                        });
+
+                        // Measurements
+                        for (const meas of (sub.measurements || [])) {
+                            rows.push({
+                                key: `${subKey}|M:${meas.workOrderItemId}`,
+                                level: 4,
+                                type: 'MEAS',
+                                label: meas.description,
+                                qty: meas.qty,
+                                uom: meas.uom,
+                                rate: meas.rate,
+                                amount: meas.amount,
+                                mappingStatus: meas.mappingStatus,
+                                linkedActivities: meas.linkedActivities,
+                                workOrderItemId: meas.workOrderItemId,
+                                hasChildren: false,
+                                parentKey: subKey,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        return rows;
+    }, [vendorTree]);
+
+    // Expand all
+    const expandAll = useCallback(() => {
+        setExpandedKeys(() => {
+            const next = new Set<string>();
+            allRows.forEach(r => { if (r.hasChildren) next.add(r.key); });
+            return next;
+        });
+    }, [allRows]);
+
+    // Collapse all
+    const collapseAll = useCallback(() => {
+        setExpandedKeys(new Set());
+    }, []);
+
+    // Filter rows based on search + expansion state
+    const visibleRows = useMemo(() => {
+        if (searchText.trim()) {
+            // When searching, show all matching rows + their ancestors
+            const lowerSearch = searchText.toLowerCase();
+            const matchKeys = new Set<string>();
+
+            allRows.forEach(row => {
+                if (row.label?.toLowerCase().includes(lowerSearch) ||
+                    row.subtitle?.toLowerCase().includes(lowerSearch)) {
+                    // Add this row and all ancestors
+                    matchKeys.add(row.key);
+                    let parentKey = row.parentKey;
+                    while (parentKey) {
+                        matchKeys.add(parentKey);
+                        const parent = allRows.find(r => r.key === parentKey);
+                        parentKey = parent?.parentKey;
+                    }
+                }
+            });
+            return allRows.filter(r => matchKeys.has(r.key));
+        }
+
+        // Normal expansion filtering
+        return allRows.filter(row => {
+            if (row.level === 0) return true;
+            let currentKey = row.parentKey;
+            while (currentKey) {
+                if (!expandedKeys.has(currentKey)) return false;
+                const parent = allRows.find(r => r.key === currentKey);
+                if (!parent) break;
+                currentKey = parent.parentKey;
+            }
+            return true;
+        });
+    }, [allRows, searchText, expandedKeys]);
+
+    // Selection helpers
+    const toggleSelect = useCallback((woItemId: number) => {
+        onSelectionChange(
+            selectedWoItemIds.includes(woItemId)
+                ? selectedWoItemIds.filter(id => id !== woItemId)
+                : [...selectedWoItemIds, woItemId]
         );
+    }, [selectedWoItemIds, onSelectionChange]);
+
+    // Collect all selectable WO Item IDs under a branch
+    const getDescendantWoItemIds = useCallback((key: string): number[] => {
+        const ids: number[] = [];
+        for (const row of allRows) {
+            if (row.key.startsWith(key + '|') && row.workOrderItemId) {
+                ids.push(row.workOrderItemId);
+            }
+            // Also check if it's the row itself (for DIRECT / leaf items)
+            if (row.key === key && row.workOrderItemId) {
+                ids.push(row.workOrderItemId);
+            }
+        }
+        return ids;
+    }, [allRows]);
+
+    const toggleSelectBranch = useCallback((key: string) => {
+        const branchIds = getDescendantWoItemIds(key);
+        const allSelected = branchIds.every(id => selectedWoItemIds.includes(id));
+
+        if (allSelected) {
+            // Deselect all
+            onSelectionChange(selectedWoItemIds.filter(id => !branchIds.includes(id)));
+        } else {
+            // Select all
+            const merged = [...new Set([...selectedWoItemIds, ...branchIds])];
+            onSelectionChange(merged);
+        }
+    }, [selectedWoItemIds, onSelectionChange, getDescendantWoItemIds]);
+
+    const getBranchSelectionState = useCallback((key: string): 'none' | 'some' | 'all' => {
+        const branchIds = getDescendantWoItemIds(key);
+        if (branchIds.length === 0) return 'none';
+        const selectedCount = branchIds.filter(id => selectedWoItemIds.includes(id)).length;
+        if (selectedCount === 0) return 'none';
+        if (selectedCount === branchIds.length) return 'all';
+        return 'some';
+    }, [selectedWoItemIds, getDescendantWoItemIds]);
+
+    // Icon helpers
+    const getIcon = (type: string) => {
+        switch (type) {
+            case 'VENDOR': return <Building2 size={16} className="text-indigo-500" />;
+            case 'WO': return <FileText size={16} className="text-blue-500" />;
+            case 'BOQ': return <Layers size={16} className="text-amber-600" />;
+            case 'SUB': return <Package size={14} className="text-teal-500" />;
+            case 'MEAS': return <Ruler size={14} className="text-gray-500" />;
+            case 'DIRECT': return <Package size={14} className="text-teal-500" />;
+            default: return null;
+        }
     };
 
-    const StatusRenderer = (params: any) => {
-        const status = params.value;
-        let colorClass = 'bg-gray-100 text-gray-500';
-        if (status === 'MAPPED') colorClass = 'bg-green-100 text-green-700';
-        if (status === 'PARTIAL') colorClass = 'bg-orange-100 text-orange-700';
-
+    const getStatusBadge = (status?: string) => {
+        if (!status) return null;
+        const colors = status === 'MAPPED'
+            ? 'bg-green-100 text-green-700 border-green-200'
+            : 'bg-gray-100 text-gray-500 border-gray-200';
         return (
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${colorClass}`}>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${colors}`}>
                 {status}
             </span>
         );
     };
 
-    const onSelectionChanged = useCallback((event: any) => {
-        const selectedRows = event.api.getSelectedRows();
-        const ids = selectedRows.map((r: any) => {
-            if (r.type === 'MAIN') return parseInt(r.uniqueId);
-            return r.uniqueId;
-        });
-        onSelectionChange(ids);
-    }, [onSelectionChange]);
-
-    // Update Columns to sync with Search changes if needed (optional)
-    const columnDefs: ColDef[] = useMemo(() => [
-        { field: 'uniqueId', hide: true },
-        {
-            headerName: 'Description',
-            field: 'description',
-            cellRenderer: DescriptionRenderer,
-            minWidth: 350,
-            // Removed flex to allow manual resizing to persist better
-            filter: false,
-            resizable: true,
-            checkboxSelection: true,
-            headerCheckboxSelection: true,
-            tooltipField: 'description'
-        },
-        {
-            field: 'location',
-            headerName: 'Location (EPS)',
-            width: 250,
-            filter: true,
-            tooltipField: 'location',
-            resizable: true
-        },
-        { field: 'qty', headerName: 'Qty', width: 90, filter: 'agNumberColumnFilter', resizable: true },
-        { field: 'uom', headerName: 'Unit', width: 70, resizable: true },
-        {
-            field: 'status',
-            headerName: 'Status',
-            cellRenderer: StatusRenderer,
-            width: 100,
-            filter: true,
-            resizable: true
-        },
-        {
-            field: 'linkedActivity',
-            headerName: 'Linked Activity',
-            width: 200,
-            tooltipField: 'linkedActivity',
-            resizable: true
+    // Checkbox renderer
+    const renderCheckbox = (row: TreeRow) => {
+        if (row.workOrderItemId) {
+            const isSelected = selectedWoItemIds.includes(row.workOrderItemId);
+            return (
+                <button
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(row.workOrderItemId!); }}
+                    className="mr-2 flex-shrink-0"
+                >
+                    {isSelected
+                        ? <CheckSquare size={16} className="text-blue-600" />
+                        : <Square size={16} className="text-gray-400" />}
+                </button>
+            );
         }
-    ], [expandedIds]); // DescriptionRenderer depends on expandedIds
+        // Branch checkbox
+        if (row.hasChildren) {
+            const state = getBranchSelectionState(row.key);
+            return (
+                <button
+                    onClick={(e) => { e.stopPropagation(); toggleSelectBranch(row.key); }}
+                    className="mr-2 flex-shrink-0"
+                >
+                    {state === 'all' ? <CheckSquare size={16} className="text-blue-600" /> :
+                     state === 'some' ? <CheckSquare size={16} className="text-blue-300" /> :
+                     <Square size={16} className="text-gray-400" />}
+                </button>
+            );
+        }
+        return <span className="w-4 mr-2" />;
+    };
 
     return (
         <div className="flex flex-col h-full w-full">
-            {/* Search Bar */}
-            <div className="p-2 border-b bg-gray-50 flex gap-2">
-                <input
-                    type="text"
-                    placeholder="Search BOQ Items... (Matches Parent & Children)"
-                    className="flex-1 p-2 border rounded shadow-sm text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={searchText}
-                    onChange={e => setSearchText(e.target.value)}
-                />
+            {/* Search + Controls */}
+            <div className="p-2 border-b bg-gray-50 flex gap-2 items-center">
+                <div className="relative flex-1">
+                    <Search size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search vendors, WO numbers, BOQ items..."
+                        className="w-full pl-8 pr-3 py-2 border rounded shadow-sm text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={searchText}
+                        onChange={e => setSearchText(e.target.value)}
+                    />
+                </div>
+                <button
+                    onClick={expandAll}
+                    className="px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded border"
+                >
+                    Expand All
+                </button>
+                <button
+                    onClick={collapseAll}
+                    className="px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded border"
+                >
+                    Collapse All
+                </button>
             </div>
 
-            <div className="flex-1 w-full overflow-hidden">
-                <AgGridReact
-                    ref={gridRef}
-                    rowData={filteredAndVisibleRows} // Use Filtered Data
-                    columnDefs={columnDefs}
-                    rowSelection={{
-                        mode: 'multiRow',
-                        headerCheckbox: false,
-                        checkboxes: false,
-                        enableClickSelection: false
-                    }}
-                    theme={themeQuartz}
-                    onSelectionChanged={onSelectionChanged}
-                    animateRows={true}
-                    enableBrowserTooltips={true}
-                    autoSizeStrategy={{
-                        type: 'fitGridWidth',
-                        defaultMinWidth: 100
-                    }}
-                    defaultColDef={{
-                        sortable: true,
-                        filter: true,
-                        resizable: true,
-                        floatingFilter: true,
-                        flex: 1,
-                        minWidth: 80
-                    }}
-                    className="ag-theme-quartz w-full h-full font-sans text-sm"
-                />
+            {/* Column Headers */}
+            <div className="flex items-center px-4 py-2 bg-gray-100 border-b text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                <div className="flex-1 min-w-0">Description</div>
+                <div className="w-20 text-right">Qty</div>
+                <div className="w-14 text-center">UoM</div>
+                <div className="w-20 text-right">Rate</div>
+                <div className="w-24 text-right">Amount</div>
+                <div className="w-20 text-center">Status</div>
+                <div className="w-40 truncate">Linked Activity</div>
+            </div>
+
+            {/* Rows */}
+            <div className="flex-1 overflow-y-auto">
+                {visibleRows.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <Layers size={40} className="mb-2" />
+                        <p className="text-sm">No WO items found for this project</p>
+                        <p className="text-xs mt-1">Create Work Orders and assign BOQ items first</p>
+                    </div>
+                )}
+
+                {visibleRows.map(row => {
+                    const indent = row.level * 24;
+                    const isExpanded = expandedKeys.has(row.key);
+                    const isLeaf = !!row.workOrderItemId;
+                    const isSelected = isLeaf && selectedWoItemIds.includes(row.workOrderItemId!);
+
+                    // Row background color based on level
+                    let bgClass = 'hover:bg-blue-50';
+                    if (row.type === 'VENDOR') bgClass = 'bg-indigo-50/50 hover:bg-indigo-100/60 border-b border-indigo-100';
+                    else if (row.type === 'WO') bgClass = 'bg-blue-50/30 hover:bg-blue-50/60';
+                    if (isSelected) bgClass = 'bg-blue-100/50 hover:bg-blue-100/70';
+
+                    return (
+                        <div
+                            key={row.key}
+                            className={`flex items-center px-4 py-1.5 border-b border-gray-100 cursor-pointer transition-colors text-sm ${bgClass}`}
+                            onClick={() => {
+                                if (row.hasChildren) toggleExpand(row.key);
+                                else if (row.workOrderItemId) toggleSelect(row.workOrderItemId);
+                            }}
+                        >
+                            {/* Description column */}
+                            <div className="flex-1 min-w-0 flex items-center" style={{ paddingLeft: indent }}>
+                                {/* Expand Toggle */}
+                                <div className="w-5 flex-shrink-0 flex items-center justify-center mr-1">
+                                    {row.hasChildren ? (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); toggleExpand(row.key); }}
+                                            className="text-gray-400 hover:text-gray-700"
+                                        >
+                                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                        </button>
+                                    ) : <span className="w-3" />}
+                                </div>
+
+                                {/* Checkbox */}
+                                {renderCheckbox(row)}
+
+                                {/* Icon */}
+                                <span className="mr-1.5 flex-shrink-0">{getIcon(row.type)}</span>
+
+                                {/* Label */}
+                                <span className={`truncate ${
+                                    row.type === 'VENDOR' ? 'font-bold text-indigo-800' :
+                                    row.type === 'WO' ? 'font-semibold text-blue-700' :
+                                    row.type === 'BOQ' ? 'font-medium text-gray-800' :
+                                    'text-gray-700'
+                                }`} title={row.label}>
+                                    {row.label}
+                                </span>
+
+                                {/* Subtitle / Badge */}
+                                {row.subtitle && (
+                                    <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-mono">
+                                        {row.subtitle}
+                                    </span>
+                                )}
+                                {row.childCount !== undefined && row.childCount > 0 && (
+                                    <span className="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">
+                                        {row.childCount} items
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Qty */}
+                            <div className="w-20 text-right text-xs tabular-nums text-gray-700">
+                                {row.qty !== undefined ? row.qty.toLocaleString(undefined, { maximumFractionDigits: 3 }) : ''}
+                            </div>
+
+                            {/* UoM */}
+                            <div className="w-14 text-center text-xs text-gray-500">{row.uom || ''}</div>
+
+                            {/* Rate */}
+                            <div className="w-20 text-right text-xs tabular-nums text-gray-700">
+                                {row.rate !== undefined ? row.rate.toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}
+                            </div>
+
+                            {/* Amount */}
+                            <div className="w-24 text-right text-xs tabular-nums font-medium text-gray-800">
+                                {row.amount !== undefined ? row.amount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}
+                            </div>
+
+                            {/* Status */}
+                            <div className="w-20 text-center">{getStatusBadge(row.mappingStatus)}</div>
+
+                            {/* Linked Activity */}
+                            <div className="w-40 text-xs text-gray-500 truncate" title={row.linkedActivities || ''}>
+                                {row.linkedActivities || ''}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

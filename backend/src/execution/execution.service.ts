@@ -53,29 +53,36 @@ export class ExecutionService {
         const microSuffix = entry.microActivityId
           ? `-MICRO-${entry.microActivityId}`
           : '';
+        const vendorSuffix = entry.vendorId ? `-V-${entry.vendorId}` : '';
+        const woSuffix = entry.workOrderItemId ? `-WO-${entry.workOrderItemId}` : '';
+        
+        const elementId = `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}${vendorSuffix}${woSuffix}`;
 
         let siteMeas = await manager.findOne(MeasurementElement, {
           where: {
             boqItemId: entry.boqItemId,
             activityId: entry.activityId || null,
             microActivityId: entry.microActivityId || null,
-            elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}`,
+            workOrderItemId: entry.workOrderItemId || null,
+            vendorId: entry.vendorId || null,
+            elementId: elementId,
           },
         });
 
         if (!siteMeas) {
-          const epsNodeId = entry.wbsNodeId || boqItem.epsNodeId || projectId;
           siteMeas = manager.create(MeasurementElement, {
             projectId,
             boqItemId: entry.boqItemId,
             epsNodeId: epsNodeId,
             activityId: entry.activityId || null,
             microActivityId: entry.microActivityId || null,
+            workOrderItemId: entry.workOrderItemId || null,
+            vendorId: entry.vendorId || null,
             elementName: entry.microActivityId
               ? 'Micro Execution'
               : 'Site Execution',
             qty: 0,
-            elementId: `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}`,
+            elementId: elementId,
           });
           siteMeas = await manager.save(MeasurementElement, siteMeas);
         }

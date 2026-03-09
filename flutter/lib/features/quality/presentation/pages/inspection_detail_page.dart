@@ -97,14 +97,30 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
             ));
           }
           if (state is ApprovalActionQueued) {
-            final label = {
-              'approve': 'Approved',
-              'provisional': 'Provisionally Approved',
-              'reject': 'Rejected',
-            }[state.action]!;
-            final msg = state.isOffline
-                ? '$label (queued — will sync when online)'
-                : '$label successfully';
+            String msg;
+            if (state.action == 'approve' &&
+                state.completedLevel != null &&
+                state.totalLevels != null) {
+              if (state.completedLevel == state.totalLevels) {
+                msg = state.isOffline
+                    ? 'Final approval queued — will sync when online'
+                    : 'All levels approved — RFI fully approved';
+              } else {
+                final next = state.completedLevel! + 1;
+                msg = state.isOffline
+                    ? 'Level ${state.completedLevel} queued — will sync when online'
+                    : 'Level ${state.completedLevel} approved — forwarded to Level $next approver';
+              }
+            } else {
+              final label = {
+                'approve': 'Approved',
+                'provisional': 'Provisionally Approved',
+                'reject': 'Rejected',
+              }[state.action] ?? 'Done';
+              msg = state.isOffline
+                  ? '$label (queued — will sync when online)'
+                  : '$label successfully';
+            }
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(msg),
               backgroundColor: state.isOffline
@@ -243,8 +259,12 @@ class _WorkflowTimeline extends StatelessWidget {
         runStatusLabel = 'Workflow Reversed';
         runStatusColor = Colors.grey;
       case WorkflowRunStatus.inProgress:
+        final realSteps = steps.where((s) => !s.isRaiseStep).toList();
+        final completedReal = realSteps
+            .where((s) => s.status == WorkflowStepStatus.completed)
+            .length;
         runStatusLabel =
-            'Step ${workflow.currentStepOrder} of ${steps.length}';
+            'Level ${completedReal + 1} of ${realSteps.length}';
         runStatusColor = Colors.blue;
     }
 

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import AddVendorModal from './AddVendorModal';
+import BoqSelectModal from './BoqSelectModal';
 
 interface Props {
     isOpen: boolean;
@@ -47,6 +48,9 @@ interface LineItem {
     qty: number;
     rate: number;
     amount: number;
+    boqItemId?: number;
+    boqSubItemId?: number;
+    measurementElementId?: number;
 }
 
 const ORDER_TYPES = [
@@ -106,6 +110,9 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
 
     // Items state
     const [items, setItems] = useState<LineItem[]>([createEmptyItem()]);
+    
+    // BOQ Import State
+    const [showBoqSelect, setShowBoqSelect] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -140,6 +147,42 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
     const removeItem = (index: number) => {
         if (items.length <= 1) return;
         setItems(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleImportFromBoq = (selectedBoqItems: any[]) => {
+        if (selectedBoqItems.length === 0) return;
+
+        const newItems: LineItem[] = selectedBoqItems.map(b => {
+            let fullDescription = b.description || b.elementName || '';
+            if (b.level === 2 && b.parentInfo && b.grandParentInfo) {
+                fullDescription = `${b.grandParentInfo.boqCode} > ${b.parentInfo.description} > ${b.elementName}`;
+            } else if (b.level === 1 && b.parentInfo) {
+                fullDescription = `${b.parentInfo.boqCode} > ${b.description}`;
+            }
+
+            return {
+                id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                serialNumber: '',
+                code: b.boqCode || b.elementCode || '',
+                description: fullDescription,
+                longText: b.description || '',
+                uom: b.uom || 'Nos',
+                qty: b.availableQty || 0,
+                rate: b.boqRate || 0,
+                amount: (b.availableQty || 0) * (b.boqRate || 0),
+                boqItemId: b.boqItemId,
+                boqSubItemId: b.boqSubItemId,
+                measurementElementId: b.measurementElementId
+            };
+        });
+
+        setItems(prev => {
+            // Remove the empty default item if not used
+            if (prev.length === 1 && !prev[0].description && !prev[0].code) {
+                return newItems;
+            }
+            return [...prev, ...newItems];
+        });
     };
 
     const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -223,6 +266,9 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
                     rate: Number(item.rate),
                     amount: Number(item.amount),
                     calculatedAmount: Number(item.amount),
+                    boqItemId: item.boqItemId,
+                    boqSubItemId: item.boqSubItemId,
+                    measurementElementId: item.measurementElementId
                 })),
                 pdfPath: null,
                 originalFileName: null,
@@ -652,13 +698,21 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
                     </table>
                 </div>
 
-                {/* Add Item */}
-                <button
-                    onClick={addItem}
-                    className="w-full py-2 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 font-bold text-sm shrink-0"
-                >
-                    <Plus className="w-4 h-4" /> Add Line Item
-                </button>
+                {/* Add Item / Import */}
+                <div className="flex gap-4 shrink-0 mt-4">
+                    <button
+                        onClick={addItem}
+                        className="flex-1 py-2 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 font-bold text-sm"
+                    >
+                        <Plus className="w-4 h-4" /> Add Line Item
+                    </button>
+                    <button
+                        onClick={() => setShowBoqSelect(true)}
+                        className="flex-1 py-2 border-2 border-dashed border-orange-300 rounded-xl text-orange-500 hover:border-orange-500 hover:text-orange-600 hover:bg-orange-50/50 transition-all flex items-center justify-center gap-2 font-bold text-sm"
+                    >
+                        <ClipboardList className="w-4 h-4" /> Import from BOQ
+                    </button>
+                </div>
 
                 {/* Footer */}
                 <div className="flex justify-between gap-3 pt-4 border-t border-gray-200 shrink-0">
@@ -683,6 +737,13 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({ isOpen, onClose, onSuccess
                     </div>
                 </div>
             </div>
+
+            <BoqSelectModal 
+                isOpen={showBoqSelect}
+                onClose={() => setShowBoqSelect(false)}
+                projectId={projectId || 0}
+                onSelectItems={handleImportFromBoq}
+            />
         </Modal>
     );
 };

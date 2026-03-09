@@ -170,10 +170,8 @@ export class BoqService {
         );
       }
 
-      // NEW: Sync Work Order progress
-      if (measurement.boqItemId || measurement.boqSubItemId) {
-        await this.workDocService.syncWorkOrderProgress();
-      }
+      // WO progress is now tracked via WO Item executedQuantity in execution flow
+      // No additional sync needed here
 
       return savedProgress;
     });

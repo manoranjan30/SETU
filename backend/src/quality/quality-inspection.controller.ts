@@ -44,6 +44,12 @@ export class QualityInspectionController {
     return this.service.getInspections(projectId, epsNodeId, listId);
   }
 
+  @Get('active-vendors')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getActiveVendors(@Query('projectId', ParseIntPipe) projectId: number) {
+    return this.service.getActiveVendors(projectId);
+  }
+
   @Get('my-pending')
   @Permissions('QUALITY.INSPECTION.READ')
   getMyPendingInspections(
@@ -52,6 +58,16 @@ export class QualityInspectionController {
   ) {
     const userId = req.user?.userId || req.user?.id;
     return this.service.getMyPendingInspections(projectId, userId);
+  }
+
+  @Get('unit-progress')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getUnitProgress(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Query('epsNodeId', ParseIntPipe) epsNodeId: number,
+    @Query('activityId', ParseIntPipe) activityId: number,
+  ) {
+    return this.service.getUnitProgress(projectId, epsNodeId, activityId);
   }
 
   @Get(':id')

@@ -1,7 +1,7 @@
-﻿# SETU - Construction Project Management System
+# SETU - Construction Project Management System
 ## Context Exchange for Multi-AI Collaboration
 
-**Last Updated**: 2026-02-10 20:15 IST  
+**Last Updated**: 2026-03-08 19:05 IST  
 **Project Status**: Active Development - Core Architecture Complete
 
 ---
@@ -342,6 +342,34 @@ Site Measurement → MeasurementElement
 
 ## 📝 CHANGE LOG
 
+### 2026-03-08 19:05 IST - Antigravity
+- **Action**: Dashboard Role Alignment & Notification Integration
+- **Features**:
+  - Fixed `DashboardBuilderService` to resolve JWT role names into database `roleIds` for hierarchical assignment lookup.
+  - Corrected `DashboardBuilderController` endpoint routing (`/defaults/my`) and added missing `@Query` decorator.
+  - Registered `NotificationsModule` in `AppModule`, restoring functionality for `/api/pending-tasks/my`.
+  - Created `quick_build_parallel.bat` utilizing Docker BuildKit and `--parallel` for significantly faster container builds.
+  - Restored corrupted method boundaries in `DashboardBuilderService` (removed duplicated code fragments).
+- **Files**:
+  - `backend/src/dashboard-builder/dashboard-builder.service.ts`
+  - `backend/src/dashboard-builder/dashboard-builder.controller.ts`
+  - `backend/src/app.module.ts`
+  - `quick_build_parallel.bat`
+- **Summary**: Dashboard assignment logic is now robust and production-ready. Build system is optimized for speed.
+
+### 2026-03-08 10:15 IST - Antigravity
+- **Action**: Project-Scoped Approval Routing Implementation
+- **Features**:
+  - Implemented `sendToProjectRole()` in `PushNotificationService`.
+  - Refactored RFI creation to target only specific project team members for notifications.
+  - Added "Notify Next Approver" logic to `InspectionWorkflowService`.
+  - Injected `UserProjectAssignment` repository into `NotificationsModule`.
+- **Files**:
+  - `backend/src/notifications/push-notification.service.ts`
+  - `backend/src/quality/quality-inspection.service.ts`
+  - `backend/src/quality/inspection-workflow.service.ts`
+- **Summary**: Notifications for workflow actions are now strictly restricted to users assigned to the relevant project.
+
 ### 2026-02-11 00:50 IST - Antigravity (Claude 3.5 Sonnet)
 - **Action**: Phase 2 Completed - Micro Schedule Development
 - **Features**:
@@ -436,18 +464,6 @@ Site Measurement → MeasurementElement
 - **Fix**: Added `subItems.measurements.epsNode` to the TypeORM query relations in `BoqImportService`.
 - **Files**: `backend/src/boq/boq-import.service.ts`
 
-### 2026-02-10 23:10 IST - Antigravity (Claude 3.5 Sonnet)
-- **Action**: Implemented BOQ Export to CSV feature
-- **Features**:
-  - Backend: Added `exportBoqToCsv` method in `BoqImportService` and endpoint in `BoqController`.
-  - Frontend: Added "Export CSV" button in `BoqPage` and service method in `boqService`.
-  - Details: Export includes Main Items, Sub Items, and Measurements in a hierarchical flat CSV format.
-- **Files**:
-  - `backend/src/boq/boq-import.service.ts`
-  - `backend/src/boq/boq.controller.ts`
-  - `frontend/src/services/boq.service.ts`
-  - `frontend/src/pages/scope/BoqPage.tsx`
-- **Summary**: Users can now export the entire BOQ for a project to a CSV file.
 
 ### 2026-02-10 20:15 IST - Antigravity (Claude 3.5 Sonnet)
 - **Action**: Populated CONTEXT_EXCHANGE.md with comprehensive project documentation

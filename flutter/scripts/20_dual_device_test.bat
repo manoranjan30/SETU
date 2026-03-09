@@ -53,7 +53,7 @@ echo      - Login with a user that has  QUALITY.INSPECTION.APPROVE
 echo        ^(for RFI notifications^)  OR  EXECUTION.ENTRY.APPROVE
 echo        ^(for progress notifications^).
 echo      - Watch for push notifications to arrive.
-echo      - Tap the notification — you land on the projects list
+echo      - Tap the notification -- you land on the projects list
 echo        with a contextual banner explaining the action.
 echo      - Open the project and go to Quality Approvals / Progress.
 echo.
@@ -248,40 +248,8 @@ echo         Packages ready.
 :: ===========================================================
 :: STEP 5 - Build release APK
 :: ===========================================================
-echo.
-echo  [5/6] Building release APK...
-echo.
-echo         flutter build apk --release
-echo         --target-platform android-arm64
-echo         --split-debug-info=build\debug-info
-echo         --dart-define=SETU_BASE_URL=!BACKEND_URL!
-echo.
-echo         This may take 3-8 minutes on first build (arm64-only, faster than full ABI)...
-echo.
-
-call flutter build apk --release --target-platform android-arm64 --split-debug-info=build\debug-info --dart-define=SETU_BASE_URL=!BACKEND_URL!
-
-if errorlevel 1 (
-  echo.
-  echo  ============================================================
-  echo    BUILD FAILED. Check the errors above.
-  echo  ============================================================
-  echo.
-  pause & exit /b 1
-)
-
-set "APK_PATH=%PROJECT_ROOT%\build\app\outputs\flutter-apk\app-release.apk"
-
-if not exist "!APK_PATH!" (
-  echo.
-  echo         ERROR: APK not found at expected path:
-  echo         !APK_PATH!
-  pause & exit /b 1
-)
-
-echo.
-echo         APK built successfully:
-echo         !APK_PATH!
+call :build_apk
+if errorlevel 1 ( pause & exit /b 1 )
 
 :: ===========================================================
 :: STEP 6 - Install + whitelist on ALL devices
@@ -289,43 +257,7 @@ echo         !APK_PATH!
 echo.
 echo  [6/6] Installing APK on all devices...
 echo.
-
-set "DEVICE_NUM=0"
-for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do (
-  if not "%%A"=="" if not "%%B"=="" if not "%%B"=="List" (
-    set "SKIP=0"
-    echo %%A | findstr /b "emulator-" >nul 2>&1 && set "SKIP=1"
-    if /i "%%B"=="offline"       set "SKIP=1"
-    if /i "%%B"=="unauthorized"  set "SKIP=1"
-    echo %%A | findstr /r "[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" >nul 2>&1 && set "SKIP=1"
-    if "!SKIP!"=="0" (
-      set /a "DEVICE_NUM+=1"
-      echo         [Device !DEVICE_NUM!] Installing on %%A ...
-      adb -s %%A install -r "!APK_PATH!"
-      if errorlevel 1 (
-        echo         [Device !DEVICE_NUM!] INSTALL FAILED on %%A
-      ) else (
-        echo         [Device !DEVICE_NUM!] Install OK on %%A
-        :: Apply network whitelist
-        set "APP_UID="
-        for /f "tokens=2 delims=:=" %%U in ('adb -s %%A shell "pm list packages --uid 2>/dev/null | grep setu_mobile" 2^>nul') do (
-          set "APP_UID=%%U"
-          set "APP_UID=!APP_UID: =!"
-        )
-        if defined APP_UID (
-          adb -s %%A shell "cmd netpolicy add restrict-background-whitelist !APP_UID!" >nul 2>&1
-          adb -s %%A shell "cmd netpolicy add app-idle-whitelist !APP_UID!" >nul 2>&1
-          adb -s %%A shell "am set-standby-bucket com.example.setu_mobile active" >nul 2>&1
-          echo         [Device !DEVICE_NUM!] Network whitelist applied ^(UID !APP_UID!^)
-        ) else (
-          echo         [Device !DEVICE_NUM!] WARNING: Could not find app UID — network may be restricted.
-          echo                              Go to: Settings -^> Apps -^> SETU Mobile -^> Battery -^> Unrestricted
-        )
-      )
-      echo.
-    )
-  )
-)
+call :install_all
 
 :: ===========================================================
 :: OPEN ONE LOG WINDOW PER DEVICE
@@ -355,11 +287,10 @@ for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do (
         echo echo.
         echo adb -s %%A logcat -v time flutter:V FlutterMain:V FlutterActivity:V DartVM:D AndroidRuntime:E System.err:W *:S
         echo echo.
-        echo echo  Log stream ended. Press any key to close.
-        echo pause ^>nul
+        echo echo  [Log stream ended -- window stays open, close it manually]
         echo del "%%~f0" ^>nul 2^>^&1
       ) > "!LOG_TEMP!"
-      start "SETU Logs [Device !DEV_NUM! : %%A]" cmd /c "!LOG_TEMP!"
+      start "SETU Logs [Device !DEV_NUM! : %%A]" cmd /k "!LOG_TEMP!"
     )
   )
 )
@@ -434,7 +365,113 @@ echo               protocol=TCP dir=in localport=3000 action=allow
 echo.
 echo  ============================================================
 echo.
-echo    Log windows are open for each device.
-echo    Press any key to close this window when done testing.
+echo    Log windows are open for each device and stay open automatically.
+echo    Close each log window manually when done.
 echo.
-pause >nul
+echo  ============================================================
+echo    QUICK REBUILD  ^(no wizard -- reuses same backend + devices^)
+echo      R  =  Rebuild APK + Reinstall on all devices
+echo      Any other key  =  Exit this window
+echo  ============================================================
+echo.
+
+:rebuild_loop
+set "RK="
+set /p "RK=  [R = Rebuild+Reinstall on all devices  /  other key = Exit]: "
+set "RK=!RK:~0,1!"
+if /i "!RK!"=="R" (
+  echo.
+  echo  -------------------------------------------------------------------
+  echo    Quick Rebuild  ^(backend: !BACKEND_URL!^)
+  echo  -------------------------------------------------------------------
+  echo.
+  call :build_apk
+  if not errorlevel 1 (
+    echo.
+    echo  Installing on all devices...
+    echo.
+    call :install_all
+    echo.
+    echo    Rebuild complete. Press R to rebuild again or any key to exit.
+    echo.
+  ) else (
+    echo.
+    echo    Build failed. Check error lines above.
+    echo    Fix the issue then press R to try again, or any key to exit.
+    echo.
+  )
+  goto :rebuild_loop
+)
+goto :eof
+
+:: ===========================================================
+:: SUBROUTINE: Build APK with animated progress bar
+:: ===========================================================
+:build_apk
+echo.
+echo  [5/6] Building release APK...
+echo.
+echo         Target  : android-arm64  (release)
+echo         Backend : !BACKEND_URL!
+echo         Tip     : First build 3-8 min / Rebuild 1-3 min
+echo.
+
+set "MONITOR=%~dp0_build_monitor.ps1"
+flutter build apk --release --target-platform android-arm64 --split-debug-info=build\debug-info --dart-define=SETU_BASE_URL=!BACKEND_URL! 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -File "!MONITOR!"
+
+echo.
+
+set "APK_PATH=%PROJECT_ROOT%\build\app\outputs\flutter-apk\app-release.apk"
+
+if not exist "!APK_PATH!" (
+  echo.
+  echo  ============================================================
+  echo    BUILD FAILED  -  APK not found. Check error lines above.
+  echo  ============================================================
+  echo.
+  exit /b 1
+)
+echo.
+echo         APK ready: !APK_PATH!
+exit /b 0
+
+:: ===========================================================
+:: SUBROUTINE: Install APK + whitelist on ALL connected devices
+:: ===========================================================
+:install_all
+set "DEVICE_NUM=0"
+for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do (
+  if not "%%A"=="" if not "%%B"=="" if not "%%B"=="List" (
+    set "SKIP=0"
+    echo %%A | findstr /b "emulator-" >nul 2>&1 && set "SKIP=1"
+    if /i "%%B"=="offline"       set "SKIP=1"
+    if /i "%%B"=="unauthorized"  set "SKIP=1"
+    echo %%A | findstr /r "[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" >nul 2>&1 && set "SKIP=1"
+    if "!SKIP!"=="0" (
+      set /a "DEVICE_NUM+=1"
+      echo         [Device !DEVICE_NUM!] Installing on %%A ...
+      adb -s %%A install -r "!APK_PATH!"
+      if errorlevel 1 (
+        echo         [Device !DEVICE_NUM!] INSTALL FAILED on %%A
+      ) else (
+        echo         [Device !DEVICE_NUM!] Install OK on %%A
+        set "APP_UID="
+        for /f "tokens=2 delims=:=" %%U in ('adb -s %%A shell "pm list packages --uid 2>/dev/null | grep setu_mobile" 2^>nul') do (
+          set "APP_UID=%%U"
+          set "APP_UID=!APP_UID: =!"
+        )
+        if defined APP_UID (
+          adb -s %%A shell "cmd netpolicy add restrict-background-whitelist !APP_UID!" >nul 2>&1
+          adb -s %%A shell "cmd netpolicy add app-idle-whitelist !APP_UID!" >nul 2>&1
+          adb -s %%A shell "am set-standby-bucket com.example.setu_mobile active" >nul 2>&1
+          echo         [Device !DEVICE_NUM!] Network whitelist applied ^(UID !APP_UID!^)
+        ) else (
+          echo         [Device !DEVICE_NUM!] WARNING: Could not find app UID.
+          echo                              Go to: Settings -^> Apps -^> SETU Mobile -^> Battery -^> Unrestricted
+        )
+      )
+      echo.
+    )
+  )
+)
+exit /b 0

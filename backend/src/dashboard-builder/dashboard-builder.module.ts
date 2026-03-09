@@ -21,6 +21,8 @@ import { BoqItem } from '../boq/entities/boq-item.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 import { QuantityProgressRecord } from '../planning/entities/quantity-progress-record.entity';
 import { EpsNode } from '../eps/eps.entity';
+import { Role } from '../roles/role.entity';
+import { ProjectRating } from '../quality/entities/quality-project-rating.entity';
 
 // Data Sources
 import { ALL_DATA_SOURCES } from './data-sources';
@@ -43,6 +45,8 @@ import { ALL_DATA_SOURCES } from './data-sources';
       DailyLaborPresence,
       QuantityProgressRecord,
       EpsNode,
+      Role,
+      ProjectRating,
     ]),
   ],
   controllers: [DashboardBuilderController],

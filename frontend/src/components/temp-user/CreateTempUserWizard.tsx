@@ -22,6 +22,8 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
         email: '',
         designation: '',
         templateId: '',
+        password: '',
+        isActive: true,
     });
 
     const [createdPassword, setCreatedPassword] = useState<string | null>(null);
@@ -56,8 +58,10 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
                 workOrderId: Number(form.workOrderId),
                 projectId: Number(projectId),
                 templateId: Number(form.templateId),
+                password: form.password || undefined,
+                isActive: form.isActive
             });
-            setCreatedPassword(res.generatedPassword);
+            setCreatedPassword(form.password || res.generatedPassword);
         } catch (e: any) {
             alert(e.response?.data?.message || 'Error creating user');
         }
@@ -168,7 +172,6 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
                                 <div className="space-y-4">
                                     <h3 className="text-xl font-bold text-gray-800 mb-1">User Details</h3>
                                     <p className="text-sm text-gray-500 mb-6">Enter the contractor representative's details. The mobile number will be their username.</p>
-
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
@@ -209,6 +212,32 @@ export const CreateTempUserWizard = ({ projectId, onClose, onSuccess }: Props) =
                                                 className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                                                 placeholder="john@vendor.com"
                                             />
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="md:col-span-2">
+                                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Security & Status</h4>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Set Manual Password (Optional)</label>
+                                            <input
+                                                type="password"
+                                                value={form.password}
+                                                onChange={e => setForm({ ...form, password: e.target.value })}
+                                                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                placeholder="Leave blank for auto-generate"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                id="isActive"
+                                                type="checkbox"
+                                                checked={form.isActive}
+                                                onChange={e => setForm({ ...form, isActive: e.target.checked })}
+                                                className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                                            />
+                                            <label htmlFor="isActive" className="text-sm font-medium text-gray-700">Set as Active</label>
                                         </div>
                                     </div>
                                 </div>

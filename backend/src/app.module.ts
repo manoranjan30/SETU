@@ -44,7 +44,7 @@ import { BoqSubItem } from './boq/entities/boq-sub-item.entity';
 import { TableViewConfig } from './common/entities/table-view-config.entity';
 import { SystemSetting } from './common/entities/system-setting.entity';
 import { PlanningModule } from './planning/planning.module';
-import { BoqActivityPlan } from './planning/entities/boq-activity-plan.entity';
+import { WoActivityPlan } from './planning/entities/wo-activity-plan.entity';
 import { RecoveryPlan } from './planning/entities/recovery-plan.entity';
 import { QuantityProgressRecord } from './planning/entities/quantity-progress-record.entity';
 import { ScheduleVersion } from './planning/entities/schedule-version.entity';
@@ -85,7 +85,9 @@ import { QualityHistory } from './quality/entities/quality-history.entity';
 import { QualityAudit } from './quality/entities/quality-audit.entity';
 import { QualityDocument } from './quality/entities/quality-document.entity';
 import { QualitySnagPhoto } from './quality/entities/quality-snag-photo.entity';
-import { QualityUnitTemplate } from './quality/entities/quality-unit-template.entity';
+import { QualityFloorStructure } from './quality/entities/quality-floor-structure.entity';
+import { QualityUnit } from './quality/entities/quality-unit.entity';
+import { QualityRoom } from './quality/entities/quality-room.entity';
 import { QualityActivityList } from './quality/entities/quality-activity-list.entity';
 import { QualityActivity } from './quality/entities/quality-activity.entity';
 import { QualitySequenceEdge } from './quality/entities/quality-sequence-edge.entity';
@@ -116,7 +118,7 @@ import { WorkDocModule } from './workdoc/workdoc.module';
 import { Vendor } from './workdoc/entities/vendor.entity';
 import { WorkOrder } from './workdoc/entities/work-order.entity';
 import { WorkOrderItem } from './workdoc/entities/work-order-item.entity';
-import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
+// WorkOrderBoqMap removed — WO Items now link directly to BOQ via FKs
 import { WorkDocTemplate } from './workdoc/entities/work-doc-template.entity';
 import { TemplateBuilderModule } from './template-builder/template-builder.module';
 import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
@@ -143,7 +145,7 @@ import { ReportSchedule } from './dashboard-builder/entities/report-schedule.ent
 import { DataSourceMeta } from './dashboard-builder/entities/data-source-meta.entity';
 import { DashboardShareLog } from './dashboard-builder/entities/dashboard-share-log.entity';
 import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.module';
-
+import { NotificationsModule } from './notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -176,7 +178,7 @@ import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.mo
         MeasurementElement,
         MeasurementProgress,
         TableViewConfig,
-        BoqActivityPlan,
+        WoActivityPlan,
         RecoveryPlan,
         ScheduleVersion,
         ActivityVersion,
@@ -213,7 +215,9 @@ import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.mo
         QualityAudit,
         QualityDocument,
         QualitySnagPhoto,
-        QualityUnitTemplate,
+        QualityFloorStructure,
+        QualityUnit,
+        QualityRoom,
         QualityActivityList,
         QualityActivity,
         QualitySequenceEdge,
@@ -243,7 +247,7 @@ import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.mo
         Vendor,
         WorkOrder,
         WorkOrderItem,
-        WorkOrderBoqMap,
+        // WorkOrderBoqMap removed
         WorkDocTemplate,
         // Template Builder
         PdfTemplate,
@@ -303,6 +307,7 @@ import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.mo
     AuditModule,
     TempUserModule,
     DashboardBuilderModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

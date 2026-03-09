@@ -4,12 +4,9 @@ import {
   Post,
   UseGuards,
   Get,
-  Body,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport'; // We will use a custom JwtAuthGuard later, but for login we might use LocalAuthGuard
-import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -26,15 +23,5 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   getProfile(@Request() req) {
     return req.user;
-  }
-  @Get('debug')
-  async debug() {
-    // TEMP DEBUG
-    const user = await this.authService.validateUser('admin', 'password123');
-    return {
-      message: 'Debug Admin Admin',
-      valid: !!user,
-      user: user ? 'Found' : 'Not Found',
-    };
   }
 }

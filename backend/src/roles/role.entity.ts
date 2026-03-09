@@ -19,6 +19,9 @@ export class Role {
   @Column({ nullable: true })
   description: string;
 
+  @Column({ nullable: true })
+  dashboardId: number; // For role-based dashboards
+
   @ManyToMany(() => Permission, { eager: true, cascade: true })
   @JoinTable()
   permissions: Permission[];

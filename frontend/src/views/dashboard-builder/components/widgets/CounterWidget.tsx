@@ -6,14 +6,20 @@ interface Props {
     isDesignMode?: boolean;
 }
 
-export default function CounterWidget({ data }: Props) {
+export default function CounterWidget({ data, widget }: Props) {
     const [displayed, setDisplayed] = useState(0);
 
+    const configuredField = widget?.queryConfig?.valueField as string | undefined;
     const firstNumericKey = data.length
-        ? Object.keys(data[0]).find((k) => typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])))
+        ? configuredField || Object.keys(data[0]).find((k) => typeof data[0][k] === 'number' || !isNaN(Number(data[0][k])))
         : undefined;
+    const aggregation = widget?.queryConfig?.aggregation || 'SUM';
     const target = firstNumericKey
-        ? data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0)
+        ? aggregation === 'COUNT'
+            ? data.length
+            : aggregation === 'AVG'
+                ? data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0) / Math.max(data.length, 1)
+                : data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0)
         : data.length;
 
     useEffect(() => {

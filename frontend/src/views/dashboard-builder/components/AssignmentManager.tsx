@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Shield, User, Globe, Layout } from 'lucide-react';
-import { dashboardBuilderApi, type DashboardConfig } from '../../../services/dashboard-builder.service';
+import { dashboardBuilderApi, type DashboardConfig, type RoleOption } from '../../../services/dashboard-builder.service';
 
 interface Props {
     dashboards: DashboardConfig[];
@@ -10,14 +10,17 @@ interface Assignment {
     id: number;
     dashboardId: number;
     roleName?: string;
+    role?: RoleOption;
     userId?: number;
     projectId?: number;
+    assignmentType?: 'ROLE' | 'USER' | 'DEFAULT_GLOBAL' | 'DEFAULT_PROJECT';
     isDefault: boolean;
     dashboard?: DashboardConfig;
 }
 
 export default function AssignmentManager({ dashboards }: Props) {
     const [assignments, setAssignments] = useState<Assignment[]>([]);
+    const [roles, setRoles] = useState<RoleOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
 
@@ -31,8 +34,12 @@ export default function AssignmentManager({ dashboards }: Props) {
     const load = async () => {
         setLoading(true);
         try {
-            const res = await dashboardBuilderApi.getAssignments();
-            setAssignments(res.data);
+            const [assignmentRes, roleRes] = await Promise.all([
+                dashboardBuilderApi.getAssignments(),
+                dashboardBuilderApi.getRoles(),
+            ]);
+            setAssignments(assignmentRes.data);
+            setRoles(roleRes.data || []);
         } catch (err) {
             console.error('Failed to load assignments', err);
         } finally {
@@ -47,15 +54,22 @@ export default function AssignmentManager({ dashboards }: Props) {
         try {
             const payload: any = {
                 dashboardId: newAssignment.dashboardId,
-                isDefault: newAssignment.isDefault
+                isDefault: newAssignment.isDefault,
             };
 
-            if (newAssignment.type === 'ROLE') payload.roleName = newAssignment.targetId;
+            if (newAssignment.type === 'ROLE') payload.roleId = Number(newAssignment.targetId);
             if (newAssignment.type === 'USER') payload.userId = Number(newAssignment.targetId);
             if (newAssignment.type === 'PROJECT') payload.projectId = Number(newAssignment.targetId);
+            payload.assignmentType = newAssignment.type;
 
             await dashboardBuilderApi.saveAssignment(payload);
             setShowAdd(false);
+            setNewAssignment({
+                dashboardId: 0,
+                type: 'ROLE',
+                targetId: '',
+                isDefault: true,
+            });
             load();
         } catch (err) {
             console.error('Save assignment failed', err);
@@ -104,10 +118,24 @@ export default function AssignmentManager({ dashboards }: Props) {
                         <tr key={as.id} style={{ borderBottom: '1px solid #f8fafc' }}>
                             <td style={{ padding: '16px 24px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    {as.roleName ? <Shield size={16} color="#8b5cf6" /> : as.userId ? <User size={16} color="#2563eb" /> : <Globe size={16} color="#10b981" />}
+                                    {(as.assignmentType === 'ROLE' || as.roleName || as.role?.name)
+                                        ? <Shield size={16} color="#8b5cf6" />
+                                        : (as.assignmentType === 'USER' || as.userId)
+                                            ? <User size={16} color="#2563eb" />
+                                            : <Globe size={16} color="#10b981" />}
                                     <div>
-                                        <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{as.roleName || (as.userId ? `User #${as.userId}` : 'Global Default')}</div>
-                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{as.roleName ? 'Role' : as.userId ? 'Individual User' : 'System Wide'}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                                            {as.role?.name || as.roleName || (as.userId ? `User #${as.userId}` : as.projectId ? `Project #${as.projectId}` : 'Global Default')}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                                            {as.assignmentType === 'ROLE' || as.roleName || as.role?.name
+                                                ? 'Role'
+                                                : as.assignmentType === 'USER' || as.userId
+                                                    ? 'Individual User'
+                                                    : as.assignmentType === 'DEFAULT_PROJECT' || as.projectId
+                                                        ? 'Project Default'
+                                                        : 'System Wide'}
+                                        </div>
                                     </div>
                                 </div>
                             </td>
@@ -183,14 +211,31 @@ export default function AssignmentManager({ dashboards }: Props) {
 
                         {newAssignment.type !== 'GLOBAL' && (
                             <div style={{ marginBottom: 24 }}>
-                                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 8 }}>Target Value (ID or Role Name)</label>
-                                <input
-                                    type="text"
-                                    value={newAssignment.targetId}
-                                    onChange={(e) => setNewAssignment({ ...newAssignment, targetId: e.target.value })}
-                                    placeholder={newAssignment.type === 'ROLE' ? 'e.target. ADMIN, MANAGER...' : 'ID...'}
-                                    style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid #e2e8f0', outline: 'none' }}
-                                />
+                                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
+                                    {newAssignment.type === 'ROLE' ? 'Select Role' : 'Target ID'}
+                                </label>
+                                {newAssignment.type === 'ROLE' ? (
+                                    <select
+                                        value={newAssignment.targetId}
+                                        onChange={(e) => setNewAssignment({ ...newAssignment, targetId: e.target.value })}
+                                        style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid #e2e8f0', outline: 'none' }}
+                                    >
+                                        <option value="">Choose Role...</option>
+                                        {roles.map((role) => (
+                                            <option key={role.id} value={String(role.id)}>
+                                                {role.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        type="number"
+                                        value={newAssignment.targetId}
+                                        onChange={(e) => setNewAssignment({ ...newAssignment, targetId: e.target.value })}
+                                        placeholder={newAssignment.type === 'USER' ? 'User ID...' : 'Project ID...'}
+                                        style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid #e2e8f0', outline: 'none' }}
+                                    />
+                                )}
                             </div>
                         )}
 
@@ -203,11 +248,12 @@ export default function AssignmentManager({ dashboards }: Props) {
                             </button>
                             <button
                                 onClick={handleCreate}
-                                disabled={!newAssignment.dashboardId}
+                                disabled={!newAssignment.dashboardId || (newAssignment.type !== 'GLOBAL' && !newAssignment.targetId)}
                                 style={{
                                     flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                                    background: newAssignment.dashboardId ? '#2563eb' : '#94a3b8',
-                                    color: '#fff', fontWeight: 600, cursor: newAssignment.dashboardId ? 'pointer' : 'default'
+                                    background: (newAssignment.dashboardId && (newAssignment.type === 'GLOBAL' || newAssignment.targetId)) ? '#2563eb' : '#94a3b8',
+                                    color: '#fff', fontWeight: 600,
+                                    cursor: (newAssignment.dashboardId && (newAssignment.type === 'GLOBAL' || newAssignment.targetId)) ? 'pointer' : 'default'
                                 }}
                             >
                                 Save Assignment

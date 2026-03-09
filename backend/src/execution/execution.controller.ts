@@ -59,18 +59,19 @@ export class ExecutionController {
     return this.service.deleteProgressLog(+logId);
   }
 
-  @Get('breakdown')
+  @Get('breakdown/:activityId/:epsNodeId')
   @Permissions('EXECUTION.ENTRY.READ')
   async getExecutionBreakdown(
-    @Query() query: { activityId: string; epsNodeId: string },
+    @Param('activityId') activityId: string,
+    @Param('epsNodeId') epsNodeId: string,
   ) {
     if (!FEATURES.ENABLE_MICRO_PROGRESS) {
       return { error: 'Feature not enabled', enabled: false };
     }
 
     return this.breakdownService.getBreakdown(
-      +query.activityId,
-      +query.epsNodeId,
+      +activityId,
+      +epsNodeId,
     );
   }
 
@@ -93,11 +94,14 @@ export class ExecutionController {
     }
 
     const userId = req.user?.id || 1;
+    const projectId = dto.projectId;
 
     const entries = dto.entries.map((entry: any) => ({
       boqItemId: entry.boqItemId,
+      workOrderItemId: entry.workOrderItemId,
+      vendorId: entry.vendorId,
       activityId: dto.activityId,
-      projectId: dto.projectId || req.params.projectId,
+      projectId: projectId,
       wbsNodeId: dto.epsNodeId,
       microActivityId: entry.microActivityId || null,
       executedQty: Number(entry.quantity),
@@ -106,7 +110,7 @@ export class ExecutionController {
     }));
 
     return await this.service.batchSaveMeasurements(
-      dto.projectId || req.params.projectId,
+      projectId,
       entries,
       userId,
     );

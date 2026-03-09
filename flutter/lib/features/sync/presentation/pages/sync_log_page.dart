@@ -7,13 +7,100 @@ import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/core/sync/connectivity_sync_service.dart';
 
-/// Sync Log Page - Shows all progress entries and their sync status
-///
-/// Features:
-/// - Lists all progress entries with sync status
-/// - Shows pending, synced, and error items
-/// - Allows retry for failed items
-/// - Shows detailed error messages
+// ---------------------------------------------------------------------------
+// Unified item wrapper — covers progressEntries, dailyLogs, and syncQueue
+// ---------------------------------------------------------------------------
+
+enum _SyncItemType { progress, dailyLog, queue }
+
+enum SyncStatusEntry { pending, syncing, synced, failed, error }
+
+class _SyncItem {
+  final _SyncItemType type;
+  final int id;
+  final String title;
+  final String subtitle;
+  final DateTime createdAt;
+  final SyncStatusEntry status;
+  final String? errorMessage;
+
+  /// Raw refs for actions
+  final ProgressEntry? progressEntry;
+  final DailyLog? dailyLog;
+  // queue items are managed by SyncService; no direct delete
+
+  const _SyncItem({
+    required this.type,
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.createdAt,
+    required this.status,
+    this.errorMessage,
+    this.progressEntry,
+    this.dailyLog,
+  });
+
+  bool get isDeletable =>
+      ((type == _SyncItemType.progress || type == _SyncItemType.dailyLog) &&
+          (status == SyncStatusEntry.pending ||
+              status == SyncStatusEntry.failed ||
+              status == SyncStatusEntry.error)) ||
+      (type == _SyncItemType.queue && status == SyncStatusEntry.error);
+
+  bool get isRetryable =>
+      status == SyncStatusEntry.error || status == SyncStatusEntry.failed;
+}
+
+SyncStatusEntry _statusFromInt(int value) {
+  switch (value) {
+    case 0:
+      return SyncStatusEntry.pending;
+    case 1:
+      return SyncStatusEntry.syncing;
+    case 2:
+      return SyncStatusEntry.synced;
+    case 3:
+      return SyncStatusEntry.failed;
+    case 4:
+      return SyncStatusEntry.error;
+    default:
+      return SyncStatusEntry.pending;
+  }
+}
+
+String _entityTypeLabel(String entityType) {
+  switch (entityType) {
+    case 'quality_obs_raise':
+      return 'Raise Observation';
+    case 'quality_obs_close':
+      return 'Close Observation';
+    case 'quality_obs_resolve':
+      return 'Resolve Observation';
+    case 'quality_workflow_advance':
+      return 'RFI Approval';
+    case 'quality_workflow_reject':
+      return 'RFI Rejection';
+    case 'quality_stage_save':
+      return 'Checklist Save';
+    case 'progress':
+      return 'Progress Entry';
+    case 'daily_log':
+      return 'Daily Log';
+    case 'photo':
+      return 'Photo Upload';
+    default:
+      return entityType.replaceAll('_', ' ').split(' ').map((w) {
+        if (w.isEmpty) return w;
+        return w[0].toUpperCase() + w.substring(1);
+      }).join(' ');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 class SyncLogPage extends StatefulWidget {
   const SyncLogPage({super.key});
 
@@ -22,38 +109,103 @@ class SyncLogPage extends StatefulWidget {
 }
 
 class _SyncLogPageState extends State<SyncLogPage> {
-  List<ProgressEntry> _entries = [];
+  List<_SyncItem> _items = [];
   bool _isLoading = true;
   String _filter = 'all'; // 'all', 'pending', 'synced', 'error'
 
   @override
   void initState() {
     super.initState();
-    _loadEntries();
+    _loadItems();
   }
 
-  Future<void> _loadEntries() async {
+  Future<void> _loadItems() async {
     setState(() => _isLoading = true);
 
     try {
       final database = sl<AppDatabase>();
-      var query = database.select(database.progressEntries)
-        ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]);
+      final List<_SyncItem> all = [];
 
-      // Apply filter
+      // 1. Progress entries
+      final progressQuery = database.select(database.progressEntries)
+        ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]);
       if (_filter == 'pending') {
-        query = query..where((t) => t.syncStatus.equals(0));
+        progressQuery.where((t) =>
+            t.syncStatus.equals(0) | t.syncStatus.equals(3));
       } else if (_filter == 'synced') {
-        query = query..where((t) => t.syncStatus.equals(2));
+        progressQuery.where((t) => t.syncStatus.equals(2));
       } else if (_filter == 'error') {
-        query = query
-          ..where((t) => t.syncStatus.equals(3) | t.syncStatus.equals(4));
+        progressQuery.where((t) => t.syncStatus.equals(4));
+      }
+      final progressEntries = await progressQuery.get();
+      for (final e in progressEntries) {
+        all.add(_SyncItem(
+          type: _SyncItemType.progress,
+          id: e.id,
+          title: 'Progress — Activity #${e.activityId}',
+          subtitle: '${e.quantity.toStringAsFixed(1)} units',
+          createdAt: e.createdAt,
+          status: _statusFromInt(e.syncStatus),
+          errorMessage: e.syncError,
+          progressEntry: e,
+        ));
       }
 
-      final entries = await query.get();
+      // 2. Daily logs
+      final logsQuery = database.select(database.dailyLogs)
+        ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]);
+      if (_filter == 'pending') {
+        logsQuery.where((t) =>
+            t.syncStatus.equals(0) | t.syncStatus.equals(3));
+      } else if (_filter == 'synced') {
+        logsQuery.where((t) => t.syncStatus.equals(2));
+      } else if (_filter == 'error') {
+        logsQuery.where((t) => t.syncStatus.equals(4));
+      }
+      final dailyLogs = await logsQuery.get();
+      for (final l in dailyLogs) {
+        all.add(_SyncItem(
+          type: _SyncItemType.dailyLog,
+          id: l.id,
+          title: 'Daily Log — Micro #${l.microActivityId}',
+          subtitle: '${l.actualQty.toStringAsFixed(1)} units · ${l.logDate}',
+          createdAt: l.createdAt,
+          status: _statusFromInt(l.syncStatus),
+          errorMessage: l.syncError,
+          dailyLog: l,
+        ));
+      }
+
+      // 3. Sync queue items (quality observations, approvals, etc.)
+      // Queue items are always pending (they get deleted when synced).
+      // 'synced' filter — skip queue items (they don't stay after sync)
+      if (_filter != 'synced') {
+        final queueQuery = database.select(database.syncQueue)
+          ..orderBy([(t) => drift.OrderingTerm.desc(t.createdAt)]);
+        if (_filter == 'error') {
+          // Show only queue items that have a lastError recorded
+          queueQuery.where((t) => t.lastError.isNotNull());
+        }
+        final queueItems = await queueQuery.get();
+        for (final q in queueItems) {
+          final hasError = q.lastError != null && q.lastError!.isNotEmpty;
+          all.add(_SyncItem(
+            type: _SyncItemType.queue,
+            id: q.id,
+            title: _entityTypeLabel(q.entityType),
+            subtitle: 'ID #${q.entityId}${q.retryCount > 0 ? ' · ${q.retryCount} retries' : ''}',
+            createdAt: q.createdAt,
+            status: hasError ? SyncStatusEntry.error : SyncStatusEntry.pending,
+            errorMessage: q.lastError,
+          ));
+        }
+      }
+
+      // Sort all items by createdAt descending
+      all.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       setState(() {
-        _entries = entries;
+        _items = all;
         _isLoading = false;
       });
     } catch (e) {
@@ -65,30 +217,31 @@ class _SyncLogPageState extends State<SyncLogPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sync Log'),
+        title: const Text('Sync Queue'),
         actions: [
+          if (_items.any((i) => i.type == _SyncItemType.queue && i.status == SyncStatusEntry.error))
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_rounded),
+              onPressed: _clearAllFailedQueue,
+              tooltip: 'Clear all failed',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loadEntries,
+            onPressed: _loadItems,
             tooltip: 'Refresh',
           ),
         ],
       ),
       body: Column(
         children: [
-          // Sync status summary
           _buildSyncStatusCard(),
-
-          // Filter chips
           _buildFilterChips(),
-
-          // Entries list
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _entries.isEmpty
+                : _items.isEmpty
                     ? _buildEmptyState()
-                    : _buildEntriesList(),
+                    : _buildItemsList(),
           ),
         ],
       ),
@@ -108,72 +261,94 @@ class _SyncLogPageState extends State<SyncLogPage> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                _getStatusColor(status).withOpacity(0.15),
-                _getStatusColor(status).withOpacity(0.05),
+                _getStatusColor(status).withValues(alpha: 0.15),
+                _getStatusColor(status).withValues(alpha: 0.05),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _getStatusColor(status).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _getStatusIcon(status),
-                  color: _getStatusColor(status),
-                  size: 24,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _getStatusIcon(status),
+                      color: _getStatusColor(status),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _getStatusTitle(status),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                            color: _getStatusColor(status),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _getStatusSubtitle(syncService),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _getStatusTitle(status),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                        color: _getStatusColor(status),
+              if (syncService.pendingCount > 0 || syncService.errorCount > 0) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    height: 34,
+                    child: ElevatedButton.icon(
+                      onPressed: syncService.isSyncing
+                          ? null
+                          : () => _syncNow(syncService),
+                      icon: syncService.isSyncing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 16),
+                      label: Text(syncService.errorCount > 0 ? 'Retry All' : 'Sync Now'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _getStatusColor(status),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _getStatusSubtitle(syncService),
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (syncService.pendingCount > 0 || syncService.errorCount > 0)
-                ElevatedButton.icon(
-                  onPressed: syncService.isSyncing
-                      ? null
-                      : () => _syncNow(syncService),
-                  icon: syncService.isSyncing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.sync_rounded, size: 18),
-                  label: Text(syncService.errorCount > 0 ? 'Retry' : 'Sync'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _getStatusColor(status),
-                    foregroundColor: Colors.white,
                   ),
                 ),
+              ],
             ],
           ),
         );
@@ -204,9 +379,9 @@ class _SyncLogPageState extends State<SyncLogPage> {
       selected: isSelected,
       onSelected: (selected) {
         setState(() => _filter = value);
-        _loadEntries();
+        _loadItems();
       },
-      selectedColor: AppColors.primary.withOpacity(0.2),
+      selectedColor: AppColors.primary.withValues(alpha: 0.2),
       checkmarkColor: AppColors.primary,
       labelStyle: TextStyle(
         color: isSelected ? AppColors.primary : AppColors.textSecondary,
@@ -221,13 +396,13 @@ class _SyncLogPageState extends State<SyncLogPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.history_rounded,
+            Icons.cloud_done_rounded,
             size: 64,
-            color: AppColors.textSecondary.withOpacity(0.5),
+            color: AppColors.textSecondary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
-            'No entries found',
+            _filter == 'synced' ? 'No synced entries found' : 'Nothing pending — all clear',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -237,24 +412,18 @@ class _SyncLogPageState extends State<SyncLogPage> {
     );
   }
 
-  Widget _buildEntriesList() {
+  Widget _buildItemsList() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _entries.length,
-      itemBuilder: (context, index) {
-        final entry = _entries[index];
-        return _buildEntryCard(entry);
-      },
+      itemCount: _items.length,
+      itemBuilder: (context, index) => _buildItemCard(_items[index]),
     );
   }
 
-  Widget _buildEntryCard(ProgressEntry entry) {
-    final syncStatus = _getSyncStatusEnum(entry.syncStatus);
+  Widget _buildItemCard(_SyncItem item) {
+    final syncStatus = item.status;
     final dateFormat = DateFormat('MMM d, yyyy');
     final timeFormat = DateFormat('h:mm a');
-    final isDeletable = syncStatus == SyncStatusEntry.pending ||
-        syncStatus == SyncStatusEntry.failed ||
-        syncStatus == SyncStatusEntry.error;
 
     return Card(
       elevation: 0,
@@ -262,7 +431,7 @@ class _SyncLogPageState extends State<SyncLogPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: _getSyncStatusColor(syncStatus).withOpacity(0.3),
+          color: _getSyncStatusColor(syncStatus).withValues(alpha: 0.3),
         ),
       ),
       child: Padding(
@@ -274,11 +443,11 @@ class _SyncLogPageState extends State<SyncLogPage> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: _getSyncStatusColor(syncStatus).withOpacity(0.1),
+                color: _getSyncStatusColor(syncStatus).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
-                _getSyncStatusIcon(syncStatus),
+                _getItemIcon(item),
                 color: _getSyncStatusColor(syncStatus),
                 size: 20,
               ),
@@ -292,15 +461,19 @@ class _SyncLogPageState extends State<SyncLogPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Activity #${entry.activityId}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                      Expanded(
+                        child: Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
-                        '${entry.quantity.toStringAsFixed(1)} units',
+                        item.subtitle,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 12,
@@ -310,23 +483,23 @@ class _SyncLogPageState extends State<SyncLogPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${dateFormat.format(entry.createdAt)} at ${timeFormat.format(entry.createdAt)}',
+                    '${dateFormat.format(item.createdAt)} at ${timeFormat.format(item.createdAt)}',
                     style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12,
                     ),
                   ),
-                  if (entry.syncError != null) ...[
+                  if (item.errorMessage != null) ...[
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.error.withOpacity(0.1),
+                        color: AppColors.error.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        entry.syncError!,
+                        item.errorMessage!,
                         style: const TextStyle(
                           color: AppColors.error,
                           fontSize: 11,
@@ -338,19 +511,18 @@ class _SyncLogPageState extends State<SyncLogPage> {
               ),
             ),
             // Action buttons
-            if (syncStatus == SyncStatusEntry.error ||
-                syncStatus == SyncStatusEntry.failed)
+            if (item.isRetryable)
               IconButton(
                 icon: const Icon(Icons.refresh_rounded,
                     color: AppColors.primary),
-                onPressed: () => _retryEntry(entry),
+                onPressed: () => _retryItem(item),
                 tooltip: 'Retry',
               ),
-            if (isDeletable)
+            if (item.isDeletable)
               IconButton(
                 icon: const Icon(Icons.delete_outline_rounded,
                     color: AppColors.error),
-                onPressed: () => _confirmDelete(entry),
+                onPressed: () => _confirmDelete(item),
                 tooltip: 'Delete',
               ),
           ],
@@ -361,25 +533,30 @@ class _SyncLogPageState extends State<SyncLogPage> {
 
   void _syncNow(ConnectivitySyncService syncService) async {
     await syncService.syncNow();
-    _loadEntries();
+    _loadItems();
   }
 
-  void _retryEntry(ProgressEntry entry) async {
+  void _retryItem(_SyncItem item) async {
     final syncService = sl<SyncService>();
-    await syncService.retryErrorItem(entry.id);
-    _loadEntries();
+    if (item.type == _SyncItemType.progress) {
+      await syncService.retryErrorItem(item.id);
+    } else if (item.type == _SyncItemType.dailyLog) {
+      await syncService.retryErrorItem(item.id, isDailyLog: true);
+    } else {
+      // Queue items — just trigger a full sync
+      await syncService.syncAll();
+    }
+    _loadItems();
   }
 
-  void _confirmDelete(ProgressEntry entry) {
+  void _confirmDelete(_SyncItem item) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('Delete Entry?'),
         content: Text(
-          'Activity #${entry.activityId} — '
-          '${entry.quantity.toStringAsFixed(1)} units\n\n'
-          'This entry has not been synced. Delete it permanently?',
+          '${item.title}\n\nThis entry has not been synced. Delete it permanently?',
         ),
         actions: [
           TextButton(
@@ -395,14 +572,68 @@ class _SyncLogPageState extends State<SyncLogPage> {
             label: const Text('Delete'),
             onPressed: () async {
               Navigator.pop(context);
-              final syncService = sl<SyncService>();
-              await syncService.deleteProgressEntry(entry.id);
-              _loadEntries();
+              final db = sl<AppDatabase>();
+              if (item.type == _SyncItemType.progress) {
+                await sl<SyncService>().deleteProgressEntry(item.id);
+              } else if (item.type == _SyncItemType.dailyLog) {
+                await (db.delete(db.dailyLogs)
+                      ..where((t) => t.id.equals(item.id)))
+                    .go();
+              } else if (item.type == _SyncItemType.queue) {
+                await (db.delete(db.syncQueue)
+                      ..where((t) => t.id.equals(item.id)))
+                    .go();
+              }
+              _loadItems();
             },
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _clearAllFailedQueue() async {
+    final failedIds = _items
+        .where((i) =>
+            i.type == _SyncItemType.queue &&
+            i.status == SyncStatusEntry.error)
+        .map((i) => i.id)
+        .toList();
+    if (failedIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Clear All Failed?'),
+        content: Text(
+          '${failedIds.length} failed item${failedIds.length > 1 ? 's' : ''} will be permanently deleted.\n\nThese are items that could not sync after multiple retries.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+            label: const Text('Clear All'),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final db = sl<AppDatabase>();
+      await (db.delete(db.syncQueue)
+            ..where((t) => t.id.isIn(failedIds)))
+          .go();
+      _loadItems();
+    }
   }
 
   Color _getStatusColor(SyncStatusInfo status) {
@@ -440,20 +671,25 @@ class _SyncLogPageState extends State<SyncLogPage> {
     return 'Last synced: Just now';
   }
 
-  SyncStatusEntry _getSyncStatusEnum(int value) {
-    switch (value) {
-      case 0:
-        return SyncStatusEntry.pending;
-      case 1:
-        return SyncStatusEntry.syncing;
-      case 2:
-        return SyncStatusEntry.synced;
-      case 3:
-        return SyncStatusEntry.failed;
-      case 4:
-        return SyncStatusEntry.error;
-      default:
-        return SyncStatusEntry.pending;
+  IconData _getItemIcon(_SyncItem item) {
+    switch (item.status) {
+      case SyncStatusEntry.synced:
+        return Icons.check_circle_rounded;
+      case SyncStatusEntry.error:
+      case SyncStatusEntry.failed:
+        return Icons.error_rounded;
+      case SyncStatusEntry.syncing:
+        return Icons.sync_rounded;
+      case SyncStatusEntry.pending:
+        break;
+    }
+    switch (item.type) {
+      case _SyncItemType.queue:
+        return Icons.cloud_upload_rounded;
+      case _SyncItemType.dailyLog:
+        return Icons.today_rounded;
+      case _SyncItemType.progress:
+        return Icons.schedule_rounded;
     }
   }
 
@@ -470,26 +706,4 @@ class _SyncLogPageState extends State<SyncLogPage> {
         return AppColors.error;
     }
   }
-
-  IconData _getSyncStatusIcon(SyncStatusEntry status) {
-    switch (status) {
-      case SyncStatusEntry.pending:
-        return Icons.schedule_rounded;
-      case SyncStatusEntry.syncing:
-        return Icons.sync_rounded;
-      case SyncStatusEntry.synced:
-        return Icons.check_circle_rounded;
-      case SyncStatusEntry.failed:
-      case SyncStatusEntry.error:
-        return Icons.error_rounded;
-    }
-  }
-}
-
-enum SyncStatusEntry {
-  pending,
-  syncing,
-  synced,
-  failed,
-  error,
 }

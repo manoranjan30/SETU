@@ -34,4 +34,12 @@ export class CreateTempUserDto {
   @IsString()
   @IsOptional()
   designation?: string;
+
+  @IsString()
+  @IsOptional()
+  password?: string;
+
+  @IsString()
+  @IsOptional()
+  isActive?: boolean;
 }

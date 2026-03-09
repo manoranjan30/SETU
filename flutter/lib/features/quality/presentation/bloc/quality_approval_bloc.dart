@@ -214,13 +214,19 @@ class ApprovalActionQueued extends QualityApprovalState {
   final String action; // 'approve' | 'provisional' | 'reject'
   final bool isOffline;
   final int pendingSyncCount;
+  /// 1-based index of the real approval level just completed (excluding RAISE_RFI step)
+  final int? completedLevel;
+  /// Total number of real approval levels (excluding RAISE_RFI step)
+  final int? totalLevels;
   const ApprovalActionQueued({
     required this.action,
     required this.isOffline,
     required this.pendingSyncCount,
+    this.completedLevel,
+    this.totalLevels,
   });
   @override
-  List<Object?> get props => [action, isOffline, pendingSyncCount];
+  List<Object?> get props => [action, isOffline, pendingSyncCount, completedLevel, totalLevels];
 }
 
 class ObservationPhotoUploaded extends QualityApprovalState {
@@ -376,10 +382,17 @@ class QualityApprovalBloc
 
       final syncResult = await _syncService.syncAll();
       final pending = await _syncService.getPendingSyncCount();
+      // Compute level context for descriptive post-advance message
+      final wf = current.workflow;
+      final realSteps = wf?.steps.where((s) => !s.isRaiseStep).toList() ?? [];
+      final completedOrder = wf?.currentStepOrder ?? 1;
+      final completedLevel = realSteps.indexWhere((s) => s.stepOrder == completedOrder) + 1;
       emit(ApprovalActionQueued(
         action: 'approve',
         isOffline: !syncResult.success,
         pendingSyncCount: pending,
+        completedLevel: completedLevel > 0 ? completedLevel : null,
+        totalLevels: realSteps.isNotEmpty ? realSteps.length : null,
       ));
     } catch (e) {
       emit(QualityApprovalError(_friendly(e)));

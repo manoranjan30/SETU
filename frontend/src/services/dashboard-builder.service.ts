@@ -64,6 +64,11 @@ export interface DashboardTemplate {
     isSystemTemplate: boolean;
 }
 
+export interface RoleOption {
+    id: number;
+    name: string;
+}
+
 // ─── API Calls ────────────────────────────────────────────────────────────
 
 const BASE = '/dashboard-builder';
@@ -106,4 +111,7 @@ export const dashboardBuilderApi = {
 
     // Common
     getDefaults: () => api.get<DashboardConfig>(`${BASE}/defaults/my`),
+
+    // Supporting lookups
+    getRoles: () => api.get<RoleOption[]>('/roles'),
 };

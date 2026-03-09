@@ -22,6 +22,12 @@
 - **WithWidth.tsx**: Custom Responsive HOC to replace problematic library exports, ensuring build-time stable resolution in ESM.
 - **Vite Configuration**: Updated with optimized chunking for large dependencies (AG Grid, Recharts, Three.js).
 
+### 🛠️ Post-Implementation Fixes (March 2026)
+- **Role-Based Assignment**: Resolved bugs where JWT role arrays weren't correctly mapped to DB IDs, ensuring the 4-tier assignment hierarchy works flawlessly.
+- **Service Stability**: Restored method boundaries and fixed duplicated code fragments in `DashboardBuilderService`.
+- **API Alignment**: Synced frontend route calls with backend `@Get('defaults/my')` endpoints.
+- **Parallel Builds**: Added `quick_build_parallel.bat` to concurrently build frontend and backend images, reducing launch latency.
+
 ## 🛠️ Build Stats
 - **Modules Transformed:** 2854
 - **Final Bundle Size:** ~4.7MB (Minified)

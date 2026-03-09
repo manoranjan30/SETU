@@ -570,6 +570,7 @@ export default function QualityApprovalsPage() {
                                                     const isCurrent = workflowState.currentStepOrder === step.stepOrder;
                                                     const isCompleted = step.status === 'COMPLETED';
                                                     const isRejected = step.status === 'REJECTED';
+                                                    const isRaiserStep = step.workflowNode?.stepType === 'RAISE_RFI' || (step.stepOrder === 1 && step.workflowNode?.label?.toLowerCase?.()?.includes?.('raise'));
                                                     const isLastStepNode = step.stepOrder === Math.max(...workflowState.steps.map((s: any) => s.stepOrder));
 
                                                     let colorClass = "bg-gray-100 text-gray-500 border-gray-200";
@@ -577,14 +578,21 @@ export default function QualityApprovalsPage() {
                                                     if (isRejected) colorClass = "bg-red-100 text-red-700 border-red-200";
                                                     if (isCurrent) colorClass = "bg-indigo-100 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200";
 
+                                                    // Determine label and subtitle
+                                                    const stepLabel = isLastStepNode && !isRaiserStep
+                                                        ? 'Final Approval'
+                                                        : (step.workflowNode?.label || `Step ${step.stepOrder}`);
+                                                    const stepSubtitle = isCompleted
+                                                        ? (isRaiserStep ? 'RFI Raised' : `Signed by ${step.signedBy}`)
+                                                        : isRejected ? 'Rejected'
+                                                            : isCurrent ? 'Pending Approval' : 'Waiting';
+
                                                     return (
                                                         <div key={step.id} className="flex items-center gap-2 shrink-0">
                                                             <div className={`flex flex-col border rounded-lg px-3 py-1.5 ${colorClass}`}>
-                                                                <span className="text-[10px] font-bold uppercase">{isLastStepNode ? 'Final Approval' : (step.workflowNode?.label || `Step ${step.stepOrder}`)}</span>
+                                                                <span className="text-[10px] font-bold uppercase">{stepLabel}</span>
                                                                 <span className="text-[10px] truncate max-w-[120px]">
-                                                                    {isCompleted ? `Signed by ${step.signedBy}` :
-                                                                        isRejected ? `Rejected` :
-                                                                            isCurrent ? `Pending Approval` : `Waiting`}
+                                                                    {stepSubtitle}
                                                                 </span>
                                                             </div>
                                                             {sIdx < workflowState.steps.length - 1 && (

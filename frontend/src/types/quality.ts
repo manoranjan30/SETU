@@ -96,41 +96,59 @@ export const SnagPriority = QualityPriority;
 export type QualitySnag = QualityItem;
 export type SnagPhoto = QualityPhoto;
 
-// ... keeping existing template interfaces
-export interface QualityUnitTemplate {
-    id: number;
-    projectId: number;
-    name: string;
-    structure: {
-        rooms: string[];
-    };
-}
-
-export interface CreateTemplateDto {
-    name: string;
-    rooms: string[];
-}
-
-export interface ApplyUnitDto {
-    floorId: number;
-    templateId: number;
-    unitName: string;
-}
-
-export interface BulkApplyDto {
-    floorIds: number[];
-    templateId: number;
-    config: {
-        prefix?: string;
+export interface BuildPreviewDto {
+    unitCount: number;
+    naming: {
+        prefix: string;
         startNumber: number;
-        count: number;
         increment?: number;
+        pad?: number;
     };
+    defaultRooms?: Array<{ name: string; roomType?: string }>;
+}
+
+export interface BuildApplyDto {
+    replaceExisting?: boolean;
+    units: Array<{
+        name: string;
+        code?: string;
+        rooms: Array<{ name: string; code?: string; roomType?: string }>;
+    }>;
 }
 
 export interface CopyStructureDto {
-    sourceNodeId: number;
-    targetParentIds: number[];
+    sourceFloorId: number;
+    targetFloorIds: number[];
+    collisionMode?: 'REPLACE' | 'SKIP' | 'FAIL';
+    naming?: {
+        mode?: 'KEEP' | 'FLOOR_PREFIX_REMAP' | 'REPLACE_PREFIX';
+        sourcePrefix?: string;
+    };
+}
+
+export interface QualityRoomNode {
+    id: number;
+    unitId: number;
+    name: string;
+    code?: string | null;
+    roomType?: string | null;
+    sequence: number;
+}
+
+export interface QualityUnitNode {
+    id: number;
+    floorStructureId: number;
+    name: string;
+    code?: string | null;
+    sequence: number;
+    rooms: QualityRoomNode[];
+}
+
+export interface QualityFloorStructure {
+    id?: number;
+    projectId: number;
+    floorId: number;
+    units: QualityUnitNode[];
 }
 
 // === SEQUENCER ===

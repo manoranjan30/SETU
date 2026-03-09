@@ -12,6 +12,7 @@ import { QualityActivity } from './quality-activity.entity';
 import { QualityActivityList } from './quality-activity-list.entity';
 import { EpsNode } from '../../eps/eps.entity';
 import { QualityInspectionStage } from './quality-inspection-stage.entity';
+import { Vendor } from '../../workdoc/entities/vendor.entity';
 
 export enum InspectionStatus {
   PENDING = 'PENDING',
@@ -73,6 +74,31 @@ export class QualityInspection {
 
   @Column({ nullable: true })
   requestedById: number; // User ID who raised the RFI
+
+  @Column({ nullable: true })
+  vendorId: number;
+
+  @ManyToOne(() => Vendor)
+  @JoinColumn({ name: 'vendorId' })
+  vendor: Vendor;
+
+  @Column({ nullable: true })
+  vendorName: string; // Snapshot for historical purposes
+
+  @Column({ nullable: true })
+  qualityUnitId: number;
+
+  @Column({ nullable: true })
+  qualityRoomId: number;
+
+  @Column({ type: 'int', default: 1 })
+  partNo: number;
+
+  @Column({ type: 'int', default: 1 })
+  totalParts: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  partLabel: string | null;
 
   @Column({ type: 'text', nullable: true })
   comments: string;

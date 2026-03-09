@@ -213,48 +213,75 @@ export class QualityController {
 
   // === STRUCTURE ENDPOINTS ===
 
-  @Post(':projectId/structure/templates')
+  @Get(':projectId/structure/floor/:floorId')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  createTemplate(@Param('projectId') projectId: number, @Body() data: any) {
-    return this.structureService.createTemplate(
-      projectId,
-      data.name,
-      data.rooms,
-    );
+  getFloorStructure(
+    @Param('projectId') projectId: number,
+    @Param('floorId') floorId: number,
+  ) {
+    return this.structureService.getFloorStructure(projectId, floorId);
   }
 
-  @Get(':projectId/structure/templates')
+  @Post(':projectId/structure/floor/:floorId/preview-build')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  getTemplates(@Param('projectId') projectId: number) {
-    return this.structureService.getTemplates(projectId);
+  previewBuild(
+    @Param('floorId') floorId: number,
+    @Body() data: any,
+  ) {
+    return this.structureService.previewBuild(floorId, data);
   }
 
-  @Post('structure/apply-unit')
+  @Post(':projectId/structure/floor/:floorId/apply-build')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  addUnit(@Body() data: any) {
-    return this.structureService.addUnitFromTemplate(
-      data.floorId,
-      data.templateId,
-      data.unitName,
-    );
+  applyBuild(
+    @Param('floorId') floorId: number,
+    @Body() data: any,
+  ) {
+    return this.structureService.applyBuild(floorId, data);
   }
 
-  @Post('structure/bulk-apply')
+  @Post('structure/copy-floor')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  bulkAddUnits(@Body() data: any) {
-    return this.structureService.bulkCreateUnits(
-      data.floorIds,
-      data.templateId,
-      data.config,
-    );
+  copyFloorStructure(@Body() data: any) {
+    return this.structureService.copyFloorStructure(data);
   }
 
-  @Post('structure/copy')
+  @Put('structure/units/:unitId')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  copyStructure(@Body() data: any) {
-    return this.structureService.copyStructure(
-      data.sourceNodeId,
-      data.targetParentIds,
-    );
+  updateUnit(
+    @Param('unitId') unitId: number,
+    @Body() data: any,
+  ) {
+    return this.structureService.updateUnit(unitId, data);
+  }
+
+  @Delete('structure/units/:unitId')
+  @Permissions('QUALITY.STRUCTURE.MANAGE')
+  deleteUnit(@Param('unitId') unitId: number) {
+    return this.structureService.deleteUnit(unitId);
+  }
+
+  @Post('structure/units/:unitId/rooms')
+  @Permissions('QUALITY.STRUCTURE.MANAGE')
+  createRoom(
+    @Param('unitId') unitId: number,
+    @Body() data: any,
+  ) {
+    return this.structureService.createRoom(unitId, data);
+  }
+
+  @Put('structure/rooms/:roomId')
+  @Permissions('QUALITY.STRUCTURE.MANAGE')
+  updateRoom(
+    @Param('roomId') roomId: number,
+    @Body() data: any,
+  ) {
+    return this.structureService.updateRoom(roomId, data);
+  }
+
+  @Delete('structure/rooms/:roomId')
+  @Permissions('QUALITY.STRUCTURE.MANAGE')
+  deleteRoom(@Param('roomId') roomId: number) {
+    return this.structureService.deleteRoom(roomId);
   }
 }

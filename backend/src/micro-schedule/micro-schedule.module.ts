@@ -8,6 +8,8 @@ import { DelayReason } from './entities/delay-reason.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { WorkOrder } from '../workdoc/entities/work-order.entity';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { User } from '../users/user.entity';
 import { MicroScheduleService } from './micro-schedule.service';
@@ -15,7 +17,7 @@ import { MicroActivityService } from './micro-activity.service';
 import { MicroDailyLogService } from './micro-daily-log.service';
 import { MicroLedgerService } from './micro-ledger.service';
 import { MicroScheduleController } from './micro-schedule.controller';
-import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
+import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 
 @Module({
   imports: [
@@ -28,9 +30,11 @@ import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
       Activity,
       BoqItem,
       WorkOrder,
+      WorkOrderItem,
+      Vendor,
       EpsNode,
       User,
-      BoqActivityPlan,
+      WoActivityPlan,
     ]),
   ],
   controllers: [MicroScheduleController],

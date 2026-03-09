@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, BarChart3, PieChart, TrendingUp, Table, Activity, Target, Hash, Circle, Layers } from 'lucide-react';
+import { X, BarChart3, PieChart, TrendingUp, Table, Target, Hash, Circle } from 'lucide-react';
 import type { DataSourceMeta } from '../../../services/dashboard-builder.service';
 
 interface Props {
@@ -13,20 +13,13 @@ const WIDGET_TYPES = [
     { type: 'COUNTER', icon: Hash, label: 'Counter', desc: 'Animated number' },
     { type: 'PROGRESS_RING', icon: Circle, label: 'Progress Ring', desc: 'Percentage completion' },
     { type: 'BAR', icon: BarChart3, label: 'Bar Chart', desc: 'Category comparisons' },
-    { type: 'STACKED_BAR', icon: Layers, label: 'Stacked Bar', desc: 'Multi-series bars' },
+    { type: 'STACKED_BAR', icon: BarChart3, label: 'Stacked Bar', desc: 'Multi-series bars' },
     { type: 'LINE', icon: TrendingUp, label: 'Line Chart', desc: 'Trends over time' },
-    { type: 'AREA', icon: Activity, label: 'Area Chart', desc: 'Volume trends' },
+    { type: 'AREA', icon: TrendingUp, label: 'Area Chart', desc: 'Volume trends' },
     { type: 'PIE', icon: PieChart, label: 'Pie Chart', desc: 'Distribution' },
     { type: 'DONUT', icon: PieChart, label: 'Donut Chart', desc: 'Distribution + center stat' },
     { type: 'TABLE', icon: Table, label: 'Data Table', desc: 'Sortable table' },
     { type: 'GAUGE', icon: Target, label: 'Gauge', desc: 'Value against target' },
-    { type: 'SCATTER', icon: Activity, label: 'Scatter Plot', desc: 'Correlation analysis' },
-    { type: 'RADAR', icon: Target, label: 'Radar Chart', desc: 'Multi-metric comparison' },
-    { type: 'HEATMAP', icon: Layers, label: 'Heatmap', desc: 'Matrix data' },
-    { type: 'FUNNEL', icon: Activity, label: 'Funnel', desc: 'Pipeline stages' },
-    { type: 'TREEMAP', icon: Layers, label: 'Treemap', desc: 'Hierarchical data' },
-    { type: 'TIMELINE', icon: Activity, label: 'Timeline', desc: 'Event sequences' },
-    { type: 'SCURVE', icon: TrendingUp, label: 'S-Curve', desc: 'Planned vs Actual' },
 ];
 
 export default function AddWidgetPanel({ dataSources, onAdd, onClose }: Props) {

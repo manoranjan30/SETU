@@ -24,21 +24,26 @@ export const VendorUserManagementPage = () => {
         loadUsers();
     }, [pId]);
 
-    const handleSuspend = async (user: TempUser) => {
-        const reason = prompt('Enter suspension reason:');
-        if (reason) {
-            await tempUserService.suspendTempUser(user.id, reason);
-            loadUsers();
+    const handleToggleStatus = async (user: TempUser) => {
+        const newStatus = user.status === 'ACTIVE' ? false : true;
+        if (confirm(`${newStatus ? 'Activate' : 'Deactivate'} this vendor user?`)) {
+            try {
+                await tempUserService.updateStatus(user.id, newStatus);
+                loadUsers();
+            } catch (e: any) {
+                alert(e.response?.data?.message || 'Error updating status');
+            }
         }
     };
 
-    const handleReactivate = async (user: TempUser) => {
-        if (confirm('Reactivate this vendor user?')) {
+    const handleResetPassword = async (user: TempUser) => {
+        const password = prompt(`Enter new password for ${user.user.displayName}:`);
+        if (password) {
             try {
-                await tempUserService.reactivateTempUser(user.id);
-                loadUsers();
+                await tempUserService.resetPassword(user.id, password);
+                alert('Password reset successfully.');
             } catch (e: any) {
-                alert(e.response?.data?.message || 'Error reactivating user');
+                alert(e.response?.data?.message || 'Error resetting password');
             }
         }
     };
@@ -100,19 +105,22 @@ export const VendorUserManagementPage = () => {
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    {u.status === 'ACTIVE' && (
-                                        <button onClick={() => handleSuspend(u)} className="text-orange-600 hover:text-orange-900">
-                                            Suspend
+                                    <div className="flex justify-end gap-3 text-sm">
+                                        <button onClick={() => handleResetPassword(u)} className="text-indigo-600 hover:text-indigo-900 border border-indigo-200 px-2 py-1 rounded hover:bg-indigo-50">
+                                            Reset Pwd
                                         </button>
-                                    )}
-                                    {u.status === 'SUSPENDED' && (
-                                        <button onClick={() => handleReactivate(u)} className="text-green-600 hover:text-green-900">
-                                            Reactivate
-                                        </button>
-                                    )}
-                                    {u.status === 'EXPIRED' && (
-                                        <span className="text-gray-400 text-xs italic">WO Ended</span>
-                                    )}
+                                        {u.status !== 'EXPIRED' && (
+                                            <button
+                                                onClick={() => handleToggleStatus(u)}
+                                                className={`px-2 py-1 rounded border transition-colors ${u.status === 'ACTIVE'
+                                                    ? "text-orange-600 border-orange-200 hover:bg-orange-50"
+                                                    : "text-green-600 border-green-200 hover:bg-green-50"
+                                                }`}
+                                            >
+                                                {u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}

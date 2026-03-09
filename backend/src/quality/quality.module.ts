@@ -12,7 +12,9 @@ import { QualityItem } from './entities/quality-item.entity';
 import { QualityHistory } from './entities/quality-history.entity';
 import { QualityAudit } from './entities/quality-audit.entity';
 import { QualityDocument } from './entities/quality-document.entity';
-import { QualityUnitTemplate } from './entities/quality-unit-template.entity';
+import { QualityFloorStructure } from './entities/quality-floor-structure.entity';
+import { QualityUnit } from './entities/quality-unit.entity';
+import { QualityRoom } from './entities/quality-room.entity';
 import { QualitySnagPhoto } from './entities/quality-snag-photo.entity';
 import { QualityWorkflowService } from './quality-workflow.service';
 import { EpsNode } from '../eps/eps.entity';
@@ -28,6 +30,10 @@ import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-
 import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
 import { QualityExecutionItem } from './entities/quality-execution-item.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { User } from '../users/user.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
 
 import { QualityInspectionService } from './quality-inspection.service';
 import { QualityInspectionController } from './quality-inspection.controller';
@@ -82,7 +88,9 @@ import { QualityRatingController } from './quality-rating.controller';
       QualityHistory,
       QualityAudit,
       QualityDocument,
-      QualityUnitTemplate,
+      QualityFloorStructure,
+      QualityUnit,
+      QualityRoom,
       QualitySnagPhoto,
       EpsNode,
       // NEW
@@ -107,6 +115,10 @@ import { QualityRatingController } from './quality-rating.controller';
       UserProjectAssignment,
       QualityRatingConfig,
       ProjectRating,
+      TempUser,
+      User,
+      Vendor,
+      WorkOrder,
     ]),
   ],
   controllers: [

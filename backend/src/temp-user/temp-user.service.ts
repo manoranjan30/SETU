@@ -2,11 +2,10 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
-  UnauthorizedException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { TempUser } from './entities/temp-user.entity';
 import { TempRoleTemplate } from './entities/temp-role-template.entity';
 import { CreateTempUserDto } from './dto/create-temp-user.dto';
@@ -40,7 +39,6 @@ export class TempUserService {
       where: [
         { projectId, status: 'ACTIVE' },
         { projectId, status: 'IN_PROGRESS' },
-        { projectId, status: 'DRAFT' }, // Add DRAFT for testing/visibility
       ],
       relations: ['vendor'],
     });
@@ -49,7 +47,7 @@ export class TempUserService {
     today.setHours(0, 0, 0, 0); // Start of today
 
     const validWOs = workOrders.filter((wo) => {
-      if (!wo.orderValidityEnd) return true; // If no validity specified, assume valid
+      if (!wo.orderValidityEnd) return false;
       const expiry = new Date(wo.orderValidityEnd);
       expiry.setHours(0, 0, 0, 0); // Compare date part only
       return expiry >= today;
@@ -69,7 +67,6 @@ export class TempUserService {
       where: [
         { vendor: { id: vendorId }, projectId, status: 'ACTIVE' },
         { vendor: { id: vendorId }, projectId, status: 'IN_PROGRESS' },
-        { vendor: { id: vendorId }, projectId, status: 'DRAFT' },
       ],
     });
 
@@ -77,7 +74,7 @@ export class TempUserService {
     today.setHours(0, 0, 0, 0);
 
     return workOrders.filter((wo) => {
-      if (!wo.orderValidityEnd) return true; // If no validity specified, assume valid
+      if (!wo.orderValidityEnd) return false;
       const expiry = new Date(wo.orderValidityEnd);
       expiry.setHours(0, 0, 0, 0);
       return expiry >= today;
@@ -97,8 +94,7 @@ export class TempUserService {
     if (
       !workOrder ||
       (workOrder.status !== 'ACTIVE' &&
-        workOrder.status !== 'IN_PROGRESS' &&
-        workOrder.status !== 'DRAFT')
+        workOrder.status !== 'IN_PROGRESS')
     ) {
       throw new BadRequestException('Invalid/inactive Work Order');
     }
@@ -106,14 +102,14 @@ export class TempUserService {
       ? new Date(workOrder.orderValidityEnd)
       : null;
 
-    if (expiryDate && expiryDate < new Date()) {
-      throw new BadRequestException('Work order is expired');
+    if (!expiryDate) {
+      throw new BadRequestException(
+        'Work order validity end date is required for temporary users',
+      );
     }
 
-    // Default expiry if none set on Work Order (e.g. 1 year)
-    if (!expiryDate) {
-      expiryDate = new Date();
-      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+    if (expiryDate < new Date()) {
+      throw new BadRequestException('Work order is expired');
     }
 
     // 2. Validate template
@@ -137,7 +133,7 @@ export class TempUserService {
       throw new ConflictException('User already exists for this work order');
 
     // 4. Create base User
-    const tempPassword = Math.random().toString(36).slice(-8); // e.g. a8b4c2d1
+    const tempPassword = dto.password || Math.random().toString(36).slice(-8); // e.g. a8b4c2d1
     const bcrypt = require('bcryptjs');
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
@@ -151,7 +147,8 @@ export class TempUserService {
         designation: dto.designation,
         passwordHash,
         isTempUser: true,
-        isFirstLogin: true,
+        isFirstLogin: dto.password ? false : true,
+        isActive: dto.isActive !== undefined ? dto.isActive : true,
       });
       user = await this.userRepo.save(user);
     } else {
@@ -162,7 +159,8 @@ export class TempUserService {
         );
       }
       user.passwordHash = passwordHash;
-      user.isFirstLogin = true;
+      user.isFirstLogin = dto.password ? false : true;
+      user.isActive = dto.isActive !== undefined ? dto.isActive : user.isActive;
       user = await this.userRepo.save(user);
     }
 
@@ -174,7 +172,7 @@ export class TempUserService {
       project: { id: dto.projectId } as any,
       tempRoleTemplate: template,
       expiryDate,
-      status: 'ACTIVE',
+      status: dto.isActive === false ? 'SUSPENDED' : 'ACTIVE',
       createdById: createdByUserId,
     });
     await this.repo.save(tempUser);
@@ -242,9 +240,15 @@ export class TempUserService {
     });
     if (
       !workOrder ||
-      (workOrder.status !== 'ACTIVE' && workOrder.status !== 'IN_PROGRESS' && workOrder.status !== 'DRAFT')
+      (workOrder.status !== 'ACTIVE' && workOrder.status !== 'IN_PROGRESS')
     ) {
       throw new BadRequestException('Work order is not active');
+    }
+
+    if (!workOrder.orderValidityEnd) {
+      throw new BadRequestException(
+        'Work order validity end date is required for temporary users',
+      );
     }
 
     if (
@@ -261,5 +265,47 @@ export class TempUserService {
     tempUser.expiryDate = new Date(workOrder.orderValidityEnd);
 
     return this.repo.save(tempUser);
+  }
+
+  async updateStatus(id: number, isActive: boolean, updatedByUserId: number) {
+    const tempUser = await this.repo.findOne({
+      where: { id },
+      relations: ['user'],
+    });
+    if (!tempUser) throw new NotFoundException('Temp user not found');
+
+    tempUser.status = isActive ? 'ACTIVE' : 'SUSPENDED';
+    if (!isActive) {
+      tempUser.suspendedAt = new Date();
+      tempUser.suspendedById = updatedByUserId;
+      tempUser.suspensionReason = 'Status toggled by admin';
+    } else {
+      tempUser.suspendedAt = null as any;
+      tempUser.suspendedById = null as any;
+      tempUser.suspensionReason = null as any;
+    }
+
+    await this.repo.save(tempUser);
+
+    if (tempUser.user) {
+      tempUser.user.isActive = isActive;
+      await this.userRepo.save(tempUser.user);
+    }
+    return tempUser;
+  }
+
+  async adminResetPassword(id: number, newPassword: string) {
+    const tempUser = await this.repo.findOne({
+      where: { id },
+      relations: ['user'],
+    });
+    if (!tempUser || !tempUser.user)
+      throw new NotFoundException('User not found');
+
+    const bcrypt = require('bcryptjs');
+    tempUser.user.passwordHash = await bcrypt.hash(newPassword, 10);
+    tempUser.user.isFirstLogin = false; // Admin reset is usually final
+    await this.userRepo.save(tempUser.user);
+    return { success: true };
   }
 }

@@ -9,6 +9,7 @@ import { QualityActivityList } from './entities/quality-activity-list.entity';
 import {
   QualityActivity,
   QualityActivityStatus,
+  QualityApplicabilityLevel,
 } from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import {
@@ -16,6 +17,8 @@ import {
   ActivityObservationStatus,
 } from './entities/activity-observation.entity';
 import { InspectionApproval } from './entities/inspection-approval.entity';
+import { QualityInspection } from './entities/quality-inspection.entity';
+import { PushNotificationService } from '../notifications/push-notification.service';
 import * as crypto from 'crypto';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -43,6 +46,7 @@ export interface CreateActivityDto {
   witnessPoint?: boolean;
   responsibleParty?: string;
   allowBreak?: boolean;
+  applicabilityLevel?: QualityApplicabilityLevel;
 }
 
 export interface UpdateActivityDto extends Partial<CreateActivityDto> {
@@ -62,6 +66,7 @@ export interface CsvActivityRow {
   witnessPoint?: boolean;
   responsibleParty?: string;
   allowBreak?: boolean;
+  applicabilityLevel?: QualityApplicabilityLevel;
 }
 
 export interface CreateObservationDto {
@@ -98,6 +103,9 @@ export class QualityActivityService {
     private readonly obsRepo: Repository<ActivityObservation>,
     @InjectRepository(InspectionApproval)
     private readonly approvalRepo: Repository<InspectionApproval>,
+    @InjectRepository(QualityInspection)
+    private readonly inspectionRepo: Repository<QualityInspection>,
+    private readonly pushService: PushNotificationService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -258,7 +266,40 @@ export class QualityActivityService {
     activity.status = QualityActivityStatus.PENDING_OBSERVATION;
     await this.activityRepo.save(activity);
 
+    // Notify the RFI raiser(s) associated with this activity
+    this.notifyRfiRaisersOfObservation(id, saved.id).catch(() => {
+      // Fire-and-forget; do not fail the request if notification errors
+    });
+
     return saved;
+  }
+
+  private async notifyRfiRaisersOfObservation(
+    activityId: number,
+    observationId: string,
+  ): Promise<void> {
+    // Find all active inspections linked to this activity
+    const inspections = await this.inspectionRepo.find({
+      where: { activityId },
+      select: ['id', 'requestedById'],
+    });
+
+    const raisers = [
+      ...new Set(
+        inspections
+          .map((i) => i.requestedById)
+          .filter((id): id is number => !!id),
+      ),
+    ];
+
+    if (raisers.length === 0) return;
+
+    await this.pushService.sendToUsers(
+      raisers,
+      'New Observation Raised 📝',
+      `A QC observation has been raised against your RFI. Please review and rectify.`,
+      { type: 'quality_observation', observationId },
+    );
   }
 
   async resolveObservation(
@@ -506,6 +547,8 @@ export class QualityActivityService {
       witnessPoint: row.witnessPoint ?? false,
       responsibleParty: row.responsibleParty || 'Contractor',
       allowBreak: row.allowBreak ?? false,
+      applicabilityLevel:
+        row.applicabilityLevel || QualityApplicabilityLevel.FLOOR,
       // previousActivityId resolved in a second pass after insert
     }));
 
@@ -563,6 +606,7 @@ export class QualityActivityService {
         witnessPoint: act.witnessPoint,
         responsibleParty: act.responsibleParty,
         allowBreak: act.allowBreak,
+        applicabilityLevel: act.applicabilityLevel,
         position: act.position,
         status: QualityActivityStatus.NOT_STARTED,
         assignedChecklistIds: act.assignedChecklistIds,
