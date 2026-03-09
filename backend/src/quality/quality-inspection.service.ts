@@ -19,6 +19,7 @@ import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
+import { QualityFloorStructure } from './entities/quality-floor-structure.entity';
 import {
   QualityInspectionStage,
   StageStatus,
@@ -27,6 +28,7 @@ import { QualityExecutionItem } from './entities/quality-execution-item.entity';
 import { QualitySignature } from './entities/quality-signature.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import { QualityActivityStatus } from './entities/quality-activity.entity';
+import { QualityApplicabilityLevel } from './entities/quality-activity.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
@@ -37,6 +39,11 @@ export interface CreateInspectionDto {
   epsNodeId: number;
   listId: number;
   activityId: number;
+  qualityUnitId?: number;
+  qualityRoomId?: number;
+  partNo?: number;
+  totalParts?: number;
+  partLabel?: string;
   comments?: string;
   requestDate?: string;
   signature?: { data: string; role: string; signedBy: string };
@@ -64,6 +71,8 @@ export class QualityInspectionService {
     private readonly listRepo: Repository<QualityActivityList>,
     @InjectRepository(QualityChecklistTemplate)
     private readonly checklistTemplateRepo: Repository<QualityChecklistTemplate>,
+    @InjectRepository(QualityFloorStructure)
+    private readonly floorStructureRepo: Repository<QualityFloorStructure>,
     @InjectRepository(QualityInspectionStage)
     private readonly stageRepo: Repository<QualityInspectionStage>,
     @InjectRepository(QualityExecutionItem)
@@ -170,6 +179,81 @@ export class QualityInspectionService {
     return inspection;
   }
 
+  async getUnitProgress(projectId: number, epsNodeId: number, activityId: number) {
+    const activity = await this.activityRepo.findOne({ where: { id: activityId } });
+    if (!activity) throw new NotFoundException('Activity not found');
+
+    const selectedNode = await this.epsNodeRepo.findOne({ where: { id: epsNodeId } });
+    if (!selectedNode) throw new NotFoundException('EPS node not found');
+
+    const floorId =
+      selectedNode.type === EpsNodeType.FLOOR
+        ? selectedNode.id
+        : selectedNode.type === EpsNodeType.UNIT
+          ? selectedNode.parentId
+          : selectedNode.type === EpsNodeType.ROOM
+            ? (await this.epsNodeRepo.findOne({ where: { id: selectedNode.parentId } }))?.parentId
+            : null;
+
+    if (!floorId) {
+      throw new BadRequestException('Unit progress is only available in floor/unit/room context.');
+    }
+
+    const floorStructure = await this.floorStructureRepo.findOne({
+      where: { projectId, floorId },
+      relations: ['units'],
+    });
+
+    const units = [...(floorStructure?.units || [])].sort((a, b) => a.sequence - b.sequence);
+    const unitIds = units.map((u) => u.id);
+
+    if (unitIds.length === 0) {
+      return {
+        activityId,
+        floorId,
+        totalUnits: 0,
+        raisedUnitIds: [],
+        pendingUnitIds: [],
+        units: [],
+      };
+    }
+
+    const inspections = await this.inspectionRepo.find({
+      where: {
+        projectId,
+        activityId,
+        epsNodeId: floorId,
+      } as any,
+      order: { createdAt: 'DESC' },
+    });
+
+    const latestByUnit = new Map<number, QualityInspection>();
+    for (const insp of inspections) {
+      if (!insp.qualityUnitId) continue;
+      if (!unitIds.includes(insp.qualityUnitId)) continue;
+      if (!latestByUnit.has(insp.qualityUnitId)) {
+        latestByUnit.set(insp.qualityUnitId, insp);
+      }
+    }
+
+    const raisedUnitIds = Array.from(latestByUnit.keys()).sort((a, b) => a - b);
+    const pendingUnitIds = unitIds.filter((id) => !latestByUnit.has(id));
+
+    return {
+      activityId,
+      floorId,
+      totalUnits: unitIds.length,
+      raisedUnitIds,
+      pendingUnitIds,
+      units: units.map((u) => ({
+        id: u.id,
+        name: u.name,
+        latestInspectionStatus: latestByUnit.get(u.id)?.status || null,
+        inspectionId: latestByUnit.get(u.id)?.id || null,
+      })),
+    };
+  }
+
   async create(dto: CreateInspectionDto, userId?: number) {
     // 0. EPS Floor-Level Restriction
     const epsNode = await this.epsNodeRepo.findOne({
@@ -194,13 +278,59 @@ export class QualityInspectionService {
     });
     if (!activity) throw new NotFoundException('Activity not found');
 
+    const applicability =
+      (activity.applicabilityLevel as QualityApplicabilityLevel) ||
+      QualityApplicabilityLevel.FLOOR;
+
+    if (applicability === QualityApplicabilityLevel.FLOOR) {
+      if (epsNode.type !== EpsNodeType.FLOOR) {
+        throw new BadRequestException(
+          'Activity is FLOOR level. Please select a FLOOR node to raise RFI.',
+        );
+      }
+    } else if (applicability === QualityApplicabilityLevel.UNIT) {
+      if (![EpsNodeType.FLOOR, EpsNodeType.UNIT].includes(epsNode.type)) {
+        throw new BadRequestException(
+          'Activity is UNIT level. Please select a FLOOR/UNIT context to raise RFI.',
+        );
+      }
+      if (!dto.qualityUnitId) {
+        throw new BadRequestException(
+          'Unit-level activity requires qualityUnitId while raising RFI.',
+        );
+      }
+    } else if (applicability === QualityApplicabilityLevel.ROOM) {
+      if (
+        ![EpsNodeType.FLOOR, EpsNodeType.UNIT, EpsNodeType.ROOM].includes(
+          epsNode.type,
+        )
+      ) {
+        throw new BadRequestException(
+          'Activity is ROOM level. Please select a FLOOR/UNIT/ROOM context to raise RFI.',
+        );
+      }
+      if (!dto.qualityUnitId || !dto.qualityRoomId) {
+        throw new BadRequestException(
+          'Room-level activity requires qualityUnitId and qualityRoomId while raising RFI.',
+        );
+      }
+    }
+
     // 2. Check if there is already a PENDING inspection for this activity at this location
+    const existingWhere: any = {
+      activityId: dto.activityId,
+      epsNodeId: dto.epsNodeId,
+      status: InspectionStatus.PENDING,
+      partNo: dto.partNo || 1,
+    };
+    if (typeof dto.qualityUnitId === 'number') {
+      existingWhere.qualityUnitId = dto.qualityUnitId;
+    }
+    if (typeof dto.qualityRoomId === 'number') {
+      existingWhere.qualityRoomId = dto.qualityRoomId;
+    }
     const existingPending = await this.inspectionRepo.findOne({
-      where: {
-        activityId: dto.activityId,
-        epsNodeId: dto.epsNodeId,
-        status: InspectionStatus.PENDING,
-      },
+      where: existingWhere,
     });
 
     if (existingPending) {
@@ -271,6 +401,13 @@ export class QualityInspectionService {
       listId: activity.listId,
       activityId: dto.activityId,
       sequence: activity.sequence,
+      qualityUnitId: dto.qualityUnitId,
+      qualityRoomId: dto.qualityRoomId,
+      partNo: dto.partNo || 1,
+      totalParts: dto.totalParts || 1,
+      partLabel:
+        dto.partLabel ||
+        ((dto.totalParts || 1) > 1 ? `Part ${dto.partNo || 1}` : null),
       comments: dto.comments,
       requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
       status: InspectionStatus.PENDING,

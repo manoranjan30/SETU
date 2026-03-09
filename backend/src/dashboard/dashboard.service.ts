@@ -5,7 +5,7 @@ import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
-import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
+import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 
 @Injectable()
 export class DashboardService {
@@ -18,8 +18,8 @@ export class DashboardService {
     private readonly progressRepo: Repository<MeasurementProgress>,
     @InjectRepository(DailyLaborPresence)
     private readonly laborRepo: Repository<DailyLaborPresence>,
-    @InjectRepository(BoqActivityPlan)
-    private readonly planRepo: Repository<BoqActivityPlan>,
+    @InjectRepository(WoActivityPlan)
+    private readonly planRepo: Repository<WoActivityPlan>,
   ) {}
 
   async getPortfolioSummary() {

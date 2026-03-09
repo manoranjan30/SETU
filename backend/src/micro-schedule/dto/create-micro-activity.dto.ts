@@ -20,15 +20,25 @@ export class CreateMicroActivityDto {
   @IsNumber()
   parentActivityId: number;
 
-  @ApiProperty({ description: 'BOQ Item ID', required: false })
+  @ApiProperty({ description: 'BOQ Item ID (Legacy)', required: false })
   @IsOptional()
   @IsNumber()
   boqItemId?: number;
+
+  @ApiProperty({ description: 'Work Order Item ID', required: true })
+  @IsNotEmpty()
+  @IsNumber()
+  workOrderItemId: number;
 
   @ApiProperty({ description: 'Work Order ID', required: false })
   @IsOptional()
   @IsNumber()
   workOrderId?: number;
+
+  @ApiProperty({ description: 'Vendor ID', required: false })
+  @IsOptional()
+  @IsNumber()
+  vendorId?: number;
 
   @ApiProperty({ description: 'EPS Node ID (Location)' })
   @IsNotEmpty()

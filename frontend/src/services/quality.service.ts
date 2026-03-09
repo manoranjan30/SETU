@@ -1,9 +1,10 @@
 import api from '../api/axios';
 import type {
-    QualityUnitTemplate,
-    CreateTemplateDto,
-    ApplyUnitDto,
-    BulkApplyDto,
+    QualityFloorStructure,
+    QualityUnitNode,
+    QualityRoomNode,
+    BuildPreviewDto,
+    BuildApplyDto,
     CopyStructureDto,
     QualitySnag,
     UpdateGraphDto,
@@ -12,30 +13,48 @@ import type {
 const BASE_URL = '/quality';
 
 export const qualityService = {
-    // === TEMPLATES ===
-    createTemplate: async (projectId: number, data: CreateTemplateDto) => {
-        const res = await api.post(`${BASE_URL}/${projectId}/structure/templates`, data);
+    getFloorStructure: async (projectId: number, floorId: number): Promise<QualityFloorStructure> => {
+        const res = await api.get(`${BASE_URL}/${projectId}/structure/floor/${floorId}`);
         return res.data;
     },
 
-    getTemplates: async (projectId: number): Promise<QualityUnitTemplate[]> => {
-        const res = await api.get(`${BASE_URL}/${projectId}/structure/templates`);
+    previewBuild: async (projectId: number, floorId: number, data: BuildPreviewDto) => {
+        const res = await api.post(`${BASE_URL}/${projectId}/structure/floor/${floorId}/preview-build`, data);
         return res.data;
     },
 
-    // === STRUCTURE ===
-    addUnit: async (data: ApplyUnitDto) => {
-        const res = await api.post(`${BASE_URL}/structure/apply-unit`, data);
-        return res.data;
-    },
-
-    bulkAddUnits: async (data: BulkApplyDto) => {
-        const res = await api.post(`${BASE_URL}/structure/bulk-apply`, data);
+    applyBuild: async (projectId: number, floorId: number, data: BuildApplyDto) => {
+        const res = await api.post(`${BASE_URL}/${projectId}/structure/floor/${floorId}/apply-build`, data);
         return res.data;
     },
 
     copyStructure: async (data: CopyStructureDto) => {
-        const res = await api.post(`${BASE_URL}/structure/copy`, data);
+        const res = await api.post(`${BASE_URL}/structure/copy-floor`, data);
+        return res.data;
+    },
+
+    updateUnit: async (unitId: number, data: { name?: string; code?: string }) => {
+        const res = await api.put(`${BASE_URL}/structure/units/${unitId}`, data);
+        return res.data as QualityUnitNode;
+    },
+
+    deleteUnit: async (unitId: number) => {
+        const res = await api.delete(`${BASE_URL}/structure/units/${unitId}`);
+        return res.data;
+    },
+
+    createRoom: async (unitId: number, data: { name: string; code?: string; roomType?: string }) => {
+        const res = await api.post(`${BASE_URL}/structure/units/${unitId}/rooms`, data);
+        return res.data as QualityRoomNode;
+    },
+
+    updateRoom: async (roomId: number, data: { name?: string; code?: string; roomType?: string }) => {
+        const res = await api.put(`${BASE_URL}/structure/rooms/${roomId}`, data);
+        return res.data as QualityRoomNode;
+    },
+
+    deleteRoom: async (roomId: number) => {
+        const res = await api.delete(`${BASE_URL}/structure/rooms/${roomId}`);
         return res.data;
     },
 

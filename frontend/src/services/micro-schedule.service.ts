@@ -74,7 +74,9 @@ export interface MicroScheduleActivity {
     microScheduleId: number;
     parentActivityId: number;
     boqItemId?: number;
+    workOrderItemId?: number;
     workOrderId?: number;
+    vendorId?: number;
     epsNodeId: number;
     name: string;
     description?: string;
@@ -127,7 +129,9 @@ export interface DelayReason {
 export interface MicroQuantityLedger {
     id: number;
     parentActivityId: number;
+    workOrderItemId?: number;
     workOrderId?: number;
+    vendorId?: number;
     boqItemId: number;
     totalParentQty: number;
     allocatedQty: number;
@@ -138,6 +142,7 @@ export interface MicroQuantityLedger {
     boqItem?: any;
     parentActivity?: any;
     workOrder?: any;
+    vendor?: any;
 }
 
 export interface ProductivityStats {
@@ -167,7 +172,9 @@ export interface CreateMicroActivityDto {
     microScheduleId: number;
     parentActivityId: number;
     boqItemId?: number;
+    workOrderItemId?: number;
     workOrderId?: number;
+    vendorId?: number;
     epsNodeId: number;
     name: string;
     description?: string;

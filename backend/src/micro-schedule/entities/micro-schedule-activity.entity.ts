@@ -12,6 +12,8 @@ import { MicroSchedule } from './micro-schedule.entity';
 import { Activity } from '../../wbs/entities/activity.entity';
 import { BoqItem } from '../../boq/entities/boq-item.entity';
 import { WorkOrder } from '../../workdoc/entities/work-order.entity';
+import { WorkOrderItem } from '../../workdoc/entities/work-order-item.entity';
+import { Vendor } from '../../workdoc/entities/vendor.entity';
 import { EpsNode } from '../../eps/eps.entity';
 
 export enum MicroActivityStatus {
@@ -58,6 +60,22 @@ export class MicroScheduleActivity {
 
   @Column({ nullable: true })
   workOrderId: number;
+
+  // Primary WO Item reference (replaces BOQ as source of truth)
+  @ManyToOne(() => WorkOrderItem, { nullable: true })
+  @JoinColumn({ name: 'workOrderItemId' })
+  workOrderItem: WorkOrderItem;
+
+  @Column({ nullable: true })
+  workOrderItemId: number;
+
+  // Vendor traceability
+  @ManyToOne(() => Vendor, { nullable: true })
+  @JoinColumn({ name: 'vendorId' })
+  vendor: Vendor;
+
+  @Column({ nullable: true })
+  vendorId: number;
 
   @ManyToOne(() => EpsNode, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'epsNodeId' })

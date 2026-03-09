@@ -2,8 +2,8 @@
 export interface WorkOrderItem {
     id: number;
     materialCode: string;
-    shortText: string;
-    quantity: number;
+    description: string;
+    allocatedQty: number;
     uom: string;
     rate: number;
     amount: number;
@@ -13,6 +13,7 @@ export interface WorkOrderItem {
     serialNumber?: string;
     parentSerialNumber?: string | null;
     executedQuantity?: number;
+    boqQty?: number;
 }
 
 export interface WorkOrderVendor {
@@ -27,6 +28,10 @@ export interface WorkOrder {
     woDate: string;
     totalAmount: number | string;
     status: string;
+    orderType?: string;
+    orderAmendNo?: string;
+    projectCode?: string;
+    scopeOfWork?: string;
     vendor: WorkOrderVendor;
     items: WorkOrderItem[];
 }

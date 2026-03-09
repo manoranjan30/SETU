@@ -9,6 +9,7 @@ import { QualityActivityList } from './entities/quality-activity-list.entity';
 import {
   QualityActivity,
   QualityActivityStatus,
+  QualityApplicabilityLevel,
 } from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import {
@@ -45,6 +46,7 @@ export interface CreateActivityDto {
   witnessPoint?: boolean;
   responsibleParty?: string;
   allowBreak?: boolean;
+  applicabilityLevel?: QualityApplicabilityLevel;
 }
 
 export interface UpdateActivityDto extends Partial<CreateActivityDto> {
@@ -64,6 +66,7 @@ export interface CsvActivityRow {
   witnessPoint?: boolean;
   responsibleParty?: string;
   allowBreak?: boolean;
+  applicabilityLevel?: QualityApplicabilityLevel;
 }
 
 export interface CreateObservationDto {
@@ -544,6 +547,8 @@ export class QualityActivityService {
       witnessPoint: row.witnessPoint ?? false,
       responsibleParty: row.responsibleParty || 'Contractor',
       allowBreak: row.allowBreak ?? false,
+      applicabilityLevel:
+        row.applicabilityLevel || QualityApplicabilityLevel.FLOOR,
       // previousActivityId resolved in a second pass after insert
     }));
 
@@ -601,6 +606,7 @@ export class QualityActivityService {
         witnessPoint: act.witnessPoint,
         responsibleParty: act.responsibleParty,
         allowBreak: act.allowBreak,
+        applicabilityLevel: act.applicabilityLevel,
         position: act.position,
         status: QualityActivityStatus.NOT_STARTED,
         assignedChecklistIds: act.assignedChecklistIds,

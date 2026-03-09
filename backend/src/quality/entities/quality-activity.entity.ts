@@ -24,6 +24,12 @@ export enum QualityActivityStatus {
   PROVISIONALLY_APPROVED = 'PROVISIONALLY_APPROVED',
 }
 
+export enum QualityApplicabilityLevel {
+  FLOOR = 'FLOOR',
+  UNIT = 'UNIT',
+  ROOM = 'ROOM',
+}
+
 @Entity('quality_activity')
 export class QualityActivity {
   @PrimaryGeneratedColumn()
@@ -63,6 +69,13 @@ export class QualityActivity {
   /** If true, RFI can be raised for this activity even if predecessor is not approved */
   @Column({ default: false })
   allowBreak: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: QualityApplicabilityLevel,
+    default: QualityApplicabilityLevel.FLOOR,
+  })
+  applicabilityLevel: QualityApplicabilityLevel;
 
   @Column({
     type: 'enum',

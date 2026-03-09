@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast';
 import WorkOrderUploadModal from './WorkOrderUploadModal';
 import WorkOrderDetailModal from './WorkOrderDetailModal';
 import WorkOrderManualEntryModal from './WorkOrderManualEntryModal';
+import WorkOrderEditModal from './WorkOrderEditModal';
 
 import type { WorkOrder } from '../../types/workdoc';
 
@@ -16,6 +17,7 @@ const WorkOrderList: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
@@ -63,6 +65,11 @@ const WorkOrderList: React.FC = () => {
         } catch (error) {
             toast.error('Failed to load details');
         }
+    };
+
+    const handleEdit = (wo: WorkOrder) => {
+        setSelectedWO(wo);
+        setIsEditModalOpen(true);
     };
 
     useEffect(() => {
@@ -122,7 +129,7 @@ const WorkOrderList: React.FC = () => {
                                     <FileText size={24} />
                                 </div>
                                 <div className="flex gap-2">
-                                    {wo.status === 'DRAFT' && (
+                                    {(wo.status === 'DRAFT' || wo.status === 'INACTIVE') && (
                                         <button
                                             onClick={() => handleUpdateStatus(wo.id, 'ACTIVE')}
                                             className="p-2 text-orange-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all"
@@ -131,6 +138,22 @@ const WorkOrderList: React.FC = () => {
                                             <CheckCircle size={20} />
                                         </button>
                                     )}
+                                    {wo.status === 'ACTIVE' && (
+                                        <button
+                                            onClick={() => handleUpdateStatus(wo.id, 'INACTIVE')}
+                                            className="p-2 text-green-500 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-all"
+                                            title="Deactivate Work Order"
+                                        >
+                                            <CheckCircle size={20} />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => handleEdit(wo)}
+                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                        title="Edit Work Order"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                    </button>
                                     <button
                                         onClick={() => handleViewDetails(wo.id)}
                                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
@@ -207,6 +230,13 @@ const WorkOrderList: React.FC = () => {
             <WorkOrderManualEntryModal
                 isOpen={isManualEntryOpen}
                 onClose={() => setIsManualEntryOpen(false)}
+                onSuccess={fetchWorkOrders}
+            />
+
+            <WorkOrderEditModal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                workOrder={selectedWO}
                 onSuccess={fetchWorkOrders}
             />
         </div>

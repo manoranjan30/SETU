@@ -31,8 +31,14 @@ $errors = [System.Collections.Generic.List[string]]::new()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtTime([int]$sec) {
-    $m = [int]($sec / 60); $s = $sec - $m * 60
+    if ($sec -lt 0) { $sec = 0 }
+    $m = [int][Math]::Floor($sec / 60); $s = $sec - $m * 60
     '{0:D2}:{1:D2}' -f $m, $s
+}
+
+function safeRow([int]$row) {
+    $max = [Math]::Max([Console]::BufferHeight - 1, 0)
+    [Math]::Min($row, $max)
 }
 
 function drawBar([int]$Pct, [string]$Label, [int]$Elapsed, [int]$Eta) {
@@ -52,7 +58,7 @@ function drawBar([int]$Pct, [string]$Label, [int]$Elapsed, [int]$Eta) {
     $line = "  [$bar] $pctStr  $lbl  $eStr  $etaStr"
     if ($line.Length -gt $cw) { $line = $line.Substring(0, $cw) }
 
-    [Console]::SetCursorPosition(0, $script:barRow)
+    [Console]::SetCursorPosition(0, (safeRow $script:barRow))
     [Console]::Write($line.PadRight($cw))
 }
 
@@ -60,26 +66,37 @@ function drawActivity([string]$text) {
     $cw  = [Math]::Max([Console]::WindowWidth - 1, 79)
     $act = '  > ' + $text
     if ($act.Length -gt $cw) { $act = $act.Substring(0, $cw - 3) + '...' }
-    [Console]::SetCursorPosition(0, $script:barRow + 1)
+    [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 1)))
     [Console]::Write($act.PadRight($cw))
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 [Console]::CursorVisible = $false
-try {
-    $script:barRow = [Console]::CursorTop
 
-    # Print a separator above the bar
+# Ensure the console buffer is tall enough for our 4 reserved rows.
+# In some CMD sessions the buffer can be as small as 30 lines.
+$neededBuf = [Console]::CursorTop + 10
+if ([Console]::BufferHeight -lt $neededBuf) {
+    try { [Console]::BufferHeight = $neededBuf + 20 } catch {}
+}
+
+try {
+    # Print separator line, then anchor barRow AFTER it so the bar
+    # always lands on a freshly scrolled-into-view row.
     $cw = [Math]::Max([Console]::WindowWidth - 1, 79)
     [Console]::Write(('  ' + ('-' * ($cw - 2))).PadRight($cw))
     [Console]::WriteLine()
 
-    # The bar and activity lines live on $barRow and $barRow+1
-    # We printed the separator on the row BEFORE barRow, so re-anchor
     $script:barRow = [Console]::CursorTop
-    [Console]::WriteLine()   # row = barRow  (bar line, overwritten each tick)
-    [Console]::WriteLine()   # row = barRow+1 (activity, overwritten each tick)
-    [Console]::WriteLine()   # row = barRow+2 (blank buffer)
+    [Console]::WriteLine()   # row barRow   = progress bar (overwritten each tick)
+    [Console]::WriteLine()   # row barRow+1 = current activity line
+    [Console]::WriteLine()   # row barRow+2 = blank buffer row
+
+    # Expand buffer again now that we've scrolled, if needed
+    $neededBuf2 = $script:barRow + 6
+    if ([Console]::BufferHeight -lt $neededBuf2) {
+        try { [Console]::BufferHeight = $neededBuf2 + 10 } catch {}
+    }
 
     drawBar 0 $script:label 0 0
 
@@ -130,13 +147,13 @@ try {
     drawBar ([Math]::Min($script:pct, 100)) $script:label $total 0
     drawActivity ''
 
-    # Clear activity row and move cursor below
+    # Clear activity row, draw closing separator, move cursor below
     $cw = [Math]::Max([Console]::WindowWidth - 1, 79)
-    [Console]::SetCursorPosition(0, $script:barRow + 1)
+    [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 1)))
     [Console]::Write((' ' * $cw))
-    [Console]::SetCursorPosition(0, $script:barRow + 2)
+    [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 2)))
     [Console]::Write(('  ' + ('-' * ($cw - 2))).PadRight($cw))
-    [Console]::SetCursorPosition(0, $script:barRow + 3)
+    [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 3)))
 
 } finally {
     [Console]::CursorVisible = $true
@@ -144,9 +161,8 @@ try {
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 $total = [int]((Get-Date) - $start).TotalSeconds
-$tm    = [int]($total / 60); $ts = $total - $tm * 60
 Write-Host ''
-Write-Host ("  Build time: {0:D2}:{1:D2}" -f $tm, $ts) -ForegroundColor White
+Write-Host ("  Build time: $(fmtTime $total)") -ForegroundColor White
 
 if ($errors.Count -gt 0) {
     Write-Host ''

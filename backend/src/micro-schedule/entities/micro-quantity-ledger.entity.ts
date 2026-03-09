@@ -11,9 +11,11 @@ import {
 import { Activity } from '../../wbs/entities/activity.entity';
 import { BoqItem } from '../../boq/entities/boq-item.entity';
 import { WorkOrder } from '../../workdoc/entities/work-order.entity';
+import { WorkOrderItem } from '../../workdoc/entities/work-order-item.entity';
+import { Vendor } from '../../workdoc/entities/vendor.entity';
 
 @Entity('micro_quantity_ledger')
-@Index(['parentActivityId', 'boqItemId'], { unique: true })
+@Index(['parentActivityId', 'workOrderItemId'], { unique: true })
 export class MicroQuantityLedger {
   @PrimaryGeneratedColumn()
   id: number;
@@ -26,7 +28,15 @@ export class MicroQuantityLedger {
   @Column()
   parentActivityId: number;
 
-  // Optional Work Order Link
+  // Primary: WO Item (source of quantity)
+  @ManyToOne(() => WorkOrderItem, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'workOrderItemId' })
+  workOrderItem: WorkOrderItem;
+
+  @Column({ nullable: true })
+  workOrderItemId: number;
+
+  // WO context
   @ManyToOne(() => WorkOrder, { nullable: true })
   @JoinColumn({ name: 'workOrderId' })
   workOrder: WorkOrder;
@@ -34,12 +44,20 @@ export class MicroQuantityLedger {
   @Column({ nullable: true })
   workOrderId: number;
 
-  // BOQ Item Link
-  @ManyToOne(() => BoqItem, { onDelete: 'CASCADE' })
+  // Vendor traceability
+  @ManyToOne(() => Vendor, { nullable: true })
+  @JoinColumn({ name: 'vendorId' })
+  vendor: Vendor;
+
+  @Column({ nullable: true })
+  vendorId: number;
+
+  // BOQ Item (derived from WO Item, for reports)
+  @ManyToOne(() => BoqItem, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'boqItemId' })
   boqItem: BoqItem;
 
-  @Column()
+  @Column({ nullable: true })
   boqItemId: number;
 
   // Quantity Tracking

@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+import api from '../api/axios';
 
 export interface PendingTaskItem {
     type: 'RFI_APPROVAL' | 'RFI_RAISED' | 'OBS_CLOSE' | 'OBS_RECTIFY';
@@ -22,7 +20,7 @@ export interface PendingTasksResponse {
 export const notificationService = {
     getPendingTasks: async (projectId?: number): Promise<PendingTasksResponse> => {
         const params = projectId ? { projectId } : {};
-        const res = await axios.get(`${API_URL}/pending-tasks/my`, { params });
+        const res = await api.get('/pending-tasks/my', { params });
         return res.data;
     }
 };

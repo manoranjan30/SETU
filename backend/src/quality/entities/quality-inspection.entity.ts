@@ -85,6 +85,21 @@ export class QualityInspection {
   @Column({ nullable: true })
   vendorName: string; // Snapshot for historical purposes
 
+  @Column({ nullable: true })
+  qualityUnitId: number;
+
+  @Column({ nullable: true })
+  qualityRoomId: number;
+
+  @Column({ type: 'int', default: 1 })
+  partNo: number;
+
+  @Column({ type: 'int', default: 1 })
+  totalParts: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  partLabel: string | null;
+
   @Column({ type: 'text', nullable: true })
   comments: string;
 

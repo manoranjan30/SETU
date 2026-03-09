@@ -38,7 +38,7 @@ export class TempUser {
   @Column({ name: 'work_order_id', nullable: true })
   workOrderId: number;
 
-  @ManyToOne(() => WorkOrder)
+  @ManyToOne(() => WorkOrder, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'work_order_id' })
   workOrder: WorkOrder;
 

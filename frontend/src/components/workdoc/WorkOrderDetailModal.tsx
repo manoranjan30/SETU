@@ -35,7 +35,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     },
     {
         key: 'shortText', label: 'Short Description', defaultWidth: 350, align: 'left', alwaysVisible: true, defaultVisible: true,
-        render: (item) => <span className="truncate text-slate-800" title={item.shortText}>{item.shortText}</span>
+        render: (item) => <span className="truncate text-slate-800" title={item.description}>{item.description}</span>
     },
     {
         key: 'longText', label: 'Long Description', defaultWidth: 300, align: 'left', defaultVisible: false,
@@ -47,8 +47,8 @@ const ALL_COLUMNS: ColumnDef[] = [
             <input
                 type="number"
                 className="w-full text-right bg-transparent border-0 focus:ring-1 focus:ring-blue-500 rounded px-1 font-bold"
-                defaultValue={item.quantity}
-                onBlur={(e) => onEdit?.('quantity', parseFloat(e.target.value) || 0)}
+                defaultValue={item.allocatedQty}
+                onBlur={(e) => onEdit?.('allocatedQty', parseFloat(e.target.value) || 0)}
                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
         )
@@ -84,14 +84,14 @@ const ALL_COLUMNS: ColumnDef[] = [
         render: (item) => (
             <div className="flex flex-col items-end">
                 <span className="font-bold text-green-700">{Number(item.executedQuantity || 0).toFixed(3)}</span>
-                <span className="text-[10px] text-slate-400">of {item.quantity} {item.uom}</span>
+                <span className="text-[10px] text-slate-400">of {item.allocatedQty} {item.uom}</span>
             </div>
         )
     },
     {
         key: 'progress', label: 'Progress %', defaultWidth: 100, align: 'center', defaultVisible: true,
         render: (item) => {
-            const pct = Math.min(100, (Number(item.executedQuantity || 0) / (Number(item.quantity) || 1)) * 100);
+            const pct = Math.min(100, (Number(item.executedQuantity || 0) / (Number(item.allocatedQty) || 1)) * 100);
             return (
                 <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
                     <div className="bg-green-500 h-full transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -134,11 +134,12 @@ const TableRow = (props: {
     const item = items?.[index];
     if (!item) return null;
 
-    const hasChildren = sortedItems.some((i: WorkOrderItem) => i.parentSerialNumber === item.serialNumber);
+    // Only treat as parent if it has children and a valid serial number to link them
+    const hasChildren = !!item.serialNumber && sortedItems.some((i: WorkOrderItem) => i.parentSerialNumber === item.serialNumber);
     const isCollapsed = collapsedParents.has(item.serialNumber || '');
     const isParent = item.isParent || hasChildren;
     const indent = (item.level || 0) * 16;
-    const calculatedAmount = Number(item.quantity) * Number(item.rate);
+    const calculatedAmount = Number(item.allocatedQty) * Number(item.rate);
 
     const handleEdit = (field: string, value: number) => {
         onEditItem(item.id, field, value);
@@ -270,7 +271,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({ isOpen, onClose, workOrder, onU
             filtered = sortedItems.filter(item =>
                 item.serialNumber?.toLowerCase().includes(term) ||
                 item.materialCode?.toLowerCase().includes(term) ||
-                item.shortText?.toLowerCase().includes(term) ||
+                item.description?.toLowerCase().includes(term) ||
                 item.longText?.toLowerCase().includes(term)
             );
         } else {

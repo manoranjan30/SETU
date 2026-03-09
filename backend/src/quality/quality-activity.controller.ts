@@ -284,6 +284,11 @@ export class QualityActivityController {
         allowBreak: toBool(
           getCol(cols, 'allowbreak') || getCol(cols, 'allow break'),
         ),
+        applicabilityLevel:
+          (getCol(cols, 'applicabilitylevel') ||
+            getCol(cols, 'applicability level') ||
+            'FLOOR'
+          ).toUpperCase() as any,
       };
     });
   }

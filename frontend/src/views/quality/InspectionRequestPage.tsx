@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { qualityService } from '../../services/quality.service';
+import type { QualityUnitNode } from '../../types/quality';
 
 // Reuse types or define local interfaces if shared types file not available
 interface Vendor {
@@ -22,6 +24,7 @@ interface QualityActivity {
     holdPoint: boolean;
     witnessPoint: boolean;
     allowBreak: boolean;
+    applicabilityLevel?: 'FLOOR' | 'UNIT' | 'ROOM';
     status: string;
     previousActivityId?: number;
     incomingEdges?: { sourceId: number; source: Partial<QualityActivity> }[];
@@ -47,6 +50,11 @@ interface QualityInspection {
     inspectionDate?: string;
     comments?: string;
     inspectedBy?: string;
+    qualityUnitId?: number;
+    qualityRoomId?: number;
+    partNo?: number;
+    totalParts?: number;
+    partLabel?: string;
 }
 
 interface ActivityList {
@@ -55,10 +63,25 @@ interface ActivityList {
     epsNodeId: number;
 }
 
+interface UnitProgress {
+    activityId: number;
+    floorId: number;
+    totalUnits: number;
+    raisedUnitIds: number[];
+    pendingUnitIds: number[];
+    units: Array<{
+        id: number;
+        name: string;
+        latestInspectionStatus: string | null;
+        inspectionId: number | null;
+    }>;
+}
+
 interface EpsNode {
     id: number;
     label: string;
     nodeType?: string;
+    type?: string;
     children?: EpsNode[];
 }
 
@@ -83,6 +106,13 @@ export default function InspectionRequestPage() {
     // Vendor selection for RFI
     const [vendors, setVendors] = useState<Vendor[]>([]);
     const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+    const [rfiModalActivity, setRfiModalActivity] = useState<QualityActivity | null>(null);
+    const [rfiMode, setRfiMode] = useState<'SINGLE' | 'MULTIPLE'>('SINGLE');
+    const [rfiParts, setRfiParts] = useState(2);
+    const [qualityUnits, setQualityUnits] = useState<QualityUnitNode[]>([]);
+    const [selectedUnitIds, setSelectedUnitIds] = useState<number[]>([]);
+    const [raisingBatch, setRaisingBatch] = useState(false);
+    const [unitProgressByActivity, setUnitProgressByActivity] = useState<Record<number, UnitProgress>>({});
 
     // Load active vendors for internal users
     useEffect(() => {
@@ -130,7 +160,7 @@ export default function InspectionRequestPage() {
                 api.get('/quality/inspections', {
                     params: { projectId, epsNodeId: selectedNodeId, listId: selectedListId }
                 })
-            ]).then(([actRes, inspRes]) => {
+            ]).then(async ([actRes, inspRes]) => {
                 const acts = actRes.data as QualityActivity[];
                 setActivities(acts);
                 setInspections(inspRes.data);
@@ -146,11 +176,40 @@ export default function InspectionRequestPage() {
                     setObservationsMap(oMap);
                 }).catch(err => console.error('Failed to load observations', err));
 
+                const unitActs = acts.filter(a => a.applicabilityLevel === 'UNIT');
+                if (unitActs.length > 0) {
+                    const progressRows = await Promise.all(
+                        unitActs.map(async (a) => {
+                            try {
+                                const res = await api.get('/quality/inspections/unit-progress', {
+                                    params: {
+                                        projectId,
+                                        epsNodeId: selectedNodeId,
+                                        activityId: a.id,
+                                    },
+                                });
+                                return { activityId: a.id, data: res.data as UnitProgress };
+                            } catch {
+                                return null;
+                            }
+                        }),
+                    );
+                    const map: Record<number, UnitProgress> = {};
+                    for (const row of progressRows) {
+                        if (!row) continue;
+                        map[row.activityId] = row.data;
+                    }
+                    setUnitProgressByActivity(map);
+                } else {
+                    setUnitProgressByActivity({});
+                }
+
             }).finally(() => setLoading(false));
         } else {
             setActivities([]);
             setInspections([]);
             setObservationsMap({});
+            setUnitProgressByActivity({});
         }
     }, [selectedListId, selectedNodeId, projectId, refreshKey]);
 
@@ -202,6 +261,24 @@ export default function InspectionRequestPage() {
         });
     }, [activities, inspections]);
 
+    const partProgressByActivity = useMemo(() => {
+        const map: Record<number, { totalParts: number; existingPartNos: number[] }> = {};
+        for (const insp of inspections) {
+            const aid = insp.activityId;
+            const partNo = insp.partNo || 1;
+            const totalParts = Math.max(1, insp.totalParts || 1);
+            if (!map[aid]) {
+                map[aid] = { totalParts, existingPartNos: [] };
+            }
+            map[aid].totalParts = Math.max(map[aid].totalParts, totalParts);
+            if (!map[aid].existingPartNos.includes(partNo)) {
+                map[aid].existingPartNos.push(partNo);
+            }
+        }
+        Object.values(map).forEach((v) => v.existingPartNos.sort((a, b) => a - b));
+        return map;
+    }, [inspections]);
+
     const findNodeById = (nodes: EpsNode[], id: number): EpsNode | null => {
         for (const node of nodes) {
             if (node.id === id) return node;
@@ -213,6 +290,9 @@ export default function InspectionRequestPage() {
         return null;
     };
 
+    const getNodeType = (node: EpsNode | null | undefined): string | undefined =>
+        node?.nodeType || node?.type;
+
     const handleRaiseRFI = async (activity: QualityActivity) => {
         if (!selectedNodeId) return;
 
@@ -222,8 +302,14 @@ export default function InspectionRequestPage() {
         }
 
         const node = findNodeById(epsNodes, selectedNodeId);
-        if (node && node.nodeType && !['FLOOR', 'UNIT', 'ROOM'].includes(node.nodeType)) {
+        const nodeType = getNodeType(node);
+        if (nodeType && !['FLOOR', 'UNIT', 'ROOM'].includes(nodeType)) {
             alert('RFIs can only be raised at the FLOOR, UNIT, or ROOM level. Please drill down to a more specific location.');
+            return;
+        }
+
+        if (nodeType && activity.applicabilityLevel && nodeType !== activity.applicabilityLevel) {
+            alert(`This activity is ${activity.applicabilityLevel} level. Please select a ${activity.applicabilityLevel} node.`);
             return;
         }
 
@@ -234,12 +320,174 @@ export default function InspectionRequestPage() {
                 epsNodeId: selectedNodeId,
                 listId: selectedListId,
                 activityId: activity.id,
+                qualityUnitId: undefined,
                 comments: 'Requested via Web',
                 vendorId: selectedVendorId
             });
             setRefreshKey(k => k + 1);
         } catch (err: any) {
             alert(err.response?.data?.message || 'Failed to raise RFI');
+        }
+    };
+
+    const raiseRfiPart = async (activity: QualityActivity, partNo: number, totalParts: number) => {
+        if (!selectedNodeId) return;
+        if (!user?.isTempUser && !selectedVendorId) {
+            alert('Please select a vendor before raising an RFI.');
+            return;
+        }
+        try {
+            await api.post('/quality/inspections', {
+                projectId: Number(projectId),
+                epsNodeId: selectedNodeId,
+                listId: selectedListId,
+                activityId: activity.id,
+                partNo,
+                totalParts,
+                partLabel: totalParts > 1 ? `Part ${partNo}` : 'Single',
+                comments: totalParts > 1 ? `Requested via Web (Part ${partNo}/${totalParts})` : 'Requested via Web',
+                vendorId: selectedVendorId
+            });
+            setRefreshKey(k => k + 1);
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to raise RFI');
+        }
+    };
+
+    const raiseUnitRfiFromProgress = async (activity: QualityActivity, unitId: number) => {
+        if (!selectedNodeId) return;
+        if (!user?.isTempUser && !selectedVendorId) {
+            alert('Please select a vendor before raising an RFI.');
+            return;
+        }
+        try {
+            await api.post('/quality/inspections', {
+                projectId: Number(projectId),
+                epsNodeId: selectedNodeId,
+                listId: selectedListId,
+                activityId: activity.id,
+                qualityUnitId: unitId,
+                comments: 'Requested via Web',
+                vendorId: selectedVendorId,
+            });
+            setRefreshKey(k => k + 1);
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to raise unit RFI');
+        }
+    };
+
+    const raiseAllPendingUnitRfis = async (activity: QualityActivity) => {
+        const progress = unitProgressByActivity[activity.id];
+        if (!progress || progress.pendingUnitIds.length === 0) return;
+        if (!selectedNodeId) return;
+        if (!user?.isTempUser && !selectedVendorId) {
+            alert('Please select a vendor before raising an RFI.');
+            return;
+        }
+
+        setRaisingBatch(true);
+        try {
+            for (const unitId of progress.pendingUnitIds) {
+                await api.post('/quality/inspections', {
+                    projectId: Number(projectId),
+                    epsNodeId: selectedNodeId,
+                    listId: selectedListId,
+                    activityId: activity.id,
+                    qualityUnitId: unitId,
+                    comments: 'Requested via Web',
+                    vendorId: selectedVendorId,
+                });
+            }
+            setRefreshKey(k => k + 1);
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to raise pending unit RFIs');
+        } finally {
+            setRaisingBatch(false);
+        }
+    };
+
+    const openRaiseRfiFlow = async (activity: QualityActivity) => {
+        if (!selectedNodeId) return;
+        const node = findNodeById(epsNodes, selectedNodeId);
+        const nodeType = getNodeType(node);
+        if (!nodeType) return;
+
+        if (activity.applicabilityLevel === 'UNIT') {
+            if (nodeType !== 'FLOOR') {
+                alert('For unit-level activities, select a FLOOR node first.');
+                return;
+            }
+            try {
+                const floorStructure = await qualityService.getFloorStructure(Number(projectId), selectedNodeId);
+                setQualityUnits(floorStructure.units || []);
+                setSelectedUnitIds([]);
+            } catch {
+                setQualityUnits([]);
+            }
+        } else {
+            setQualityUnits([]);
+            setSelectedUnitIds([]);
+        }
+
+        setRfiMode('SINGLE');
+        setRfiParts(2);
+        setRfiModalActivity(activity);
+    };
+
+    const submitRfiFlow = async () => {
+        if (!rfiModalActivity || !selectedNodeId) return;
+
+        if (!user?.isTempUser && !selectedVendorId) {
+            alert('Please select a vendor before raising an RFI.');
+            return;
+        }
+
+        const node = findNodeById(epsNodes, selectedNodeId);
+        const nodeType = getNodeType(node);
+        if (!nodeType) return;
+
+        setRaisingBatch(true);
+        try {
+            if (rfiModalActivity.applicabilityLevel === 'FLOOR') {
+                const totalParts = rfiMode === 'MULTIPLE' ? Math.max(2, Number(rfiParts) || 2) : 1;
+                const firstPartNo = 1;
+                await api.post('/quality/inspections', {
+                    projectId: Number(projectId),
+                    epsNodeId: selectedNodeId,
+                    listId: selectedListId,
+                    activityId: rfiModalActivity.id,
+                    partNo: firstPartNo,
+                    totalParts,
+                    partLabel: totalParts > 1 ? `Part ${firstPartNo}` : 'Single',
+                    comments: totalParts > 1 ? `Requested via Web (Part ${firstPartNo}/${totalParts})` : 'Requested via Web',
+                    vendorId: selectedVendorId,
+                });
+            } else if (rfiModalActivity.applicabilityLevel === 'UNIT') {
+                if (selectedUnitIds.length === 0) {
+                    alert('Select at least one unit.');
+                    return;
+                }
+                for (const unitId of selectedUnitIds) {
+                    await api.post('/quality/inspections', {
+                        projectId: Number(projectId),
+                        epsNodeId: selectedNodeId,
+                        listId: selectedListId,
+                        activityId: rfiModalActivity.id,
+                        qualityUnitId: unitId,
+                        comments: 'Requested via Web',
+                        vendorId: selectedVendorId,
+                    });
+                }
+            } else {
+                await handleRaiseRFI(rfiModalActivity);
+            }
+
+            setRfiModalActivity(null);
+            setRefreshKey(k => k + 1);
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to raise RFI');
+        } finally {
+            setRaisingBatch(false);
         }
     };
 
@@ -469,6 +717,9 @@ export default function InspectionRequestPage() {
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <h3 className="font-medium text-gray-900 truncate">{item.activityName}</h3>
                                                     <StatusBadge state={item.statusState} />
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded border border-sky-200 uppercase tracking-wide">
+                                                        {item.applicabilityLevel || 'FLOOR'}
+                                                    </span>
                                                     {item.holdPoint && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-700 rounded border border-red-200 uppercase tracking-wide">HP</span>}
                                                     {item.witnessPoint && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded border border-yellow-200 uppercase tracking-wide">WP</span>}
                                                 </div>
@@ -489,8 +740,68 @@ export default function InspectionRequestPage() {
                                                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                                                             <div className="text-gray-500">Request Date: <span className="text-gray-900 font-medium">{item.inspection.requestDate}</span></div>
                                                             {item.inspection.inspectionDate && <div className="text-gray-500">Inspection Date: <span className="text-gray-900 font-medium">{item.inspection.inspectionDate}</span></div>}
+                                                            {item.inspection.partLabel && <div className="text-gray-500">Part: <span className="text-gray-900 font-medium">{item.inspection.partLabel}</span></div>}
                                                             {item.inspection.comments && <div className="col-span-2 text-gray-500 border-t pt-2 mt-1">Comments: <span className="text-gray-700 italic">"{item.inspection.comments}"</span></div>}
                                                         </div>
+                                                    </div>
+                                                )}
+                                                {item.applicabilityLevel === 'FLOOR' && partProgressByActivity[item.id]?.totalParts > 1 && (
+                                                    <div className="mt-3 text-xs bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                                                        <div className="font-semibold text-indigo-800 mb-2">
+                                                            Multi-Go Progress ({partProgressByActivity[item.id].existingPartNos.length}/{partProgressByActivity[item.id].totalParts})
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {Array.from({ length: partProgressByActivity[item.id].totalParts }, (_, idx) => idx + 1).map((p) => {
+                                                                const exists = partProgressByActivity[item.id].existingPartNos.includes(p);
+                                                                return exists ? (
+                                                                    <span key={p} className="px-2 py-1 rounded border bg-green-50 border-green-200 text-green-700 font-medium">
+                                                                        Part {p} Raised
+                                                                    </span>
+                                                                ) : (
+                                                                    <button
+                                                                        key={p}
+                                                                        onClick={() => raiseRfiPart(item, p, partProgressByActivity[item.id].totalParts)}
+                                                                        className="px-2 py-1 rounded border bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-medium"
+                                                                    >
+                                                                        Raise Part {p}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {item.applicabilityLevel === 'UNIT' && unitProgressByActivity[item.id] && (
+                                                    <div className="mt-3 text-xs bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                                                        <div className="font-semibold text-indigo-800 mb-2">
+                                                            Unit Progress ({unitProgressByActivity[item.id].raisedUnitIds.length}/{unitProgressByActivity[item.id].totalUnits})
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2 mb-2">
+                                                            {unitProgressByActivity[item.id].units.map((u) => {
+                                                                const raised = unitProgressByActivity[item.id].raisedUnitIds.includes(u.id);
+                                                                return raised ? (
+                                                                    <span key={u.id} className="px-2 py-1 rounded border bg-green-50 border-green-200 text-green-700 font-medium">
+                                                                        {u.name} Raised
+                                                                    </span>
+                                                                ) : (
+                                                                    <button
+                                                                        key={u.id}
+                                                                        onClick={() => raiseUnitRfiFromProgress(item, u.id)}
+                                                                        className="px-2 py-1 rounded border bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-medium"
+                                                                    >
+                                                                        Raise {u.name}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        {unitProgressByActivity[item.id].pendingUnitIds.length > 0 && (
+                                                            <button
+                                                                onClick={() => raiseAllPendingUnitRfis(item)}
+                                                                disabled={raisingBatch}
+                                                                className="px-2 py-1 rounded border bg-indigo-600 border-indigo-700 text-white hover:bg-indigo-700 font-medium disabled:opacity-50"
+                                                            >
+                                                                {raisingBatch ? 'Raising...' : 'Raise All Pending Units'}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 )}
                                                 {/* Observations Area */}
@@ -571,7 +882,7 @@ export default function InspectionRequestPage() {
                                             <div className="shrink-0 pt-1 flex items-center gap-2">
                                                 {(item.statusState === 'READY' || item.statusState === 'REJECTED') && (
                                                     <button
-                                                        onClick={() => handleRaiseRFI(item)}
+                                                        onClick={() => openRaiseRfiFlow(item)}
                                                         className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
                                                     >
                                                         <ShieldAlert className="w-4 h-4" />
@@ -587,6 +898,90 @@ export default function InspectionRequestPage() {
                     )}
                 </main>
             </div>
+
+            {rfiModalActivity && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+                        <div className="p-5 border-b">
+                            <h3 className="text-lg font-bold text-gray-900">Raise RFI</h3>
+                            <p className="text-sm text-gray-500 mt-1">{rfiModalActivity.activityName}</p>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            {rfiModalActivity.applicabilityLevel === 'FLOOR' && (
+                                <>
+                                    <div className="text-sm font-medium text-gray-700">Floor-level execution mode</div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setRfiMode('SINGLE')}
+                                            className={`px-3 py-2 rounded-lg text-sm border ${rfiMode === 'SINGLE' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-600'}`}
+                                        >
+                                            One Go
+                                        </button>
+                                        <button
+                                            onClick={() => setRfiMode('MULTIPLE')}
+                                            className={`px-3 py-2 rounded-lg text-sm border ${rfiMode === 'MULTIPLE' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-600'}`}
+                                        >
+                                            Multiple Go
+                                        </button>
+                                    </div>
+                                    {rfiMode === 'MULTIPLE' && (
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-600">How many parts?</label>
+                                            <input
+                                                type="number"
+                                                min={2}
+                                                value={rfiParts}
+                                                onChange={(e) => setRfiParts(Number(e.target.value))}
+                                                className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                            />
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {rfiModalActivity.applicabilityLevel === 'UNIT' && (
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700">Select Unit(s)</label>
+                                    <div className="mt-2 max-h-56 overflow-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                                        {qualityUnits.length === 0 && (
+                                            <div className="text-xs text-gray-400 p-2">No quality units found on selected floor.</div>
+                                        )}
+                                        {qualityUnits.map((u) => (
+                                            <label key={u.id} className="flex items-center gap-2 text-sm p-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedUnitIds.includes(u.id)}
+                                                    onChange={(e) => {
+                                                        setSelectedUnitIds((prev) =>
+                                                            e.target.checked ? [...prev, u.id] : prev.filter((id) => id !== u.id),
+                                                        );
+                                                    }}
+                                                />
+                                                <span>{u.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-5 border-t flex justify-end gap-2">
+                            <button
+                                onClick={() => setRfiModalActivity(null)}
+                                className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={submitRfiFlow}
+                                disabled={raisingBatch}
+                                className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {raisingBatch ? 'Raising...' : 'Raise RFI'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -16,6 +16,8 @@ import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { Activity, ActivityStatus } from '../wbs/entities/activity.entity';
 import { ActivityRelationship } from '../wbs/entities/activity-relationship.entity';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { WoActivityPlan } from './entities/wo-activity-plan.entity';
 import { RecoveryPlan } from './entities/recovery-plan.entity';
 import {
   QuantityProgressRecord,
@@ -52,6 +54,8 @@ export class PlanningService {
     private epsRepo: Repository<EpsNode>,
     @InjectRepository(ActivityRelationship)
     private relRepo: Repository<ActivityRelationship>,
+    @InjectRepository(WorkOrderItem)
+    private woItemRepo: Repository<WorkOrderItem>,
     private cpmService: CpmService,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
@@ -244,7 +248,68 @@ export class PlanningService {
     return { activities, relationships };
   }
 
-  // --- Mapper Logic ---
+  // --- Mapper Logic (WO-centric) ---
+  
+  async distributeWoItemToActivity(
+    workOrderItemId: number,
+    activityId: number,
+    quantity: number,
+  ) {
+    const activity = await this.activityRepo.findOne({
+      where: { id: activityId },
+    });
+    if (!activity) throw new NotFoundException('Activity not found');
+
+    // Fetch the WO item to resolve parent IDs (Vendor, WO, BOQ)
+    const woItem = await this.woItemRepo.findOne({
+      where: { id: workOrderItemId },
+      relations: ['workOrder', 'workOrder.vendor'],
+    });
+
+    if (!woItem) throw new NotFoundException('Work Order Item not found');
+    // Check for existing link
+    const existing = await this.planRepo.findOne({
+      where: { activityId, workOrderItemId }
+    });
+
+    if (existing) {
+       existing.plannedQuantity = quantity;
+       return this.planRepo.save(existing);
+    }
+
+    const plan = this.planRepo.create({
+      projectId: activity.projectId,
+      activityId,
+      workOrderItemId,
+      workOrderId: woItem.workOrder.id,
+      vendorId: woItem.workOrder.vendor?.id,
+      boqItemId: woItem.boqItemId,
+      boqSubItemId: woItem.boqSubItemId,
+      measurementId: woItem.measurementElementId,
+      plannedQuantity: quantity,
+      planningBasis: PlanningBasis.INITIAL,
+      mappingType: MappingType.DIRECT,
+    });
+
+    return await this.planRepo.save(plan);
+  }
+
+  async unlinkWoItem(workOrderItemId: number): Promise<void> {
+    const affectedPlans = await this.planRepo.find({
+      where: { workOrderItemId },
+      select: ['activityId'],
+    });
+
+    const activityIds = [...new Set(affectedPlans.map((p) => p.activityId))];
+    const result = await this.planRepo.delete({ workOrderItemId });
+    
+    for (const id of activityIds) {
+      await this.updateActivityFinancials(id);
+    }
+  }
+
+  // --- Mapper Logic (Legacy) ---
+
   async getUnmappedBoqItems(projectId: number): Promise<any[]> {
     const boqItems = await this.boqRepo.find({
       where: { projectId },
@@ -652,7 +717,7 @@ export class PlanningService {
     // Use QueryBuilder with NOT EXISTS or LEFT JOIN WHERE NULL
     return this.activityRepo
       .createQueryBuilder('activity')
-      .leftJoin('boq_activity_plan', 'plan', 'plan.activity_id = activity.id')
+      .leftJoin(WoActivityPlan, 'plan', 'plan.activity_id = activity.id')
       .where('activity.projectId = :projectId', { projectId })
       .andWhere('plan.id IS NULL')
       .getMany();
@@ -666,7 +731,7 @@ export class PlanningService {
       .leftJoinAndSelect('wbs.parent', 'parent')
       .leftJoinAndSelect('parent.parent', 'grandparent')
       .leftJoinAndSelect('grandparent.parent', 'greatgrandparent')
-      .leftJoin('boq_activity_plan', 'plan', 'plan.activity_id = activity.id')
+      .leftJoin(WoActivityPlan, 'plan', 'plan.activity_id = activity.id')
       .select([
         'activity.id',
         'activity.activityName',
@@ -915,6 +980,9 @@ export class PlanningService {
                       boqItemId: sp.boqItemId,
                       boqSubItemId: sp.boqSubItemId,
                       measurementId: meas.id, // Precise Link
+                      workOrderItemId: sp.workOrderItemId,
+                      workOrderId: sp.workOrderId,
+                      vendorId: sp.vendorId,
                       planningBasis: sp.planningBasis,
                       mappingType: MappingType.DIRECT, // Forced direct mapping
                       plannedQuantity: meas.qty, // Auto-set Planned Qty to Measurement Qty (Budget for this Loc)
@@ -923,17 +991,18 @@ export class PlanningService {
                     newPlans.push(plan);
                   }
                 } else {
-                  // No specific measurements found for this location.
-                  // Fallback to Generic Link (clone original scope)
-                  // But set Qty to 0 as we don't know the split.
+                  // Fallback: If no detailed measurements, distribute parent quantity evenly across target locations
                   const plan = this.planRepo.create({
                     activityId: savedActivity.id,
                     projectId: targetEpsId,
                     boqItemId: sp.boqItemId,
                     boqSubItemId: sp.boqSubItemId,
+                    workOrderItemId: sp.workOrderItemId,
+                    workOrderId: sp.workOrderId,
+                    vendorId: sp.vendorId,
                     planningBasis: sp.planningBasis,
                     mappingType: sp.mappingType,
-                    plannedQuantity: 0,
+                    plannedQuantity: Number(sp.plannedQuantity || 0) / resolvedTargetIds.length,
                     createdBy: user?.username || 'SYSTEM',
                   });
                   newPlans.push(plan);
@@ -979,7 +1048,7 @@ export class PlanningService {
     try {
       const brokenActivities = await this.activityRepo
         .createQueryBuilder('activity')
-        .leftJoin('boq_activity_plan', 'plan', 'plan.activity_id = activity.id')
+        .leftJoin('wo_activity_plan', 'plan', 'plan.activity_id = activity.id')
         .where('activity.masterActivityId IS NOT NULL')
         .andWhere('plan.id IS NULL')
         .getMany();
@@ -1174,7 +1243,7 @@ export class PlanningService {
 
     const query = this.activityRepo
       .createQueryBuilder('activity')
-      .innerJoin('boq_activity_plan', 'plan', 'plan.activity_id = activity.id')
+      .innerJoin('wo_activity_plan', 'plan', 'plan.activity_id = activity.id')
       .leftJoin('plan.boqItem', 'boqItem')
       .leftJoin('boq_sub_item', 'subItem', 'subItem.id = plan.boqSubItemId')
       .leftJoin('measurement_element', 'meas', 'meas.id = plan.measurement_id')
@@ -1508,7 +1577,7 @@ export class PlanningService {
     try {
       const brokenActivities = await this.activityRepo
         .createQueryBuilder('activity')
-        .leftJoin('boq_activity_plan', 'plan', 'plan.activity_id = activity.id')
+        .leftJoin('wo_activity_plan', 'plan', 'plan.activity_id = activity.id')
         .where('activity.masterActivityId IS NOT NULL')
         .andWhere('plan.id IS NULL')
         .getMany();

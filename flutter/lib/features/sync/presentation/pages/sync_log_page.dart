@@ -42,10 +42,11 @@ class _SyncItem {
   });
 
   bool get isDeletable =>
-      (type == _SyncItemType.progress || type == _SyncItemType.dailyLog) &&
-      (status == SyncStatusEntry.pending ||
-          status == SyncStatusEntry.failed ||
-          status == SyncStatusEntry.error);
+      ((type == _SyncItemType.progress || type == _SyncItemType.dailyLog) &&
+          (status == SyncStatusEntry.pending ||
+              status == SyncStatusEntry.failed ||
+              status == SyncStatusEntry.error)) ||
+      (type == _SyncItemType.queue && status == SyncStatusEntry.error);
 
   bool get isRetryable =>
       status == SyncStatusEntry.error || status == SyncStatusEntry.failed;
@@ -218,6 +219,12 @@ class _SyncLogPageState extends State<SyncLogPage> {
       appBar: AppBar(
         title: const Text('Sync Queue'),
         actions: [
+          if (_items.any((i) => i.type == _SyncItemType.queue && i.status == SyncStatusEntry.error))
+            IconButton(
+              icon: const Icon(Icons.delete_sweep_rounded),
+              onPressed: _clearAllFailedQueue,
+              tooltip: 'Clear all failed',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _loadItems,
@@ -262,64 +269,86 @@ class _SyncLogPageState extends State<SyncLogPage> {
             ),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _getStatusColor(status).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _getStatusIcon(status),
-                  color: _getStatusColor(status),
-                  size: 24,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _getStatusIcon(status),
+                      color: _getStatusColor(status),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _getStatusTitle(status),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                            color: _getStatusColor(status),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _getStatusSubtitle(syncService),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _getStatusTitle(status),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                        color: _getStatusColor(status),
+              if (syncService.pendingCount > 0 || syncService.errorCount > 0) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    height: 34,
+                    child: ElevatedButton.icon(
+                      onPressed: syncService.isSyncing
+                          ? null
+                          : () => _syncNow(syncService),
+                      icon: syncService.isSyncing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 16),
+                      label: Text(syncService.errorCount > 0 ? 'Retry All' : 'Sync Now'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _getStatusColor(status),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _getStatusSubtitle(syncService),
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (syncService.pendingCount > 0 || syncService.errorCount > 0)
-                ElevatedButton.icon(
-                  onPressed: syncService.isSyncing
-                      ? null
-                      : () => _syncNow(syncService),
-                  icon: syncService.isSyncing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.sync_rounded, size: 18),
-                  label: Text(syncService.errorCount > 0 ? 'Retry' : 'Sync'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _getStatusColor(status),
-                    foregroundColor: Colors.white,
                   ),
                 ),
+              ],
             ],
           ),
         );
@@ -543,17 +572,68 @@ class _SyncLogPageState extends State<SyncLogPage> {
             label: const Text('Delete'),
             onPressed: () async {
               Navigator.pop(context);
-              final syncService = sl<SyncService>();
+              final db = sl<AppDatabase>();
               if (item.type == _SyncItemType.progress) {
-                await syncService.deleteProgressEntry(item.id);
+                await sl<SyncService>().deleteProgressEntry(item.id);
+              } else if (item.type == _SyncItemType.dailyLog) {
+                await (db.delete(db.dailyLogs)
+                      ..where((t) => t.id.equals(item.id)))
+                    .go();
+              } else if (item.type == _SyncItemType.queue) {
+                await (db.delete(db.syncQueue)
+                      ..where((t) => t.id.equals(item.id)))
+                    .go();
               }
-              // dailyLog delete not exposed yet — just reload
               _loadItems();
             },
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _clearAllFailedQueue() async {
+    final failedIds = _items
+        .where((i) =>
+            i.type == _SyncItemType.queue &&
+            i.status == SyncStatusEntry.error)
+        .map((i) => i.id)
+        .toList();
+    if (failedIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Clear All Failed?'),
+        content: Text(
+          '${failedIds.length} failed item${failedIds.length > 1 ? 's' : ''} will be permanently deleted.\n\nThese are items that could not sync after multiple retries.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+            label: const Text('Clear All'),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final db = sl<AppDatabase>();
+      await (db.delete(db.syncQueue)
+            ..where((t) => t.id.isIn(failedIds)))
+          .go();
+      _loadItems();
+    }
   }
 
   Color _getStatusColor(SyncStatusInfo status) {

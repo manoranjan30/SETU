@@ -60,6 +60,16 @@ export class QualityInspectionController {
     return this.service.getMyPendingInspections(projectId, userId);
   }
 
+  @Get('unit-progress')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getUnitProgress(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Query('epsNodeId', ParseIntPipe) epsNodeId: number,
+    @Query('activityId', ParseIntPipe) activityId: number,
+  ) {
+    return this.service.getUnitProgress(projectId, epsNodeId, activityId);
+  }
+
   @Get(':id')
   @Permissions('QUALITY.INSPECTION.READ')
   getInspectionDetails(@Param('id', ParseIntPipe) id: number) {

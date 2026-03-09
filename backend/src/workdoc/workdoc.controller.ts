@@ -6,8 +6,6 @@ import {
   Param,
   UseGuards,
   Query,
-  UseInterceptors,
-  UploadedFile,
   ParseIntPipe,
   BadRequestException,
 } from '@nestjs/common';
@@ -16,22 +14,15 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { Vendor } from './entities/vendor.entity';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import * as fs from 'fs';
-
-// Helper to ensure directory exists
-const ensureDir = (dir: string) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-};
 
 @Controller('workdoc')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class WorkDocController {
   constructor(private readonly workService: WorkDocService) {}
+
+  // ===========================
+  // Vendors
+  // ===========================
 
   @Get('vendors')
   @Permissions('WORKORDER.VENDOR.READ')
@@ -72,126 +63,10 @@ export class WorkDocController {
     return this.workService.getVendorWorkOrders(id);
   }
 
-  @Post(':projectId/analyze')
-  @Permissions('WORKORDER.ORDER.CREATE')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req: any, file, cb) => {
-          const projectId = req.params.projectId;
-          const uploadPath = `./uploads/projects/${projectId}/work-orders`;
-          ensureDir(uploadPath); // Ensure folder exists
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(
-            null,
-            `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`,
-          );
-        },
-      }),
-      limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB limit
-      },
-    }),
-  )
-  async analyzeWorkOrder(
-    @Param('projectId', ParseIntPipe) projectId: number,
-    @UploadedFile() file: Express.Multer.File,
-    @Query('templateId') templateId?: number,
-    @Query('test') test?: string, // Query params come as strings
-    @Query('config') config?: string,
-  ) {
-    if (!file) throw new BadRequestException('File is required');
-    const isTest = test === 'true';
-    // Note: 'config' is a JSON string passed from frontend
-    return this.workService.analyzeWorkOrderPdf(
-      projectId,
-      file,
-      templateId,
-      isTest,
-      config,
-    );
-  }
+  // ===========================
+  // Templates
+  // ===========================
 
-  @Post(':projectId/confirm')
-  @Permissions('WORKORDER.ORDER.CREATE')
-  async confirmWorkOrder(
-    @Param('projectId', ParseIntPipe) projectId: number,
-    @Body() data: any,
-  ) {
-    return this.workService.saveConfirmedWorkOrder(projectId, data);
-  }
-
-  @Post(':projectId/import-excel')
-  @Permissions('WORKORDER.ORDER.IMPORT')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req: any, file, cb) => {
-          const projectId = req.params.projectId;
-          const uploadPath = `./uploads/projects/${projectId}/work-orders`;
-          ensureDir(uploadPath);
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, `excel-${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
-      limits: {
-        fileSize: 20 * 1024 * 1024, // 20MB limit for Excel
-      },
-    }),
-  )
-  async importExcel(
-    @Param('projectId', ParseIntPipe) projectId: number,
-    @UploadedFile() file: Express.Multer.File,
-    @Body('columnMapping') columnMappingStr: string,
-    @Body('headerRow') headerRowStr: string,
-  ) {
-    if (!file) throw new BadRequestException('File is required');
-
-    const columnMapping = columnMappingStr
-      ? JSON.parse(columnMappingStr)
-      : null;
-    const headerRow = headerRowStr ? parseInt(headerRowStr, 10) : 1;
-
-    return this.workService.parseExcelWorkOrder(
-      projectId,
-      file,
-      columnMapping,
-      headerRow,
-    );
-  }
-
-  @Post(':projectId/preview-excel')
-  @Permissions('WORKORDER.ORDER.CREATE')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req: any, file, cb) => {
-          const uploadPath = `./uploads/temp`;
-          ensureDir(uploadPath);
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, `preview-${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
-    }),
-  )
-  async previewExcel(@UploadedFile() file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('File is required');
-    return this.workService.previewExcelFile(file);
-  }
-
-  // --- Templates ---
   @Get('templates')
   @Permissions('WORKORDER.TEMPLATE.MANAGE')
   async getTemplates() {
@@ -204,7 +79,7 @@ export class WorkDocController {
     return this.workService.createTemplate(data);
   }
 
-  @Post('templates/:id/update') // Using POST for easier dev bypass if needed, or Patch
+  @Post('templates/:id/update')
   @Permissions('WORKORDER.TEMPLATE.MANAGE')
   async updateTemplate(
     @Param('id', ParseIntPipe) id: number,
@@ -219,6 +94,10 @@ export class WorkDocController {
     return this.workService.deleteTemplate(id);
   }
 
+  // ===========================
+  // Work Orders
+  // ===========================
+
   @Get(':projectId/work-orders')
   @Permissions('WORKORDER.ORDER.READ')
   async getWorkOrders(@Param('projectId', ParseIntPipe) projectId: number) {
@@ -231,92 +110,116 @@ export class WorkDocController {
     return this.workService.getWorkOrderDetails(woId);
   }
 
-  @Post('work-orders/:woId/delete') // Using POST for delete if DELETE method issues, or just Delete
+  @Post('work-orders/:woId/delete')
   @Permissions('WORKORDER.ORDER.DELETE')
   async deleteWorkOrder(@Param('woId', ParseIntPipe) woId: number) {
     return this.workService.deleteWorkOrder(woId);
   }
-  
+
   @Post('work-orders/:woId/status')
   @Permissions('WORKORDER.ORDER.UPDATE')
   async updateWorkOrderStatus(
     @Param('woId', ParseIntPipe) woId: number,
-    @Body('status') status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED',
+    @Body('status') status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED' | 'INACTIVE',
   ) {
     return this.workService.updateWorkOrderStatus(woId, status);
   }
 
-  // --- Linkage & Pending Board ---
+  @Post('work-orders/:woId/update')
+  @Permissions('WORKORDER.ORDER.UPDATE')
+  async updateWorkOrder(
+    @Param('woId', ParseIntPipe) woId: number,
+    @Body() payload: any,
+  ) {
+    if (payload.items) {
+      await this.workService.updateWorkOrderItems(woId, payload.items);
+    }
+    return this.workService.updateWorkOrder(woId, payload);
+  }
+
   @Get(':projectId/linkage-data')
-  @Permissions('WORKORDER.MAPPING.READ')
+  @Permissions('WORKORDER.ORDER.READ')
   async getLinkageData(
     @Param('projectId', ParseIntPipe) projectId: number,
-    @Query('woId') woId?: number,
+    @Query('woId', ParseIntPipe) woId: number,
   ) {
-    return this.workService.getLinkageData(projectId, woId);
+    return this.workService.getWorkOrderLinkageData(projectId, woId);
   }
 
-  @Post('items/:woItemId/map')
-  @Permissions('WORKORDER.MAPPING.MANAGE')
-  async updateMapping(
-    @Param('woItemId', ParseIntPipe) woItemId: number,
-    @Body()
-    data: { boqItemId?: number; boqSubItemId?: number; factor: number }[],
+  @Post('items/:itemId/map')
+  @Permissions('WORKORDER.ORDER.UPDATE')
+  async saveMapping(
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body() mappings: any[],
   ) {
-    return this.workService.updateMapping(woItemId, data);
+    return this.workService.saveWorkOrderItemMappings(itemId, mappings);
   }
 
-  // --- Intelligent Mapping Endpoints ---
+  // ===========================
+  // BOQ → WO Creation
+  // ===========================
 
-  @Get('mapping/suggestions')
-  @Permissions('WORKORDER.MAPPING.READ')
-  async getMappingSuggestions(
-    @Query('projectId', ParseIntPipe) projectId: number,
-    @Query('search') search: string,
-  ) {
-    return this.workService.findMatchingBoqItems(projectId, search);
-  }
-
-  @Post('mapping/auto')
-  @Permissions('WORKORDER.MAPPING.MANAGE')
-  async autoMapWorkOrder(
-    @Body('workOrderId', ParseIntPipe) workOrderId: number,
-  ) {
-    return this.workService.autoMapWorkOrder(workOrderId);
-  }
-
-  @Post('mapping/bulk')
-  @Permissions('WORKORDER.MAPPING.MANAGE')
-  async bulkMapItems(
-    @Body('projectId', ParseIntPipe) projectId: number,
-    @Body('mappings')
-    mappings: { woItemId: number; boqItemId: number | null }[],
-  ) {
-    return this.workService.bulkMapWorkOrderItems(projectId, mappings);
-  }
-
-  @Get(':projectId/pending-vendor-board')
-  @Permissions('WORKORDER.ORDER.READ')
-  async getPendingVendorBoard(
+  @Get(':projectId/boq-tree-for-wo')
+  @Permissions('WORKORDER.ORDER.CREATE')
+  async getBoqTreeForWo(
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
-    return this.workService.getPendingVendorBoard(projectId);
+    return this.workService.getBoqTreeForWoCreation(projectId);
   }
 
-  @Get(':projectId/global-registry')
+  @Get('mapper/wo-items/:projectId')
+  @Permissions('PLANNING.MATRIX.READ')
+  async getMapperWoItems(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.workService.getWoItemsForMapper(projectId);
+  }
+
+  @Get(':projectId/available-boq-qty')
   @Permissions('WORKORDER.ORDER.READ')
-  async getGlobalMappingRegistry(
+  async getAvailableBoqQty(
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
-    return this.workService.getGlobalMappingRegistry(projectId);
+    return this.workService.getAvailableBoqQty(projectId);
   }
 
-  // --- Execution / Vendor Discovery ---
+  @Post([':projectId/confirm', ':projectId/create-from-boq'])
+  @Permissions('WORKORDER.ORDER.CREATE')
+  async createWorkOrder(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() data: any,
+  ) {
+    return this.workService.createWoFromBoq(projectId, data);
+  }
+
+  @Post('work-orders/:woId/add-boq-items')
+  @Permissions('WORKORDER.ORDER.UPDATE')
+  async addBoqItemsToWo(
+    @Param('woId', ParseIntPipe) woId: number,
+    @Body('items') items: any[],
+  ) {
+    return this.workService.addBoqItemsToWo(woId, items);
+  }
+
+  // ===========================
+  // Vendor Discovery for Execution
+  // ===========================
+
   @Get('execution/vendors-for-activity')
   @Permissions('WORKORDER.ORDER.READ')
   async getVendorsForActivity(
     @Query('activityId', ParseIntPipe) activityId: number,
   ) {
     return this.workService.getVendorsForActivity(activityId);
+  }
+
+  @Get('execution/wo-items-for-activity')
+  @Permissions('WORKORDER.ORDER.READ')
+  async getWoItemsForActivity(
+    @Query('activityId', ParseIntPipe) activityId: number,
+    @Query('vendorId') vendorId?: number,
+  ) {
+    return this.workService.getWoItemsForActivity(
+      activityId,
+      vendorId ? Number(vendorId) : undefined,
+    );
   }
 }

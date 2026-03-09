@@ -9,6 +9,8 @@ import { MeasurementProgress } from '../boq/entities/measurement-progress.entity
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { EpsNode } from '../eps/eps.entity';
+import { MicroLedgerService } from '../micro-schedule/micro-ledger.service';
+
 
 export interface ExecutionBreakdownItem {
   type: 'MICRO' | 'BALANCE';
@@ -23,14 +25,20 @@ export interface ExecutionBreakdown {
   activityId: number;
   activity: Activity;
   epsNodeId: number;
-  boqBreakdown: {
-    boqItem: BoqItem;
-    scope: {
-      total: number;
-      allocated: number;
-      balance: number;
-    };
-    items: ExecutionBreakdownItem[];
+  vendorBreakdown: {
+    vendorId: number | null;
+    vendorName: string;
+    vendorCode: string | null;
+    boqBreakdown: {
+      boqItem: BoqItem;
+      workOrderItemId: number | null;
+      scope: {
+        total: number;
+        allocated: number;
+        balance: number;
+      };
+      items: ExecutionBreakdownItem[];
+    }[];
   }[];
 }
 
@@ -55,6 +63,7 @@ export class ExecutionBreakdownService {
     private readonly boqRepo: Repository<BoqItem>,
     @InjectRepository(EpsNode)
     private readonly epsNodeRepo: Repository<EpsNode>,
+    private readonly ledgerService: MicroLedgerService,
   ) {}
 
   /**
@@ -82,6 +91,7 @@ export class ExecutionBreakdownService {
   /**
    * Get unified execution breakdown for an activity at a specific location
    * Combines Micro Activities + Balance (Direct Execution) into single view
+   * Grouped by Vendor -> BOQ Item
    */
   async getBreakdown(
     activityId: number,
@@ -101,116 +111,127 @@ export class ExecutionBreakdownService {
       throw new Error(`Activity ${activityId} not found`);
     }
 
-    // 2. Fetch Ledger Status (Planned Quantities per BOQ Item)
-    const ledgers = await this.ledgerRepo.find({
-      where: { parentActivityId: activityId },
-      relations: ['boqItem'],
-    });
+    // 2. Fetch Ledger Status (Planned Quantities per BOQ Item / WO Item)
+    // Using service ensures ledgers are synced/created from WoActivityPlan if missing
+    const ledgers = await this.ledgerService.getLedgerStatus(activityId);
 
     if (ledgers.length === 0) {
-      // No micro planning exists, return empty structure
       return {
         activityId,
         activity,
         epsNodeId,
-        boqBreakdown: [],
+        vendorBreakdown: [],
       };
     }
 
-    // 3. Resolve EPS node IDs: include the given node AND all its descendants.
-    // This handles the case where micro activities are defined at a child node
-    // (e.g., unit level) while the caller is browsing at a parent level (floor).
+    // 3. Resolve EPS node subtree
     const nodeIds = await this.getNodeAndDescendantIds(epsNodeId);
 
-    // 4. Build Breakdown for each BOQ Item
-    const boqBreakdown = await Promise.all(
-      ledgers.map(async (ledger) => {
-        // 4a. Fetch Micro Activities for this BOQ Item across the node subtree
-        const microActivities = await this.microActivityRepo.find({
-          where: {
-            microSchedule: {
-              parentActivityId: activityId,
-            },
-            epsNodeId: In(nodeIds),
-            boqItemId: ledger.boqItemId,
+    // 4. Build Vendor-grouped structure
+    const vendorMap = new Map<number | string, any>();
+
+    for (const ledger of ledgers) {
+      const vId = ledger.vendorId || 'DIRECT';
+      const vName = ledger.vendor?.name || 'Direct Execution (No Vendor)';
+      const vCode = ledger.vendor?.vendorCode || null;
+
+      if (!vendorMap.has(vId)) {
+        vendorMap.set(vId, {
+          vendorId: ledger.vendorId || null,
+          vendorName: vName,
+          vendorCode: vCode,
+          boqBreakdown: [],
+        });
+      }
+      const vendorNode = vendorMap.get(vId);
+
+      // 4a. Fetch Micro Activities for this Ledger (linked via workOrderItemId if exists, else boqItem)
+      const microActivities = await this.microActivityRepo.find({
+        where: {
+          microSchedule: {
+            parentActivityId: activityId,
           },
-          relations: ['microSchedule'],
+          epsNodeId: In(nodeIds),
+          // Link by WO Item if ledger has one, else fall back to BOQ linking
+          workOrderItemId: ledger.workOrderItemId || undefined,
+          boqItemId: !ledger.workOrderItemId ? ledger.boqItemId : undefined,
+        },
+      });
+
+      const items: ExecutionBreakdownItem[] = [];
+
+      for (const ma of microActivities) {
+        const measurements = await this.measurementRepo.find({
+          where: { microActivityId: ma.id, epsNodeId: epsNodeId },
         });
 
-        // 4b. Calculate executed quantities
-        const items: ExecutionBreakdownItem[] = [];
-
-        for (const ma of microActivities) {
-          const measurements = await this.measurementRepo.find({
-            where: { microActivityId: ma.id, epsNodeId: epsNodeId },
-          });
-
-          let executedQty = measurements.reduce(
-            (sum, m) => sum + Number(m.executedQty || 0),
-            0,
-          );
-
-          const elementIds = measurements.map((m) => m.id);
-          if (elementIds.length > 0) {
-            const pendingLogs = await this.progressRepo
-              .createQueryBuilder('progress')
-              .where('progress.measurementElementId IN (:...ids)', {
-                ids: elementIds,
-              })
-              .andWhere('progress.status = :status', { status: 'PENDING' })
-              .getMany();
-            executedQty += pendingLogs.reduce(
-              (sum, log) => sum + Number(log.executedQty || 0),
-              0,
-            );
-          }
-          executedQty = Math.max(0, executedQty);
-
-          items.push({
-            type: 'MICRO',
-            id: ma.id,
-            name: ma.name,
-            allocatedQty: Number(ma.allocatedQty),
-            executedQty: Number(executedQty),
-            balanceQty: Number(ma.allocatedQty) - Number(executedQty),
-          });
-        }
-
-        // 4c. Calculate Direct Execution (Balance)
-        const directExecutedQty = await this.getDirectExecutionQty(
-          activityId,
-          ledger.boqItemId,
-          epsNodeId,
+        let executedQty = measurements.reduce(
+          (sum, m) => sum + Number(m.executedQty || 0),
+          0,
         );
 
-        const balanceQty = Number(ledger.balanceQty);
+        const elementIds = measurements.map((m) => m.id);
+        if (elementIds.length > 0) {
+          const pendingLogs = await this.progressRepo
+            .createQueryBuilder('progress')
+            .where('progress.measurementElementId IN (:...ids)', {
+              ids: elementIds,
+            })
+            .andWhere('progress.status = :status', { status: 'PENDING' })
+            .getMany();
+          executedQty += pendingLogs.reduce(
+            (sum, log) => sum + Number(log.executedQty || 0),
+            0,
+          );
+        }
 
+        items.push({
+          type: 'MICRO',
+          id: ma.id,
+          name: ma.name,
+          allocatedQty: Number(ma.allocatedQty),
+          executedQty: Number(executedQty),
+          balanceQty: Number(ma.allocatedQty) - Number(executedQty),
+        });
+      }
+
+      // 4b. Direct Balance (if applicable)
+      const directExecutedQty = await this.getDirectExecutionQty(
+        activityId,
+        ledger.boqItemId,
+        epsNodeId,
+        ledger.workOrderItemId,
+      );
+
+      const balanceQty = Number(ledger.balanceQty);
+      if (balanceQty > 0 || directExecutedQty > 0) {
         items.push({
           type: 'BALANCE',
           id: null,
-          name: 'Unassigned Quantity (Direct)',
+          name: 'Unallocated Quantity',
           allocatedQty: balanceQty,
           executedQty: Number(directExecutedQty),
           balanceQty: balanceQty - Number(directExecutedQty),
         });
+      }
 
-        return {
-          boqItem: ledger.boqItem,
-          scope: {
-            total: Number(ledger.totalParentQty),
-            allocated: Number(ledger.allocatedQty),
-            balance: Number(ledger.balanceQty),
-          },
-          items,
-        };
-      }),
-    );
+      vendorNode.boqBreakdown.push({
+        boqItem: ledger.boqItem,
+        workOrderItemId: ledger.workOrderItemId,
+        scope: {
+          total: Number(ledger.totalParentQty),
+          allocated: Number(ledger.allocatedQty),
+          balance: Number(ledger.balanceQty),
+        },
+        items,
+      });
+    }
 
     return {
       activityId,
       activity,
       epsNodeId,
-      boqBreakdown,
+      vendorBreakdown: Array.from(vendorMap.values()),
     };
   }
 
@@ -221,6 +242,7 @@ export class ExecutionBreakdownService {
     activityId: number,
     boqItemId: number,
     epsNodeId: number,
+    workOrderItemId?: number,
   ): Promise<number> {
     // Find MeasurementElements that are NOT linked to Micro Activities
     const measurements = await this.measurementRepo.find({
@@ -228,8 +250,8 @@ export class ExecutionBreakdownService {
         boqItemId,
         activityId,
         epsNodeId,
-        // elementId pattern for direct execution (not linked to micro)
-        // We'll use a convention: Direct execution elements don't have MICRO- prefix
+        workOrderItemId: workOrderItemId || IsNull(),
+        microActivityId: IsNull(),
       },
     });
 
@@ -238,11 +260,8 @@ export class ExecutionBreakdownService {
     const elementIds: number[] = [];
 
     for (const me of measurements) {
-      // Check if this is a direct execution element (not linked to micro)
-      if (me.elementId && !me.elementId.includes('MICRO-')) {
-        total += Number(me.executedQty || 0); // Approved Qty
-        elementIds.push(me.id);
-      }
+      total += Number(me.executedQty || 0); // Approved Qty
+      elementIds.push(me.id);
     }
 
     // Add PENDING quantities (Temporary / Before Approval)

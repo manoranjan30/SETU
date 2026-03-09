@@ -228,9 +228,9 @@ const CsvImportModal = ({
                     {/* Expected format */}
                     <div className="bg-gray-50 rounded-xl p-4 text-xs font-mono text-gray-600 overflow-x-auto">
                         <div className="text-gray-400 mb-1 font-sans font-semibold">Expected CSV format:</div>
-                        Sequence,ActivityName,Description,PreviousActivityCode,HoldPoint,WitnessPoint,ResponsibleParty,AllowBreak<br />
-                        1,Excavation Check,Verify depth,,Y,N,Contractor,N<br />
-                        2,Reinforcement Inspection,Check bar dia,1,Y,Y,Consultant,N
+                        Sequence,ActivityName,Description,PreviousActivityCode,HoldPoint,WitnessPoint,ResponsibleParty,AllowBreak,ApplicabilityLevel<br />
+                        1,Excavation Check,Verify depth,,Y,N,Contractor,N,FLOOR<br />
+                        2,Reinforcement Inspection,Check bar dia,1,Y,Y,Consultant,N,UNIT
                     </div>
                     <div
                         className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-400 transition-colors"

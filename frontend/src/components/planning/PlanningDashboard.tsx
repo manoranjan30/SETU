@@ -27,7 +27,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ children, current
         {
             key: 'mapper',
             icon: <Split size={18} />,
-            label: 'Qty Mapper',
+            label: 'WO Qty Mapper',
         },
         {
             key: 'contracts',

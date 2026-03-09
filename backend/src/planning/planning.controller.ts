@@ -108,6 +108,20 @@ export class PlanningController {
     );
   }
 
+  @Post('distribute-wo')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  async distributeWoItem(
+    @Body('workOrderItemId') workOrderItemId: number,
+    @Body('activityId') activityId: number,
+    @Body('quantity') quantity: number,
+  ) {
+    return this.planningService.distributeWoItemToActivity(
+      workOrderItemId,
+      activityId,
+      quantity,
+    );
+  }
+
   @Post('unlink')
   @Permissions('PLANNING.MATRIX.UPDATE')
   async unlinkBoq(
@@ -120,6 +134,14 @@ export class PlanningController {
       boqSubItemId,
       measurementId,
     );
+  }
+
+  @Post('unlink-wo')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  async unlinkWoItem(
+    @Body('workOrderItemId') workOrderItemId: number,
+  ) {
+    return this.planningService.unlinkWoItem(workOrderItemId);
   }
 
   @Get(':projectId/recovery')

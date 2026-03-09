@@ -29,7 +29,7 @@ export class MicroDailyLogService {
     // Validate activity exists
     const activity = await this.activityRepo.findOne({
       where: { id: dto.microActivityId },
-      relations: ['microSchedule', 'boqItem'],
+      relations: ['microSchedule', 'boqItem', 'workOrderItem'],
     });
 
     if (!activity) {
@@ -107,10 +107,10 @@ export class MicroDailyLogService {
     await this.activityService.calculateForecast(activity.id);
 
     // 3. Update ledger consumed quantity
-    if (activity.boqItem) {
+    if (activity.workOrderItemId) {
       await this.ledgerService.updateConsumedQty(
         activity.parentActivityId,
-        activity.boqItem.id,
+        activity.workOrderItemId,
         qtyDone,
       );
     }
@@ -234,10 +234,10 @@ export class MicroDailyLogService {
       log.qtyDone = updates.qtyDone;
 
       // Update ledger
-      if (activity.boqItem && delta !== 0) {
+      if (activity.workOrderItemId && delta !== 0) {
         await this.ledgerService.updateConsumedQty(
           activity.parentActivityId,
-          activity.boqItem.id,
+          activity.workOrderItemId,
           delta,
         );
       }
@@ -266,7 +266,7 @@ export class MicroDailyLogService {
     const log = await this.findOne(id);
     const activity = await this.activityRepo.findOne({
       where: { id: log.microActivityId },
-      relations: ['boqItem'],
+      relations: ['boqItem', 'workOrderItem'],
     });
 
     if (!activity) {
@@ -274,10 +274,10 @@ export class MicroDailyLogService {
     }
 
     // Update ledger (return consumed quantity)
-    if (activity.boqItem) {
+    if (activity.workOrderItemId) {
       await this.ledgerService.updateConsumedQty(
         activity.parentActivityId,
-        activity.boqItem.id,
+        activity.workOrderItemId,
         -Number(log.qtyDone),
       );
     }

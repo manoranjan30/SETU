@@ -143,6 +143,28 @@ export class MeasurementElement {
   @JoinColumn({ name: 'analysisTemplateId' })
   analysisTemplate: any;
 
+  // Work Order Integration
+  @ManyToOne('WorkOrder', { nullable: true })
+  @JoinColumn({ name: 'workOrderId' })
+  workOrder: any;
+
+  @Column({ nullable: true })
+  workOrderId: number;
+
+  @ManyToOne('WorkOrderItem', { nullable: true })
+  @JoinColumn({ name: 'workOrderItemId' })
+  workOrderItem: any;
+
+  @Column({ nullable: true })
+  workOrderItemId: number;
+
+  @ManyToOne('Vendor', { nullable: true })
+  @JoinColumn({ name: 'vendorId' })
+  vendor: any;
+
+  @Column({ nullable: true })
+  vendorId: number;
+
   @CreateDateColumn()
   importedOn: Date;
 }

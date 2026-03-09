@@ -12,7 +12,9 @@ import { QualityItem } from './entities/quality-item.entity';
 import { QualityHistory } from './entities/quality-history.entity';
 import { QualityAudit } from './entities/quality-audit.entity';
 import { QualityDocument } from './entities/quality-document.entity';
-import { QualityUnitTemplate } from './entities/quality-unit-template.entity';
+import { QualityFloorStructure } from './entities/quality-floor-structure.entity';
+import { QualityUnit } from './entities/quality-unit.entity';
+import { QualityRoom } from './entities/quality-room.entity';
 import { QualitySnagPhoto } from './entities/quality-snag-photo.entity';
 import { QualityWorkflowService } from './quality-workflow.service';
 import { EpsNode } from '../eps/eps.entity';
@@ -86,7 +88,9 @@ import { QualityRatingController } from './quality-rating.controller';
       QualityHistory,
       QualityAudit,
       QualityDocument,
-      QualityUnitTemplate,
+      QualityFloorStructure,
+      QualityUnit,
+      QualityRoom,
       QualitySnagPhoto,
       EpsNode,
       // NEW

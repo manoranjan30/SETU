@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanningController } from './planning.controller';
 import { PlanningService } from './planning.service';
-import { BoqActivityPlan } from './entities/boq-activity-plan.entity';
+import { WoActivityPlan } from './entities/wo-activity-plan.entity';
 import { RecoveryPlan } from './entities/recovery-plan.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { Activity } from '../wbs/entities/activity.entity';
@@ -20,11 +20,14 @@ import { ActivityVersion } from './entities/activity-version.entity';
 import { ScheduleVersionService } from './schedule-version.service';
 import { SchedulingEngineService } from './scheduling-engine.service';
 import { ImportExportService } from './import-export.service';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      BoqActivityPlan,
+      WoActivityPlan,
       RecoveryPlan,
       QuantityProgressRecord,
       BoqItem,
@@ -37,6 +40,9 @@ import { ImportExportService } from './import-export.service';
       EpsNode,
       ScheduleVersion,
       ActivityVersion,
+      WorkOrderItem,
+      WorkOrder,
+      Vendor,
     ]),
     WbsModule,
     NotificationsModule,

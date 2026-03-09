@@ -17,7 +17,6 @@ import microScheduleService, {
     type MicroQuantityLedger,
     type CreateMicroActivityDto
 } from '../../services/micro-schedule.service';
-import { type BoqItem } from '../../services/boq.service';
 import { planningService } from '../../services/planning.service';
 
 
@@ -33,7 +32,6 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
 }) => {
     const [schedule, setSchedule] = useState<MicroSchedule | null>(null);
     const [activities, setActivities] = useState<MicroScheduleActivity[]>([]);
-    const [boqItems, setBoqItems] = useState<BoqItem[]>([]);
 
     const [ledgers, setLedgers] = useState<MicroQuantityLedger[]>([]);
     const [loading, setLoading] = useState(true);
@@ -51,7 +49,9 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
         description: '',
         epsNodeId: undefined,
         boqItemId: undefined,
+        workOrderItemId: undefined,
         workOrderId: undefined,
+        vendorId: undefined,
         allocatedQty: 0,
         uom: '',
         plannedStart: '',
@@ -114,14 +114,7 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
                 const l = await microScheduleService.getLedgerByActivity(sched.parentActivityId);
                 setLedgers(l);
 
-                // Extract BOQ items from ledger (only show items assigned to parent activity)
-                const availableBoqItems = l
-                    .map(ledger => ledger.boqItem)
-                    .filter(item => item != null);
-
-                setBoqItems(availableBoqItems);
             } else {
-                setBoqItems([]);
                 setLedgers([]);
             }
 
@@ -187,6 +180,9 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
             description: activity.description,
             epsNodeId: activity.epsNodeId,
             boqItemId: activity.boqItemId,
+            workOrderItemId: activity.workOrderItemId,
+            workOrderId: activity.workOrderId,
+            vendorId: activity.vendorId,
             allocatedQty: activity.allocatedQty,
             uom: activity.uom,
             plannedStart: activity.plannedStart.split('T')[0],
@@ -217,6 +213,9 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
                 parentActivityId: schedule?.parentActivityId || 0,
                 epsNodeId: formData.epsNodeId || 0,
                 boqItemId: formData.boqItemId,
+                workOrderItemId: formData.workOrderItemId,
+                workOrderId: formData.workOrderId,
+                vendorId: formData.vendorId,
                 allocatedQty: formData.allocatedQty || 0,
             };
 
@@ -238,29 +237,35 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
         }
     };
 
-    const onBoqChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const onLedgerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
         if (!value) {
             setFormData(prev => ({
                 ...prev,
                 boqItemId: undefined,
+                workOrderItemId: undefined,
+                workOrderId: undefined,
+                vendorId: undefined,
                 uom: '',
                 allocatedQty: 0
             }));
             return;
         }
 
-        const id = parseInt(value);
-        const item = boqItems.find(b => b.id === id);
-        const ledger = ledgers.find(l => l.boqItemId === id);
+        const ledgerId = parseInt(value);
+        const ledger = ledgers.find(l => l.id === ledgerId);
 
-        setFormData(prev => ({
-            ...prev,
-            boqItemId: id,
-            uom: item?.uom || '',
-            // Maybe default quantity to remaining?
-            allocatedQty: ledger ? ledger.balanceQty : (item?.qty || 0)
-        }));
+        if (ledger) {
+            setFormData(prev => ({
+                ...prev,
+                boqItemId: ledger.boqItemId,
+                workOrderItemId: ledger.workOrderItemId,
+                workOrderId: ledger.workOrderId,
+                vendorId: ledger.vendorId,
+                uom: ledger.uom || '',
+                allocatedQty: ledger.balanceQty
+            }));
+        }
     };
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading breakdown...</div>;
@@ -399,34 +404,27 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                 BOQ Item (Quantity Tracking) <span className="text-red-500">*</span>
                             </label>
-                            {boqItems.length === 0 ? (
+                            {ledgers.length === 0 ? (
                                 <div className="w-full px-3 py-2 border border-orange-300 bg-orange-50 rounded text-sm text-orange-700">
-                                    ⚠️ Activity is not assigned with any BOQ or quantity.
+                                    ⚠️ Activity is not assigned with any Work Order or Quantity Ledger.
                                 </div>
                             ) : (
                                 <>
                                     <select
                                         required
                                         className="w-full px-3 py-2 border rounded focus:ring-1 focus:ring-blue-500 text-sm"
-                                        value={formData.boqItemId || ''}
-                                        onChange={onBoqChange}
+                                        value={ledgers.find(l => l.workOrderItemId === formData.workOrderItemId)?.id || ''}
+                                        onChange={onLedgerChange}
                                     >
-                                        <option value="">Select BOQ Item...</option>
-                                        {boqItems.map(item => {
-                                            // Find the ledger entry for this BOQ item to show available quantity
-                                            const ledgerEntry = ledgers.find(l => l.boqItemId === item.id);
-                                            const availableQty = ledgerEntry ? ledgerEntry.balanceQty : item.qty;
-                                            const uom = ledgerEntry ? ledgerEntry.uom : (item.uom || '');
-
-                                            return (
-                                                <option key={item.id} value={item.id}>
-                                                    [{item.boqCode}] {item.description} - {availableQty.toLocaleString()} {uom} available
-                                                </option>
-                                            );
-                                        })}
+                                        <option value="">Select Assignment (Vendor/WO)...</option>
+                                        {ledgers.map(ledger => (
+                                            <option key={ledger.id} value={ledger.id}>
+                                                {ledger.vendor?.name || 'DIRECT'} | [{ledger.boqItem?.boqCode}] {ledger.boqItem?.description} - {ledger.balanceQty.toLocaleString()} {ledger.uom} left
+                                            </option>
+                                        ))}
                                     </select>
                                     <p className="text-[10px] text-gray-500 mt-1">
-                                        ⚠️ BOQ item is mandatory for quantity allocation and progress tracking
+                                        ⚠️ You must select a specific Vendor/Work Order assignment for tracking
                                     </p>
                                 </>
                             )}

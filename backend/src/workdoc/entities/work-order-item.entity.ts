@@ -5,8 +5,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { WorkOrder } from './work-order.entity';
+import { BoqItem } from '../../boq/entities/boq-item.entity';
+import { BoqSubItem } from '../../boq/entities/boq-sub-item.entity';
+import { MeasurementElement } from '../../boq/entities/measurement-element.entity';
 
 @Entity('work_order_items')
 export class WorkOrderItem {
@@ -16,64 +20,85 @@ export class WorkOrderItem {
   @ManyToOne(() => WorkOrder, (wo) => wo.items, { onDelete: 'CASCADE' })
   workOrder: WorkOrder;
 
-  @Column({ nullable: true })
-  serialNumber: string; // Hierarchical serial: 10, 10.1, 10.2, 20, 20.1, etc.
+  // === BOQ Linkage (Source of Truth) ===
 
-  @Column({ nullable: true })
-  parentSerialNumber: string; // Parent's serial number (e.g., "10" for "10.1")
+  @ManyToOne(() => BoqItem, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'boqItemId' })
+  boqItem: BoqItem;
 
-  @Column({ default: 0 })
-  level: number; // 0 for parent items, 1+ for children
-
-  @Column({ default: false })
-  isParent: boolean; // True for group/parent items (amount only, no qty*rate)
-
-  @Column()
-  materialCode: string; // SAP Material/Service Code
-
-  @Column()
-  shortText: string; // Description
-
-  @Column({ type: 'text', nullable: true })
-  longText: string; // Additional spec / Detail description
-
-  @Column()
-  uom: string; // Unit
-
-  @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })
-  quantity: number;
-
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  rate: number;
-
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  amount: number; // Imported amount from file
-
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  calculatedAmount: number; // qty * rate (for children) or sum of children (for parents)
-
-  @Column({
-    type: 'decimal',
-    precision: 15,
-    scale: 3,
-    default: 0,
-    comment: 'Cumulative rolled up execution from mapped BOQ items',
-  })
-  executedQuantity: number;
-
-  // --- BOQ Mapping Fields ---
   @Column({ nullable: true })
   boqItemId: number;
 
-  @ManyToOne('BoqItem', { nullable: true })
-  boqItem: any; // Using 'any' to avoid strict circular dependency issues if needed, or better use explicit type if possible
+  @ManyToOne(() => BoqSubItem, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'boqSubItemId' })
+  boqSubItem: BoqSubItem;
 
-  @Column({
-    type: 'enum',
-    enum: ['PENDING', 'AUTO_CODE', 'AUTO_DESC', 'MANUAL'],
-    default: 'PENDING',
-  })
-  mappingStatus: string;
+  @Column({ nullable: true })
+  boqSubItemId: number;
+
+  @ManyToOne(() => MeasurementElement, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'measurementElementId' })
+  measurementElement: MeasurementElement;
+
+  @Column({ nullable: true })
+  measurementElementId: number;
+
+  // Hierarchy level: 0=Item, 1=SubItem, 2=Measurement
+  @Column({ default: 0 })
+  level: number;
+
+  // === Item Details ===
+
+  @Column()
+  description: string;
+
+  @Column({ nullable: true })
+  materialCode: string;
+
+  @Column({ length: 30 })
+  uom: string;
+
+  @Column({ nullable: true })
+  serialNumber: string;
+
+  @Column({ nullable: true })
+  parentSerialNumber: string;
+
+  @Column({ default: false })
+  isParent: boolean;
+
+  // BOQ Qty snapshot (frozen at time of assignment)
+  @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })
+  boqQty: number;
+
+  // Qty assigned from BOQ to this WO (full or partial)
+  @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })
+  allocatedQty: number;
+
+  // WO-specific rate (independent of BOQ rate)
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  rate: number;
+
+  // allocatedQty × rate
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  amount: number;
+
+  // Cumulative executed quantity from progress
+  @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })
+  executedQuantity: number;
+
+  // === WO Reference Fields (for external WO monitoring) ===
+
+  @Column({ type: 'text', nullable: true })
+  woRefText: string;
+
+  @Column({ type: 'json', nullable: true })
+  woRefColumnData: any;
+
+  // === Status ===
+
+  @Column({ default: 'ACTIVE' })
+  status: string; // ACTIVE, COMPLETED, CANCELLED
 
   @CreateDateColumn()
   createdAt: Date;
