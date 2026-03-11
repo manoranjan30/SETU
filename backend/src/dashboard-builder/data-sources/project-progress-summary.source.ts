@@ -18,16 +18,36 @@ export class ProjectProgressSummarySource implements IDataSource {
   scope = 'GLOBAL' as const;
 
   fields: DataSourceField[] = [
-    { key: 'projectName', label: 'Project Name', type: 'string', groupable: true },
-    { key: 'projectCode', label: 'Project Code', type: 'string', groupable: true },
-    { key: 'projectStatus', label: 'Project Status', type: 'string', groupable: true },
+    {
+      key: 'projectName',
+      label: 'Project Name',
+      type: 'string',
+      groupable: true,
+    },
+    {
+      key: 'projectCode',
+      label: 'Project Code',
+      type: 'string',
+      groupable: true,
+    },
+    {
+      key: 'projectStatus',
+      label: 'Project Status',
+      type: 'string',
+      groupable: true,
+    },
     {
       key: 'siteProgressPercent',
       label: 'Site Progress %',
       type: 'percent',
       aggregatable: true,
     },
-    { key: 'totalActivities', label: 'Total Activities', type: 'number', aggregatable: true },
+    {
+      key: 'totalActivities',
+      label: 'Total Activities',
+      type: 'number',
+      aggregatable: true,
+    },
     {
       key: 'completedActivities',
       label: 'Completed Activities',
@@ -98,9 +118,9 @@ export class ProjectProgressSummarySource implements IDataSource {
         'COALESCE(pp.projectStatus, \'Unknown\') AS "projectStatus"',
         'ROUND(COALESCE(AVG(a.percentComplete), 0), 2) AS "siteProgressPercent"',
         'COUNT(a.id) AS "totalActivities"',
-        "SUM(CASE WHEN a.status = 'COMPLETED' THEN 1 ELSE 0 END) AS \"completedActivities\"",
-        "SUM(CASE WHEN a.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS \"inProgressActivities\"",
-        "SUM(CASE WHEN a.status = 'NOT_STARTED' THEN 1 ELSE 0 END) AS \"notStartedActivities\"",
+        'SUM(CASE WHEN a.status = \'COMPLETED\' THEN 1 ELSE 0 END) AS "completedActivities"',
+        'SUM(CASE WHEN a.status = \'IN_PROGRESS\' THEN 1 ELSE 0 END) AS "inProgressActivities"',
+        'SUM(CASE WHEN a.status = \'NOT_STARTED\' THEN 1 ELSE 0 END) AS "notStartedActivities"',
         'ROUND(COALESCE(SUM(a.budgetedValue), 0), 2) AS "budgetedValue"',
         'ROUND(COALESCE(SUM(a.actualValue), 0), 2) AS "actualValue"',
         'ROUND(COALESCE(SUM(a.budgetedValue), 0) - COALESCE(SUM(a.actualValue), 0), 2) AS "cashFlowVariance"',

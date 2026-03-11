@@ -120,7 +120,8 @@ export class WorkDocController {
   @Permissions('WORKORDER.ORDER.UPDATE')
   async updateWorkOrderStatus(
     @Param('woId', ParseIntPipe) woId: number,
-    @Body('status') status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED' | 'INACTIVE',
+    @Body('status')
+    status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED' | 'INACTIVE',
   ) {
     return this.workService.updateWorkOrderStatus(woId, status);
   }
@@ -161,9 +162,7 @@ export class WorkDocController {
 
   @Get(':projectId/boq-tree-for-wo')
   @Permissions('WORKORDER.ORDER.CREATE')
-  async getBoqTreeForWo(
-    @Param('projectId', ParseIntPipe) projectId: number,
-  ) {
+  async getBoqTreeForWo(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.workService.getBoqTreeForWoCreation(projectId);
   }
 

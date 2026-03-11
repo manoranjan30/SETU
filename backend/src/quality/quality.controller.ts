@@ -224,19 +224,13 @@ export class QualityController {
 
   @Post(':projectId/structure/floor/:floorId/preview-build')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  previewBuild(
-    @Param('floorId') floorId: number,
-    @Body() data: any,
-  ) {
+  previewBuild(@Param('floorId') floorId: number, @Body() data: any) {
     return this.structureService.previewBuild(floorId, data);
   }
 
   @Post(':projectId/structure/floor/:floorId/apply-build')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  applyBuild(
-    @Param('floorId') floorId: number,
-    @Body() data: any,
-  ) {
+  applyBuild(@Param('floorId') floorId: number, @Body() data: any) {
     return this.structureService.applyBuild(floorId, data);
   }
 
@@ -248,10 +242,7 @@ export class QualityController {
 
   @Put('structure/units/:unitId')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  updateUnit(
-    @Param('unitId') unitId: number,
-    @Body() data: any,
-  ) {
+  updateUnit(@Param('unitId') unitId: number, @Body() data: any) {
     return this.structureService.updateUnit(unitId, data);
   }
 
@@ -263,19 +254,13 @@ export class QualityController {
 
   @Post('structure/units/:unitId/rooms')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  createRoom(
-    @Param('unitId') unitId: number,
-    @Body() data: any,
-  ) {
+  createRoom(@Param('unitId') unitId: number, @Body() data: any) {
     return this.structureService.createRoom(unitId, data);
   }
 
   @Put('structure/rooms/:roomId')
   @Permissions('QUALITY.STRUCTURE.MANAGE')
-  updateRoom(
-    @Param('roomId') roomId: number,
-    @Body() data: any,
-  ) {
+  updateRoom(@Param('roomId') roomId: number, @Body() data: any) {
     return this.structureService.updateRoom(roomId, data);
   }
 

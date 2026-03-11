@@ -1,9 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not } from 'typeorm';
-import { QualityInspection, InspectionStatus } from '../quality/entities/quality-inspection.entity';
-import { InspectionWorkflowStep, WorkflowStepStatus } from '../quality/entities/inspection-workflow-step.entity';
-import { ActivityObservation, ActivityObservationStatus } from '../quality/entities/activity-observation.entity';
+import {
+  QualityInspection,
+  InspectionStatus,
+} from '../quality/entities/quality-inspection.entity';
+import {
+  InspectionWorkflowStep,
+  WorkflowStepStatus,
+} from '../quality/entities/inspection-workflow-step.entity';
+import {
+  ActivityObservation,
+  ActivityObservationStatus,
+} from '../quality/entities/activity-observation.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 
 @Injectable()
@@ -25,9 +34,14 @@ export class PendingTasksService {
       where: {
         assignedUserId: userId,
         status: WorkflowStepStatus.PENDING,
-        ...(projectId ? { run: { inspection: { projectId } } } : {})
+        ...(projectId ? { run: { inspection: { projectId } } } : {}),
       },
-      relations: ['run', 'run.inspection', 'run.inspection.activity', 'workflowNode']
+      relations: [
+        'run',
+        'run.inspection',
+        'run.inspection.activity',
+        'workflowNode',
+      ],
     });
 
     // 2. RFIs raised by me that are still pending
@@ -35,9 +49,9 @@ export class PendingTasksService {
       where: {
         requestedById: userId,
         status: Not(In([InspectionStatus.APPROVED, InspectionStatus.CANCELED])),
-        ...(projectId ? { projectId } : {})
+        ...(projectId ? { projectId } : {}),
       },
-      relations: ['activity']
+      relations: ['activity'],
     });
 
     // 3. Observations raised by me that are RECTIFIED (need closing)
@@ -45,54 +59,54 @@ export class PendingTasksService {
       where: {
         inspectorId: String(userId),
         status: ActivityObservationStatus.RECTIFIED,
-        ...(projectId ? { inspection: { projectId } } : {})
+        ...(projectId ? { inspection: { projectId } } : {}),
       },
-      relations: ['activity', 'inspection']
+      relations: ['activity', 'inspection'],
     });
 
     // 4. Observations pending my rectification (Vendor check)
     const tempUser = await this.tempUserRepo.findOneBy({ userId });
     let vendorObservations: ActivityObservation[] = [];
     if (tempUser?.vendorId) {
-       vendorObservations = await this.obsRepo.find({
-         where: {
-           inspection: { vendorId: tempUser.vendorId },
-           status: ActivityObservationStatus.PENDING,
-           ...(projectId ? { inspection: { projectId } } : {})
-         },
-         relations: ['activity', 'inspection']
-       });
+      vendorObservations = await this.obsRepo.find({
+        where: {
+          inspection: { vendorId: tempUser.vendorId },
+          status: ActivityObservationStatus.PENDING,
+          ...(projectId ? { inspection: { projectId } } : {}),
+        },
+        relations: ['activity', 'inspection'],
+      });
     }
 
     const items = [
-      ...pendingRFIs.map(s => ({ 
-          type: 'RFI_APPROVAL', 
-          id: s.run.inspectionId, 
-          title: `RFI Approval: ${s.run.inspection.activity?.activityName}`, 
-          subtitle: s.workflowNode?.label,
-          date: s.run.inspection.createdAt
+      ...pendingRFIs.map((s) => ({
+        type: 'RFI_APPROVAL',
+        id: s.run.inspectionId,
+        title: `RFI Approval: ${s.run.inspection.activity?.activityName}`,
+        subtitle: s.workflowNode?.label,
+        date: s.run.inspection.createdAt,
       })),
-      ...raisedRFIs.map(i => ({ 
-          type: 'RFI_RAISED', 
-          id: i.id, 
-          title: `My RFI: ${i.activity?.activityName}`, 
-          subtitle: i.status,
-          date: i.createdAt
+      ...raisedRFIs.map((i) => ({
+        type: 'RFI_RAISED',
+        id: i.id,
+        title: `My RFI: ${i.activity?.activityName}`,
+        subtitle: i.status,
+        date: i.createdAt,
       })),
-      ...observationsToClose.map(o => ({ 
-          type: 'OBS_CLOSE', 
-          id: o.id, 
-          title: `Observation Closure Needed`, 
-          subtitle: o.observationText,
-          date: o.createdAt
+      ...observationsToClose.map((o) => ({
+        type: 'OBS_CLOSE',
+        id: o.id,
+        title: `Observation Closure Needed`,
+        subtitle: o.observationText,
+        date: o.createdAt,
       })),
-      ...vendorObservations.map(o => ({ 
-          type: 'OBS_RECTIFY', 
-          id: o.id, 
-          title: `Observation Rectification Needed`, 
-          subtitle: o.observationText,
-          date: o.createdAt
-      }))
+      ...vendorObservations.map((o) => ({
+        type: 'OBS_RECTIFY',
+        id: o.id,
+        title: `Observation Rectification Needed`,
+        subtitle: o.observationText,
+        date: o.createdAt,
+      })),
     ];
 
     return {
@@ -101,7 +115,9 @@ export class PendingTasksService {
       obsToCloseCount: observationsToClose.length,
       vendorObsCount: vendorObservations.length,
       totalCount: items.length,
-      items: items.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      items: items.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      ),
     };
   }
 }

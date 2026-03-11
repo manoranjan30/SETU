@@ -249,7 +249,7 @@ export class PlanningService {
   }
 
   // --- Mapper Logic (WO-centric) ---
-  
+
   async distributeWoItemToActivity(
     workOrderItemId: number,
     activityId: number,
@@ -267,14 +267,28 @@ export class PlanningService {
     });
 
     if (!woItem) throw new NotFoundException('Work Order Item not found');
+
+    if (quantity === -1) {
+      // Calculate remaining quantity
+      const existingLinks = await this.planRepo.find({
+        where: { workOrderItemId },
+      });
+      const mappedTotal = existingLinks
+        .filter(l => l.activityId !== activityId) // Ignore current link's qty if updating
+        .reduce((sum, l) => sum + (Number(l.plannedQuantity) > 0 ? Number(l.plannedQuantity) : 0), 0);
+      
+      const remaining = Number(woItem.allocatedQty || 0) - mappedTotal;
+      quantity = remaining > 0 ? remaining : 0;
+    }
+
     // Check for existing link
     const existing = await this.planRepo.findOne({
-      where: { activityId, workOrderItemId }
+      where: { activityId, workOrderItemId },
     });
 
     if (existing) {
-       existing.plannedQuantity = quantity;
-       return this.planRepo.save(existing);
+      existing.plannedQuantity = quantity;
+      return this.planRepo.save(existing);
     }
 
     const plan = this.planRepo.create({
@@ -302,7 +316,7 @@ export class PlanningService {
 
     const activityIds = [...new Set(affectedPlans.map((p) => p.activityId))];
     const result = await this.planRepo.delete({ workOrderItemId });
-    
+
     for (const id of activityIds) {
       await this.updateActivityFinancials(id);
     }
@@ -503,7 +517,9 @@ export class PlanningService {
           recordId: String(savedRecord.id),
         },
       )
-      .catch(() => { /* non-fatal */ });
+      .catch(() => {
+        /* non-fatal */
+      });
 
     // 3. Trigger Schedule Recalculation for affected activities
     await this.recalculateScheduleFromBoq(savedRecord.boqItemId);
@@ -1002,7 +1018,9 @@ export class PlanningService {
                     vendorId: sp.vendorId,
                     planningBasis: sp.planningBasis,
                     mappingType: sp.mappingType,
-                    plannedQuantity: Number(sp.plannedQuantity || 0) / resolvedTargetIds.length,
+                    plannedQuantity:
+                      Number(sp.plannedQuantity || 0) /
+                      resolvedTargetIds.length,
                     createdBy: user?.username || 'SYSTEM',
                   });
                   newPlans.push(plan);
@@ -1481,13 +1499,11 @@ export class PlanningService {
         const validBoqItemId =
           r.plan_boqItemId || r.boqItem_id || r.plan_boq_item_id;
 
-        // Use Plan Qty (if not null/undefined) -> Measurement Qty -> SubItem Qty -> 0
         let finalPlannedQty = parseFloat(r.plan_plannedQuantity);
 
-        // Fix: explicit check because 0 is falsy in JS
-        if (isNaN(finalPlannedQty)) {
-          finalPlannedQty =
-            parseFloat(r.meas_qty) || parseFloat(r.subItem_qty) || 0;
+        // Prevent cost items (qty=1) from showing as planned quantity if not actually planned
+        if (isNaN(finalPlannedQty) || finalPlannedQty <= 0) {
+          finalPlannedQty = 0;
         }
 
         // Lookup approved + pending qty from maps: try plan-specific first, then fallbacks

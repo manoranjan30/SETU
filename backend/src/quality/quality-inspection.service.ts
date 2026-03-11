@@ -20,6 +20,8 @@ import { QualityActivity } from './entities/quality-activity.entity';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
 import { QualityFloorStructure } from './entities/quality-floor-structure.entity';
+import { QualityUnit } from './entities/quality-unit.entity';
+import { QualityRoom } from './entities/quality-room.entity';
 import {
   QualityInspectionStage,
   StageStatus,
@@ -73,6 +75,10 @@ export class QualityInspectionService {
     private readonly checklistTemplateRepo: Repository<QualityChecklistTemplate>,
     @InjectRepository(QualityFloorStructure)
     private readonly floorStructureRepo: Repository<QualityFloorStructure>,
+    @InjectRepository(QualityUnit)
+    private readonly qualityUnitRepo: Repository<QualityUnit>,
+    @InjectRepository(QualityRoom)
+    private readonly qualityRoomRepo: Repository<QualityRoom>,
     @InjectRepository(QualityInspectionStage)
     private readonly stageRepo: Repository<QualityInspectionStage>,
     @InjectRepository(QualityExecutionItem)
@@ -131,6 +137,7 @@ export class QualityInspectionService {
     const query = this.inspectionRepo
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.activity', 'activity')
+      .leftJoinAndSelect('i.epsNode', 'eps')
       .where('i.projectId = :projectId', { projectId });
 
     if (epsNodeId) {
@@ -140,7 +147,79 @@ export class QualityInspectionService {
       query.andWhere('i.listId = :listId', { listId });
     }
 
-    return query.orderBy('i.createdAt', 'DESC').getMany();
+    const inspections = await query.orderBy('i.createdAt', 'DESC').getMany();
+
+    if (inspections.length === 0) return [];
+
+    // Build related lookups in batch to avoid per-row queries.
+    const unitIds = Array.from(
+      new Set(
+        inspections
+          .map((i) => i.qualityUnitId)
+          .filter((id): id is number => typeof id === 'number'),
+      ),
+    );
+    const roomIds = Array.from(
+      new Set(
+        inspections
+          .map((i) => i.qualityRoomId)
+          .filter((id): id is number => typeof id === 'number'),
+      ),
+    );
+
+    const [allEpsNodes, units, rooms] = await Promise.all([
+      this.epsNodeRepo.find(),
+      unitIds.length
+        ? this.qualityUnitRepo.find({ where: { id: In(unitIds) } })
+        : Promise.resolve([]),
+      roomIds.length
+        ? this.qualityRoomRepo.find({ where: { id: In(roomIds) } })
+        : Promise.resolve([]),
+    ]);
+
+    const epsById = new Map<number, EpsNode>(allEpsNodes.map((n) => [n.id, n]));
+    const unitsById = new Map<number, QualityUnit>(units.map((u) => [u.id, u]));
+    const roomsById = new Map<number, QualityRoom>(rooms.map((r) => [r.id, r]));
+
+    return inspections.map((inspection) => {
+      const ancestry = this.buildEpsAncestry(inspection.epsNodeId, epsById);
+      const locationPath = ancestry.map((n) => n.name).join(' > ');
+
+      const blockName = ancestry.find(
+        (n) => n.type === EpsNodeType.BLOCK,
+      )?.name;
+      const towerName = ancestry.find(
+        (n) => n.type === EpsNodeType.TOWER,
+      )?.name;
+      const floorName = ancestry.find(
+        (n) => n.type === EpsNodeType.FLOOR,
+      )?.name;
+
+      const qualityUnit = inspection.qualityUnitId
+        ? unitsById.get(inspection.qualityUnitId)
+        : undefined;
+      const qualityRoom = inspection.qualityRoomId
+        ? roomsById.get(inspection.qualityRoomId)
+        : undefined;
+
+      // If inspection is raised on UNIT/ROOM EPS node, use that as fallback.
+      const epsUnitName = ancestry.find(
+        (n) => n.type === EpsNodeType.UNIT,
+      )?.name;
+      const epsRoomName = ancestry.find(
+        (n) => n.type === EpsNodeType.ROOM,
+      )?.name;
+
+      return {
+        ...inspection,
+        locationPath,
+        blockName,
+        towerName,
+        floorName,
+        unitName: qualityUnit?.name || epsUnitName || null,
+        roomName: qualityRoom?.name || epsRoomName || null,
+      };
+    });
   }
 
   async getMyPendingInspections(projectId: number, userId: number) {
@@ -179,11 +258,19 @@ export class QualityInspectionService {
     return inspection;
   }
 
-  async getUnitProgress(projectId: number, epsNodeId: number, activityId: number) {
-    const activity = await this.activityRepo.findOne({ where: { id: activityId } });
+  async getUnitProgress(
+    projectId: number,
+    epsNodeId: number,
+    activityId: number,
+  ) {
+    const activity = await this.activityRepo.findOne({
+      where: { id: activityId },
+    });
     if (!activity) throw new NotFoundException('Activity not found');
 
-    const selectedNode = await this.epsNodeRepo.findOne({ where: { id: epsNodeId } });
+    const selectedNode = await this.epsNodeRepo.findOne({
+      where: { id: epsNodeId },
+    });
     if (!selectedNode) throw new NotFoundException('EPS node not found');
 
     const floorId =
@@ -192,11 +279,17 @@ export class QualityInspectionService {
         : selectedNode.type === EpsNodeType.UNIT
           ? selectedNode.parentId
           : selectedNode.type === EpsNodeType.ROOM
-            ? (await this.epsNodeRepo.findOne({ where: { id: selectedNode.parentId } }))?.parentId
+            ? (
+                await this.epsNodeRepo.findOne({
+                  where: { id: selectedNode.parentId },
+                })
+              )?.parentId
             : null;
 
     if (!floorId) {
-      throw new BadRequestException('Unit progress is only available in floor/unit/room context.');
+      throw new BadRequestException(
+        'Unit progress is only available in floor/unit/room context.',
+      );
     }
 
     const floorStructure = await this.floorStructureRepo.findOne({
@@ -204,7 +297,9 @@ export class QualityInspectionService {
       relations: ['units'],
     });
 
-    const units = [...(floorStructure?.units || [])].sort((a, b) => a.sequence - b.sequence);
+    const units = [...(floorStructure?.units || [])].sort(
+      (a, b) => a.sequence - b.sequence,
+    );
     const unitIds = units.map((u) => u.id);
 
     if (unitIds.length === 0) {
@@ -279,8 +374,7 @@ export class QualityInspectionService {
     if (!activity) throw new NotFoundException('Activity not found');
 
     const applicability =
-      (activity.applicabilityLevel as QualityApplicabilityLevel) ||
-      QualityApplicabilityLevel.FLOOR;
+      activity.applicabilityLevel || QualityApplicabilityLevel.FLOOR;
 
     if (applicability === QualityApplicabilityLevel.FLOOR) {
       if (epsNode.type !== EpsNodeType.FLOOR) {
@@ -463,13 +557,16 @@ export class QualityInspectionService {
               items: items,
               metadata: {
                 timestamp: new Date(),
-                user: dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
+                user:
+                  dto.signature.signedBy ||
+                  (userId ? String(userId) : 'Unknown'),
               },
             });
             const signature = this.signatureRepo.create({
               stageId: savedStage.id,
               role: dto.signature.role || 'Site Engineer',
-              signedBy: dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
+              signedBy:
+                dto.signature.signedBy || (userId ? String(userId) : 'Unknown'),
               signatureData: dto.signature.data,
               lockHash: fingerprint,
               metadata: { timestamp: new Date() },
@@ -915,6 +1012,27 @@ export class QualityInspectionService {
   }
 
   // ─── Private Helpers ─────────────────────────────────────────────────────
+
+  private buildEpsAncestry(
+    nodeId: number | undefined,
+    epsById: Map<number, EpsNode>,
+  ): EpsNode[] {
+    if (!nodeId) return [];
+
+    const path: EpsNode[] = [];
+    let currentId: number | undefined = nodeId;
+    const seen = new Set<number>();
+
+    while (currentId && !seen.has(currentId)) {
+      seen.add(currentId);
+      const node = epsById.get(currentId);
+      if (!node) break;
+      path.unshift(node);
+      currentId = node.parentId;
+    }
+
+    return path;
+  }
 
   private async checkPredecessor(
     prevActivityId: number,

@@ -32,7 +32,7 @@ export class TempUserService {
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     private readonly projectAssignmentService: ProjectAssignmentService,
-  ) { }
+  ) {}
 
   async getVendorsForProject(projectId: number) {
     const workOrders = await this.workOrderRepo.find({
@@ -93,12 +93,11 @@ export class TempUserService {
 
     if (
       !workOrder ||
-      (workOrder.status !== 'ACTIVE' &&
-        workOrder.status !== 'IN_PROGRESS')
+      (workOrder.status !== 'ACTIVE' && workOrder.status !== 'IN_PROGRESS')
     ) {
       throw new BadRequestException('Invalid/inactive Work Order');
     }
-    let expiryDate = workOrder.orderValidityEnd
+    const expiryDate = workOrder.orderValidityEnd
       ? new Date(workOrder.orderValidityEnd)
       : null;
 

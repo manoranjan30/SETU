@@ -234,6 +234,10 @@ class MicroActivity extends Equatable {
   final String? status;
   final int? boqItemId;
 
+  // Work Order & Vendor context (added Mar 2026 — WO integration)
+  final int? workOrderItemId;
+  final int? vendorId;
+
   const MicroActivity({
     required this.id,
     required this.name,
@@ -244,6 +248,8 @@ class MicroActivity extends Equatable {
     this.endDate,
     this.status,
     this.boqItemId,
+    this.workOrderItemId,
+    this.vendorId,
   });
 
   factory MicroActivity.fromJson(Map<String, dynamic> json) {
@@ -256,13 +262,15 @@ class MicroActivity extends Equatable {
       executedQuantity: (json['executedQuantity'] as num?)?.toDouble() ??
           (json['executed_quantity'] as num?)?.toDouble(),
       startDate: json['startDate'] != null
-          ? DateTime.tryParse(json['startDate'])
+          ? DateTime.tryParse(json['startDate'] as String)
           : null,
       endDate: json['endDate'] != null
-          ? DateTime.tryParse(json['endDate'])
+          ? DateTime.tryParse(json['endDate'] as String)
           : null,
       status: json['status'] as String?,
       boqItemId: json['boqItemId'] as int? ?? json['boq_item_id'] as int?,
+      workOrderItemId: json['workOrderItemId'] as int? ?? json['work_order_item_id'] as int?,
+      vendorId: json['vendorId'] as int? ?? json['vendor_id'] as int?,
     );
   }
 
@@ -277,6 +285,8 @@ class MicroActivity extends Equatable {
       'endDate': endDate?.toIso8601String(),
       'status': status,
       'boqItemId': boqItemId,
+      'workOrderItemId': workOrderItemId,
+      'vendorId': vendorId,
     };
   }
 
@@ -285,6 +295,8 @@ class MicroActivity extends Equatable {
       : 0;
 
   double get remainingQuantity => plannedQuantity - (executedQuantity ?? 0);
+
+  bool get hasWorkOrder => workOrderItemId != null;
 
   @override
   List<Object?> get props => [
@@ -297,6 +309,140 @@ class MicroActivity extends Equatable {
         endDate,
         status,
         boqItemId,
+        workOrderItemId,
+        vendorId,
+      ];
+}
+
+// ==================== PROGRESS APPROVAL MODELS ====================
+
+/// Server-side approval status for a synced progress log entry.
+enum ProgressApprovalStatus {
+  pending,
+  approved,
+  rejected;
+
+  static ProgressApprovalStatus fromString(String v) {
+    switch (v.toUpperCase()) {
+      case 'APPROVED':
+        return ProgressApprovalStatus.approved;
+      case 'REJECTED':
+        return ProgressApprovalStatus.rejected;
+      default:
+        return ProgressApprovalStatus.pending;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ProgressApprovalStatus.pending:
+        return 'Awaiting Approval';
+      case ProgressApprovalStatus.approved:
+        return 'Approved';
+      case ProgressApprovalStatus.rejected:
+        return 'Rejected';
+    }
+  }
+}
+
+/// A server-side progress log entry used in the supervisor approval queue.
+/// Distinct from [ProgressEntry] which is the local offline-first record.
+class ProgressLog extends Equatable {
+  final int id;
+  final int projectId;
+  final int activityId;
+  final int epsNodeId;
+  final int boqItemId;
+  final int? microActivityId;
+  final double quantity;
+  final String unit;
+  final DateTime date;
+  final String? remarks;
+  final List<String> photoPaths;
+  final ProgressApprovalStatus approvalStatus;
+  final String? rejectionReason;
+  final String? submittedByName;
+  final DateTime createdAt;
+
+  // Joined display fields
+  final String? activityName;
+  final String? epsNodeLabel;
+  final String? boqItemName;
+
+  const ProgressLog({
+    required this.id,
+    required this.projectId,
+    required this.activityId,
+    required this.epsNodeId,
+    required this.boqItemId,
+    this.microActivityId,
+    required this.quantity,
+    this.unit = '',
+    required this.date,
+    this.remarks,
+    this.photoPaths = const [],
+    this.approvalStatus = ProgressApprovalStatus.pending,
+    this.rejectionReason,
+    this.submittedByName,
+    required this.createdAt,
+    this.activityName,
+    this.epsNodeLabel,
+    this.boqItemName,
+  });
+
+  factory ProgressLog.fromJson(Map<String, dynamic> json) {
+    final activity = json['activity'] as Map<String, dynamic>?;
+    final epsNode = json['epsNode'] as Map<String, dynamic>?;
+    final boqItem = json['boqItem'] as Map<String, dynamic>?;
+    final submitter = json['submittedByUser'] as Map<String, dynamic>?;
+
+    return ProgressLog(
+      id: json['id'] as int,
+      projectId: json['projectId'] as int? ?? 0,
+      activityId: json['activityId'] as int? ?? 0,
+      epsNodeId: json['epsNodeId'] as int? ?? 0,
+      boqItemId: json['boqItemId'] as int? ?? 0,
+      microActivityId: json['microActivityId'] as int?,
+      quantity: (json['quantity'] as num?)?.toDouble() ??
+          (json['quantityExecuted'] as num?)?.toDouble() ?? 0,
+      unit: json['unit'] as String? ?? boqItem?['unit'] as String? ?? '',
+      date: json['date'] != null
+          ? DateTime.tryParse(json['date'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      remarks: json['remarks'] as String?,
+      photoPaths: (json['photos'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      approvalStatus: ProgressApprovalStatus.fromString(
+          json['approvalStatus'] as String? ??
+          json['status'] as String? ?? 'PENDING'),
+      rejectionReason: json['rejectionReason'] as String?,
+      submittedByName: json['submittedByName'] as String? ??
+          submitter?['name'] as String? ??
+          submitter?['fullName'] as String?,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      activityName: activity?['name'] as String? ?? activity?['activityName'] as String?,
+      epsNodeLabel: epsNode?['label'] as String? ?? epsNode?['name'] as String?,
+      boqItemName: boqItem?['name'] as String? ?? boqItem?['description'] as String?,
+    );
+  }
+
+  bool get isPending => approvalStatus == ProgressApprovalStatus.pending;
+  bool get isApproved => approvalStatus == ProgressApprovalStatus.approved;
+  bool get isRejected => approvalStatus == ProgressApprovalStatus.rejected;
+
+  @override
+  List<Object?> get props => [
+        id,
+        projectId,
+        activityId,
+        quantity,
+        date,
+        approvalStatus,
+        rejectionReason,
       ];
 }
 

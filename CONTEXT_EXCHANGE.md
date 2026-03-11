@@ -1,7 +1,7 @@
 # SETU - Construction Project Management System
 ## Context Exchange for Multi-AI Collaboration
 
-**Last Updated**: 2026-03-08 19:05 IST  
+**Last Updated**: 2026-03-09 19:40 IST  
 **Project Status**: Active Development - Core Architecture Complete
 
 ---
@@ -341,6 +341,20 @@ Site Measurement → MeasurementElement
 ---
 
 ## 📝 CHANGE LOG
+
+### 2026-03-09 19:40 IST - Antigravity
+- **Action**: Micro Schedule Work Order & Vendor Integration
+- **Features**:
+  - Implemented **Proportional Quantity Distribution**: Master activities without detailed measurements now split quantities evenly across floor locations instead of defaulting to zero.
+  - Resolved **WO Qty Display Issue**: Fixed the data flow from `WoActivityPlan` to `MicroScheduleActivity`, ensuring Work Order and Vendor context (`workOrderItemId`, `vendorId`) is preserved during distribution.
+  - Standardized **Quantity Ledger Sync**: Added automated "self-healing" to the Execution Breakdown to ensure ledgers are correctly seeded from Work Order assignments.
+  - Frontend Build Stability: Updated TypeScript interfaces in `micro-schedule.service.ts` and `MicroActivityBreakdown.tsx` to include Work Order Item and Vendor fields, successfully resolving all build errors.
+- **Files**:
+  - `backend/src/planning/planning.service.ts`
+  - `backend/src/micro-schedule/micro-ledger.service.ts`
+  - `frontend/src/services/micro-schedule.service.ts`
+  - `frontend/src/components/micro-schedule/MicroActivityBreakdown.tsx`
+- **Summary**: Work Order quantities and Vendor assignments are now correctly tracked and visible through the entire execution loop (Master → Micro → Progress). Frontend build is verified stable.
 
 ### 2026-03-08 19:05 IST - Antigravity
 - **Action**: Dashboard Role Alignment & Notification Integration

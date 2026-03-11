@@ -210,7 +210,9 @@ export class WorkDocService {
     });
     if (!wo) throw new NotFoundException('Work Order not found');
 
-    const hasProgress = wo.items?.some((item) => Number(item.executedQuantity || 0) > 0);
+    const hasProgress = wo.items?.some(
+      (item) => Number(item.executedQuantity || 0) > 0,
+    );
     if (hasProgress) {
       throw new BadRequestException(
         `Cannot delete Work Order ${wo.woNumber} because it already has execution progress recorded.`,
@@ -244,7 +246,11 @@ export class WorkDocService {
     wo.status = status;
     await this.woRepo.save(wo);
 
-    if (status === 'CLOSED' || status === 'CANCELLED' || status === 'INACTIVE') {
+    if (
+      status === 'CLOSED' ||
+      status === 'CANCELLED' ||
+      status === 'INACTIVE'
+    ) {
       await this.tempUserRepo.update(
         { workOrder: { id: woId }, status: 'ACTIVE' },
         {
@@ -264,9 +270,12 @@ export class WorkDocService {
     if (updateDto.orderType !== undefined) wo.orderType = updateDto.orderType;
     if (updateDto.woNumber !== undefined) wo.woNumber = updateDto.woNumber;
     if (updateDto.woDate !== undefined) wo.woDate = updateDto.woDate;
-    if (updateDto.orderAmendNo !== undefined) wo.orderAmendNo = updateDto.orderAmendNo;
-    if (updateDto.projectCode !== undefined) wo.projectCode = updateDto.projectCode;
-    if (updateDto.scopeOfWork !== undefined) wo.scopeOfWork = updateDto.scopeOfWork;
+    if (updateDto.orderAmendNo !== undefined)
+      wo.orderAmendNo = updateDto.orderAmendNo;
+    if (updateDto.projectCode !== undefined)
+      wo.projectCode = updateDto.projectCode;
+    if (updateDto.scopeOfWork !== undefined)
+      wo.scopeOfWork = updateDto.scopeOfWork;
 
     return this.woRepo.save(wo);
   }
@@ -276,10 +285,12 @@ export class WorkDocService {
     const boqTree = await this.getBoqTreeForWoCreation(projectId);
 
     // 2. Get existing mappings for this specific Work Order
-    const mappings = await this.dataSource.getRepository('WorkOrderBoqMap').find({
-      where: { workOrderItem: { workOrder: { id: woId } } },
-      relations: ['workOrderItem', 'boqItem', 'boqSubItem'],
-    });
+    const mappings = await this.dataSource
+      .getRepository('WorkOrderBoqMap')
+      .find({
+        where: { workOrderItem: { workOrder: { id: woId } } },
+        relations: ['workOrderItem', 'boqItem', 'boqSubItem'],
+      });
 
     return {
       boqTree,
@@ -327,7 +338,9 @@ export class WorkDocService {
     try {
       let newTotal = 0;
       for (const itemData of items) {
-        const item = await queryRunner.manager.findOne(WorkOrderItem, { where: { id: itemData.id } });
+        const item = await queryRunner.manager.findOne(WorkOrderItem, {
+          where: { id: itemData.id },
+        });
         if (item) {
           item.allocatedQty = Number(itemData.allocatedQty);
           item.rate = Number(itemData.rate);
@@ -338,7 +351,9 @@ export class WorkDocService {
       }
 
       // Update WO total
-      await queryRunner.manager.update(WorkOrder, woId, { totalAmount: newTotal });
+      await queryRunner.manager.update(WorkOrder, woId, {
+        totalAmount: newTotal,
+      });
 
       await queryRunner.commitTransaction();
       return { success: true, totalAmount: newTotal };
@@ -363,55 +378,60 @@ export class WorkDocService {
 
     // 1. Get ALL allocations for this project to avoid multiple queries
     const allWoItems = await this.woItemRepo.find({
-      where: { 
-        workOrder: { 
-          projectId, 
-          status: In(['ACTIVE', 'IN_PROGRESS']) 
-        } 
-      }
+      where: {
+        workOrder: {
+          projectId,
+          status: In(['ACTIVE', 'IN_PROGRESS']),
+        },
+      },
     });
 
     const calculateAvailable = (
-      total: number, 
-      boqId: number, 
-      subId?: number, 
-      measureId?: number
+      total: number,
+      boqId: number,
+      subId?: number,
+      measureId?: number,
     ) => {
       let allocated = 0;
       if (measureId) {
         // Measurement level allocation
         allocated = allWoItems
-          .filter(wi => wi.measurementElementId === measureId)
+          .filter((wi) => wi.measurementElementId === measureId)
           .reduce((sum, wi) => sum + Number(wi.allocatedQty || 0), 0);
       } else if (subId) {
         // Sub-Item level allocation (direct + any measurements under it)
         allocated = allWoItems
-          .filter(wi => wi.boqSubItemId === subId)
+          .filter((wi) => wi.boqSubItemId === subId)
           .reduce((sum, wi) => sum + Number(wi.allocatedQty || 0), 0);
       } else {
         // Item level allocation (direct + any sub-items/measurements under it)
         allocated = allWoItems
-          .filter(wi => wi.boqItemId === boqId)
+          .filter((wi) => wi.boqItemId === boqId)
           .reduce((sum, wi) => sum + Number(wi.allocatedQty || 0), 0);
       }
       return {
         allocatedToWo: allocated,
-        availableQty: Math.max(0, Number(total || 0) - allocated)
+        availableQty: Math.max(0, Number(total || 0) - allocated),
       };
     };
 
-    const tree = boqItems.map(item => {
-      const { allocatedToWo, availableQty } = calculateAvailable(item.qty, item.id);
-      
-      const subItems = (item.subItems || []).map(sub => {
-        const { allocatedToWo: subAlloc, availableQty: subAvail } = calculateAvailable(sub.qty, item.id, sub.id);
-        
-        const measurements = (sub.measurements || []).map(m => {
-          const { allocatedToWo: mAlloc, availableQty: mAvail } = calculateAvailable(m.qty, item.id, sub.id, m.id);
+    const tree = boqItems.map((item) => {
+      const { allocatedToWo, availableQty } = calculateAvailable(
+        item.qty,
+        item.id,
+      );
+
+      const subItems = (item.subItems || []).map((sub) => {
+        const { allocatedToWo: subAlloc, availableQty: subAvail } =
+          calculateAvailable(sub.qty, item.id, sub.id);
+
+        const measurements = (sub.measurements || []).map((m) => {
+          const { allocatedToWo: mAlloc, availableQty: mAvail } =
+            calculateAvailable(m.qty, item.id, sub.id, m.id);
           return {
             ...m,
             allocatedToWo: mAlloc,
-            availableQty: mAvail
+            availableQty: mAvail,
           };
         });
 
@@ -419,7 +439,7 @@ export class WorkDocService {
           ...sub,
           measurements,
           allocatedToWo: subAlloc,
-          availableQty: subAvail
+          availableQty: subAvail,
         };
       });
 
@@ -427,14 +447,17 @@ export class WorkDocService {
         ...item,
         subItems,
         allocatedToWo,
-        availableQty
+        availableQty,
       };
     });
 
     return tree;
   }
 
-  async getBoqAllocatedQty(boqItemId: number, projectId: number): Promise<number> {
+  async getBoqAllocatedQty(
+    boqItemId: number,
+    projectId: number,
+  ): Promise<number> {
     const result = await this.woItemRepo
       .createQueryBuilder('woItem')
       .innerJoin('woItem.workOrder', 'wo')
@@ -449,7 +472,10 @@ export class WorkDocService {
     return Number(result?.total || 0);
   }
 
-  async getBoqSubItemAllocatedQty(boqSubItemId: number, projectId: number): Promise<number> {
+  async getBoqSubItemAllocatedQty(
+    boqSubItemId: number,
+    projectId: number,
+  ): Promise<number> {
     const result = await this.woItemRepo
       .createQueryBuilder('woItem')
       .innerJoin('woItem.workOrder', 'wo')
@@ -464,11 +490,16 @@ export class WorkDocService {
     return Number(result?.total || 0);
   }
 
-  async getMeasurementAllocatedQty(measurementElementId: number, projectId: number): Promise<number> {
+  async getMeasurementAllocatedQty(
+    measurementElementId: number,
+    projectId: number,
+  ): Promise<number> {
     const result = await this.woItemRepo
       .createQueryBuilder('woItem')
       .innerJoin('woItem.workOrder', 'wo')
-      .where('woItem.measurementElementId = :measurementElementId', { measurementElementId })
+      .where('woItem.measurementElementId = :measurementElementId', {
+        measurementElementId,
+      })
       .andWhere('wo.projectId = :projectId', { projectId })
       .andWhere('wo.status IN (:...statuses)', {
         statuses: ['ACTIVE', 'IN_PROGRESS'],
@@ -479,13 +510,12 @@ export class WorkDocService {
     return Number(result?.total || 0);
   }
 
-
   async createWoFromBoq(projectId: number, body: any) {
     // 0. Extract Data (Handling both legacy and new 'confirm' format)
     const vendorId = body.vendorId;
     const vendorCode = body.vendor?.code;
     const items = body.items || [];
-    
+
     // Header can be nested or top-level
     const header = body.header || body;
 
@@ -508,13 +538,18 @@ export class WorkDocService {
         projectId,
         woNumber: header.woNumber || `WO-${Date.now()}`,
         vendor,
-        woDate: header.date || header.woDate ? new Date(header.date || header.woDate) : new Date(),
-        orderValidityStart: header.orderValidityStart || header.validityStart
-          ? new Date(header.orderValidityStart || header.validityStart)
-          : undefined,
-        orderValidityEnd: header.orderValidityEnd || header.validityEnd
-          ? new Date(header.orderValidityEnd || header.validityEnd)
-          : undefined,
+        woDate:
+          header.date || header.woDate
+            ? new Date(header.date || header.woDate)
+            : new Date(),
+        orderValidityStart:
+          header.orderValidityStart || header.validityStart
+            ? new Date(header.orderValidityStart || header.validityStart)
+            : undefined,
+        orderValidityEnd:
+          header.orderValidityEnd || header.validityEnd
+            ? new Date(header.orderValidityEnd || header.validityEnd)
+            : undefined,
         scopeOfWork: header.scopeOfWork,
         woRefText: header.woRefText,
         woRefNumber: header.woRefNumber,
@@ -555,25 +590,38 @@ export class WorkDocService {
             uom = boqItem.uom || uom;
 
             if (sel.measurementElementId) {
-              const m = await this.measurementRepo.findOneBy({ id: sel.measurementElementId });
+              const m = await this.measurementRepo.findOneBy({
+                id: sel.measurementElementId,
+              });
               if (m) {
-                const allocated = await this.getMeasurementAllocatedQty(m.id, projectId);
+                const allocated = await this.getMeasurementAllocatedQty(
+                  m.id,
+                  projectId,
+                );
                 available = Number(m.qty || 0) - allocated;
                 originalQty = Number(m.qty || 0);
                 description = m.elementName;
                 level = 2;
               }
             } else if (sel.boqSubItemId) {
-              const s = await this.boqSubItemRepo.findOneBy({ id: sel.boqSubItemId });
+              const s = await this.boqSubItemRepo.findOneBy({
+                id: sel.boqSubItemId,
+              });
               if (s) {
-                const allocated = await this.getBoqSubItemAllocatedQty(s.id, projectId);
+                const allocated = await this.getBoqSubItemAllocatedQty(
+                  s.id,
+                  projectId,
+                );
                 available = Number(s.qty || 0) - allocated;
                 originalQty = Number(s.qty || 0);
                 description = s.description;
                 level = 1;
               }
             } else {
-              const allocated = await this.getBoqAllocatedQty(boqItem.id, projectId);
+              const allocated = await this.getBoqAllocatedQty(
+                boqItem.id,
+                projectId,
+              );
               available = Number(boqItem.qty || 0) - allocated;
               originalQty = Number(boqItem.qty || 0);
               level = 0;
@@ -662,29 +710,48 @@ export class WorkDocService {
         // Determine level and check available qty
         let available = 0;
         let originalQty = 0;
-        let materialCode = boqItem.boqCode;
+        const materialCode = boqItem.boqCode;
         let description = boqItem.description;
-        let uom = boqItem.uom;
+        const uom = boqItem.uom;
         let level = 0;
 
         if (sel.measurementElementId) {
-          const m = await this.measurementRepo.findOneBy({ id: sel.measurementElementId });
-          if (!m) throw new BadRequestException(`Measurement ID ${sel.measurementElementId} not found`);
-          const allocated = await this.getMeasurementAllocatedQty(m.id, projectId);
+          const m = await this.measurementRepo.findOneBy({
+            id: sel.measurementElementId,
+          });
+          if (!m)
+            throw new BadRequestException(
+              `Measurement ID ${sel.measurementElementId} not found`,
+            );
+          const allocated = await this.getMeasurementAllocatedQty(
+            m.id,
+            projectId,
+          );
           available = Number(m.qty || 0) - allocated;
           originalQty = Number(m.qty || 0);
           description = m.elementName;
           level = 2;
         } else if (sel.boqSubItemId) {
-          const s = await this.boqSubItemRepo.findOneBy({ id: sel.boqSubItemId });
-          if (!s) throw new BadRequestException(`Sub-Item ID ${sel.boqSubItemId} not found`);
-          const allocated = await this.getBoqSubItemAllocatedQty(s.id, projectId);
+          const s = await this.boqSubItemRepo.findOneBy({
+            id: sel.boqSubItemId,
+          });
+          if (!s)
+            throw new BadRequestException(
+              `Sub-Item ID ${sel.boqSubItemId} not found`,
+            );
+          const allocated = await this.getBoqSubItemAllocatedQty(
+            s.id,
+            projectId,
+          );
           available = Number(s.qty || 0) - allocated;
           originalQty = Number(s.qty || 0);
           description = s.description;
           level = 1;
         } else {
-          const allocated = await this.getBoqAllocatedQty(boqItem.id, projectId);
+          const allocated = await this.getBoqAllocatedQty(
+            boqItem.id,
+            projectId,
+          );
           available = Number(boqItem.qty || 0) - allocated;
           originalQty = Number(boqItem.qty || 0);
           level = 0;
@@ -765,8 +832,7 @@ export class WorkDocService {
           entry.totalWoItems++;
           entry.totalQuantity += Number(item.allocatedQty || 0);
           const balance =
-            Number(item.allocatedQty || 0) -
-            Number(item.executedQuantity || 0);
+            Number(item.allocatedQty || 0) - Number(item.executedQuantity || 0);
           entry.totalBalanceQty += balance > 0 ? balance : 0;
         }
         continue;

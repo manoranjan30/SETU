@@ -11,7 +11,6 @@ import { Activity } from '../wbs/entities/activity.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { MicroLedgerService } from '../micro-schedule/micro-ledger.service';
 
-
 export interface ExecutionBreakdownItem {
   type: 'MICRO' | 'BALANCE';
   id: number | null;
@@ -29,6 +28,7 @@ export interface ExecutionBreakdown {
     vendorId: number | null;
     vendorName: string;
     vendorCode: string | null;
+    workOrderNumber: string | null;
     boqBreakdown: {
       boqItem: BoqItem;
       workOrderItemId: number | null;
@@ -140,6 +140,7 @@ export class ExecutionBreakdownService {
           vendorId: ledger.vendorId || null,
           vendorName: vName,
           vendorCode: vCode,
+          workOrderNumber: ledger.workOrder?.woNumber || null,
           boqBreakdown: [],
         });
       }
@@ -232,6 +233,37 @@ export class ExecutionBreakdownService {
       activity,
       epsNodeId,
       vendorBreakdown: Array.from(vendorMap.values()),
+    };
+  }
+
+  /**
+   * Get vendor summary list for a given activity
+   */
+  async getVendorSummary(activityId: number) {
+    const ledgers = await this.ledgerService.getLedgerStatus(activityId);
+
+    const vendorMap = new Map<number | string, any>();
+    for (const ledger of ledgers) {
+      const vId = ledger.vendorId || 'DIRECT';
+      if (!vendorMap.has(vId)) {
+        vendorMap.set(vId, {
+          vendorId: ledger.vendorId || null,
+          vendorName: ledger.vendor?.name || 'Direct Execution (No Vendor)',
+          vendorCode: ledger.vendor?.vendorCode || null,
+          workOrderNumber: ledger.workOrder?.woNumber || null,
+          boqItemCount: 0,
+          totalAllocatedQty: 0,
+        });
+      }
+      const v = vendorMap.get(vId);
+      v.boqItemCount++;
+      v.totalAllocatedQty += Number(ledger.totalParentQty);
+    }
+
+    return {
+      activityId,
+      vendors: Array.from(vendorMap.values()),
+      hasVendors: vendorMap.size > 0,
     };
   }
 

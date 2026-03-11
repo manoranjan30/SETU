@@ -36,7 +36,7 @@ export class CpmService {
     @InjectRepository(WorkWeek)
     private workWeekRepo: Repository<WorkWeek>,
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   async calculateSchedule(projectId: number): Promise<void> {
     this.logger.log(`Starting CPM Calculation for Project ${projectId}`);

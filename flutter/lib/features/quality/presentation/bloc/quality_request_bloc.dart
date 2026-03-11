@@ -55,15 +55,38 @@ class RaiseRfi extends QualityRequestEvent {
   final int listId;
   final QualityActivity activity;
   final String? comments;
+
+  // Multi-part RFI support
+  final int partNo;
+  final int totalParts;
+  final String? partLabel;
+
+  // Vendor context (optional — selected by site engineer)
+  final int? vendorId;
+  final String? vendorName;
+
   const RaiseRfi({
     required this.projectId,
     required this.epsNodeId,
     required this.listId,
     required this.activity,
     this.comments,
+    this.partNo = 1,
+    this.totalParts = 1,
+    this.partLabel,
+    this.vendorId,
+    this.vendorName,
   });
   @override
-  List<Object?> get props => [projectId, epsNodeId, listId, activity.id];
+  List<Object?> get props => [
+        projectId,
+        epsNodeId,
+        listId,
+        activity.id,
+        partNo,
+        totalParts,
+        vendorId,
+      ];
 }
 
 /// Upload a rectification photo for an observation
@@ -266,7 +289,7 @@ class QualityRequestBloc
       if (cached.isNotEmpty) {
         final lists = cached
             .map((c) => QualityActivityList.fromJson(
-                jsonDecode(c.rawData ?? '{}') as Map<String, dynamic>))
+                jsonDecode(c.rawData) as Map<String, dynamic>))
             .toList();
         emit(ActivityListsLoaded(
           lists: lists,
@@ -485,6 +508,14 @@ class QualityRequestBloc
           'activityId': event.activity.id,
           if (event.comments != null && event.comments!.isNotEmpty)
             'comments': event.comments,
+          if (event.partNo != 1 || event.totalParts != 1) ...{
+            'partNo': event.partNo,
+            'totalParts': event.totalParts,
+            if (event.partLabel != null) 'partLabel': event.partLabel,
+          },
+          if (event.vendorId != null) 'vendorId': event.vendorId,
+          if (event.vendorName != null && event.vendorName!.isNotEmpty)
+            'vendorName': event.vendorName,
         },
         priority: 2,
       );

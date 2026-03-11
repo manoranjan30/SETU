@@ -138,9 +138,7 @@ export class PlanningController {
 
   @Post('unlink-wo')
   @Permissions('PLANNING.MATRIX.UPDATE')
-  async unlinkWoItem(
-    @Body('workOrderItemId') workOrderItemId: number,
-  ) {
+  async unlinkWoItem(@Body('workOrderItemId') workOrderItemId: number) {
     return this.planningService.unlinkWoItem(workOrderItemId);
   }
 

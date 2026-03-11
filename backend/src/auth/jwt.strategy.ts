@@ -40,7 +40,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (shouldEnforceTempPolicy) {
       const tempUser = latestTempUser;
       if (!tempUser || tempUser.status !== 'ACTIVE') {
-        throw new UnauthorizedException('Temporary access suspended or revoked');
+        throw new UnauthorizedException(
+          'Temporary access suspended or revoked',
+        );
       }
 
       const now = new Date();

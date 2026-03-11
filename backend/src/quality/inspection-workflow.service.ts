@@ -94,7 +94,8 @@ export class InspectionWorkflowService {
     );
     const firstApprovalNode = sortedNodes.find(
       (n) =>
-        n.stepType !== 'RAISE_RFI' && n.stepOrder > (raiserNode?.stepOrder || 0),
+        n.stepType !== 'RAISE_RFI' &&
+        n.stepOrder > (raiserNode?.stepOrder || 0),
     );
 
     // If there is no approval step beyond RaiseRFI, the workflow is already complete
@@ -144,7 +145,8 @@ export class InspectionWorkflowService {
 
       // Determine if this is the RaiseRFI step
       const isRaiserStep =
-        node.stepType === 'RAISE_RFI' || node.stepOrder === (raiserNode?.stepOrder || 1);
+        node.stepType === 'RAISE_RFI' ||
+        node.stepOrder === (raiserNode?.stepOrder || 1);
 
       if (isRaiserStep) {
         resolvedUserId = raiserUserId;
@@ -156,7 +158,10 @@ export class InspectionWorkflowService {
       let stepStatus: WorkflowStepStatus;
       if (isRaiserStep) {
         stepStatus = WorkflowStepStatus.COMPLETED;
-      } else if (firstApprovalNode && node.stepOrder === firstApprovalNode.stepOrder) {
+      } else if (
+        firstApprovalNode &&
+        node.stepOrder === firstApprovalNode.stepOrder
+      ) {
         stepStatus = WorkflowStepStatus.PENDING;
       } else {
         stepStatus = WorkflowStepStatus.WAITING;
@@ -364,7 +369,11 @@ export class InspectionWorkflowService {
       // If step is role-based, notify ALL project team members with that role
       // If step is user-based, notify that specific user
       const nextNode = nextStep.workflowNode;
-      if (nextNode && nextNode.assignmentMode === AssignmentMode.ROLE && nextNode.assignedRoleId) {
+      if (
+        nextNode &&
+        nextNode.assignmentMode === AssignmentMode.ROLE &&
+        nextNode.assignedRoleId
+      ) {
         const projectId = inspection?.projectId;
         if (projectId) {
           this.pushService
@@ -375,7 +384,9 @@ export class InspectionWorkflowService {
               `RFI #${inspectionId} is awaiting your approval at Step ${nextStep.stepOrder}.`,
               { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
             )
-            .catch(() => { /* non-fatal */ });
+            .catch(() => {
+              /* non-fatal */
+            });
         }
       } else if (nextStep.assignedUserId) {
         this.pushService
@@ -385,7 +396,9 @@ export class InspectionWorkflowService {
             `RFI #${inspectionId} is awaiting your approval at Step ${nextStep.stepOrder}.`,
             { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
           )
-          .catch(() => { /* non-fatal */ });
+          .catch(() => {
+            /* non-fatal */
+          });
       }
     } else {
       run.status = WorkflowRunStatus.COMPLETED;
@@ -410,7 +423,9 @@ export class InspectionWorkflowService {
               `Your RFI #${inspectionId} has been approved through all workflow levels.`,
               { inspectionId: String(inspectionId), type: 'APPROVED' },
             )
-            .catch(() => { /* non-fatal */ });
+            .catch(() => {
+              /* non-fatal */
+            });
         }
       }
     }
@@ -457,11 +472,12 @@ export class InspectionWorkflowService {
     const sortedSteps = [...run.steps].sort(
       (a, b) => a.stepOrder - b.stepOrder,
     );
-    const firstApprovalStep = sortedSteps.find(
-      (s) =>
-        s.workflowNode?.stepType !== 'RAISE_RFI' &&
-        s.stepOrder > 1,
-    ) || sortedSteps.find((s) => s.stepOrder > 1) || sortedSteps[0];
+    const firstApprovalStep =
+      sortedSteps.find(
+        (s) => s.workflowNode?.stepType !== 'RAISE_RFI' && s.stepOrder > 1,
+      ) ||
+      sortedSteps.find((s) => s.stepOrder > 1) ||
+      sortedSteps[0];
 
     if (firstApprovalStep) {
       firstApprovalStep.status = WorkflowStepStatus.PENDING;
@@ -537,11 +553,10 @@ export class InspectionWorkflowService {
     const sortedSteps = [...run.steps].sort(
       (a, b) => a.stepOrder - b.stepOrder,
     );
-    const firstApprovalStep = sortedSteps.find(
-      (s) =>
-        s.workflowNode?.stepType !== 'RAISE_RFI' &&
-        s.stepOrder > 1,
-    ) || sortedSteps.find((s) => s.stepOrder > 1);
+    const firstApprovalStep =
+      sortedSteps.find(
+        (s) => s.workflowNode?.stepType !== 'RAISE_RFI' && s.stepOrder > 1,
+      ) || sortedSteps.find((s) => s.stepOrder > 1);
 
     for (const step of run.steps) {
       const isRaiserStep =
@@ -550,7 +565,10 @@ export class InspectionWorkflowService {
       if (isRaiserStep) {
         // Keep RaiseRFI step as COMPLETED — the RFI was already raised
         step.comments = `REVERSED: ${reason} (RFI raise preserved)`;
-      } else if (firstApprovalStep && step.stepOrder === firstApprovalStep.stepOrder) {
+      } else if (
+        firstApprovalStep &&
+        step.stepOrder === firstApprovalStep.stepOrder
+      ) {
         step.status = WorkflowStepStatus.PENDING;
         step.completedAt = null;
         step.comments = `REVERSED: ${reason}`;

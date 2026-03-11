@@ -88,7 +88,9 @@ export class QualityStructureService {
     }
 
     for (const unit of structure.units || []) {
-      unit.rooms = [...(unit.rooms || [])].sort((a, b) => a.sequence - b.sequence);
+      unit.rooms = [...(unit.rooms || [])].sort(
+        (a, b) => a.sequence - b.sequence,
+      );
     }
 
     return structure;
@@ -105,7 +107,8 @@ export class QualityStructureService {
 
     const units = Array.from({ length: dto.unitCount }, (_, idx) => {
       const serial = dto.naming.startNumber + idx * increment;
-      const serialText = pad > 0 ? String(serial).padStart(pad, '0') : String(serial);
+      const serialText =
+        pad > 0 ? String(serial).padStart(pad, '0') : String(serial);
       const name = `${dto.naming.prefix}${serialText}`;
       return {
         index: idx + 1,
@@ -134,7 +137,8 @@ export class QualityStructureService {
       throw new BadRequestException('At least one unit is required');
     }
 
-    const { projectId, towerId } = await this.resolveProjectAndTowerForFloor(floorId);
+    const { projectId, towerId } =
+      await this.resolveProjectAndTowerForFloor(floorId);
 
     let floorStructure = await this.floorStructureRepo.findOne({
       where: { projectId, floorId },
@@ -193,8 +197,12 @@ export class QualityStructureService {
       throw new BadRequestException('targetFloorIds must not be empty');
     }
 
-    const sourceMeta = await this.resolveProjectAndTowerForFloor(dto.sourceFloorId);
-    const sourceFloorNode = await this.epsRepo.findOne({ where: { id: dto.sourceFloorId } });
+    const sourceMeta = await this.resolveProjectAndTowerForFloor(
+      dto.sourceFloorId,
+    );
+    const sourceFloorNode = await this.epsRepo.findOne({
+      where: { id: dto.sourceFloorId },
+    });
 
     const sourceStructure = await this.floorStructureRepo.findOne({
       where: { projectId: sourceMeta.projectId, floorId: dto.sourceFloorId },
@@ -202,7 +210,9 @@ export class QualityStructureService {
     });
 
     if (!sourceStructure) {
-      throw new NotFoundException('No quality structure exists on source floor');
+      throw new NotFoundException(
+        'No quality structure exists on source floor',
+      );
     }
 
     const collisionMode = dto.collisionMode || 'REPLACE';
@@ -212,8 +222,11 @@ export class QualityStructureService {
     const skipped: number[] = [];
 
     for (const targetFloorId of dto.targetFloorIds) {
-      const targetMeta = await this.resolveProjectAndTowerForFloor(targetFloorId);
-      const targetFloorNode = await this.epsRepo.findOne({ where: { id: targetFloorId } });
+      const targetMeta =
+        await this.resolveProjectAndTowerForFloor(targetFloorId);
+      const targetFloorNode = await this.epsRepo.findOne({
+        where: { id: targetFloorId },
+      });
 
       let targetStructure = await this.floorStructureRepo.findOne({
         where: { projectId: targetMeta.projectId, floorId: targetFloorId },
@@ -230,7 +243,9 @@ export class QualityStructureService {
       }
 
       const targetHasUnits =
-        (await this.unitRepo.count({ where: { floorStructureId: targetStructure.id } })) > 0;
+        (await this.unitRepo.count({
+          where: { floorStructureId: targetStructure.id },
+        })) > 0;
 
       if (targetHasUnits) {
         if (collisionMode === 'SKIP') {
@@ -329,7 +344,8 @@ export class QualityStructureService {
   async createRoom(unitId: number, dto: CreateRoomDto) {
     const unit = await this.unitRepo.findOne({ where: { id: unitId } });
     if (!unit) throw new NotFoundException('Unit not found');
-    if (!dto.name?.trim()) throw new BadRequestException('Room name is required');
+    if (!dto.name?.trim())
+      throw new BadRequestException('Room name is required');
 
     const maxSeq = await this.roomRepo
       .createQueryBuilder('room')
@@ -355,7 +371,8 @@ export class QualityStructureService {
 
     if (typeof dto.name === 'string') room.name = dto.name.trim();
     if (typeof dto.code === 'string') room.code = dto.code.trim() || null;
-    if (typeof dto.roomType === 'string') room.roomType = dto.roomType.trim() || null;
+    if (typeof dto.roomType === 'string')
+      room.roomType = dto.roomType.trim() || null;
 
     return this.roomRepo.save(room);
   }
@@ -416,7 +433,10 @@ export class QualityStructureService {
       throw new BadRequestException('Floor is not under a tower');
     }
 
-    const projectId = await this.findAncestorByType(tower.id, EpsNodeType.PROJECT);
+    const projectId = await this.findAncestorByType(
+      tower.id,
+      EpsNodeType.PROJECT,
+    );
     if (!projectId) {
       throw new BadRequestException('Project ancestor not found for floor');
     }

@@ -229,6 +229,22 @@ class ApiEndpoints {
   static String rejectWorkflow(int id) =>
       '/quality/inspections/$id/workflow/reject';
 
+  /// POST /quality/inspections/:id/workflow/delegate  → Delegate current step
+  static String delegateWorkflow(int id) =>
+      '/quality/inspections/$id/workflow/delegate';
+
+  /// POST /quality/inspections/:id/stages/:stageId/approve  → Sign off a stage
+  static String approveStage(int id, int stageId) =>
+      '/quality/inspections/$id/stages/$stageId/approve';
+
+  /// POST /quality/inspections/:id/final-approve  → Grant final approval
+  static String finalApprove(int id) =>
+      '/quality/inspections/$id/final-approve';
+
+  /// GET /quality/inspections/unit-progress?projectId=X&epsNodeId=Y
+  static const String inspectionUnitProgress =
+      '/quality/inspections/unit-progress';
+
   /// GET /quality/activities/:id/observations
   static String activityObservations(int activityId) =>
       '/quality/activities/$activityId/observations';

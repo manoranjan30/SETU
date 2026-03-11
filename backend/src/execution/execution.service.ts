@@ -54,8 +54,10 @@ export class ExecutionService {
           ? `-MICRO-${entry.microActivityId}`
           : '';
         const vendorSuffix = entry.vendorId ? `-V-${entry.vendorId}` : '';
-        const woSuffix = entry.workOrderItemId ? `-WO-${entry.workOrderItemId}` : '';
-        
+        const woSuffix = entry.workOrderItemId
+          ? `-WO-${entry.workOrderItemId}`
+          : '';
+
         const elementId = `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}${vendorSuffix}${woSuffix}`;
 
         let siteMeas = await manager.findOne(MeasurementElement, {
@@ -191,6 +193,25 @@ export class ExecutionService {
 
     let allLinksComplete = true; // Strict Check
 
+    // Pre-fetch consumed quantities per unique boqItemId to avoid double-counting
+    // when multiple WO items reference the same BOQ item
+    const consumedByBoq = new Map<number, number>();
+    const uniqueBoqIds = [...new Set(allLinks.map((l) => l.boqItem.id))];
+    for (const boqId of uniqueBoqIds) {
+      const meas = await manager.find(MeasurementElement, {
+        where: { boqItemId: boqId, activityId: activityId },
+      });
+      const consumed = meas.reduce(
+        (sum, m) => sum + Number(m.executedQty),
+        0,
+      );
+      consumedByBoq.set(boqId as number, consumed);
+    }
+
+    // Track consumed already attributed to links per boqItemId
+    // to distribute consumed proportionally across links sharing same BOQ
+    const consumedAttributed = new Map<number, number>();
+
     for (const link of allLinks) {
       const item = link.boqItem;
       const rate = Number(item.rate || 0);
@@ -200,14 +221,34 @@ export class ExecutionService {
       totalActivityPlanned += plannedQty;
       totalBudgetedValue += plannedQty * rate;
 
-      // Executed Portion specific to this Activity+BOQ+Plan
-      const specificMeas = await manager.find(MeasurementElement, {
-        where: { boqItemId: item.id, activityId: activityId },
-      });
-      const specificConsumed = specificMeas.reduce(
-        (sum, m) => sum + Number(m.executedQty),
-        0,
+      // Executed Portion: use WO-item-specific measurements if available,
+      // fall back to proportional share of BOQ-level consumed
+      const woItemId = link.workOrderItemId;
+      let specificConsumed = 0;
+
+      if (woItemId) {
+        // Try WO-item-specific measurement elements first
+        const woMeas = await manager.find(MeasurementElement, {
+          where: { boqItemId: item.id, activityId: activityId, workOrderItemId: woItemId },
+        });
+        specificConsumed = woMeas.reduce(
+          (sum, m) => sum + Number(m.executedQty),
+          0,
+        );
+      } else {
+        // Legacy fallback: proportional share of total consumed for this BOQ
+        const totalConsumedForBoq = consumedByBoq.get(item.id) || 0;
+        const alreadyAttr = consumedAttributed.get(item.id) || 0;
+        specificConsumed = Math.min(plannedQty, totalConsumedForBoq - alreadyAttr);
+        specificConsumed = Math.max(0, specificConsumed);
+      }
+
+      // Track attribution
+      consumedAttributed.set(
+        item.id,
+        (consumedAttributed.get(item.id) || 0) + specificConsumed,
       );
+
       totalActualValue += specificConsumed * rate;
 
       // Calculation based on Plan Weighting

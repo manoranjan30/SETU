@@ -38,21 +38,13 @@ export class DashboardBuilderController {
   @Get('my')
   getMyDashboard(@Request() req: any, @Query('projectId') projectId: string) {
     const pId = projectId ? parseInt(projectId, 10) : undefined;
-    return this.service.getDefaultDashboard(
-      req.user.id,
-      req.user.roles,
-      pId,
-    );
+    return this.service.getDefaultDashboard(req.user.id, req.user.roles, pId);
   }
 
   @Get('defaults/my')
   getDefaultsMy(@Request() req: any, @Query('projectId') projectId: string) {
     const pId = projectId ? parseInt(projectId, 10) : undefined;
-    return this.service.getDefaultDashboard(
-      req.user.id,
-      req.user.roles,
-      pId,
-    );
+    return this.service.getDefaultDashboard(req.user.id, req.user.roles, pId);
   }
 
   // ─── Data Sources (must be before :id) ──────────────────────────────────

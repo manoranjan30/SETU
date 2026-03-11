@@ -278,7 +278,8 @@ class QualityActivityList extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, description, projectId, epsNodeId, activityCount];
+  List<Object?> get props =>
+      [id, name, description, projectId, epsNodeId, activityCount];
 }
 
 /// A single quality activity within a list
@@ -389,7 +390,25 @@ class QualityInspection extends Equatable {
   final String? inspectedBy;
   final String? activityName; // joined from activity relation
   final String? epsNodeLabel; // joined from epsNode relation
+  final String? blockName;
+  final String? towerName;
+  final String? floorName;
+  final String? unitName;
+  final String? locationPath;
+  final int? workflowCurrentLevel;
+  final int? workflowTotalLevels;
+  final int pendingObservationCount;
+  final DateTime? slaDueAt;
   final List<InspectionStage> stages;
+
+  // Multi-part RFI support (e.g. "Part 1 of 3")
+  final int partNo;
+  final int totalParts;
+  final String? partLabel;
+
+  // Vendor captured at RFI creation
+  final int? vendorId;
+  final String? vendorName;
 
   const QualityInspection({
     required this.id,
@@ -404,36 +423,182 @@ class QualityInspection extends Equatable {
     this.inspectedBy,
     this.activityName,
     this.epsNodeLabel,
+    this.blockName,
+    this.towerName,
+    this.floorName,
+    this.unitName,
+    this.locationPath,
+    this.workflowCurrentLevel,
+    this.workflowTotalLevels,
+    this.pendingObservationCount = 0,
+    this.slaDueAt,
     this.stages = const [],
+    this.partNo = 1,
+    this.totalParts = 1,
+    this.partLabel,
+    this.vendorId,
+    this.vendorName,
   });
 
   factory QualityInspection.fromJson(Map<String, dynamic> json) {
     final activity = json['activity'] as Map<String, dynamic>?;
     final epsNode = json['epsNode'] as Map<String, dynamic>?;
+    final location = json['location'] as Map<String, dynamic>?;
+    DateTime? parseDate(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is DateTime) return raw;
+      if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+      return null;
+    }
+
+    String? readString(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        if (candidate is String && candidate.trim().isNotEmpty) {
+          return candidate.trim();
+        }
+      }
+      return null;
+    }
+
+    int? readInt(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        if (candidate is int) return candidate;
+        if (candidate is num) return candidate.toInt();
+        if (candidate is String) {
+          final parsed = int.tryParse(candidate);
+          if (parsed != null) return parsed;
+        }
+      }
+      return null;
+    }
+
     return QualityInspection(
       id: json['id'] as int,
       activityId: json['activityId'] as int? ?? 0,
       epsNodeId: json['epsNodeId'] as int?,
       listId: json['listId'] as int?,
       projectId: json['projectId'] as int?,
-      status: InspectionStatus.fromString(json['status'] as String? ?? 'PENDING'),
+      status:
+          InspectionStatus.fromString(json['status'] as String? ?? 'PENDING'),
       requestDate: json['requestDate'] as String? ?? '',
       inspectionDate: json['inspectionDate'] as String?,
       comments: json['comments'] as String?,
       inspectedBy: json['inspectedBy'] as String?,
       activityName: activity?['activityName'] as String?,
       epsNodeLabel: epsNode?['label'] as String? ?? epsNode?['name'] as String?,
+      blockName: readString(
+          [json['blockName'], location?['blockName'], location?['block']]),
+      towerName: readString(
+          [json['towerName'], location?['towerName'], location?['tower']]),
+      floorName: readString(
+          [json['floorName'], location?['floorName'], location?['floor']]),
+      unitName: readString(
+          [json['unitName'], location?['unitName'], location?['unit']]),
+      locationPath: readString(
+          [json['locationPath'], location?['path'], location?['locationPath']]),
+      workflowCurrentLevel: readInt([
+        json['workflowCurrentLevel'],
+        json['currentApprovalLevel'],
+        json['currentLevel'],
+      ]),
+      workflowTotalLevels: readInt([
+        json['workflowTotalLevels'],
+        json['approvalLevels'],
+        json['totalLevels'],
+      ]),
+      pendingObservationCount: readInt([
+            json['pendingObservationCount'],
+            json['openObservationCount'],
+            json['observationPendingCount'],
+          ]) ??
+          0,
+      slaDueAt: parseDate(json['slaDueAt'] ?? json['dueAt']),
       stages: (json['stages'] as List<dynamic>?)
               ?.map((e) => InspectionStage.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      partNo: json['partNo'] as int? ?? 1,
+      totalParts: json['totalParts'] as int? ?? 1,
+      partLabel: json['partLabel'] as String?,
+      vendorId: json['vendorId'] as int?,
+      vendorName: json['vendorName'] as String?,
     );
   }
 
+  /// True when this RFI is one of multiple parts (e.g. Part 2 of 3).
+  bool get isMultiPart => totalParts > 1;
+
+  /// Display label for multi-part RFI, e.g. "Part 1 of 3" or custom label.
+  String get partDisplay =>
+      partLabel?.isNotEmpty == true ? partLabel! : 'Part $partNo of $totalParts';
+
   bool get isPending => status == InspectionStatus.pending;
+  DateTime? get requestDateTime =>
+      requestDate.isEmpty ? null : DateTime.tryParse(requestDate);
+
+  int get completedStages => stages.where((s) => s.allOk).length;
+  int get totalStages => stages.length;
+
+  String? get primaryFloorLabel {
+    if (floorName != null && floorName!.isNotEmpty) return floorName;
+    for (final part in locationHierarchy) {
+      if (part.toLowerCase().contains('floor')) return part;
+    }
+    return null;
+  }
+
+  List<String> get locationHierarchy {
+    final hierarchy = <String>[
+      if (blockName != null && blockName!.isNotEmpty) blockName!,
+      if (towerName != null && towerName!.isNotEmpty) towerName!,
+      if (floorName != null && floorName!.isNotEmpty) floorName!,
+      if (unitName != null && unitName!.isNotEmpty) unitName!,
+    ];
+    if (hierarchy.isNotEmpty) return hierarchy;
+
+    final raw = locationPath ?? epsNodeLabel;
+    if (raw == null || raw.trim().isEmpty) return const [];
+    final parts = raw
+        .split(RegExp(r'[>/|,]'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    return parts;
+  }
+
+  String get locationDisplay {
+    final hierarchy = locationHierarchy;
+    if (hierarchy.isNotEmpty) return hierarchy.join(' > ');
+    return 'Location unavailable';
+  }
 
   @override
-  List<Object?> get props => [id, activityId, status, requestDate, stages];
+  List<Object?> get props => [
+        id,
+        activityId,
+        status,
+        requestDate,
+        inspectionDate,
+        comments,
+        inspectedBy,
+        activityName,
+        epsNodeLabel,
+        blockName,
+        towerName,
+        floorName,
+        unitName,
+        locationPath,
+        workflowCurrentLevel,
+        workflowTotalLevels,
+        pendingObservationCount,
+        slaDueAt,
+        stages,
+        partNo,
+        totalParts,
+        partLabel,
+        vendorId,
+        vendorName,
+      ];
 }
 
 /// A checklist stage within an inspection
@@ -465,11 +630,14 @@ class InspectionStage extends Equatable {
 
   /// Items marked PASS.
   int get completedCount => items.where((i) => i.isOk).length;
+
   /// Items marked PASS or N/A (i.e. evaluated).
   int get resolvedCount => items.where((i) => i.itemStatus != null).length;
   int get totalCount => items.length;
+
   /// True when every item has been evaluated (PASS or N/A).
-  bool get allOk => items.isNotEmpty && items.every((i) => i.itemStatus != null);
+  bool get allOk =>
+      items.isNotEmpty && items.every((i) => i.itemStatus != null);
 
   InspectionStage copyWithItems(List<ChecklistItem> newItems) {
     return InspectionStage(
@@ -489,6 +657,7 @@ class ChecklistItem extends Equatable {
   final int id;
   final String itemText;
   final int sequence;
+
   /// null = not yet evaluated, pass = Yes, na = Not Applicable
   final ChecklistItemStatus? itemStatus;
   final String? remarks;
@@ -596,8 +765,8 @@ class ActivityObservation extends Equatable {
               ?.map((e) => ApiEndpoints.resolveUrl(e.toString()))
               .toList() ??
           [],
-      status: ObservationStatus.fromString(
-          json['status'] as String? ?? 'PENDING'),
+      status:
+          ObservationStatus.fromString(json['status'] as String? ?? 'PENDING'),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -725,8 +894,8 @@ class InspectionWorkflowStep extends Equatable {
     return InspectionWorkflowStep(
       id: json['id'] as int,
       stepOrder: json['stepOrder'] as int? ?? 0,
-      status: WorkflowStepStatus.fromString(
-          json['status'] as String? ?? 'WAITING'),
+      status:
+          WorkflowStepStatus.fromString(json['status'] as String? ?? 'WAITING'),
       stepLabel: node?['label'] as String? ?? node?['name'] as String?,
       stepType: node?['stepType'] as String?,
       assignedUserId: json['assignedUserId'] as int?,
@@ -772,8 +941,8 @@ class InspectionWorkflowRun extends Equatable {
       status: WorkflowRunStatus.fromString(
           json['status'] as String? ?? 'IN_PROGRESS'),
       steps: (json['steps'] as List<dynamic>?)
-              ?.map((e) => InspectionWorkflowStep.fromJson(
-                  e as Map<String, dynamic>))
+              ?.map((e) =>
+                  InspectionWorkflowStep.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
