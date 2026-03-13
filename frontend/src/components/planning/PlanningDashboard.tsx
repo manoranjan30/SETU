@@ -2,6 +2,7 @@ import {
   Calendar,
   Table,
   CheckSquare,
+  ShieldCheck,
   Layers,
   Split,
   FileText,
@@ -9,6 +10,8 @@ import {
   Users,
 } from "lucide-react";
 import { clsx } from "clsx";
+import { useAuth } from "../../context/AuthContext";
+import { PermissionCode } from "../../config/permissions";
 
 interface PlanningDashboardProps {
   children: React.ReactNode;
@@ -21,6 +24,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
   currentView,
   onViewChange,
 }) => {
+  const { hasPermission } = useAuth();
   const menuItems = [
     {
       key: "schedule",
@@ -68,7 +72,17 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       icon: <Users size={18} />,
       label: "Vendor Users",
     },
+    {
+      key: "release_strategy",
+      icon: <ShieldCheck size={18} />,
+      label: "Release Strategy",
+      permission: PermissionCode.RELEASE_STRATEGY_READ,
+    },
   ];
+
+  const visibleMenuItems = menuItems.filter(
+    (item: any) => !item.permission || hasPermission(item.permission),
+  );
 
   return (
     <div className="ui-shell flex h-screen overflow-hidden ui-animate-page">
@@ -82,7 +96,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
         </div>
         <nav className="flex-1 overflow-y-auto p-2 scrollbar-thin">
           <ul className="space-y-1">
-            {menuItems.map((item) => (
+            {visibleMenuItems.map((item) => (
               <li key={item.key}>
                 <button
                   onClick={() => onViewChange(item.key)}

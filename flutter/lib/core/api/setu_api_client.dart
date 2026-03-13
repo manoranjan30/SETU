@@ -186,13 +186,12 @@ class SetuApiClient {
     required int epsNodeId,
   }) async {
     final response = await _dio.get(
-      ApiEndpoints.executionBreakdown,
-      queryParameters: {
-        'activityId': activityId,
-        'epsNodeId': epsNodeId,
-      },
+      ApiEndpoints.executionBreakdown(activityId, epsNodeId),
     );
-    return response.data;
+    final data = response.data;
+    if (data is Map<String, dynamic>) return data;
+    // Backend returned non-map (plain string error or null) — return empty breakdown
+    return {'activityId': activityId, 'epsNodeId': epsNodeId, 'vendorBreakdown': []};
   }
 
   /// Save micro progress.
@@ -575,6 +574,164 @@ class SetuApiClient {
       ApiEndpoints.closeObservation(activityId, obsId),
     );
     return response.data;
+  }
+
+  // ==================== QUALITY SITE OBSERVATIONS ====================
+
+  /// GET /quality/site-observations?projectId=X&status=Y&severity=Z
+  Future<List<dynamic>> getQualitySiteObs({
+    required int projectId,
+    String? status,
+    String? severity,
+  }) async {
+    final params = <String, dynamic>{'projectId': projectId};
+    if (status != null) params['status'] = status;
+    if (severity != null) params['severity'] = severity;
+    final response = await _dio.get(
+      ApiEndpoints.qualitySiteObservations,
+      queryParameters: params,
+    );
+    return response.data as List<dynamic>;
+  }
+
+  /// POST /quality/site-observations
+  Future<Map<String, dynamic>> createQualitySiteObs({
+    required int projectId,
+    int? epsNodeId,
+    required String description,
+    required String severity,
+    String? category,
+    String? locationLabel,
+    List<String>? photoUrls,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.qualitySiteObservations,
+      data: {
+        'projectId': projectId,
+        if (epsNodeId != null) 'epsNodeId': epsNodeId,
+        'description': description,
+        'severity': severity,
+        if (category != null) 'category': category,
+        if (locationLabel != null) 'locationLabel': locationLabel,
+        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// DELETE /quality/site-observations/:id
+  Future<void> deleteQualitySiteObs({required String id}) async {
+    await _dio.delete(ApiEndpoints.deleteQualitySiteObs(id));
+  }
+
+  /// PATCH /quality/site-observations/:id/rectify
+  Future<void> rectifyQualitySiteObs({
+    required String id,
+    required String notes,
+    List<String>? photoUrls,
+  }) async {
+    await _dio.patch(
+      ApiEndpoints.rectifyQualitySiteObs(id),
+      data: {
+        'notes': notes,
+        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+      },
+    );
+  }
+
+  /// PATCH /quality/site-observations/:id/close
+  Future<void> closeQualitySiteObs({
+    required String id,
+    String? closureNotes,
+  }) async {
+    await _dio.patch(
+      ApiEndpoints.closeQualitySiteObs(id),
+      data: {if (closureNotes != null) 'closureNotes': closureNotes},
+    );
+  }
+
+  // ==================== EHS SITE OBSERVATIONS ====================
+
+  /// GET /ehs/site-observations?projectId=X&status=Y&severity=Z
+  Future<List<dynamic>> getEhsSiteObs({
+    required int projectId,
+    String? status,
+    String? severity,
+  }) async {
+    final params = <String, dynamic>{'projectId': projectId};
+    if (status != null) params['status'] = status;
+    if (severity != null) params['severity'] = severity;
+    final response = await _dio.get(
+      ApiEndpoints.ehsSiteObservations,
+      queryParameters: params,
+    );
+    return response.data as List<dynamic>;
+  }
+
+  /// POST /ehs/site-observations
+  Future<Map<String, dynamic>> createEhsSiteObs({
+    required int projectId,
+    int? epsNodeId,
+    required String description,
+    required String severity,
+    String? category,
+    String? locationLabel,
+    List<String>? photoUrls,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.ehsSiteObservations,
+      data: {
+        'projectId': projectId,
+        if (epsNodeId != null) 'epsNodeId': epsNodeId,
+        'description': description,
+        'severity': severity,
+        if (category != null) 'category': category,
+        if (locationLabel != null) 'locationLabel': locationLabel,
+        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// DELETE /ehs/site-observations/:id
+  Future<void> deleteEhsSiteObs({required String id}) async {
+    await _dio.delete(ApiEndpoints.deleteEhsSiteObs(id));
+  }
+
+  /// PATCH /ehs/site-observations/:id/rectify
+  Future<void> rectifyEhsSiteObs({
+    required String id,
+    required String notes,
+    List<String>? photoUrls,
+  }) async {
+    await _dio.patch(
+      ApiEndpoints.rectifyEhsSiteObs(id),
+      data: {
+        'notes': notes,
+        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+      },
+    );
+  }
+
+  /// PATCH /ehs/site-observations/:id/close
+  Future<void> closeEhsSiteObs({
+    required String id,
+    String? closureNotes,
+  }) async {
+    await _dio.patch(
+      ApiEndpoints.closeEhsSiteObs(id),
+      data: {if (closureNotes != null) 'closureNotes': closureNotes},
+    );
+  }
+
+  /// GET /quality/inspections/active-vendors?projectId=X
+  Future<List<Map<String, dynamic>>> getActiveVendors(int projectId) async {
+    final response = await _dio.get(
+      ApiEndpoints.activeVendors,
+      queryParameters: {'projectId': projectId},
+    );
+    final list = response.data as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
   }
 
   // ==================== USER PROFILE ====================

@@ -775,6 +775,7 @@ class ActivityObservation extends Equatable {
 
   bool get isPending => status == ObservationStatus.pending;
   bool get isRectified => status == ObservationStatus.rectified;
+  bool get isClosed => status == ObservationStatus.closed;
 
   @override
   List<Object?> get props =>
@@ -1013,4 +1014,129 @@ class ActivityRow extends Equatable {
   @override
   List<Object?> get props =>
       [activity, inspection, displayStatus, predecessorDone, observations];
+}
+
+// ==================== QUALITY SITE OBSERVATION ====================
+
+enum SiteObsStatus {
+  open,
+  rectified,
+  closed;
+
+  static SiteObsStatus fromString(String v) {
+    switch (v.toUpperCase()) {
+      case 'RECTIFIED':
+        return SiteObsStatus.rectified;
+      case 'CLOSED':
+        return SiteObsStatus.closed;
+      default:
+        return SiteObsStatus.open;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case SiteObsStatus.open:
+        return 'Open';
+      case SiteObsStatus.rectified:
+        return 'Rectified';
+      case SiteObsStatus.closed:
+        return 'Closed';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case SiteObsStatus.open:
+        return const Color(0xFFDC2626);
+      case SiteObsStatus.rectified:
+        return const Color(0xFF2563EB);
+      case SiteObsStatus.closed:
+        return const Color(0xFF16A34A);
+    }
+  }
+}
+
+class QualitySiteObservation extends Equatable {
+  final String id; // UUID from backend
+  final int projectId;
+  final int? epsNodeId;
+  final String description;
+  final String severity; // INFO | MINOR | MAJOR | CRITICAL (DB enum)
+  final String? category;
+  final String? locationLabel;
+  final SiteObsStatus status;
+  final List<String> photoUrls;
+  final String? raisedByName;
+  final String? rectificationNotes;
+  final List<String> rectificationPhotoUrls;
+  final String? closureNotes;
+  final DateTime createdAt;
+  final DateTime? rectifiedAt;
+  final DateTime? closedAt;
+
+  const QualitySiteObservation({
+    required this.id,
+    required this.projectId,
+    this.epsNodeId,
+    required this.description,
+    required this.severity,
+    this.category,
+    this.locationLabel,
+    required this.status,
+    this.photoUrls = const [],
+    this.raisedByName,
+    this.rectificationNotes,
+    this.rectificationPhotoUrls = const [],
+    this.closureNotes,
+    required this.createdAt,
+    this.rectifiedAt,
+    this.closedAt,
+  });
+
+  factory QualitySiteObservation.fromJson(Map<String, dynamic> json) {
+    List<String> resolvePhotos(dynamic raw) {
+      if (raw == null) return const [];
+      return (raw as List<dynamic>)
+          .map((e) => ApiEndpoints.resolveUrl(e.toString()))
+          .toList();
+    }
+
+    DateTime? parseDate(dynamic raw) {
+      if (raw == null || raw == '') return null;
+      if (raw is DateTime) return raw;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    final raisedBy = json['raisedBy'] as Map<String, dynamic>?;
+    return QualitySiteObservation(
+      id: json['id'].toString(),
+      projectId: json['projectId'] as int? ?? 0,
+      epsNodeId: json['epsNodeId'] as int?,
+      description: json['description'] as String? ?? '',
+      severity: json['severity'] as String? ?? 'MINOR',
+      category: json['category'] as String?,
+      locationLabel: json['locationLabel'] as String?,
+      status: SiteObsStatus.fromString(json['status'] as String? ?? 'OPEN'),
+      photoUrls: resolvePhotos(json['photoUrls'] ?? json['photos']),
+      raisedByName: raisedBy?['name'] as String? ??
+          json['raisedByName'] as String?,
+      rectificationNotes: json['rectificationNotes'] as String?,
+      rectificationPhotoUrls: resolvePhotos(
+          json['rectificationPhotoUrls'] ?? json['rectificationPhotos']),
+      closureNotes: json['closureNotes'] as String?,
+      createdAt: parseDate(json['createdAt']) ?? DateTime.now(),
+      rectifiedAt: parseDate(json['rectifiedAt']),
+      closedAt: parseDate(json['closedAt']),
+    );
+  }
+
+  bool get isOpen => status == SiteObsStatus.open;
+  bool get isRectified => status == SiteObsStatus.rectified;
+  bool get isClosed => status == SiteObsStatus.closed;
+
+  @override
+  List<Object?> get props => [
+        id, projectId, description, severity, status, createdAt,
+      ];
 }

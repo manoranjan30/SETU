@@ -52,6 +52,8 @@ import { QualitySequencerService } from './quality-sequencer.service';
 import { QualitySequencerController } from './quality-sequencer.controller';
 
 import { ChecklistTemplateService } from './checklist-template.service';
+import { ChecklistExcelParserService } from './checklist-excel-parser.service';
+import { ChecklistPdfParserService } from './checklist-pdf-parser.service';
 import { ChecklistTemplateController } from './checklist-template.controller';
 import { ComplianceService } from './compliance.service';
 import { QualityReportService } from './quality-report.service';
@@ -139,6 +141,8 @@ import { QualityRatingController } from './quality-rating.controller';
     QualityInspectionService, // Added
     QualitySequencerService,
     ChecklistTemplateService,
+    ChecklistExcelParserService,
+    ChecklistPdfParserService,
     ComplianceService,
     QualityReportService,
     ApprovalWorkflowService,
@@ -154,6 +158,8 @@ import { QualityRatingController } from './quality-rating.controller';
     QualityInspectionService, // Added
     QualitySequencerService,
     QualityReportService,
+    ChecklistExcelParserService,
+    ChecklistPdfParserService,
     ApprovalWorkflowService,
     InspectionWorkflowService,
     SiteObservationService,

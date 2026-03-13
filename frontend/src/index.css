@@ -449,6 +449,21 @@ body {
   line-height: 1.45;
 }
 
+:root,
+.theme-shadcn-admin,
+.theme-tailadmin,
+.theme-horizon-ui,
+.theme-berry-dashboard,
+.theme-mantis,
+.theme-setu-modern-pro {
+  --page-gradient: none;
+  --color-surface-overlay: var(--color-surface-base);
+}
+
+body {
+  background-image: none !important;
+}
+
 h1,
 h2,
 h3,
@@ -601,6 +616,36 @@ h4 {
   backdrop-filter: none !important;
 }
 
+:where(
+  [class*="bg-black/"],
+  [class*="bg-white/"],
+  [class*="bg-gray-"],
+  [class*="bg-slate-"],
+  [class*="bg-zinc-"],
+  [class*="bg-neutral-"],
+  [class*="bg-stone-"],
+  [class*="bg-red-"],
+  [class*="bg-orange-"],
+  [class*="bg-amber-"],
+  [class*="bg-yellow-"],
+  [class*="bg-lime-"],
+  [class*="bg-green-"],
+  [class*="bg-emerald-"],
+  [class*="bg-teal-"],
+  [class*="bg-cyan-"],
+  [class*="bg-sky-"],
+  [class*="bg-blue-"],
+  [class*="bg-indigo-"],
+  [class*="bg-violet-"],
+  [class*="bg-purple-"],
+  [class*="bg-fuchsia-"],
+  [class*="bg-pink-"],
+  [class*="bg-rose-"]
+) {
+  backdrop-filter: none !important;
+  --tw-backdrop-blur: none !important;
+}
+
 [class*="bg-surface-base/"] {
   background-color: var(--color-surface-base) !important;
 }
@@ -632,6 +677,44 @@ h4 {
   background-color: var(--color-info-muted) !important;
 }
 
+[class*="bg-black/"] {
+  background-color: var(--color-surface-base) !important;
+}
+[class*="bg-white/"] {
+  background-color: var(--color-surface-card) !important;
+}
+[class*="bg-gray-900/"],
+[class*="bg-slate-900/"],
+[class*="bg-slate-800/"],
+[class*="bg-black/"] {
+  background-color: var(--color-surface-base) !important;
+}
+[class*="bg-gray-600/"],
+[class*="bg-slate-400/"],
+[class*="bg-slate-200/"],
+[class*="bg-slate-100/"],
+[class*="bg-gray-100/"],
+[class*="bg-gray-50/"] {
+  background-color: var(--color-surface-raised) !important;
+}
+[class*="bg-blue-"],
+[class*="bg-indigo-"],
+[class*="bg-purple-"],
+[class*="bg-violet-"],
+[class*="bg-amber-"],
+[class*="bg-orange-"],
+[class*="bg-emerald-"],
+[class*="bg-red-"],
+[class*="bg-green-"],
+[class*="bg-yellow-"],
+[class*="bg-teal-"],
+[class*="bg-cyan-"],
+[class*="bg-sky-"],
+[class*="bg-pink-"],
+[class*="bg-rose-"] {
+  opacity: 1 !important;
+}
+
 /* Opaque modal/overlay backdrops across modules */
 :where(
   .fixed.inset-0.bg-surface-overlay,
@@ -650,6 +733,10 @@ h4 {
 
 :where([class*="bg-opacity-"]) {
   --tw-bg-opacity: 1 !important;
+}
+
+:where([style*="rgba("], [style*="hsla("]) {
+  backdrop-filter: none !important;
 }
 
 /* Shared modern UI primitives */

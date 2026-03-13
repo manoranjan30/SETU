@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   ParseIntPipe,
@@ -27,6 +28,8 @@ import { ProjectAssignmentGuard } from '../projects/guards/project-assignment.gu
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { Auditable } from '../audit/auditable.decorator';
+import { ReleaseStrategyService } from './release-strategy.service';
+import { ApprovalContextDto, ReleaseStrategyDto } from './dto/release-strategy.dto';
 
 @Controller('planning')
 @UseGuards(
@@ -40,7 +43,123 @@ export class PlanningController {
     private readonly planningService: PlanningService,
     private readonly versionService: ScheduleVersionService,
     private readonly importService: ImportExportService,
+    private readonly releaseStrategyService: ReleaseStrategyService,
   ) {}
+
+  @Get(':projectId/release-strategies')
+  @Permissions('RELEASE_STRATEGY.READ')
+  getReleaseStrategies(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('status') status?: string,
+    @Query('moduleCode') moduleCode?: string,
+    @Query('processCode') processCode?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.releaseStrategyService.listStrategies(projectId, {
+      status,
+      moduleCode,
+      processCode,
+      search,
+    });
+  }
+
+  @Post(':projectId/release-strategies')
+  @Permissions('RELEASE_STRATEGY.WRITE')
+  createReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: ReleaseStrategyDto,
+    @Request() req,
+  ) {
+    return this.releaseStrategyService.createStrategy(projectId, body, req.user?.id);
+  }
+
+  @Get(':projectId/release-strategies/:id')
+  @Permissions('RELEASE_STRATEGY.READ')
+  getReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.releaseStrategyService.getStrategy(projectId, id);
+  }
+
+  @Put(':projectId/release-strategies/:id')
+  @Permissions('RELEASE_STRATEGY.WRITE')
+  updateReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ReleaseStrategyDto,
+    @Request() req,
+  ) {
+    return this.releaseStrategyService.updateStrategy(projectId, id, body, req.user?.id);
+  }
+
+  @Delete(':projectId/release-strategies/:id')
+  @Permissions('RELEASE_STRATEGY.WRITE')
+  deleteReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.releaseStrategyService.deleteStrategy(projectId, id);
+  }
+
+  @Post(':projectId/release-strategies/:id/clone')
+  @Permissions('RELEASE_STRATEGY.WRITE')
+  cloneReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
+    return this.releaseStrategyService.cloneStrategy(projectId, id, req.user?.id);
+  }
+
+  @Post(':projectId/release-strategies/:id/activate')
+  @Permissions('RELEASE_STRATEGY.ACTIVATE')
+  activateReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
+    return this.releaseStrategyService.activateStrategy(projectId, id, req.user?.id);
+  }
+
+  @Post(':projectId/release-strategies/:id/deactivate')
+  @Permissions('RELEASE_STRATEGY.ACTIVATE')
+  deactivateReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.releaseStrategyService.deactivateStrategy(projectId, id);
+  }
+
+  @Post(':projectId/release-strategies/:id/simulate')
+  @Permissions('RELEASE_STRATEGY.SIMULATE')
+  simulateReleaseStrategy(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ApprovalContextDto,
+  ) {
+    return this.releaseStrategyService.simulateStrategy(projectId, id, body);
+  }
+
+  @Get(':projectId/release-strategy-actors')
+  @Permissions('RELEASE_STRATEGY.READ')
+  getReleaseStrategyActors(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.releaseStrategyService.getEligibleActors(projectId);
+  }
+
+  @Get(':projectId/release-strategy-conflicts')
+  @Permissions('RELEASE_STRATEGY.READ')
+  getReleaseStrategyConflicts(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.releaseStrategyService.getConflicts(projectId);
+  }
+
+  @Post('release-engine/resolve-strategy')
+  @Permissions('RELEASE_STRATEGY.SIMULATE')
+  resolveStrategy(@Body() body: ApprovalContextDto) {
+    return this.releaseStrategyService.resolveStrategy(body.projectId, body);
+  }
 
   @Get(':projectId/matrix')
   @Permissions('PLANNING.MATRIX.READ')

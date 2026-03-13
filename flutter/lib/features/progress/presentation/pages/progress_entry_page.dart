@@ -116,12 +116,15 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       final bd = ExecutionBreakdown.fromJson(raw);
       if (!mounted) return;
 
-      // Initialise one controller per line item
+      // Initialise one controller per line item (vendor_boq_type_id)
       final controllers = <String, TextEditingController>{};
-      for (int i = 0; i < bd.boqBreakdown.length; i++) {
-        for (final item in bd.boqBreakdown[i].items) {
-          final key = '${i}_${item.type}_${item.id ?? 'balance'}';
-          controllers[key] = TextEditingController();
+      for (int vi = 0; vi < bd.vendorBreakdown.length; vi++) {
+        final vb = bd.vendorBreakdown[vi];
+        for (int bi = 0; bi < vb.boqBreakdown.length; bi++) {
+          for (final item in vb.boqBreakdown[bi].items) {
+            final key = '${vi}_${bi}_${item.type}_${item.id ?? 'balance'}';
+            controllers[key] = TextEditingController();
+          }
         }
       }
       setState(() {
@@ -192,18 +195,23 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     if (bd == null) return;
 
     final entries = <Map<String, dynamic>>[];
-    for (int i = 0; i < bd.boqBreakdown.length; i++) {
-      final boqBd = bd.boqBreakdown[i];
-      for (final item in boqBd.items) {
-        final key = '${i}_${item.type}_${item.id ?? 'balance'}';
-        final qty =
-            double.tryParse(_microControllers[key]?.text ?? '') ?? 0;
-        if (qty <= 0) continue;
-        entries.add({
-          'boqItemId': boqBd.boqItemId,
-          'microActivityId': item.isMicro ? item.id : null,
-          'quantity': qty,
-        });
+    for (int vi = 0; vi < bd.vendorBreakdown.length; vi++) {
+      final vb = bd.vendorBreakdown[vi];
+      for (int bi = 0; bi < vb.boqBreakdown.length; bi++) {
+        final boqBd = vb.boqBreakdown[bi];
+        for (final item in boqBd.items) {
+          final key = '${vi}_${bi}_${item.type}_${item.id ?? 'balance'}';
+          final qty =
+              double.tryParse(_microControllers[key]?.text ?? '') ?? 0;
+          if (qty <= 0) continue;
+          entries.add({
+            'boqItemId': boqBd.boqItemId,
+            if (boqBd.workOrderItemId != null)
+              'workOrderItemId': boqBd.workOrderItemId,
+            'microActivityId': item.isMicro ? item.id : null,
+            'quantity': qty,
+          });
+        }
       }
     }
 
@@ -469,7 +477,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     }
 
     final bd = _breakdown;
-    if (bd == null || bd.boqBreakdown.isEmpty) {
+    if (bd == null || !bd.hasVendors) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -482,7 +490,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Micro schedule detected but no BOQ breakdown is configured yet.',
+              'Micro schedule active — no Work Order assignments found yet. '
+              'Link this activity to a Work Order to enable progress entry.',
               style: TextStyle(color: AppColors.warning, fontSize: 13),
             ),
           ),
@@ -506,28 +515,81 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Micro Schedule active — enter progress per micro task below.',
+                'Micro Schedule active — enter progress per Work Order below.',
                 style: TextStyle(color: Colors.blue, fontSize: 12),
               ),
             ),
           ]),
         ),
         const SizedBox(height: 12),
-        Text(
-          'Execution Breakdown  (${bd.boqBreakdown.length} BOQ item${bd.boqBreakdown.length == 1 ? '' : 's'})',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
+        ...List.generate(
+          bd.vendorBreakdown.length,
+          (vi) => _buildVendorSection(vi, bd.vendorBreakdown[vi]),
         ),
-        const SizedBox(height: 8),
-        ...List.generate(bd.boqBreakdown.length,
-            (i) => _buildBoqBreakdownCard(i, bd.boqBreakdown[i])),
       ],
     );
   }
 
-  Widget _buildBoqBreakdownCard(int idx, BoqItemBreakdown boqBd) {
+  Widget _buildVendorSection(int vendorIdx, VendorBreakdown vb) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Vendor / WO header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                vb.isDirect
+                    ? Icons.engineering_outlined
+                    : Icons.handshake_outlined,
+                size: 16,
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vb.vendorName,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                    if (vb.workOrderNumber != null)
+                      Text(
+                        'WO: ${vb.workOrderNumber}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSecondaryContainer
+                              .withOpacity(0.7),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...List.generate(
+          vb.boqBreakdown.length,
+          (bi) => _buildBoqBreakdownCard(vendorIdx, bi, vb.boqBreakdown[bi]),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildBoqBreakdownCard(int vendorIdx, int boqIdx, BoqItemBreakdown boqBd) {
     final totalExec =
         boqBd.items.fold<double>(0, (s, item) => s + item.executedQty);
     final progressPct = boqBd.totalScope > 0
@@ -604,7 +666,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
             // Per-item rows
             ...List.generate(boqBd.items.length,
-                (j) => _buildBreakdownItemRow(idx, boqBd.items[j], boqBd)),
+                (j) => _buildBreakdownItemRow(vendorIdx, boqIdx, boqBd.items[j], boqBd)),
           ],
         ),
       ),
@@ -612,8 +674,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
   }
 
   Widget _buildBreakdownItemRow(
-      int boqIdx, BreakdownItem item, BoqItemBreakdown boqBd) {
-    final key = '${boqIdx}_${item.type}_${item.id ?? 'balance'}';
+      int vendorIdx, int boqIdx, BreakdownItem item, BoqItemBreakdown boqBd) {
+    final key = '${vendorIdx}_${boqIdx}_${item.type}_${item.id ?? 'balance'}';
     final controller = _microControllers[key];
     final balance = item.balanceQty.clamp(0.0, double.maxFinite);
     final fullyUsed = balance <= 0;

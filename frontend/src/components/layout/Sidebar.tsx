@@ -77,7 +77,7 @@ const SidebarItem = ({
       <div>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`mx-2 my-0.5 w-[calc(100%-16px)] rounded-lg flex items-center justify-between py-2 text-sm hover:text-primary hover:bg-surface-raised/80 transition-colors ${isActive ? "text-primary font-semibold bg-primary-muted/70 ring-1 ring-primary/20" : "text-text-secondary"}`}
+          className={`mx-2 my-0.5 flex w-[calc(100%-16px)] items-center justify-between rounded-lg py-1.5 text-sm transition-colors hover:bg-surface-raised hover:text-primary ${isActive ? "bg-primary-muted font-semibold text-primary ring-1 ring-primary/20" : "text-text-secondary"}`}
           style={{
             paddingLeft: `${paddingLeft}px`,
             paddingRight: isCollapsed ? "0" : "24px",
@@ -99,7 +99,7 @@ const SidebarItem = ({
             ))}
         </button>
         {isOpen && !isCollapsed && (
-          <div className="bg-surface-base/70 border-l-2 border-border-subtle ml-8 rounded-l-lg py-1">
+          <div className="ml-8 rounded-l-lg border-l-2 border-border-subtle bg-surface-base py-1">
             {visibleChildren.map((child) => (
               <SidebarItem
                 key={child.path}
@@ -120,7 +120,7 @@ const SidebarItem = ({
         href={item.path}
         target="_blank"
         rel="noopener noreferrer"
-        className={`mx-2 my-0.5 w-[calc(100%-16px)] rounded-lg flex items-center py-2 text-sm hover:text-primary hover:bg-surface-raised/80 transition-colors relative text-text-secondary`}
+        className={`relative mx-2 my-0.5 flex w-[calc(100%-16px)] items-center rounded-lg py-1.5 text-sm text-text-secondary transition-colors hover:bg-surface-raised hover:text-primary`}
         style={{
           paddingLeft: `${paddingLeft}px`,
           paddingRight: isCollapsed ? "0" : "24px",
@@ -142,7 +142,7 @@ const SidebarItem = ({
   return (
     <Link
       to={item.path}
-      className={`mx-2 my-0.5 w-[calc(100%-16px)] rounded-lg flex items-center py-2 text-sm hover:text-primary hover:bg-surface-raised/80 transition-colors relative ${isActive ? "bg-primary-muted/80 text-primary font-semibold shadow-sm ring-1 ring-primary/25" : "text-text-secondary"}`}
+      className={`relative mx-2 my-0.5 flex w-[calc(100%-16px)] items-center rounded-lg py-1.5 text-sm transition-colors hover:bg-surface-raised hover:text-primary ${isActive ? "bg-primary-muted text-primary font-semibold shadow-sm ring-1 ring-primary/25" : "text-text-secondary"}`}
       style={{
         paddingLeft: `${paddingLeft}px`,
         paddingRight: isCollapsed ? "0" : "24px",
@@ -195,7 +195,7 @@ const Sidebar = () => {
 
   return (
     <aside
-      className={`${isCollapsed ? "w-20" : "w-64"} bg-surface-card border-r border-border-default shadow-lg flex flex-col h-full transition-all duration-300 relative`}
+      className={`${isCollapsed ? "w-20" : "w-60"} relative flex h-full flex-col border-r border-border-default bg-surface-card shadow-lg transition-all duration-300`}
     >
       {/* Collapse Toggle Button */}
       <button
@@ -211,22 +211,22 @@ const Sidebar = () => {
       </button>
 
       <div
-        className={`p-6 border-b border-border-default bg-gradient-to-b from-primary-muted/60 to-transparent overflow-hidden ${isCollapsed ? "flex justify-center" : ""}`}
+        className={`overflow-hidden border-b border-border-default bg-primary-muted p-4 ${isCollapsed ? "flex justify-center" : ""}`}
       >
-        <h1 className="text-2xl font-extrabold text-primary flex items-center tracking-tight">
+        <h1 className="flex items-center text-xl font-extrabold tracking-tight text-primary">
           <ShieldIcon className="w-6 h-6 flex-shrink-0" />
           {!isCollapsed && <span className="ml-2 whitespace-nowrap">SETU</span>}
         </h1>
         {!isCollapsed && (
           <>
-            <p className="text-xs text-text-muted mt-2 truncate">
+            <p className="mt-1.5 truncate text-xs text-text-muted">
               Logged in as{" "}
               <span className="font-medium text-text-secondary">
                 {user?.username}
               </span>
             </p>
             {user?.roles?.includes("Admin") && (
-              <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold text-white bg-error rounded-full">
+              <span className="mt-1 inline-block rounded-full bg-error px-2 py-0.5 text-xs font-semibold text-white">
                 Admin
               </span>
             )}
@@ -234,16 +234,16 @@ const Sidebar = () => {
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-4 overflow-x-hidden px-1">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-1 py-3">
         {MENU_CONFIG.map((item) => (
           <SidebarItem key={item.path} item={item} isCollapsed={isCollapsed} />
         ))}
 
         {/* Dynamic Project Modules */}
         {activeProjectId && (
-          <div className="mt-6">
+          <div className="mt-4">
             {!isCollapsed ? (
-              <div className="px-6 py-2 text-xs font-bold text-text-disabled uppercase tracking-widest flex items-center gap-2">
+              <div className="flex items-center gap-2 px-5 py-1.5 text-xs font-bold uppercase tracking-widest text-text-disabled">
                 <Database className="w-3 h-3" />
                 Active Project
               </div>
@@ -329,12 +329,12 @@ const Sidebar = () => {
       </nav>
 
       <div
-        className={`p-4 border-t border-border-default bg-surface-base/90 flex flex-col gap-2 ${isCollapsed ? "items-center" : ""}`}
+        className={`flex flex-col gap-1.5 border-t border-border-default bg-surface-base p-3 ${isCollapsed ? "items-center" : ""}`}
       >
         {!isCollapsed && <ThemePicker compact />}
         <button
           onClick={() => setShowNotifications(true)}
-          className={`flex items-center text-sm text-text-secondary hover:bg-surface-raised rounded-md transition-colors relative ${isCollapsed ? "p-2" : "w-full px-4 py-2"}`}
+          className={`relative flex items-center rounded-md text-sm text-text-secondary transition-colors hover:bg-surface-raised ${isCollapsed ? "p-2" : "w-full px-3 py-2"}`}
           title={isCollapsed ? "Notifications" : ""}
         >
           <Bell
@@ -351,7 +351,7 @@ const Sidebar = () => {
         </button>
         <Link
           to="/dashboard/profile"
-          className={`flex items-center text-sm text-text-secondary hover:bg-surface-raised rounded-md transition-colors ${isCollapsed ? "p-2" : "w-full px-4 py-2"}`}
+          className={`flex items-center rounded-md text-sm text-text-secondary transition-colors hover:bg-surface-raised ${isCollapsed ? "p-2" : "w-full px-3 py-2"}`}
           title={isCollapsed ? "My Profile" : ""}
         >
           <User
@@ -361,7 +361,7 @@ const Sidebar = () => {
         </Link>
         <button
           onClick={logout}
-          className={`flex items-center text-sm text-error hover:bg-error-muted rounded-md transition-colors ${isCollapsed ? "p-2" : "w-full px-4 py-2"}`}
+          className={`flex items-center rounded-md text-sm text-error transition-colors hover:bg-error-muted ${isCollapsed ? "p-2" : "w-full px-3 py-2"}`}
           title={isCollapsed ? "Logout" : ""}
         >
           <LogOut className={`w-4 h-4 ${isCollapsed ? "" : "mr-3"}`} />
@@ -373,11 +373,11 @@ const Sidebar = () => {
       {showNotifications && (
         <div className="fixed inset-0 z-[100] flex justify-end">
           <div
-            className="fixed inset-0 bg-surface-overlay backdrop-blur-sm"
+            className="fixed inset-0 bg-surface-overlay"
             onClick={() => setShowNotifications(false)}
           />
-          <div className="relative w-full max-w-sm bg-surface-card h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b flex items-center justify-between bg-primary text-white">
+          <div className="relative flex h-full w-full max-w-sm flex-col bg-surface-card shadow-2xl animate-in slide-in-from-right duration-300">
+            <div className="flex items-center justify-between border-b bg-primary p-5 text-white">
               <div>
                 <h2 className="text-xl font-bold">Pending Tasks</h2>
                 <p className="text-xs text-on-primary/80">
@@ -392,7 +392,7 @@ const Sidebar = () => {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-base">
+            <div className="flex-1 overflow-y-auto space-y-3 bg-surface-base p-4">
               {!pendingData || pendingData.items.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-48 text-text-disabled bg-surface-card rounded-xl border border-dashed border-border-default">
                   <CheckCircle
@@ -417,7 +417,7 @@ const Sidebar = () => {
                         );
                       }
                     }}
-                    className="bg-surface-card p-4 rounded-xl shadow-sm border border-border-subtle flex gap-4 hover:border-primary/40 transition-all cursor-pointer group"
+                    className="group flex gap-3 rounded-xl border border-border-subtle bg-surface-card p-3 shadow-sm transition-all hover:border-primary/40 cursor-pointer"
                   >
                     <div
                       className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -452,7 +452,7 @@ const Sidebar = () => {
                 ))
               )}
             </div>
-            <div className="p-6 border-t bg-surface-base text-center">
+            <div className="border-t bg-surface-base p-5 text-center">
               <p className="text-xs text-text-muted uppercase tracking-widest font-bold mb-1">
                 {pendingData?.totalCount || 0} Total Actions
               </p>

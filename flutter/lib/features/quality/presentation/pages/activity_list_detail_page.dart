@@ -225,50 +225,19 @@ class _ActivityListBody extends StatelessWidget {
 
   void _showRfiDialog(BuildContext context, QualityActivity activity) {
     final commentsCtrl = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Raise RFI'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Activity: ${activity.activityName}',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: commentsCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Comments (optional)',
-                border: OutlineInputBorder(),
-                hintText: 'Add any comments for the inspector…',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              context.read<QualityRequestBloc>().add(RaiseRfi(
-                    projectId: projectId,
-                    epsNodeId: epsNodeId,
-                    listId: listId,
-                    activity: activity,
-                    comments: commentsCtrl.text.trim().isEmpty
-                        ? null
-                        : commentsCtrl.text.trim(),
-                  ));
-              Navigator.pop(ctx);
-            },
-            child: const Text('Raise RFI'),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        return _RaiseRfiDialog(
+          activity: activity,
+          projectId: projectId,
+          epsNodeId: epsNodeId,
+          listId: listId,
+          commentsCtrl: commentsCtrl,
+          bloc: context.read<QualityRequestBloc>(),
+        );
+      },
     );
   }
 
@@ -534,6 +503,163 @@ class _RectificationSheetState extends State<_RectificationSheet> {
           ],
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Raise RFI Dialog — loads active vendors, requires vendor selection
+// ---------------------------------------------------------------------------
+
+class _RaiseRfiDialog extends StatefulWidget {
+  final QualityActivity activity;
+  final int projectId;
+  final int epsNodeId;
+  final int listId;
+  final TextEditingController commentsCtrl;
+  final QualityRequestBloc bloc;
+
+  const _RaiseRfiDialog({
+    required this.activity,
+    required this.projectId,
+    required this.epsNodeId,
+    required this.listId,
+    required this.commentsCtrl,
+    required this.bloc,
+  });
+
+  @override
+  State<_RaiseRfiDialog> createState() => _RaiseRfiDialogState();
+}
+
+class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
+  List<Map<String, dynamic>> _vendors = [];
+  Map<String, dynamic>? _selectedVendor;
+  bool _loading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVendors();
+  }
+
+  Future<void> _loadVendors() async {
+    try {
+      final vendors =
+          await sl<SetuApiClient>().getActiveVendors(widget.projectId);
+      if (!mounted) return;
+      setState(() {
+        _vendors = vendors;
+        _loading = false;
+        if (vendors.length == 1) _selectedVendor = vendors.first;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = 'Could not load vendors';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSubmit = !_loading &&
+        (_selectedVendor != null || _vendors.isEmpty || _loadError != null);
+
+    return AlertDialog(
+      title: const Text('Raise RFI'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Activity: ${widget.activity.activityName}',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+
+            // Vendor selector
+            if (_loading)
+              const Row(children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text('Loading vendors…', style: TextStyle(fontSize: 13)),
+              ])
+            else if (_loadError != null)
+              Text('$_loadError — will submit without vendor.',
+                  style: const TextStyle(fontSize: 12, color: Colors.orange))
+            else if (_vendors.isEmpty)
+              const Text('No active vendors found for this project.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey))
+            else ...[
+              const Text('Vendor / Contractor *',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<Map<String, dynamic>>(
+                value: _selectedVendor,
+                isExpanded: true,
+                hint: const Text('Select vendor'),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                items: _vendors
+                    .map((v) => DropdownMenuItem(
+                          value: v,
+                          child: Text(
+                            v['name'] as String? ?? 'Unknown',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedVendor = v),
+              ),
+            ],
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: widget.commentsCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Comments (optional)',
+                border: OutlineInputBorder(),
+                hintText: 'Add any comments for the inspector…',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: canSubmit
+              ? () {
+                  widget.bloc.add(RaiseRfi(
+                    projectId: widget.projectId,
+                    epsNodeId: widget.epsNodeId,
+                    listId: widget.listId,
+                    activity: widget.activity,
+                    comments: widget.commentsCtrl.text.trim().isEmpty
+                        ? null
+                        : widget.commentsCtrl.text.trim(),
+                    vendorId: _selectedVendor?['id'] as int?,
+                    vendorName: _selectedVendor?['name'] as String?,
+                  ));
+                  Navigator.pop(context);
+                }
+              : null,
+          child: const Text('Raise RFI'),
+        ),
+      ],
     );
   }
 }

@@ -23,6 +23,15 @@ import { ImportExportService } from './import-export.service';
 import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
 import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { Vendor } from '../workdoc/entities/vendor.entity';
+import { ReleaseStrategy } from './entities/release-strategy.entity';
+import { ReleaseStrategyCondition } from './entities/release-strategy-condition.entity';
+import { ReleaseStrategyStep } from './entities/release-strategy-step.entity';
+import { ReleaseStrategyVersionAudit } from './entities/release-strategy-version-audit.entity';
+import { UserProjectAssignment } from '../projects/entities/user-project-assignment.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { User } from '../users/user.entity';
+import { Role } from '../roles/role.entity';
+import { ReleaseStrategyService } from './release-strategy.service';
 
 @Module({
   imports: [
@@ -43,6 +52,14 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
       WorkOrderItem,
       WorkOrder,
       Vendor,
+      ReleaseStrategy,
+      ReleaseStrategyCondition,
+      ReleaseStrategyStep,
+      ReleaseStrategyVersionAudit,
+      UserProjectAssignment,
+      TempUser,
+      User,
+      Role,
     ]),
     WbsModule,
     NotificationsModule,
@@ -53,7 +70,8 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
     ScheduleVersionService,
     ImportExportService,
     SchedulingEngineService,
+    ReleaseStrategyService,
   ],
-  exports: [PlanningService, ScheduleVersionService],
+  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService],
 })
 export class PlanningModule {}

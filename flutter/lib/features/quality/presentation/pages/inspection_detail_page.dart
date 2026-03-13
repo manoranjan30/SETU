@@ -643,7 +643,7 @@ class _ObservationsTab extends StatelessWidget {
                     final o = obs[i];
                     return ObservationCard(
                       obs: o,
-                      onClose: o.isRectified
+                      onClose: !o.isClosed
                           ? () => context
                               .read<QualityApprovalBloc>()
                               .add(CloseObservation(o.id))

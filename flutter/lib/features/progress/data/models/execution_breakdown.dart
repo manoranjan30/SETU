@@ -1,8 +1,7 @@
 /// Data models for the GET /execution/breakdown response.
 ///
-/// The backend returns a unified view of micro-scheduled activities PLUS
-/// the "balance" (direct / unassigned) quantity for each BOQ item linked
-/// to an activity.
+/// The backend returns a vendor-grouped breakdown:
+///   { activityId, epsNodeId, vendorBreakdown: [{ vendorId, vendorName, workOrderNumber, boqBreakdown: [...] }] }
 library;
 
 // ---------------------------------------------------------------------------
@@ -66,6 +65,7 @@ class BoqItemBreakdown {
   final int boqItemId;
   final String description;
   final String? uom;
+  final int? workOrderItemId;
 
   /// Total planned quantity for this BOQ item across the whole activity.
   final double totalScope;
@@ -83,6 +83,7 @@ class BoqItemBreakdown {
     required this.boqItemId,
     required this.description,
     this.uom,
+    this.workOrderItemId,
     required this.totalScope,
     required this.allocatedToMicro,
     required this.balanceDirect,
@@ -102,10 +103,10 @@ class BoqItemBreakdown {
 
     return BoqItemBreakdown(
       boqItemId: boqItem['id'] as int? ?? 0,
-      // BoqItem entity may use 'description' or 'name'
       description:
           boqItem['description'] as String? ?? boqItem['name'] as String? ?? '',
       uom: boqItem['uom'] as String?,
+      workOrderItemId: json['workOrderItemId'] as int?,
       totalScope: toDouble(scope['total']),
       allocatedToMicro: toDouble(scope['allocated']),
       balanceDirect: toDouble(scope['balance']),
@@ -119,27 +120,69 @@ class BoqItemBreakdown {
 }
 
 // ---------------------------------------------------------------------------
+// VendorBreakdown — one vendor/WO grouping with its BOQ items
+// ---------------------------------------------------------------------------
+
+class VendorBreakdown {
+  final int? vendorId;
+  final String vendorName;
+  final String? vendorCode;
+  final String? workOrderNumber;
+  final List<BoqItemBreakdown> boqBreakdown;
+
+  const VendorBreakdown({
+    this.vendorId,
+    required this.vendorName,
+    this.vendorCode,
+    this.workOrderNumber,
+    required this.boqBreakdown,
+  });
+
+  bool get isDirect => vendorId == null;
+
+  factory VendorBreakdown.fromJson(Map<String, dynamic> json) {
+    return VendorBreakdown(
+      vendorId: json['vendorId'] as int?,
+      vendorName: json['vendorName'] as String? ?? 'Direct Execution',
+      vendorCode: json['vendorCode'] as String?,
+      workOrderNumber: json['workOrderNumber'] as String?,
+      boqBreakdown: (json['boqBreakdown'] as List<dynamic>?)
+              ?.map((e) => BoqItemBreakdown.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ExecutionBreakdown — top-level response model
 // ---------------------------------------------------------------------------
 
 class ExecutionBreakdown {
   final int activityId;
   final int epsNodeId;
-  final List<BoqItemBreakdown> boqBreakdown;
+
+  /// Vendor-grouped breakdown (new backend format).
+  final List<VendorBreakdown> vendorBreakdown;
 
   const ExecutionBreakdown({
     required this.activityId,
     required this.epsNodeId,
-    required this.boqBreakdown,
+    required this.vendorBreakdown,
   });
+
+  /// All BOQ breakdown items across all vendors (flattened).
+  List<BoqItemBreakdown> get boqBreakdown =>
+      vendorBreakdown.expand((v) => v.boqBreakdown).toList();
+
+  bool get hasVendors => vendorBreakdown.isNotEmpty;
 
   factory ExecutionBreakdown.fromJson(Map<String, dynamic> json) {
     return ExecutionBreakdown(
       activityId: json['activityId'] as int? ?? 0,
       epsNodeId: json['epsNodeId'] as int? ?? 0,
-      boqBreakdown:
-          (json['boqBreakdown'] as List<dynamic>?)
-              ?.map((e) => BoqItemBreakdown.fromJson(e as Map<String, dynamic>))
+      vendorBreakdown: (json['vendorBreakdown'] as List<dynamic>?)
+              ?.map((e) => VendorBreakdown.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );

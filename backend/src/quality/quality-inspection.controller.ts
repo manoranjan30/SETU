@@ -15,9 +15,9 @@ import { QualityInspectionService } from './quality-inspection.service';
 import { QualityReportService } from './quality-report.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
 import type {
-  CreateInspectionDto,
   UpdateInspectionStatusDto,
 } from './quality-inspection.service';
+import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { Auditable } from '../audit/auditable.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';

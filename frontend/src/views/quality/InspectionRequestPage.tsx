@@ -720,10 +720,11 @@ export default function InspectionRequestPage() {
         <div>
           <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-secondary" />
-            Site Inspections
+            Quality Requests
           </h1>
           <p className="text-sm text-text-muted mt-1">
-            Manage Requests for Inspection (RFI) and Quality Checklists
+            Raise and track Requests for Inspection (RFI) before they move into
+            QA/QC Approvals.
           </p>
         </div>
       </header>
@@ -731,7 +732,7 @@ export default function InspectionRequestPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar: Location & List Selector */}
         <aside className="w-80 bg-surface-card border-r flex flex-col">
-          <div className="p-4 border-b bg-surface-base/50">
+          <div className="p-4 border-b bg-surface-base">
             <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
               1. Select Location
             </h3>
@@ -831,7 +832,7 @@ export default function InspectionRequestPage() {
               </div>
 
               {/* Vendor Selector */}
-              <div className="mb-8 p-4 bg-secondary-muted/50 border border-indigo-100 rounded-xl flex items-center justify-between">
+              <div className="mb-8 p-4 bg-secondary-muted border border-indigo-100 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-100 rounded-lg">
                     <FileText className="w-5 h-5 text-secondary" />
@@ -880,7 +881,7 @@ export default function InspectionRequestPage() {
                 {activityRows.map((item, idx) => (
                   <div
                     key={item.id}
-                    className={`p-4 transition-colors ${item.statusState === "LOCKED" ? "bg-surface-base/50 opacity-60" : "bg-surface-card hover:bg-surface-base"}`}
+                    className={`p-4 transition-colors ${item.statusState === "LOCKED" ? "bg-surface-base text-text-muted" : "bg-surface-card hover:bg-surface-base"}`}
                   >
                     <div className="flex items-start gap-4">
                       {/* Sequence Number */}
@@ -1092,7 +1093,7 @@ export default function InspectionRequestPage() {
                                             ).toLocaleDateString()}
                                           </span>
                                         </div>
-                                        <p className="text-sm text-rose-800 bg-surface-card/50 p-2 rounded border border-rose-100 italic">
+                                        <p className="text-sm text-rose-800 bg-surface-card p-2 rounded border border-rose-100 italic">
                                           "{obs.observationText}"
                                         </p>
 

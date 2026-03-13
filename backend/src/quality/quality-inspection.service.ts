@@ -51,6 +51,8 @@ export interface CreateInspectionDto {
   signature?: { data: string; role: string; signedBy: string };
   vendorId?: number;
   vendorName?: string;
+  drawingNo?: string;
+  contractorName?: string;
 }
 
 export interface UpdateInspectionStatusDto {
@@ -508,6 +510,8 @@ export class QualityInspectionService {
       requestedById: userId,
       vendorId: finalVendorId,
       vendorName: finalVendorName,
+      drawingNo: dto.drawingNo,
+      contractorName: dto.contractorName ?? finalVendorName,
     });
 
     // Ensure listId matches activity

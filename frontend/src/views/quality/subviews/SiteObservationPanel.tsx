@@ -47,6 +47,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const [showRectifyModal, setShowRectifyModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+  const [savingCategories, setSavingCategories] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -77,9 +80,44 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const resp = await api.get(`/quality/site-observations/categories/${projectId}`);
+      setCategories(Array.isArray(resp.data) ? resp.data : []);
+    } catch (error) {
+      console.error("Failed to fetch quality observation categories", error);
+    }
+  };
+
+  const saveCategories = async (nextCategories: string[]) => {
+    setSavingCategories(true);
+    try {
+      const resp = await api.put(
+        `/quality/site-observations/categories/${projectId}`,
+        { categories: nextCategories },
+      );
+      setCategories(Array.isArray(resp.data) ? resp.data : nextCategories);
+      return true;
+    } catch (error) {
+      console.error("Failed to update quality observation categories", error);
+      alert("Failed to update categories");
+      return false;
+    } finally {
+      setSavingCategories(false);
+    }
+  };
+
   useEffect(() => {
     fetchRecords();
+    fetchCategories();
   }, [projectId]);
+
+  useEffect(() => {
+    if (categories.length === 0) return;
+    if (!categories.includes(formData.category)) {
+      setFormData((prev) => ({ ...prev, category: categories[0] }));
+    }
+  }, [categories, formData.category]);
 
   const filteredRecords = useMemo(() => {
     let filtered = records;
@@ -182,7 +220,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
         projectId,
         epsNodeId: null,
         severity: "MINOR",
-        category: "Structural",
+        category: categories[0] || "Structural",
         description: "",
         remarks: "",
         targetDate: "",
@@ -287,7 +325,13 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
         {canCreate && (
           <button
             onClick={() => {
-              setFormData({ ...formData, severity: "MINOR" });
+              setFormData({
+                ...formData,
+                severity: "MINOR",
+                category: categories.includes(formData.category)
+                  ? formData.category
+                  : (categories[0] || "Structural"),
+              });
               setShowRaiseModal(true);
             }}
             className="flex items-center gap-2 bg-primary text-white px-6 py-2.5 rounded-xl hover:bg-primary-dark transition-all shadow-lg shadow-blue-200 font-bold shrink-0"
@@ -543,14 +587,47 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                         setFormData({ ...formData, category: e.target.value })
                       }
                     >
-                      <option value="Structural">Structural</option>
-                      <option value="Architectural">Architectural</option>
-                      <option value="MEP">MEP</option>
-                      <option value="Finishes">Finishes</option>
-                      <option value="Safety">Safety</option>
-                      <option value="Materials">Materials</option>
-                      <option value="General">General / Others</option>
+                      {categories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
                     </select>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Add category"
+                        className="flex-1 bg-surface-card border border-border-default rounded-xl px-3 py-2 text-sm"
+                        value={newCategory}
+                        onChange={(e) => setNewCategory(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={savingCategories || !newCategory.trim()}
+                        onClick={async () => {
+                          const candidate = newCategory.trim();
+                          if (!candidate) return;
+                          if (
+                            categories.some(
+                              (item) => item.toLowerCase() === candidate.toLowerCase(),
+                            )
+                          ) {
+                            setFormData({ ...formData, category: candidate });
+                            setNewCategory("");
+                            return;
+                          }
+                          const nextCategories = [...categories, candidate];
+                          const saved = await saveCategories(nextCategories);
+                          if (saved) {
+                            setFormData({ ...formData, category: candidate });
+                            setNewCategory("");
+                          }
+                        }}
+                        className="rounded-xl border border-border-default px-4 py-2 text-sm font-bold text-text-secondary disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
                 </div>
 

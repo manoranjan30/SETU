@@ -17,8 +17,10 @@ import 'package:setu_mobile/core/sync/connectivity_sync_service.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
+import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/app.dart';
@@ -120,6 +122,7 @@ void initDependencies({
   sl.registerFactory(() => ProgressBloc(
         database: sl(),
         syncService: sl(),
+        apiClient: sl(),
       ));
   sl.registerFactory(() => QualityRequestBloc(
         apiClient: sl(),
@@ -131,4 +134,6 @@ void initDependencies({
         syncService: sl(),
       ));
   sl.registerFactory(() => ProfileBloc(apiClient: sl()));
+  sl.registerFactory(() => QualitySiteObsBloc(apiClient: sl()));
+  sl.registerFactory(() => EhsSiteObsBloc(apiClient: sl()));
 }

@@ -41,8 +41,10 @@ export class QualityReportService {
         'activity',
         'epsNode',
         'list',
+        'activity.checklistTemplate',
         'stages',
         'stages.stageTemplate',
+        'stages.stageTemplate.template',
         'stages.items',
         'stages.items.itemTemplate',
         'stages.signatures',
@@ -66,6 +68,22 @@ export class QualityReportService {
 
     const locationPath = await this.getEpsPath(inspection.epsNodeId);
     const projectName = locationPath.split(' / ')[0] || 'N/A';
+    const primaryTemplate =
+      inspection.stages?.find((stage) => stage.stageTemplate?.template)
+        ?.stageTemplate?.template || inspection.activity?.checklistTemplate;
+    const checklistNo =
+      primaryTemplate?.checklistNo ??
+      `CL-QA-${String(inspection.listId).padStart(3, '0')}`;
+    const revNo = primaryTemplate?.revNo ?? '01';
+    const activityTitle =
+      primaryTemplate?.activityTitle ??
+      primaryTemplate?.name ??
+      inspection.activity?.activityName ??
+      'CHECKLIST';
+    const activityType = primaryTemplate?.activityType ?? '';
+    const drawingNo = inspection.drawingNo ?? '';
+    const contractorName =
+      inspection.contractorName ?? inspection.vendorName ?? 'Internal Team / Vendor';
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -117,11 +135,7 @@ export class QualityReportService {
         .text('Checklist No:', startX + 355, currentY + 5);
       doc
         .font('Helvetica')
-        .text(
-          `CL-QA-${String(inspection.listId).padStart(3, '0')}`,
-          startX + 430,
-          currentY + 5,
-        );
+        .text(checklistNo, startX + 430, currentY + 5);
 
       currentY += headerRowHeight;
       doc
@@ -136,7 +150,7 @@ export class QualityReportService {
         .text(locationPath, startX + 60, currentY + 5, { width: 280 });
 
       doc.font('Helvetica-Bold').text('Rev No:', startX + 355, currentY + 5);
-      doc.font('Helvetica').text('02', startX + 430, currentY + 5);
+      doc.font('Helvetica').text(revNo, startX + 430, currentY + 5);
 
       currentY += headerRowHeight;
       doc
@@ -148,7 +162,7 @@ export class QualityReportService {
       doc.font('Helvetica-Bold').text('Contractor :', startX + 5, currentY + 5);
       doc
         .font('Helvetica')
-        .text('Internal Team / Vendor', startX + 60, currentY + 5);
+        .text(contractorName, startX + 60, currentY + 5);
 
       doc.font('Helvetica-Bold').text('Date:', startX + 355, currentY + 5);
       doc
@@ -162,8 +176,12 @@ export class QualityReportService {
         .stroke();
 
       // Row 4: Dwg No (Centered vertically in the remaining space of header)
+      doc.font('Helvetica-Bold').text('Title:', startX + 5, currentY + 5);
+      doc
+        .font('Helvetica')
+        .text(activityTitle, startX + 60, currentY + 5, { width: 280 });
       doc.font('Helvetica-Bold').text('Dwg No:', startX + 355, currentY + 5);
-      doc.font('Helvetica').text('GFC-DWG-001', startX + 430, currentY + 5);
+      doc.font('Helvetica').text(drawingNo, startX + 430, currentY + 5);
 
       currentY += headerRowHeight;
 
@@ -177,6 +195,14 @@ export class QualityReportService {
           currentY + 5,
         );
       currentY += 20;
+
+      if (activityType) {
+        doc
+          .fontSize(10)
+          .font('Helvetica-Bold')
+          .text(`Activity: ${activityType}`, startX, currentY + 4);
+        currentY += 18;
+      }
 
       if (isApproved) {
         doc

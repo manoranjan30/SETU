@@ -169,3 +169,117 @@ export interface UpdateGraphDto {
   nodes: NodePositionDto[];
   edges: EdgeDto[];
 }
+
+export interface SignatureSlotConfig {
+  slotId: string;
+  label: string;
+  party: "Contractor" | "PL/PHL" | "Consultant" | "Client";
+  role: string;
+  required: boolean;
+  sequence: number;
+}
+
+export interface ChecklistHeaderField<T = string | boolean | null> {
+  value: T;
+  confidence: number;
+}
+
+export interface ChecklistImportItem {
+  id?: string;
+  slNo: number | null;
+  description: string;
+  type: "YES_OR_NA" | "YES_NO" | "TEXT" | "NUMERIC" | "DROPDOWN" | "PHOTO_ONLY";
+  confidence: number;
+  isMandatory: boolean;
+  photoRequired: boolean;
+  holdPoint?: boolean;
+  witnessPoint?: boolean;
+}
+
+export interface ChecklistImportStage {
+  id?: string;
+  name: string;
+  confidence: number;
+  sequence: number;
+  isHoldPoint: boolean;
+  isWitnessPoint: boolean;
+  responsibleParty: string;
+  signatureSlots: SignatureSlotConfig[];
+  items: ChecklistImportItem[];
+}
+
+export interface ParsedChecklistPreview {
+  sourceName: string;
+  sheetName: string;
+  format: "template" | "freeform" | "pdf";
+  checklistNo: ChecklistHeaderField<string | null>;
+  revNo: ChecklistHeaderField<string | null>;
+  activityTitle: ChecklistHeaderField<string | null>;
+  activityType: ChecklistHeaderField<string | null>;
+  discipline: ChecklistHeaderField<string | null>;
+  applicableTrade: ChecklistHeaderField<string | null>;
+  isGlobal: ChecklistHeaderField<boolean>;
+  stages: ChecklistImportStage[];
+  signatureSlots: ChecklistHeaderField<SignatureSlotConfig[]>;
+  warnings: string[];
+  overallConfidence: number;
+  requiresClarification: boolean;
+}
+
+export interface ChecklistImportPreviewResponse {
+  templates: ParsedChecklistPreview[];
+  requiresClarification: boolean;
+}
+
+export interface ItemWarning {
+  approximateSlNo: number | null;
+  description: string;
+  warningType: "possible_merge" | "missing_number" | "truncated_text";
+  rawText: string;
+}
+
+export interface PdfParseResult {
+  fields: {
+    checklistNo: ChecklistHeaderField<string | null>;
+    revNo: ChecklistHeaderField<string | null>;
+    activityTitle: ChecklistHeaderField<string | null>;
+    activityType: ChecklistHeaderField<string | null>;
+    discipline: ChecklistHeaderField<string | null>;
+    applicableTrade: ChecklistHeaderField<string | null>;
+  };
+  sections: ChecklistImportStage[];
+  signatureSlots: ChecklistHeaderField<SignatureSlotConfig[]>;
+  overallConfidence: number;
+  requiresClarification: boolean;
+  itemWarnings: ItemWarning[];
+  parseMethod: "digital" | "ocr";
+  warnings: string[];
+  preview: ParsedChecklistPreview;
+}
+
+export interface QualityChecklistTemplatePayload {
+  name: string;
+  description?: string;
+  checklistNo?: string;
+  revNo?: string;
+  activityTitle?: string;
+  activityType?: string;
+  discipline?: string;
+  applicableTrade?: string;
+  isGlobal?: boolean;
+  stages: Array<{
+    name: string;
+    sequence?: number;
+    isHoldPoint?: boolean;
+    isWitnessPoint?: boolean;
+    responsibleParty?: string;
+    signatureSlots?: SignatureSlotConfig[];
+    items: Array<{
+      itemText: string;
+      type: ChecklistImportItem["type"];
+      isMandatory?: boolean;
+      photoRequired?: boolean;
+      sequence?: number;
+    }>;
+  }>;
+}

@@ -133,7 +133,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
 
         // Content
         Expanded(
-          child: state.isEmpty
+          child: _isEffectivelyEmpty(state)
               ? _buildEmptyState()
               : _buildItemsList(state),
         ),
@@ -165,7 +165,20 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  bool _isEffectivelyEmpty(EpsExplorerState state) {
+    if (state.childNodes.isNotEmpty) return false;
+    return state.activities.every((a) => a.epsNodeId != state.currentNode.id);
+  }
+
   Widget _buildItemsList(EpsExplorerState state) {
+    // Only show activities directly assigned to the current node.
+    // executionReady returns ALL descendant activities — activities for child
+    // nodes are accessible by drilling into those children and should not
+    // appear at a parent level.
+    final directActivities = state.activities
+        .where((a) => a.epsNodeId == state.currentNode.id)
+        .toList();
+
     return ListView(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),
       children: [
@@ -180,16 +193,16 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           ...state.childNodes.map((node) => _buildFolderItem(node, state)),
         ],
 
-        // Activity items section
-        if (state.activities.isNotEmpty) ...[
+        // Activity items section — only those directly on this node
+        if (directActivities.isNotEmpty) ...[
           const SizedBox(height: 16),
           _buildSectionHeader(
             'Activities',
-            state.activities.length,
+            directActivities.length,
             Icons.assignment_outlined,
           ),
           const SizedBox(height: 8),
-          ...state.activities.map((activity) => _buildActivityItem(activity, state)),
+          ...directActivities.map((activity) => _buildActivityItem(activity, state)),
         ],
       ],
     );

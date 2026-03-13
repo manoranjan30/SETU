@@ -76,6 +76,19 @@ export class QualityRatingConfig {
   })
   deductionRules: any[];
 
+  @Column('jsonb', {
+    default: [
+      'Structural',
+      'Architectural',
+      'MEP',
+      'Finishes',
+      'Materials',
+      'Workmanship',
+      'General / Others',
+    ],
+  })
+  observationCategories: string[];
+
   @Column({ default: true })
   isActive: boolean;
 

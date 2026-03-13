@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_site_obs_bloc.dart';
+import 'package:setu_mobile/features/ehs/presentation/pages/ehs_site_obs_page.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_approvals_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Module hub shown after selecting a project.
@@ -18,6 +23,8 @@ class ModuleSelectionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ps = PermissionService.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -36,7 +43,7 @@ class ModuleSelectionPage extends StatelessWidget {
           ],
         ),
       ),
-      body: Column(
+      body: ListView(
         children: [
           _ModuleRow(
             icon: Icons.timeline_rounded,
@@ -61,6 +68,26 @@ class ModuleSelectionPage extends StatelessWidget {
             color: const Color(0xFF3730A3),
             onTap: () => _navigateToQualityApprovals(context),
           ),
+          if (ps.canReadQualityObs || ps.canCreateQualityObs) ...[
+            const Divider(height: 1),
+            _ModuleRow(
+              icon: Icons.remove_red_eye_outlined,
+              title: 'Quality Site Observations',
+              subtitle: 'Raise and track site quality issues',
+              color: const Color(0xFF0F766E),
+              onTap: () => _navigateToQualitySiteObs(context),
+            ),
+          ],
+          if (ps.hasAnyEhsAccess) ...[
+            const Divider(height: 1),
+            _ModuleRow(
+              icon: Icons.health_and_safety_outlined,
+              title: 'EHS Observations',
+              subtitle: 'Environment, Health & Safety observations',
+              color: const Color(0xFFD97706),
+              onTap: () => _navigateToEhsSiteObs(context),
+            ),
+          ],
           const Divider(height: 1),
         ],
       ),
@@ -101,6 +128,36 @@ class ModuleSelectionPage extends StatelessWidget {
         builder: (context) => BlocProvider(
           create: (_) => sl<QualityApprovalBloc>(),
           child: QualityApprovalsPage(
+            projectId: project.id,
+            projectName: project.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToQualitySiteObs(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<QualitySiteObsBloc>(),
+          child: QualitySiteObsPage(
+            projectId: project.id,
+            projectName: project.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToEhsSiteObs(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<EhsSiteObsBloc>(),
+          child: EhsSiteObsPage(
             projectId: project.id,
             projectName: project.name,
           ),

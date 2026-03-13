@@ -75,8 +75,9 @@ class ApiEndpoints {
   /// DELETE /execution/logs/:logId
   static String deleteLog(int logId) => '/execution/logs/$logId';
 
-  /// GET /execution/breakdown
-  static const String executionBreakdown = '/execution/breakdown';
+  /// GET /execution/breakdown/:activityId/:epsNodeId
+  static String executionBreakdown(int activityId, int epsNodeId) =>
+      '/execution/breakdown/$activityId/$epsNodeId';
 
   /// GET /execution/has-micro/:activityId
   static String hasMicroSchedule(int activityId) =>
@@ -260,6 +261,51 @@ class ApiEndpoints {
   /// PATCH /quality/activities/:actId/observation/:obsId/close
   static String closeObservation(int activityId, String obsId) =>
       '/quality/activities/$activityId/observation/$obsId/close';
+
+  // ==================== QUALITY SITE OBSERVATION ENDPOINTS ====================
+
+  /// GET /quality/site-observations?projectId=X&status=Y&severity=Z
+  static const String qualitySiteObservations = '/quality/site-observations';
+
+  /// GET /quality/site-observations/:id
+  static String qualitySiteObservation(String id) =>
+      '/quality/site-observations/$id';
+
+  /// PATCH /quality/site-observations/:id/rectify
+  static String rectifyQualitySiteObs(String id) =>
+      '/quality/site-observations/$id/rectify';
+
+  /// PATCH /quality/site-observations/:id/close
+  static String closeQualitySiteObs(String id) =>
+      '/quality/site-observations/$id/close';
+
+  /// DELETE /quality/site-observations/:id
+  static String deleteQualitySiteObs(String id) =>
+      '/quality/site-observations/$id';
+
+  // ==================== EHS SITE OBSERVATION ENDPOINTS ====================
+
+  /// GET /ehs/site-observations?projectId=X&status=Y&severity=Z
+  static const String ehsSiteObservations = '/ehs/site-observations';
+
+  /// GET /ehs/site-observations/:id
+  static String ehsSiteObservation(String id) =>
+      '/ehs/site-observations/$id';
+
+  /// PATCH /ehs/site-observations/:id/rectify
+  static String rectifyEhsSiteObs(String id) =>
+      '/ehs/site-observations/$id/rectify';
+
+  /// PATCH /ehs/site-observations/:id/close
+  static String closeEhsSiteObs(String id) =>
+      '/ehs/site-observations/$id/close';
+
+  /// DELETE /ehs/site-observations/:id
+  static String deleteEhsSiteObs(String id) =>
+      '/ehs/site-observations/$id';
+
+  /// GET /quality/inspections/active-vendors?projectId=X
+  static const String activeVendors = '/quality/inspections/active-vendors';
 
   // ==================== USER PROFILE ENDPOINTS ====================
 

@@ -1,561 +1,628 @@
-import { useState, useEffect } from "react";
-import {
-  Plus,
-  Trash2,
-  X,
-  Search,
-  CheckSquare,
-  List,
-  GripVertical,
-  Settings2,
-  Image,
-} from "lucide-react";
-import api from "../../../api/axios";
+import { useEffect, useState } from "react";
+import { CheckSquare, Plus, Search, Settings2, Trash2, Upload, X, GripVertical } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { qualityService } from "../../../services/quality.service";
+import ChecklistImportModal from "../../../components/quality/ChecklistImportModal";
+import type { QualityChecklistTemplatePayload, SignatureSlotConfig } from "../../../types/quality";
 
 interface Props {
   projectId: number;
 }
 
+const seedSlot = (i: number): SignatureSlotConfig => ({
+  slotId: `slot_${i}`,
+  label: "Site In Charge",
+  party: "Contractor",
+  role: "SITE_ENGINEER",
+  required: true,
+  sequence: 1,
+});
+
+const seedStage = (i = 0) => ({
+  name: `Stage ${i + 1}`,
+  sequence: i,
+  isHoldPoint: false,
+  isWitnessPoint: false,
+  responsibleParty: "Contractor",
+  signatureSlots: [seedSlot(i)],
+  items: [{ itemText: "", type: "YES_OR_NA" as const, isMandatory: false, photoRequired: false, sequence: 0 }],
+});
+
+const baseForm = (): QualityChecklistTemplatePayload => ({
+  name: "",
+  description: "",
+  checklistNo: "",
+  revNo: "01",
+  activityTitle: "",
+  activityType: "CONCRETING",
+  discipline: "Civil",
+  applicableTrade: "RCC",
+  isGlobal: false,
+  stages: [seedStage()],
+});
+
 const QualityChecklist: React.FC<Props> = ({ projectId }) => {
   const [templates, setTemplates] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
+  const [formData, setFormData] = useState<QualityChecklistTemplatePayload>(baseForm());
 
-  const defaultStage = {
-    name: "Stage 1",
-    sequence: 0,
-    isHoldPoint: false,
-    items: [
-      {
-        itemText: "",
-        type: "YES_NO",
-        isMandatory: false,
-        photoRequired: false,
-        sequence: 0,
-      },
-    ],
-  };
-
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    stages: [{ ...defaultStage }],
-  });
-
-  const fetchTemplates = async () => {
+  const load = async () => {
     try {
-      const response = await api.get(
-        `/quality/checklist-templates/project/${projectId}`,
-      );
-      setTemplates(response.data);
-    } catch (error) {
-      console.error("Failed to fetch templates:", error);
-    }
-  };
-
-  const handleMigrate = async () => {
-    if (
-      !confirm("Run migration to convert legacy checklists to new templates?")
-    )
-      return;
-    try {
-      await api.post(
-        `/quality/checklist-templates/project/${projectId}/migrate`,
-      );
-      fetchTemplates();
-    } catch (error) {
-      console.error("Migration failed:", error);
+      setTemplates(await qualityService.getChecklistTemplates(projectId));
+    } catch {
+      toast.error("Failed to load checklist templates");
     }
   };
 
   useEffect(() => {
-    fetchTemplates();
+    load();
   }, [projectId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api.post(
-        `/quality/checklist-templates/project/${projectId}`,
-        formData,
-      );
-      setIsModalOpen(false);
-      resetForm();
-      fetchTemplates();
-    } catch (error) {
-      console.error("Failed to save template:", error);
-    }
-  };
+  const filtered = templates.filter((t) =>
+    `${t.name} ${t.activityTitle || ""} ${t.checklistNo || ""}`.toLowerCase().includes(search.toLowerCase()),
+  );
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
-    try {
-      await api.delete(`/quality/checklist-templates/${id}`);
-      fetchTemplates();
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      description: "",
-      stages: [{ ...defaultStage }],
-    });
-  };
-
-  const addStage = () => {
+  const updateStage = (index: number, patch: Record<string, unknown>) => {
     setFormData((prev) => ({
       ...prev,
-      stages: [
-        ...prev.stages,
-        {
-          name: `Stage ${prev.stages.length + 1}`,
-          sequence: prev.stages.length,
-          isHoldPoint: false,
-          items: [],
-        },
-      ],
+      stages: prev.stages.map((stage, current) =>
+        current === index ? { ...stage, ...patch } : stage,
+      ),
     }));
   };
 
-  const removeStage = (sIndex: number) => {
-    const newStages = [...formData.stages];
-    newStages.splice(sIndex, 1);
-    setFormData((prev) => ({ ...prev, stages: newStages }));
+  const updateSlot = (stageIndex: number, slotIndex: number, patch: Partial<SignatureSlotConfig>) => {
+    setFormData((prev) => ({
+      ...prev,
+      stages: prev.stages.map((stage, i) =>
+        i === stageIndex
+          ? {
+              ...stage,
+              signatureSlots: (stage.signatureSlots || []).map((slot, j) =>
+                j === slotIndex ? { ...slot, ...patch } : slot,
+              ),
+            }
+          : stage,
+      ),
+    }));
   };
 
-  const updateStage = (sIndex: number, field: string, value: any) => {
-    const newStages = [...formData.stages];
-    newStages[sIndex] = { ...newStages[sIndex], [field]: value };
-    setFormData((prev) => ({ ...prev, stages: newStages }));
+  const closeBuilder = () => {
+    setBuilderOpen(false);
+    setEditingTemplateId(null);
+    setFormData(baseForm());
   };
 
-  const addItem = (sIndex: number) => {
-    const newStages = [...formData.stages];
-    newStages[sIndex].items.push({
-      itemText: "",
-      type: "YES_NO",
-      isMandatory: false,
-      photoRequired: false,
-      sequence: newStages[sIndex].items.length,
+  const openCreateBuilder = () => {
+    setEditingTemplateId(null);
+    setFormData(baseForm());
+    setBuilderOpen(true);
+  };
+
+  const openEditBuilder = (template: any) => {
+    setEditingTemplateId(template.id);
+    setFormData({
+      name: template.name || "",
+      description: template.description || "",
+      checklistNo: template.checklistNo || "",
+      revNo: template.revNo || "01",
+      activityTitle: template.activityTitle || "",
+      activityType: template.activityType || "",
+      discipline: template.discipline || "",
+      applicableTrade: template.applicableTrade || "",
+      isGlobal: Boolean(template.isGlobal),
+      stages: (template.stages || []).map((stage: any, stageIndex: number) => ({
+        name: stage.name || `Stage ${stageIndex + 1}`,
+        sequence: stage.sequence ?? stageIndex,
+        isHoldPoint: Boolean(stage.isHoldPoint),
+        isWitnessPoint: Boolean(stage.isWitnessPoint),
+        responsibleParty: stage.responsibleParty || "Contractor",
+        signatureSlots:
+          stage.signatureSlots?.map((slot: any, slotIndex: number) => ({
+            slotId: slot.slotId || `slot_${stageIndex}_${slotIndex}`,
+            label: slot.label || "Approver",
+            party: slot.party || "Contractor",
+            role: slot.role || "APPROVER",
+            required: slot.required ?? true,
+            sequence: slot.sequence ?? slotIndex + 1,
+          })) || [],
+        items:
+          stage.items?.map((item: any, itemIndex: number) => ({
+            itemText: item.itemText || "",
+            type: item.type || "YES_OR_NA",
+            isMandatory: Boolean(item.isMandatory),
+            photoRequired: Boolean(item.photoRequired),
+            sequence: item.sequence ?? itemIndex,
+          })) || [],
+      })),
     });
-    setFormData((prev) => ({ ...prev, stages: newStages }));
+    setBuilderOpen(true);
   };
 
-  const removeItem = (sIndex: number, iIndex: number) => {
-    const newStages = [...formData.stages];
-    newStages[sIndex].items.splice(iIndex, 1);
-    setFormData((prev) => ({ ...prev, stages: newStages }));
-  };
-
-  const updateItem = (
-    sIndex: number,
-    iIndex: number,
-    field: string,
-    value: any,
-  ) => {
-    const newStages = [...formData.stages];
-    newStages[sIndex].items[iIndex] = {
-      ...newStages[sIndex].items[iIndex],
-      [field]: value,
-    };
-    setFormData((prev) => ({ ...prev, stages: newStages }));
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      if (editingTemplateId) {
+        await qualityService.updateChecklistTemplate(editingTemplateId, formData);
+        toast.success("Checklist template updated");
+      } else {
+        await qualityService.createChecklistTemplate(projectId, formData);
+        toast.success("Checklist template saved");
+      }
+      closeBuilder();
+      load();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to save template");
+    }
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex justify-between items-center bg-surface-card p-4 rounded-2xl shadow-sm border border-border-subtle">
-        <div className="flex items-center gap-4 bg-surface-base px-4 py-2.5 rounded-xl border border-border-subtle w-96 focus-within:ring-2 focus-within:ring-orange-500 transition-all">
-          <Search className="w-5 h-5 text-text-disabled" />
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-surface-card p-4">
+        <div className="flex w-full items-center gap-3 rounded-xl border border-border-subtle bg-surface-base px-4 py-3 lg:w-96">
+          <Search className="h-4 w-4 text-text-disabled" />
           <input
-            type="text"
+            className="w-full border-none bg-transparent p-0 text-sm focus:ring-0"
             placeholder="Search checklist templates..."
-            className="bg-transparent border-none focus:ring-0 text-sm w-full p-0"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
-            onClick={handleMigrate}
-            className="flex items-center gap-2 bg-surface-raised text-text-secondary px-4 py-2.5 rounded-xl hover:bg-gray-200 transition-all font-medium"
+            onClick={async () => {
+              try {
+                await qualityService.migrateChecklistTemplates(projectId);
+                toast.success("Legacy checklist migration completed");
+                load();
+              } catch (error: any) {
+                toast.error(error.response?.data?.message || "Migration failed");
+              }
+            }}
+            className="flex items-center gap-2 rounded-xl bg-surface-raised px-4 py-2.5 text-sm font-medium text-text-secondary"
           >
-            <Settings2 className="w-4 h-4" />
+            <Settings2 className="h-4 w-4" />
             Migrate Legacy
           </button>
           <button
-            onClick={() => {
-              resetForm();
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-orange-600 text-white px-6 py-2.5 rounded-xl hover:bg-orange-700 transition-all shadow-lg shadow-orange-200"
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white"
           >
-            <Plus className="w-5 h-5" />
-            <span className="font-bold">New Template</span>
+            <Upload className="h-4 w-4" />
+            Smart Import
+          </button>
+          <button
+            onClick={openCreateBuilder}
+            className="flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white"
+          >
+            <Plus className="h-4 w-4" />
+            New Template
           </button>
         </div>
       </div>
 
-      {/* Template List */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {templates.map((template) => (
-          <div
-            key={template.id}
-            className="bg-surface-card rounded-2xl border border-border-subtle shadow-sm p-6 hover:shadow-md transition-all group"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-secondary-muted text-secondary rounded-xl">
-                  <List className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-text-primary text-lg">
-                    {template.name}
-                  </h4>
-                  <p className="text-sm text-text-muted">
-                    {template.description || "No description"}
-                  </p>
-                </div>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {filtered.map((template) => (
+          <div key={template.id} className="rounded-2xl border border-border-subtle bg-surface-card p-6 shadow-sm">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h4 className="text-lg font-bold text-text-primary">
+                  {template.activityTitle || template.name}
+                </h4>
+                <p className="text-sm text-text-muted">
+                  {template.checklistNo || "No checklist number"} - Rev {template.revNo || "01"}
+                </p>
+                <p className="text-sm text-text-secondary">
+                  {template.activityType || "No activity type"}
+                </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleDelete(template.id)}
-                  className="p-2 hover:bg-error-muted rounded-xl text-error transition-all opacity-0 group-hover:opacity-100"
+                  type="button"
+                  onClick={() => openEditBuilder(template)}
+                  className="rounded-xl border border-border-default px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-base"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  Edit
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await qualityService.deleteChecklistTemplate(template.id);
+                      toast.success("Checklist template deleted");
+                      load();
+                    } catch (error: any) {
+                      toast.error(error.response?.data?.message || "Failed to delete template");
+                    }
+                  }}
+                  className="rounded-xl p-2 text-error hover:bg-error-muted"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
-
-            <div className="mt-6 space-y-3">
-              {template.stages?.map((stage: any, idx: number) => (
-                <div
-                  key={stage.id || idx}
-                  className="flex flex-col bg-surface-base rounded-xl p-3 border border-border-subtle"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-semibold text-gray-800 text-sm flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-secondary" />
-                      {stage.name}
-                    </span>
-                    <span className="text-xs font-bold bg-surface-card px-2 py-1 rounded shadow-sm text-text-muted">
-                      {stage.items?.length || 0} Items
-                    </span>
+            <div className="space-y-2">
+              {(template.stages || []).map((stage: any) => (
+                <div key={stage.id} className="rounded-xl border border-border-subtle bg-surface-base p-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-text-primary">{stage.name}</span>
+                    <span className="text-text-muted">{stage.items?.length || 0} items</span>
                   </div>
-                  <div className="pl-4 border-l-2 border-indigo-100 ml-1 space-y-1">
-                    {stage.items?.slice(0, 2).map((item: any, i: number) => (
-                      <div
-                        key={item.id || i}
-                        className="text-xs text-text-secondary flex items-center gap-2 truncate"
-                      >
-                        <CheckSquare className="w-3 h-3 text-text-disabled" />
-                        {item.itemText}
-                      </div>
-                    ))}
-                    {stage.items?.length > 2 && (
-                      <div className="text-xs font-medium text-secondary pl-5 pt-1">
-                        + {stage.items.length - 2} more items...
-                      </div>
-                    )}
-                  </div>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {stage.signatureSlots?.length || 0} signatories
+                  </p>
                 </div>
               ))}
             </div>
           </div>
         ))}
-
-        {templates.length === 0 && (
-          <div className="col-span-full py-12 text-center text-text-muted">
-            <CheckSquare className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-text-primary mb-1">
-              No Templates Found
-            </h3>
-            <p>
-              Create a new template or migrate legacy checklists to get started.
-            </p>
-          </div>
-        )}
       </div>
 
-      {/* Template Builder Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 lg:p-8 animate-in fade-in duration-200">
-          <div className="bg-surface-card rounded-3xl shadow-2xl w-full max-w-5xl max-h-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Header */}
-            <div className="p-6 border-b flex justify-between items-center bg-surface-base/50">
+      {filtered.length === 0 && (
+        <div className="py-12 text-center text-text-muted">
+          <CheckSquare className="mx-auto mb-4 h-12 w-12 text-gray-300" />
+          <h3 className="text-lg font-medium text-text-primary">No Templates Found</h3>
+          <p>Create a new template or import your checklist library.</p>
+        </div>
+      )}
+
+      <ChecklistImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        projectId={projectId}
+        onSuccess={load}
+      />
+
+      {builderOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-surface-card shadow-2xl">
+            <div className="flex items-center justify-between border-b bg-surface-base/50 p-6">
               <div>
-                <h2 className="text-2xl font-bold text-text-primary flex items-center gap-3">
-                  <Settings2 className="w-6 h-6 text-orange-600" />
-                  Interactive Template Builder
+                <h2 className="text-2xl font-bold text-text-primary">
+                  {editingTemplateId ? "Edit Checklist Template" : "Checklist Template Builder"}
                 </h2>
-                <p className="text-sm text-text-muted mt-1">
-                  Design multi-stage quality inspections with mandatory hold
-                  points.
+                <p className="mt-1 text-sm text-text-muted">
+                  Configure header fields, signatories, and stage items.
                 </p>
               </div>
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 bg-surface-card hover:bg-surface-raised border border-border-default rounded-full transition-colors"
+                onClick={closeBuilder}
+                className="rounded-full border border-border-default bg-surface-card p-2"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 bg-surface-base/50 custom-scrollbar">
-              <form
-                id="templateForm"
-                onSubmit={handleSubmit}
-                className="space-y-8 max-w-4xl mx-auto"
-              >
-                {/* Template Details */}
-                <div className="bg-surface-card p-6 rounded-2xl border border-border-default shadow-sm space-y-4">
-                  <h3 className="text-lg font-bold text-text-primary border-b pb-3">
-                    1. Template Details
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                        Template Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g., Pre-concreting Columns"
-                        className="w-full bg-surface-base border border-border-default rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 focus:bg-surface-card transition-all"
-                        value={formData.name}
-                        onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
-                        Description / Scope
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Optional details..."
-                        className="w-full bg-surface-base border border-border-default rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 focus:bg-surface-card transition-all"
-                        value={formData.description}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            description: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
+            <div className="flex-1 overflow-y-auto bg-surface-base/50 p-6">
+              <form id="templateForm" onSubmit={save} className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 rounded-2xl border border-border-default bg-surface-card p-5 md:grid-cols-2">
+                  <input
+                    required
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    placeholder="Template name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
+                  <input
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    placeholder="Description / scope"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  />
+                  <input
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    placeholder="Checklist No"
+                    value={formData.checklistNo}
+                    onChange={(e) => setFormData({ ...formData, checklistNo: e.target.value })}
+                  />
+                  <input
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    placeholder="Rev No"
+                    value={formData.revNo}
+                    onChange={(e) => setFormData({ ...formData, revNo: e.target.value })}
+                  />
+                  <input
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm md:col-span-2"
+                    placeholder="Activity Title"
+                    value={formData.activityTitle}
+                    onChange={(e) => setFormData({ ...formData, activityTitle: e.target.value })}
+                  />
+                  <select
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    value={formData.activityType}
+                    onChange={(e) => setFormData({ ...formData, activityType: e.target.value })}
+                  >
+                    {["CONCRETING", "SHUTTERING", "REINFORCEMENT", "WATERPROOFING", "TILING", "PLASTERING", "PAINTING", "PLUMBING", "ELECTRICAL", "HVAC", "FACADE"].map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    value={formData.discipline}
+                    onChange={(e) => setFormData({ ...formData, discipline: e.target.value })}
+                  >
+                    {["Civil", "MEP", "Finishing", "Structural", "External Works"].map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                  <input
+                    className="rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                    placeholder="Applicable Trade"
+                    value={formData.applicableTrade}
+                    onChange={(e) =>
+                      setFormData({ ...formData, applicableTrade: e.target.value })
+                    }
+                  />
+                  <label className="flex items-center gap-2 rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.isGlobal}
+                      onChange={(e) => setFormData({ ...formData, isGlobal: e.target.checked })}
+                    />
+                    Global library template
+                  </label>
                 </div>
 
-                {/* Stages Builder */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-text-primary">
-                      2. Stages & Items
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={addStage}
-                      className="flex items-center gap-2 text-sm font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-4 py-2 rounded-lg"
-                    >
-                      <Plus className="w-4 h-4" /> Add Stage
-                    </button>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-text-primary">Stages & Items</h3>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, stages: [...prev.stages, seedStage(prev.stages.length)] }))
+                    }
+                    className="rounded-lg bg-orange-50 px-4 py-2 text-sm font-bold text-orange-600"
+                  >
+                    Add Stage
+                  </button>
+                </div>
 
-                  <div className="space-y-6">
-                    {formData.stages.map((stage, sIndex) => (
-                      <div
-                        key={sIndex}
-                        className="bg-surface-card border border-border-default rounded-2xl shadow-sm overflow-hidden"
-                      >
-                        {/* Stage Header */}
-                        <div className="bg-surface-raised/80 px-4 py-3 border-b border-border-default flex flex-wrap items-center gap-4">
-                          <GripVertical className="w-5 h-5 text-text-disabled cursor-move" />
+                <div className="space-y-5">
+                  {formData.stages.map((stage, stageIndex) => (
+                    <div key={stageIndex} className="rounded-2xl border border-border-default bg-surface-card shadow-sm">
+                      <div className="flex flex-wrap items-center gap-3 border-b border-border-default bg-surface-raised/80 px-4 py-3">
+                        <GripVertical className="h-5 w-5 text-text-disabled" />
+                        <input
+                          className="rounded-lg border border-border-strong bg-surface-card px-3 py-2 text-sm font-bold"
+                          value={stage.name}
+                          onChange={(e) => updateStage(stageIndex, { name: e.target.value })}
+                        />
+                        <label className="text-sm text-text-secondary">
                           <input
-                            type="text"
-                            required
-                            placeholder="Stage Name (e.g. Pre-pour)"
-                            className="bg-surface-card border border-border-strong rounded-lg px-3 py-1.5 text-sm font-bold w-48 focus:ring-2 focus:ring-secondary"
-                            value={stage.name}
+                            type="checkbox"
+                            checked={stage.isHoldPoint}
                             onChange={(e) =>
-                              updateStage(sIndex, "name", e.target.value)
+                              updateStage(stageIndex, { isHoldPoint: e.target.checked })
                             }
-                          />
-                          <label className="flex items-center gap-2 text-sm text-text-secondary ml-auto bg-surface-card px-3 py-1.5 rounded-lg border border-border-default shadow-sm cursor-pointer hover:bg-surface-base">
-                            <input
-                              type="checkbox"
-                              className="rounded text-secondary focus:ring-secondary w-4 h-4"
-                              checked={stage.isHoldPoint}
-                              onChange={(e) =>
-                                updateStage(
-                                  sIndex,
-                                  "isHoldPoint",
-                                  e.target.checked,
-                                )
+                          />{" "}
+                          Hold Point
+                        </label>
+                        <label className="text-sm text-text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={stage.isWitnessPoint}
+                            onChange={(e) =>
+                              updateStage(stageIndex, { isWitnessPoint: e.target.checked })
+                            }
+                          />{" "}
+                          Witness Point
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              stages: prev.stages.filter((_, i) => i !== stageIndex),
+                            }))
+                          }
+                          className="ml-auto rounded-lg p-1.5 text-text-disabled hover:bg-gray-200 hover:text-error"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 p-4">
+                        <div className="rounded-xl border border-border-default bg-surface-base p-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="font-semibold text-text-primary">Signature Slots</p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStage(stageIndex, {
+                                  signatureSlots: [
+                                    ...(stage.signatureSlots || []),
+                                    {
+                                      slotId: `slot_${Date.now()}`,
+                                      label: "Approver",
+                                      party: "Contractor",
+                                      role: "APPROVER",
+                                      required: true,
+                                      sequence: (stage.signatureSlots || []).length + 1,
+                                    },
+                                  ],
+                                })
                               }
-                            />
-                            <span className="font-medium text-error">
-                              Mandatory Hold Point
-                            </span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => removeStage(sIndex)}
-                            className="p-1.5 text-text-disabled hover:bg-gray-200 hover:text-error rounded-lg transition-colors"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
+                              className="rounded-lg bg-surface-card px-3 py-2 text-xs font-bold text-secondary"
+                            >
+                              Add Signatory
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {(stage.signatureSlots || []).map((slot, slotIndex) => (
+                              <div key={slot.slotId} className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                                <input
+                                  className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  value={slot.label}
+                                  onChange={(e) =>
+                                    updateSlot(stageIndex, slotIndex, { label: e.target.value })
+                                  }
+                                />
+                                <input
+                                  className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  value={slot.role}
+                                  onChange={(e) =>
+                                    updateSlot(stageIndex, slotIndex, { role: e.target.value })
+                                  }
+                                />
+                                <label className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm text-text-secondary">
+                                  <input
+                                    type="checkbox"
+                                    checked={slot.required}
+                                    onChange={(e) =>
+                                      updateSlot(stageIndex, slotIndex, { required: e.target.checked })
+                                    }
+                                  />{" "}
+                                  Required
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateStage(stageIndex, {
+                                      signatureSlots: (stage.signatureSlots || []).filter(
+                                        (_, i) => i !== slotIndex,
+                                      ),
+                                    })
+                                  }
+                                  className="rounded-lg bg-error-muted px-3 py-2 text-sm font-medium text-error"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         </div>
 
-                        {/* Items List */}
-                        <div className="p-4 space-y-3">
-                          {stage.items.map((item, iIndex) => (
-                            <div
-                              key={iIndex}
-                              className="flex items-start gap-4 p-3 bg-surface-base/50 rounded-xl border border-dotted border-border-strong group hover:border-gray-400 transition-colors"
-                            >
+                        <div className="space-y-3">
+                          {stage.items.map((item, itemIndex) => (
+                            <div key={itemIndex} className="group flex items-start gap-4 rounded-xl border border-dotted border-border-strong bg-surface-base/50 p-3">
                               <div className="flex-1 space-y-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex-1">
-                                    <input
-                                      type="text"
-                                      required
-                                      placeholder="Checklist Item Description..."
-                                      className="w-full bg-surface-card border border-border-default rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-secondary"
-                                      value={item.itemText}
-                                      onChange={(e) =>
-                                        updateItem(
-                                          sIndex,
-                                          iIndex,
-                                          "itemText",
-                                          e.target.value,
-                                        )
-                                      }
-                                    />
-                                  </div>
+                                <div className="flex flex-wrap gap-3">
+                                  <input
+                                    className="min-w-[260px] flex-1 rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                    placeholder="Checklist Item Description..."
+                                    value={item.itemText}
+                                    onChange={(e) =>
+                                      updateStage(stageIndex, {
+                                        items: stage.items.map((current, i) =>
+                                          i === itemIndex
+                                            ? { ...current, itemText: e.target.value }
+                                            : current,
+                                        ),
+                                      })
+                                    }
+                                  />
                                   <select
-                                    className="bg-surface-card border border-border-default rounded-lg px-3 py-2 text-sm font-medium text-text-secondary focus:ring-2 focus:ring-secondary w-36"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
                                     value={item.type}
                                     onChange={(e) =>
-                                      updateItem(
-                                        sIndex,
-                                        iIndex,
-                                        "type",
-                                        e.target.value,
-                                      )
+                                      updateStage(stageIndex, {
+                                        items: stage.items.map((current, i) =>
+                                          i === itemIndex
+                                            ? { ...current, type: e.target.value }
+                                            : current,
+                                        ),
+                                      })
                                     }
                                   >
+                                    <option value="YES_OR_NA">Yes / N.A.</option>
                                     <option value="YES_NO">Pass / Fail</option>
                                     <option value="TEXT">Text Input</option>
                                     <option value="NUMERIC">Numeric</option>
-                                    <option value="PHOTO_ONLY">
-                                      Photo Evidence
-                                    </option>
+                                    <option value="PHOTO_ONLY">Photo Evidence</option>
                                   </select>
                                 </div>
-
-                                {/* Item Meta Switches */}
-                                <div className="flex items-center gap-6 pl-1">
-                                  <label className="flex items-center gap-2 cursor-pointer group/switch">
-                                    <div className="relative">
-                                      <input
-                                        type="checkbox"
-                                        className="sr-only"
-                                        checked={item.isMandatory}
-                                        onChange={(e) =>
-                                          updateItem(
-                                            sIndex,
-                                            iIndex,
-                                            "isMandatory",
-                                            e.target.checked,
-                                          )
-                                        }
-                                      />
-                                      <div
-                                        className={`block w-8 h-4 rounded-full transition-colors ${item.isMandatory ? "bg-secondary" : "bg-gray-300"}`}
-                                      ></div>
-                                      <div
-                                        className={`dot absolute left-1 top-1 bg-surface-card w-2 h-2 rounded-full transition-transform ${item.isMandatory ? "transform translate-x-4" : ""}`}
-                                      ></div>
-                                    </div>
-                                    <span className="text-xs font-semibold text-text-muted group-hover/switch:text-text-secondary">
-                                      Required
-                                    </span>
+                                <div className="flex gap-6 text-xs font-semibold text-text-muted">
+                                  <label>
+                                    <input
+                                      type="checkbox"
+                                      checked={item.isMandatory}
+                                      onChange={(e) =>
+                                        updateStage(stageIndex, {
+                                          items: stage.items.map((current, i) =>
+                                            i === itemIndex
+                                              ? { ...current, isMandatory: e.target.checked }
+                                              : current,
+                                          ),
+                                        })
+                                      }
+                                    />{" "}
+                                    Required
                                   </label>
-
-                                  <label className="flex items-center gap-2 cursor-pointer group/switch">
-                                    <div className="relative">
-                                      <input
-                                        type="checkbox"
-                                        className="sr-only"
-                                        checked={item.photoRequired}
-                                        onChange={(e) =>
-                                          updateItem(
-                                            sIndex,
-                                            iIndex,
-                                            "photoRequired",
-                                            e.target.checked,
-                                          )
-                                        }
-                                      />
-                                      <div
-                                        className={`block w-8 h-4 rounded-full transition-colors ${item.photoRequired ? "bg-orange-500" : "bg-gray-300"}`}
-                                      ></div>
-                                      <div
-                                        className={`dot absolute left-1 top-1 bg-surface-card w-2 h-2 rounded-full transition-transform ${item.photoRequired ? "transform translate-x-4" : ""}`}
-                                      ></div>
-                                    </div>
-                                    <span className="text-xs font-semibold text-text-muted group-hover/switch:text-text-secondary flex items-center gap-1">
-                                      <Image className="w-3 h-3" /> Photo Proof
-                                      Req.
-                                    </span>
+                                  <label>
+                                    <input
+                                      type="checkbox"
+                                      checked={item.photoRequired}
+                                      onChange={(e) =>
+                                        updateStage(stageIndex, {
+                                          items: stage.items.map((current, i) =>
+                                            i === itemIndex
+                                              ? { ...current, photoRequired: e.target.checked }
+                                              : current,
+                                          ),
+                                        })
+                                      }
+                                    />{" "}
+                                    Photo proof
                                   </label>
                                 </div>
                               </div>
-
                               <button
                                 type="button"
-                                onClick={() => removeItem(sIndex, iIndex)}
-                                className="mt-2 p-1.5 text-text-disabled hover:bg-surface-card hover:text-error rounded-lg border border-transparent hover:border-red-200 transition-all opacity-0 group-hover:opacity-100 shadow-sm"
+                                onClick={() =>
+                                  updateStage(stageIndex, {
+                                    items: stage.items.filter((_, i) => i !== itemIndex),
+                                  })
+                                }
+                                className="mt-2 rounded-lg p-1.5 text-text-disabled opacity-0 hover:bg-surface-card hover:text-error group-hover:opacity-100"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           ))}
-
                           <button
                             type="button"
-                            onClick={() => addItem(sIndex)}
-                            className="w-full py-2 border-2 border-dashed border-border-default rounded-xl text-text-muted font-medium text-sm hover:border-indigo-300 hover:text-secondary hover:bg-secondary-muted transition-all flex justify-center items-center gap-2 mt-2"
+                            onClick={() =>
+                              updateStage(stageIndex, {
+                                items: [
+                                  ...stage.items,
+                                  {
+                                    itemText: "",
+                                    type: "YES_OR_NA",
+                                    isMandatory: false,
+                                    photoRequired: false,
+                                    sequence: stage.items.length,
+                                  },
+                                ],
+                              })
+                            }
+                            className="w-full rounded-xl border-2 border-dashed border-border-default py-2 text-sm font-medium text-text-muted"
                           >
-                            <Plus className="w-4 h-4" /> Add Item
+                            <Plus className="mr-1 inline h-4 w-4" />
+                            Add Item
                           </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </form>
             </div>
 
-            {/* Footer */}
-            <div className="p-5 border-t bg-surface-card flex justify-end gap-3 rounded-b-3xl">
+            <div className="flex justify-end gap-3 border-t bg-surface-card p-5">
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl font-bold text-text-muted bg-surface-base hover:bg-surface-raised border border-border-default transition-all"
+                onClick={closeBuilder}
+                className="rounded-xl border border-border-default bg-surface-base px-6 py-2.5 font-bold text-text-muted"
               >
                 Cancel
               </button>
               <button
                 form="templateForm"
                 type="submit"
-                className="px-8 py-2.5 rounded-xl font-bold bg-orange-600 text-white hover:bg-orange-700 shadow-lg shadow-orange-200/50 transition-all flex items-center gap-2"
+                className="rounded-xl bg-orange-600 px-8 py-2.5 font-bold text-white"
               >
-                <CheckSquare className="w-5 h-5" />
-                Save & Publish Template
+                {editingTemplateId ? "Update Template" : "Save Template"}
               </button>
             </div>
           </div>

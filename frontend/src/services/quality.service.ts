@@ -8,6 +8,10 @@ import type {
   CopyStructureDto,
   QualitySnag,
   UpdateGraphDto,
+  ChecklistImportPreviewResponse,
+  ParsedChecklistPreview,
+  PdfParseResult,
+  QualityChecklistTemplatePayload,
 } from "../types/quality";
 
 const BASE_URL = "/quality";
@@ -150,6 +154,115 @@ export const qualityService = {
     const res = await api.post(
       `${BASE_URL}/activity-lists/${listId}/activities`,
       data,
+    );
+    return res.data;
+  },
+
+  getChecklistTemplates: async (projectId: number) => {
+    const res = await api.get(`${BASE_URL}/checklist-templates/project/${projectId}`);
+    return res.data;
+  },
+
+  createChecklistTemplate: async (
+    projectId: number,
+    data: QualityChecklistTemplatePayload,
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/checklist-templates/project/${projectId}`,
+      data,
+    );
+    return res.data;
+  },
+
+  updateChecklistTemplate: async (
+    templateId: number,
+    data: QualityChecklistTemplatePayload,
+  ) => {
+    const res = await api.put(
+      `${BASE_URL}/checklist-templates/${templateId}`,
+      data,
+    );
+    return res.data;
+  },
+
+  deleteChecklistTemplate: async (templateId: number) => {
+    const res = await api.delete(`${BASE_URL}/checklist-templates/${templateId}`);
+    return res.data;
+  },
+
+  migrateChecklistTemplates: async (projectId: number) => {
+    const res = await api.post(
+      `${BASE_URL}/checklist-templates/project/${projectId}/migrate`,
+    );
+    return res.data;
+  },
+
+  previewChecklistExcelImport: async (
+    projectId: number,
+    file: File,
+  ): Promise<ChecklistImportPreviewResponse> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await api.post(
+      `${BASE_URL}/checklist-templates/project/${projectId}/import-excel?preview=true`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
+  },
+
+  previewChecklistPdfImport: async (
+    projectId: number,
+    file: File,
+  ): Promise<PdfParseResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await api.post(
+      `${BASE_URL}/checklist-templates/project/${projectId}/import-pdf`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
+  },
+
+  saveChecklistImport: async (
+    projectId: number,
+    templates: ParsedChecklistPreview[],
+    overwriteExisting = true,
+  ) => {
+    const payload = {
+      overwriteExisting,
+      templates: templates.map((template) => ({
+        name: template.activityTitle.value || template.sheetName,
+        description: template.warnings.join(" | "),
+        checklistNo: template.checklistNo.value || undefined,
+        revNo: template.revNo.value || undefined,
+        activityTitle: template.activityTitle.value || undefined,
+        activityType: template.activityType.value || undefined,
+        discipline: template.discipline.value || undefined,
+        applicableTrade: template.applicableTrade.value || undefined,
+        isGlobal: Boolean(template.isGlobal.value),
+        stages: template.stages.map((stage) => ({
+          name: stage.name,
+          sequence: stage.sequence,
+          isHoldPoint: stage.isHoldPoint,
+          isWitnessPoint: stage.isWitnessPoint,
+          responsibleParty: stage.responsibleParty,
+          signatureSlots: stage.signatureSlots,
+          items: stage.items.map((item, index) => ({
+            itemText: item.description,
+            type: item.type,
+            isMandatory: item.isMandatory,
+            photoRequired: item.photoRequired,
+            sequence: index,
+          })),
+        })),
+      })),
+    };
+
+    const res = await api.post(
+      `${BASE_URL}/checklist-templates/project/${projectId}/import-excel?preview=false`,
+      payload,
     );
     return res.data;
   },

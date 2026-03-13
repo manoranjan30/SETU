@@ -13,12 +13,14 @@ import {
   Activity,
   Truck,
   UserCheck,
+  Eye,
 } from "lucide-react";
 import api from "../../api/axios";
 
 // Sub-views
 import EhsOverview from "./subviews/EhsOverview";
 import EhsPerformance from "./subviews/EhsPerformance";
+import EhsSiteObservationPanel from "./subviews/EhsSiteObservationPanel";
 import EhsManhours from "./subviews/EhsManhours";
 import EhsInspection from "./subviews/EhsInspection";
 import EhsTraining from "./subviews/EhsTraining";
@@ -70,6 +72,7 @@ const EhsProjectDashboard = () => {
 
   const tabs = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "observations", label: "Observations", icon: Eye },
     { id: "performance", label: "Performance", icon: TrendingUp },
     { id: "manhours", label: "Manhours", icon: Clock },
     { id: "inspection", label: "Inspection", icon: ClipboardCheck },
@@ -150,6 +153,9 @@ const EhsProjectDashboard = () => {
 
           {activeTab === "overview" && (
             <EhsOverview projectId={Number(projectId)} />
+          )}
+          {activeTab === "observations" && (
+            <EhsSiteObservationPanel projectId={Number(projectId)} />
           )}
           {activeTab === "performance" && (
             <EhsPerformance projectId={Number(projectId)} />

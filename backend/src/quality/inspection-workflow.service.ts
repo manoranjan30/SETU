@@ -289,14 +289,43 @@ export class InspectionWorkflowService {
       throw new NotFoundException('Current workflow step not found');
     }
 
+    // Fetch inspection early — needed for role-based permission check and status update below
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id: inspectionId },
+    });
+
     if (
       !isAdmin &&
       currentStep.assignedUserId &&
       currentStep.assignedUserId !== userId
     ) {
-      throw new ForbiddenException(
-        'You are not the assigned user for this approval step',
-      );
+      // For ROLE-based steps, allow any active project team member who holds the required role
+      const node = currentStep.workflowNode;
+      let userHasRequiredRole = false;
+      if (
+        node?.assignmentMode === AssignmentMode.ROLE &&
+        node?.assignedRoleId &&
+        inspection?.projectId
+      ) {
+        const matchingAssignment = await this.assignmentRepo
+          .createQueryBuilder('a')
+          .innerJoin('a.user', 'u')
+          .innerJoin('a.roles', 'r')
+          .where('u.id = :userId', { userId })
+          .andWhere('a.project = :projectId', {
+            projectId: inspection.projectId,
+          })
+          .andWhere('r.id = :roleId', { roleId: node.assignedRoleId })
+          .andWhere('a.status = :status', { status: AssignmentStatus.ACTIVE })
+          .getOne();
+        userHasRequiredRole = !!matchingAssignment;
+      }
+
+      if (!userHasRequiredRole) {
+        throw new ForbiddenException(
+          'You are not the assigned user for this approval step',
+        );
+      }
     }
 
     let effectiveSignatureId = signatureId;
@@ -351,9 +380,6 @@ export class InspectionWorkflowService {
       run.currentStepOrder += 1;
 
       // Mark parent inspection as PARTIALLY_APPROVED
-      const inspection = await this.inspectionRepo.findOne({
-        where: { id: inspectionId },
-      });
       if (
         inspection &&
         (inspection.status === 'PENDING' ||
@@ -405,9 +431,6 @@ export class InspectionWorkflowService {
       isFinal = true;
 
       // Auto-approve the parent inspection
-      const inspection = await this.inspectionRepo.findOne({
-        where: { id: inspectionId },
-      });
       if (inspection) {
         inspection.status = 'APPROVED' as any;
         inspection.inspectionDate = now.toISOString().split('T')[0];

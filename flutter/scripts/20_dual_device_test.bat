@@ -1,4 +1,16 @@
 @echo off
+
+:: ── Self-relaunch under cmd /k so window NEVER closes automatically ────────
+:: When double-clicked, CMD opens, runs the script, and closes as soon as
+:: the script exits (even on errors).  Running under "cmd /k" fixes this:
+:: the window stays open showing any error, and user must close it manually.
+if not "%~1"=="__SETU_RUN__" (
+  cmd /k "%~f0" __SETU_RUN__
+  exit /b 0
+)
+shift
+:: ──────────────────────────────────────────────────────────────────────────
+
 setlocal EnableDelayedExpansion
 
 :: ============================================================
@@ -81,7 +93,7 @@ if errorlevel 1 (
   ) else (
     echo.
     echo         ERROR: Flutter not found in PATH.
-    pause & exit /b 1
+    goto :done
   )
 ) else (
   for /f "delims=" %%V in ('flutter --version 2^>nul ^| findstr /i "Flutter "') do (
@@ -95,7 +107,7 @@ if errorlevel 1 (
   echo.
   echo         ERROR: adb not found in PATH.
   echo         Install Android Studio or Android Platform Tools.
-  pause & exit /b 1
+  goto :done
 ) else (
   echo         OK  -  ADB
 )
@@ -146,7 +158,7 @@ if !DEVICE_COUNT!==0 (
   echo         For dual-device testing you need TWO devices.
   echo         You can still test with one device if needed.
   echo.
-  pause & exit /b 1
+  goto :done
 )
 
 if !DEVICE_COUNT!==1 (
@@ -217,7 +229,7 @@ if defined AUTO_IP (
 if not defined BACKEND_URL (
   echo.
   echo         ERROR: No backend URL set. Cannot build without it.
-  pause & exit /b 1
+  goto :done
 )
 
 echo.
@@ -236,11 +248,29 @@ taskkill /F /IM dartvm.exe  /T >nul 2>&1
 echo         Stale processes terminated.
 
 set "INT=%PROJECT_ROOT%\build\app\intermediates"
-rd /s /q "!INT!\merged_res_blame_folder"          >nul 2>&1
+rd /s /q "!INT!\merged_res_blame_folder"           >nul 2>&1
 rd /s /q "!INT!\assets\release\mergeReleaseAssets" >nul 2>&1
 rd /s /q "!INT!\incremental\mergeReleaseResources" >nul 2>&1
+rd /s /q "!INT!\stripped_native_libs"              >nul 2>&1
 rd /s /q "%PROJECT_ROOT%\.dart_tool"               >nul 2>&1
 echo         Locked build dirs cleared.
+
+:: Suspend OneDrive during build - it intercepts Gradle temp files and causes
+:: stripReleaseDebugSymbols to fail with "MD5 hash file does not exist".
+set "ONEDRIVE_WAS_RUNNING=0"
+tasklist /FI "IMAGENAME eq OneDrive.exe" 2>nul | findstr /i "OneDrive.exe" >nul 2>&1
+if not errorlevel 1 set "ONEDRIVE_WAS_RUNNING=1"
+tasklist /FI "IMAGENAME eq OneDrive.Sync.Service.exe" 2>nul | findstr /i "OneDrive" >nul 2>&1
+if not errorlevel 1 set "ONEDRIVE_WAS_RUNNING=1"
+if "!ONEDRIVE_WAS_RUNNING!"=="1" (
+  echo         Killing OneDrive processes to prevent build interference...
+  taskkill /F /IM OneDrive.exe              >nul 2>&1
+  taskkill /F /IM OneDrive.Sync.Service.exe >nul 2>&1
+  echo         OneDrive suspended for build.
+  ping -n 3 127.0.0.1 >nul 2>&1
+) else (
+  echo         OneDrive not running - no action needed.
+)
 
 call flutter pub get
 echo         Packages ready.
@@ -249,7 +279,17 @@ echo         Packages ready.
 :: STEP 5 - Build release APK
 :: ===========================================================
 call :build_apk
-if errorlevel 1 ( pause & exit /b 1 )
+if errorlevel 1 (
+  echo.
+  echo  ============================================================
+  echo    BUILD FAILED. Review the errors above.
+  echo    Fix the issue and re-run this script.
+  echo    Press Q to quit, or close this window directly.
+  echo  ============================================================
+  echo.
+  call :wait_quit
+  goto :done
+)
 
 :: ===========================================================
 :: STEP 6 - Install + whitelist on ALL devices
@@ -371,14 +411,16 @@ echo.
 echo  ============================================================
 echo    QUICK REBUILD  ^(no wizard -- reuses same backend + devices^)
 echo      R  =  Rebuild APK + Reinstall on all devices
-echo      Any other key  =  Exit this window
+echo      Q  =  Quit  ^(close this window^)
 echo  ============================================================
 echo.
 
 :rebuild_loop
 set "RK="
-set /p "RK=  [R = Rebuild+Reinstall on all devices  /  other key = Exit]: "
+set /p "RK=  [R = Rebuild+Reinstall   /   Q = Quit]: "
+if not defined RK goto :rebuild_loop
 set "RK=!RK:~0,1!"
+if /i "!RK!"=="Q" goto :done
 if /i "!RK!"=="R" (
   echo.
   echo  -------------------------------------------------------------------
@@ -392,32 +434,67 @@ if /i "!RK!"=="R" (
     echo.
     call :install_all
     echo.
-    echo    Rebuild complete. Press R to rebuild again or any key to exit.
+    echo  Rebuild complete.
     echo.
   ) else (
     echo.
-    echo    Build failed. Check error lines above.
-    echo    Fix the issue then press R to try again, or any key to exit.
+    echo  ============================================================
+    echo    BUILD FAILED - fix the issue then press R to try again.
+    echo  ============================================================
     echo.
   )
   goto :rebuild_loop
 )
+:: Any other key - show menu again
+goto :rebuild_loop
+
+:done
+echo.
+echo  ============================================================
+echo    Done. Close this window with the X button when finished.
+echo  ============================================================
+echo.
 goto :eof
+
+:: ===========================================================
+:: SUBROUTINE: Wait for Q key (used after build failure)
+:: ===========================================================
+:wait_quit
+set "EK="
+set /p "EK=  [Q = Quit / close window to exit]: "
+if not defined EK goto :wait_quit
+set "EK=!EK:~0,1!"
+if /i not "!EK!"=="Q" goto :wait_quit
+exit /b 0
 
 :: ===========================================================
 :: SUBROUTINE: Build APK with animated progress bar
 :: ===========================================================
 :build_apk
 echo.
+echo  ============================================================
 echo  [5/6] Building release APK...
+echo  ============================================================
 echo.
 echo         Target  : android-arm64  (release)
 echo         Backend : !BACKEND_URL!
+echo         Started : %DATE%  %TIME%
 echo         Tip     : First build 3-8 min / Rebuild 1-3 min
 echo.
 
 set "MONITOR=%~dp0_build_monitor.ps1"
 flutter build apk --release --target-platform android-arm64 --split-debug-info=build\debug-info --dart-define=SETU_BASE_URL=!BACKEND_URL! 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -File "!MONITOR!"
+set "BUILD_EXIT=!ERRORLEVEL!"
+
+:: Restart OneDrive if it was running before we suspended it
+if "!ONEDRIVE_WAS_RUNNING!"=="1" (
+  if exist "%LOCALAPPDATA%\Microsoft\OneDrive\OneDrive.exe" (
+    start "" "%LOCALAPPDATA%\Microsoft\OneDrive\OneDrive.exe"
+  ) else (
+    start "" "C:\Program Files\Microsoft OneDrive\OneDrive.exe"
+  )
+  echo         OneDrive restarted.
+)
 
 echo.
 
@@ -431,15 +508,35 @@ if not exist "!APK_PATH!" (
   echo.
   exit /b 1
 )
+
+:: Show APK file size
+set "APK_SIZE_KB=0"
+for %%F in ("!APK_PATH!") do set "APK_SIZE_KB=%%~zF"
+set /a "APK_SIZE_MB=!APK_SIZE_KB! / 1048576"
+set /a "APK_SIZE_KB_REM=(!APK_SIZE_KB! %% 1048576) / 104858"
 echo.
-echo         APK ready: !APK_PATH!
+echo  ============================================================
+echo    BUILD SUCCESSFUL
+echo  ============================================================
+echo    APK  : !APK_PATH!
+echo    Size : !APK_SIZE_MB!.!APK_SIZE_KB_REM! MB
+echo  ============================================================
+echo.
 exit /b 0
 
 :: ===========================================================
 :: SUBROUTINE: Install APK + whitelist on ALL connected devices
 :: ===========================================================
 :install_all
+echo  ============================================================
+echo    INSTALLATION LOG
+echo  ============================================================
+echo.
+
 set "DEVICE_NUM=0"
+set "INSTALL_OK=0"
+set "INSTALL_FAIL=0"
+
 for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do (
   if not "%%A"=="" if not "%%B"=="" if not "%%B"=="List" (
     set "SKIP=0"
@@ -449,29 +546,77 @@ for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do (
     echo %%A | findstr /r "[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" >nul 2>&1 && set "SKIP=1"
     if "!SKIP!"=="0" (
       set /a "DEVICE_NUM+=1"
-      echo         [Device !DEVICE_NUM!] Installing on %%A ...
-      adb -s %%A install -r "!APK_PATH!"
-      if errorlevel 1 (
-        echo         [Device !DEVICE_NUM!] INSTALL FAILED on %%A
+
+      :: Get device model name
+      set "DEV_MODEL="
+      for /f "delims=" %%M in ('adb -s %%A shell getprop ro.product.model 2^>nul') do (
+        if not defined DEV_MODEL set "DEV_MODEL=%%M"
+      )
+      set "DEV_BRAND="
+      for /f "delims=" %%G in ('adb -s %%A shell getprop ro.product.brand 2^>nul') do (
+        if not defined DEV_BRAND set "DEV_BRAND=%%G"
+      )
+      if defined DEV_MODEL (
+        echo   [Device !DEVICE_NUM!] Serial : %%A
+        echo   [Device !DEVICE_NUM!] Model  : !DEV_BRAND! !DEV_MODEL!
       ) else (
-        echo         [Device !DEVICE_NUM!] Install OK on %%A
+        echo   [Device !DEVICE_NUM!] Serial : %%A
+      )
+
+      :: Get Android version
+      set "DEV_ANDROID="
+      for /f "delims=" %%V in ('adb -s %%A shell getprop ro.build.version.release 2^>nul') do (
+        if not defined DEV_ANDROID set "DEV_ANDROID=%%V"
+      )
+      if defined DEV_ANDROID echo   [Device !DEVICE_NUM!] Android: !DEV_ANDROID!
+
+      echo   [Device !DEVICE_NUM!] Status : Installing APK ^(!APK_SIZE_MB!.!APK_SIZE_KB_REM! MB^)...
+      echo.
+
+      adb -s %%A install -r "!APK_PATH!"
+      set "INST_ERR=!ERRORLEVEL!"
+
+      echo.
+      if "!INST_ERR!"=="0" (
+        echo   [Device !DEVICE_NUM!] RESULT  : SUCCESS ✓
+        set /a "INSTALL_OK+=1"
+
+        :: Get app UID and apply network whitelists
         set "APP_UID="
         for /f "tokens=2 delims=:=" %%U in ('adb -s %%A shell "pm list packages --uid 2>/dev/null | grep setu_mobile" 2^>nul') do (
           set "APP_UID=%%U"
           set "APP_UID=!APP_UID: =!"
         )
         if defined APP_UID (
+          echo   [Device !DEVICE_NUM!] App UID: !APP_UID!
+          echo   [Device !DEVICE_NUM!] Network: Applying background whitelist...
           adb -s %%A shell "cmd netpolicy add restrict-background-whitelist !APP_UID!" >nul 2>&1
           adb -s %%A shell "cmd netpolicy add app-idle-whitelist !APP_UID!" >nul 2>&1
           adb -s %%A shell "am set-standby-bucket com.example.setu_mobile active" >nul 2>&1
-          echo         [Device !DEVICE_NUM!] Network whitelist applied ^(UID !APP_UID!^)
+          echo   [Device !DEVICE_NUM!] Network: Whitelist applied ^(UID !APP_UID!^)
         ) else (
-          echo         [Device !DEVICE_NUM!] WARNING: Could not find app UID.
-          echo                              Go to: Settings -^> Apps -^> SETU Mobile -^> Battery -^> Unrestricted
+          echo   [Device !DEVICE_NUM!] Network: WARNING - Could not auto-whitelist.
+          echo                          Manual fix: Settings -^> Apps -^> SETU Mobile -^> Battery -^> Unrestricted
         )
+
+        :: Launch the app
+        echo   [Device !DEVICE_NUM!] Launch : Starting SETU Mobile...
+        adb -s %%A shell "monkey -p com.example.setu_mobile -c android.intent.category.LAUNCHER 1" >nul 2>&1
+        echo   [Device !DEVICE_NUM!] Launch : Done
+      ) else (
+        echo   [Device !DEVICE_NUM!] RESULT  : FAILED  ✗  ^(adb exit !INST_ERR!^)
+        echo   [Device !DEVICE_NUM!] Check   : Device screen may be locked or USB debug revoked.
+        set /a "INSTALL_FAIL+=1"
       )
+      echo.
+      echo  ------------------------------------------------------------
       echo.
     )
   )
 )
+
+echo  ============================================================
+echo    INSTALL SUMMARY  :  !INSTALL_OK! succeeded  /  !INSTALL_FAIL! failed  /  !DEVICE_NUM! total
+echo  ============================================================
+echo.
 exit /b 0

@@ -451,7 +451,7 @@ export default function QualityApprovalsPage() {
           })),
         });
       }
-      alert("Checklist progress saved successfully.");
+      alert("RFI checklist progress saved successfully.");
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to save progress.");
@@ -520,10 +520,10 @@ export default function QualityApprovalsPage() {
 
         if (wfRes.data?.isFinal) {
           alert(
-            "All workflow steps completed. Inspection is now Final Approved!",
+            "All workflow steps completed. RFI is now fully approved!",
           );
         } else {
-          alert("Workflow Step Approved!");
+          alert("Workflow step approved.");
         }
       } else {
         // Legacy / Direct final approve
@@ -534,7 +534,7 @@ export default function QualityApprovalsPage() {
             comments: "Final Approval given digitally",
           },
         );
-        alert("Inspection Final Approved!");
+        alert("RFI final approval completed.");
       }
 
       setShowFinalApproveSig(false);
@@ -577,7 +577,7 @@ export default function QualityApprovalsPage() {
           inspectionDate: new Date().toISOString().split("T")[0],
         });
       }
-      alert("Inspection Rejected.");
+      alert("RFI rejected.");
       setSelectedInspectionId(null);
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
@@ -630,7 +630,7 @@ export default function QualityApprovalsPage() {
         comments: reason,
         inspectionDate: new Date().toISOString().split("T")[0],
       });
-      alert("Inspection Provisionally Approved.");
+      alert("RFI provisionally approved.");
       setSelectedInspectionId(null);
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
@@ -990,7 +990,7 @@ export default function QualityApprovalsPage() {
                                 setSelectedInspectionId(insp.id);
                                 setFilterStatus("PENDING");
                               }}
-                              className="w-full text-left border rounded-lg p-2.5 bg-surface-card hover:border-indigo-300 hover:bg-secondary-muted/30 transition"
+                              className="w-full text-left border rounded-lg p-2.5 bg-surface-card hover:border-indigo-300 hover:bg-secondary-muted transition"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="text-sm font-semibold text-text-primary truncate">
@@ -1121,12 +1121,12 @@ export default function QualityApprovalsPage() {
                 <p className="max-w-sm text-center">
                   {filterStatus === "DASHBOARD"
                     ? "Use the left dashboard priority queue to open a specific RFI, or switch tabs to browse by status."
-                    : "Select an inspection request from the left panel to review and execute its checklist."}
+                    : "Select an RFI from the left panel to review and execute its checklist."}
                 </p>
               </div>
             ) : loadingDetail ? (
               <div className="flex-1 flex items-center justify-center text-text-muted">
-                Loading checklist details...
+                Loading RFI checklist details...
               </div>
             ) : inspectionDetail ? (
               <>
@@ -1231,12 +1231,12 @@ export default function QualityApprovalsPage() {
 
                 {/* Workflow Status Indicator */}
                 {workflowState && (
-                  <div className="bg-surface-card px-8 py-4 border-b shrink-0 flex items-center justify-between border-t border-border-subtle">
-                    <div className="flex gap-4 items-center flex-1">
+                  <div className="shrink-0 border-y border-border-subtle bg-surface-card px-5 py-3">
+                    <div className="flex flex-1 items-center gap-3">
                       <div className="text-xs font-bold text-text-muted uppercase tracking-widest whitespace-nowrap">
                         Workflow
                       </div>
-                      <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-1">
+                      <div className="flex flex-1 items-center gap-2 overflow-x-auto pb-1">
                         {workflowState.steps
                           .sort((a: any, b: any) => a.stepOrder - b.stepOrder)
                           .map((step: any, sIdx: number) => {
@@ -1315,11 +1315,11 @@ export default function QualityApprovalsPage() {
                 )}
 
                 {/* Checklist Area */}
-                <div className="flex-1 overflow-y-auto p-8">
-                  <div className="max-w-4xl mx-auto space-y-6 pb-20">
+                <div className="flex-1 overflow-y-auto px-5 py-4">
+                  <div className="max-w-5xl mx-auto space-y-4">
                     {/* Workflow Completed Banner */}
                     {workflowState?.status === "COMPLETED" && (
-                      <div className="bg-success-muted border border-emerald-300 rounded-xl px-6 py-4 flex items-center gap-3 text-emerald-800">
+                      <div className="bg-success-muted border border-emerald-300 rounded-xl px-5 py-3 flex items-center gap-3 text-emerald-800">
                         <CheckCircle2 className="w-6 h-6 shrink-0" />
                         <div>
                           <h4 className="font-bold text-sm">
@@ -1335,7 +1335,7 @@ export default function QualityApprovalsPage() {
 
                     {/* Observation Banner */}
                     {pendingObservationsCount > 0 && (
-                      <div className="bg-warning-muted border border-amber-200 rounded-xl p-4 flex gap-3 text-amber-800">
+                      <div className="bg-warning-muted border border-amber-200 rounded-xl px-4 py-3 flex gap-3 text-amber-800">
                         <AlertCircle className="w-5 h-5 shrink-0" />
                         <div>
                           <h4 className="font-bold text-sm">
@@ -1352,7 +1352,7 @@ export default function QualityApprovalsPage() {
 
                     {!inspectionDetail.stages ||
                     inspectionDetail.stages.length === 0 ? (
-                      <div className="bg-surface-card p-8 rounded-xl border text-center text-text-muted">
+                      <div className="bg-surface-card p-6 rounded-xl border text-center text-text-muted">
                         No checklist template assigned to this activity.
                       </div>
                     ) : (
@@ -1362,7 +1362,7 @@ export default function QualityApprovalsPage() {
                             key={stage.id}
                             className="bg-surface-card rounded-xl shadow-sm border overflow-hidden"
                           >
-                            <div className="bg-surface-base px-5 py-3 border-b flex justify-between items-center">
+                            <div className="bg-surface-base px-4 py-2.5 border-b flex flex-wrap justify-between items-center gap-2">
                               <h3 className="font-semibold text-text-primary">
                                 Stage {sIdx + 1}:{" "}
                                 {stage.stageTemplate?.name || "General Checks"}
@@ -1389,7 +1389,7 @@ export default function QualityApprovalsPage() {
                                 .map((item: any) => (
                                   <div
                                     key={item.id}
-                                    className="p-4 flex gap-4 hover:bg-surface-base transition-colors"
+                                    className="p-3 flex gap-3 hover:bg-surface-base transition-colors"
                                   >
                                     <div className="mt-0.5 shrink-0 flex gap-2">
                                       <button
@@ -1472,9 +1472,9 @@ export default function QualityApprovalsPage() {
                 {["PENDING", "PARTIALLY_APPROVED"].includes(
                   inspectionDetail.status,
                 ) && (
-                  <div className="absolute bottom-0 left-0 right-0 p-4 bg-surface-card border-t border-border-default shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
-                    <div className="max-w-4xl mx-auto flex items-center justify-between">
-                      <div className="text-sm">
+                  <div className="border-t border-border-default bg-surface-card px-5 py-4">
+                    <div className="max-w-5xl mx-auto flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="text-sm min-h-5">
                         {!allChecked && pendingObservationsCount === 0 && (
                           <span className="text-error font-medium flex items-center gap-1.5">
                             <AlertCircle className="w-4 h-4" /> Please complete
@@ -1488,7 +1488,7 @@ export default function QualityApprovalsPage() {
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                         <button
                           onClick={() => setShowObsModal(true)}
                           className="px-4 py-2 bg-surface-card border border-amber-200 text-amber-700 rounded-lg hover:bg-warning-muted focus:ring-2 focus:ring-amber-200 font-medium flex items-center gap-2 text-sm"
@@ -1818,7 +1818,7 @@ export default function QualityApprovalsPage() {
 
       {/* Reversal Modal */}
       {showReversalModal && inspectionDetail && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-surface-overlay flex items-center justify-center p-4 z-50">
           <div className="bg-surface-card rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center">

@@ -179,6 +179,10 @@ export const PLANNING_PERMISSIONS: PermissionDef[] = [
   perm('PLANNING.ANALYSIS.READ', 'View Gap Analysis', 'PLANNING', R),
   perm('PLANNING.RECOVERY.MANAGE', 'Create Recovery Plan', 'PLANNING', S),
   perm('PLANNING.LOOKAHEAD.CREATE', 'Create Look-Ahead Plan', 'PLANNING', C),
+  perm('RELEASE_STRATEGY.READ', 'View Release Strategies', 'PLANNING', R),
+  perm('RELEASE_STRATEGY.WRITE', 'Manage Release Strategies', 'PLANNING', C),
+  perm('RELEASE_STRATEGY.ACTIVATE', 'Activate Release Strategies', 'PLANNING', S),
+  perm('RELEASE_STRATEGY.SIMULATE', 'Simulate Release Strategies', 'PLANNING', S),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -237,7 +241,17 @@ export const LABOR_PERMISSIONS: PermissionDef[] = [
 
 export const EHS_PERMISSIONS: PermissionDef[] = [
   perm('EHS.DASHBOARD.READ', 'View EHS Dashboard', 'EHS', R),
-  ...crud('EHS', 'OBSERVATION', 'Safety Observation'),
+  // Site Observations
+  perm('EHS.SITE_OBS.READ', 'View EHS Observations', 'EHS', R),
+  perm('EHS.SITE_OBS.CREATE', 'Raise EHS Observation', 'EHS', C),
+  perm(
+    'EHS.SITE_OBS.RECTIFY',
+    'Submit Rectification for EHS Observation',
+    'EHS',
+    U,
+  ),
+  perm('EHS.SITE_OBS.CLOSE', 'Close EHS Observation', 'EHS', S),
+  perm('EHS.SITE_OBS.DELETE', 'Delete EHS Observation (Admin)', 'EHS', D),
   ...crud('EHS', 'INCIDENT', 'Incident'),
   ...crud('EHS', 'INSPECTION', 'EHS Inspection'),
   ...crud('EHS', 'TRAINING', 'Training'),

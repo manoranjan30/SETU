@@ -11,6 +11,7 @@ import {
   SiteObservationStatus,
   SiteObservationSeverity,
 } from './entities/site-observation.entity';
+import { QualityRatingConfig } from './entities/quality-rating-config.entity';
 import { AuditService } from '../audit/audit.service';
 import {
   CreateSiteObservationDto,
@@ -25,8 +26,60 @@ export class SiteObservationService {
   constructor(
     @InjectRepository(SiteObservation)
     private readonly observationRepo: Repository<SiteObservation>,
+    @InjectRepository(QualityRatingConfig)
+    private readonly configRepo: Repository<QualityRatingConfig>,
     private readonly auditService: AuditService,
   ) {}
+
+  private sanitizeObservationCategories(categories?: unknown): string[] {
+    const values = Array.isArray(categories) ? categories : [];
+    const deduped = Array.from(
+      new Set(
+        values
+          .map((value) => String(value ?? '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    return deduped.length > 0
+      ? deduped
+      : [
+          'Structural',
+          'Architectural',
+          'MEP',
+          'Finishes',
+          'Materials',
+          'Workmanship',
+          'General / Others',
+        ];
+  }
+
+  private async getConfig(projectId: number): Promise<QualityRatingConfig> {
+    let config = await this.configRepo.findOne({
+      where: { projectNodeId: projectId },
+    });
+    if (!config) {
+      config = this.configRepo.create({ projectNodeId: projectId });
+      await this.configRepo.save(config);
+    }
+    return config;
+  }
+
+  async getObservationCategories(projectId: number): Promise<string[]> {
+    const config = await this.getConfig(projectId);
+    return this.sanitizeObservationCategories(config.observationCategories);
+  }
+
+  async updateObservationCategories(
+    projectId: number,
+    categories: unknown,
+  ): Promise<string[]> {
+    const config = await this.getConfig(projectId);
+    config.observationCategories =
+      this.sanitizeObservationCategories(categories);
+    await this.configRepo.save(config);
+    return config.observationCategories;
+  }
 
   async getAll(projectId: number, status?: string, severity?: string) {
     const query = this.observationRepo

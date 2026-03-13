@@ -100,6 +100,17 @@ export class QualityInspection {
   @Column({ type: 'varchar', nullable: true })
   partLabel: string | null;
 
+  @Column({ type: 'varchar', name: 'drawing_no', length: 100, nullable: true })
+  drawingNo: string | null;
+
+  @Column({
+    type: 'varchar',
+    name: 'contractor_name',
+    length: 255,
+    nullable: true,
+  })
+  contractorName: string | null;
+
   @Column({ type: 'text', nullable: true })
   comments: string;
 
