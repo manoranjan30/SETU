@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -32,12 +33,16 @@ import {
   ReleaseStrategyStep,
 } from './entities/release-strategy-step.entity';
 import { ReleaseStrategyVersionAudit } from './entities/release-strategy-version-audit.entity';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 type EligibleApproverDto = {
   userId: number;
   displayName: string;
   sourceType: 'PERMANENT' | 'TEMP_VENDOR';
   projectRoleIds: number[];
+  projectRoleNames: string[];
+  companyLabel: string;
+  primaryRoleLabel: string | null;
   vendorId?: number | null;
   workOrderId?: number | null;
   activeStatus: string;
@@ -46,6 +51,8 @@ type EligibleApproverDto = {
 
 @Injectable()
 export class ReleaseStrategyService {
+  private readonly logger = new Logger(ReleaseStrategyService.name);
+
   constructor(
     @InjectRepository(ReleaseStrategy)
     private readonly strategyRepo: Repository<ReleaseStrategy>,
@@ -63,6 +70,7 @@ export class ReleaseStrategyService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    private readonly pushService: PushNotificationService,
   ) {}
 
   async listStrategies(
@@ -224,6 +232,7 @@ export class ReleaseStrategyService {
         stepName: step.stepName,
         approverMode: step.approverMode,
         userId: step.userId,
+        userIds: step.userIds || (step.userId ? [step.userId] : []),
         roleId: step.roleId,
         minApprovalsRequired: step.minApprovalsRequired,
         canDelegate: step.canDelegate,
@@ -241,6 +250,25 @@ export class ReleaseStrategyService {
     await this.assertActivationAllowed(projectId, strategy.id, strategy);
     const saved = await this.strategyRepo.save(strategy);
     await this.createAuditSnapshot(saved.id, saved.version, userId, saved, new Date());
+
+    // Notify project members who manage approvals that a new strategy is live
+    this.pushService
+      .sendToProjectPermission(
+        projectId,
+        'RELEASE_STRATEGY.READ',
+        'Approval Strategy Activated',
+        `Release strategy "${saved.name}" is now active for ${saved.processCode} approvals.`,
+        {
+          type: 'STRATEGY_ACTIVATED',
+          projectId: String(projectId),
+          strategyId: String(saved.id),
+          strategyName: saved.name,
+        },
+      )
+      .catch(() => {
+        /* non-fatal */
+      });
+
     return this.getStrategy(projectId, id);
   }
 
@@ -268,10 +296,17 @@ export class ReleaseStrategyService {
       if (!assignment.user?.isActive) continue;
       const existing = permanentMap.get(assignment.user.id);
       const roleIds = assignment.roles?.map((role) => role.id) || [];
+      const roleNames =
+        assignment.roles?.map((role) => role.name).filter(Boolean) || [];
       if (existing) {
         existing.projectRoleIds = Array.from(
           new Set([...existing.projectRoleIds, ...roleIds]),
         );
+        existing.projectRoleNames = Array.from(
+          new Set([...existing.projectRoleNames, ...roleNames]),
+        );
+        existing.primaryRoleLabel =
+          existing.primaryRoleLabel || roleNames[0] || null;
         continue;
       }
       permanentMap.set(assignment.user.id, {
@@ -280,6 +315,9 @@ export class ReleaseStrategyService {
           assignment.user.displayName || assignment.user.username || 'User',
         sourceType: assignment.user.isTempUser ? 'TEMP_VENDOR' : 'PERMANENT',
         projectRoleIds: roleIds,
+        projectRoleNames: roleNames,
+        companyLabel: 'Internal Team',
+        primaryRoleLabel: roleNames[0] || null,
         activeStatus: 'ACTIVE',
       });
     }
@@ -288,7 +326,7 @@ export class ReleaseStrategyService {
       where: {
         project: { id: projectId } as any,
       },
-      relations: ['user', 'vendor', 'workOrder'],
+      relations: ['user', 'vendor', 'workOrder', 'tempRoleTemplate'],
     });
 
     for (const temp of tempUsers) {
@@ -300,11 +338,16 @@ export class ReleaseStrategyService {
 
       const assigned = permanentMap.get(temp.userId);
       const roleIds = assigned?.projectRoleIds || [];
+      const roleNames = assigned?.projectRoleNames || [];
+      const tempRoleName = temp.tempRoleTemplate?.name || null;
       permanentMap.set(temp.userId, {
         userId: temp.userId,
         displayName: temp.user.displayName || temp.user.username || 'Temp User',
         sourceType: 'TEMP_VENDOR',
         projectRoleIds: roleIds,
+        projectRoleNames: roleNames,
+        companyLabel: temp.vendor?.name || 'Vendor',
+        primaryRoleLabel: roleNames[0] || tempRoleName,
         vendorId: temp.vendorId ?? null,
         workOrderId: temp.workOrderId ?? null,
         activeStatus: temp.status,
@@ -386,6 +429,9 @@ export class ReleaseStrategyService {
           levelNo: step.levelNo,
           stepName: step.stepName,
           approverMode: step.approverMode,
+          userId: step.userId ?? null,
+          userIds: step.userIds || (step.userId ? [step.userId] : []),
+          roleId: step.roleId ?? null,
           approvers: this.resolveStepApprovers(step, eligibleActors),
         })),
       restartPolicy: strategy.restartPolicy,
@@ -419,6 +465,7 @@ export class ReleaseStrategyService {
         ? {
             id: winner.id,
             name: winner.name,
+            version: winner.version,
             moduleCode: winner.moduleCode,
             processCode: winner.processCode,
             documentType: winner.documentType,
@@ -430,6 +477,11 @@ export class ReleaseStrategyService {
                 levelNo: step.levelNo,
                 stepName: step.stepName,
                 approverMode: step.approverMode,
+                userId: step.userId ?? null,
+                userIds: step.userIds || (step.userId ? [step.userId] : []),
+                roleId: step.roleId ?? null,
+                canDelegate: step.canDelegate,
+                minApprovalsRequired: step.minApprovalsRequired,
                 approvers: this.resolveStepApprovers(step, eligibleActors),
               })),
           }
@@ -457,15 +509,35 @@ export class ReleaseStrategyService {
       }
       if (
         step.approverMode === ReleaseStrategyApproverMode.USER &&
-        !step.userId
+        !step.userId &&
+        !(step.userIds || []).length
       ) {
-        throw new BadRequestException(`Step ${index + 1} requires a user`);
+        throw new BadRequestException(
+          `Step ${index + 1} requires at least one user`,
+        );
       }
       if (
         step.approverMode === ReleaseStrategyApproverMode.PROJECT_ROLE &&
         !step.roleId
       ) {
         throw new BadRequestException(`Step ${index + 1} requires a project role`);
+      }
+      const configuredApproverCount =
+        step.approverMode === ReleaseStrategyApproverMode.USER
+          ? Array.from(
+              new Set(
+                (step.userIds || [])
+                  .map((userId) => Number(userId))
+                  .filter((userId) => Number.isFinite(userId) && userId > 0),
+              ),
+            ).length || (step.userId ? 1 : 0)
+          : step.roleId
+            ? 1
+            : 0;
+      if ((step.minApprovalsRequired ?? 1) > configuredApproverCount) {
+        throw new BadRequestException(
+          `Step ${index + 1} requires ${step.minApprovalsRequired} approvals but only ${configuredApproverCount} approver(s) are configured.`,
+        );
       }
     });
   }
@@ -486,17 +558,41 @@ export class ReleaseStrategyService {
 
   private buildSteps(steps: ReleaseStrategyStepDto[]) {
     return (steps || []).map((step, index) =>
-      this.stepRepo.create({
-        levelNo: step.levelNo ?? index + 1,
-        stepName: step.stepName.trim(),
-        approverMode: step.approverMode,
-        userId: step.userId ?? null,
-        roleId: step.roleId ?? null,
-        minApprovalsRequired: step.minApprovalsRequired ?? 1,
-        canDelegate: step.canDelegate ?? false,
-        escalationDays: step.escalationDays ?? null,
-        sequence: step.sequence ?? index + 1,
-      }),
+      {
+        const userIds = Array.from(
+          new Set(
+            ((step.userIds && step.userIds.length > 0
+              ? step.userIds
+              : step.userId
+                ? [step.userId]
+                : []) || [])
+              .map((userId) => Number(userId))
+              .filter((userId) => Number.isFinite(userId) && userId > 0),
+          ),
+        );
+
+        return this.stepRepo.create({
+          levelNo: step.levelNo ?? index + 1,
+          stepName: step.stepName.trim(),
+          approverMode: step.approverMode,
+          userId:
+            step.approverMode === ReleaseStrategyApproverMode.USER
+              ? userIds[0] ?? step.userId ?? null
+              : null,
+          userIds:
+            step.approverMode === ReleaseStrategyApproverMode.USER
+              ? userIds
+              : null,
+          roleId:
+            step.approverMode === ReleaseStrategyApproverMode.PROJECT_ROLE
+              ? step.roleId ?? null
+              : null,
+          minApprovalsRequired: step.minApprovalsRequired ?? 1,
+          canDelegate: step.canDelegate ?? false,
+          escalationDays: step.escalationDays ?? null,
+          sequence: step.sequence ?? index + 1,
+        });
+      },
     );
   }
 
@@ -549,6 +645,11 @@ export class ReleaseStrategyService {
           `Cannot activate strategy. Step "${step.stepName}" has no eligible approvers.`,
         );
       }
+      if ((step.minApprovalsRequired ?? 1) > approvers.length) {
+        throw new BadRequestException(
+          `Cannot activate strategy. Step "${step.stepName}" requires ${step.minApprovalsRequired} approvals but only ${approvers.length} eligible approver(s) are available.`,
+        );
+      }
     }
   }
 
@@ -575,8 +676,7 @@ export class ReleaseStrategyService {
     }
     if (
       strategy.documentType &&
-      String(strategy.documentType).toUpperCase() !==
-        String(context.documentType || '').toUpperCase()
+      !this.matchesDocumentType(strategy.documentType, context.documentType)
     ) {
       return false;
     }
@@ -591,6 +691,29 @@ export class ReleaseStrategyService {
     return conditions.every((condition) =>
       this.evaluateCondition(condition, context),
     );
+  }
+
+  private matchesDocumentType(
+    strategyDocumentType: string | null | undefined,
+    contextDocumentType: string | null | undefined,
+  ) {
+    const strategyValue = String(strategyDocumentType || '')
+      .trim()
+      .toUpperCase();
+    const contextValue = String(contextDocumentType || '')
+      .trim()
+      .toUpperCase();
+
+    if (!strategyValue) return true;
+    if (!contextValue) return false;
+    if (strategyValue === contextValue) return true;
+
+    // Allow generic quality document types like RFI to match specific variants
+    // such as FLOOR_RFI, UNIT_RFI, or ROOM_RFI.
+    if (contextValue.endsWith(`_${strategyValue}`)) return true;
+    if (strategyValue.endsWith(`_${contextValue}`)) return true;
+
+    return false;
   }
 
   private getUnmatchedConditions(
@@ -661,7 +784,14 @@ export class ReleaseStrategyService {
     actors: EligibleApproverDto[],
   ) {
     if (step.approverMode === ReleaseStrategyApproverMode.USER) {
-      return actors.filter((actor) => actor.userId === step.userId);
+      const selectedUserIds = new Set(
+        step.userIds?.length
+          ? step.userIds
+          : step.userId
+            ? [step.userId]
+            : [],
+      );
+      return actors.filter((actor) => selectedUserIds.has(actor.userId));
     }
     if (step.approverMode === ReleaseStrategyApproverMode.PROJECT_ROLE) {
       return actors.filter((actor) => actor.projectRoleIds.includes(step.roleId || 0));

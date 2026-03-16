@@ -34,6 +34,24 @@ export class QualitySignature {
   @Column({ nullable: true })
   workflowStepId: number; // Link to specific workflow step
 
+  @Column({ type: 'int', nullable: true })
+  approvalLevelOrder: number | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  approvalLevelName: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  approvalAssignedUserId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  approvalAssignedRoleId: number | null;
+
+  @Column({ default: false })
+  isAutoInherited: boolean;
+
+  @Column({ type: 'int', nullable: true })
+  inheritedFromStepOrder: number | null;
+
   @Column({ nullable: true })
   userId: number; // The user who signed
 
@@ -45,6 +63,21 @@ export class QualitySignature {
 
   @Column({ length: 100 })
   signedBy: string; // User ID or Name
+
+  @Column({ type: 'int', nullable: true })
+  signedByUserId: number | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  signerDisplayName: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  signerCompany: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  signerRoleLabel: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  sourceType: string | null;
 
   @Column({ type: 'text', nullable: true })
   signatureData: string; // Base64 or Image URL
@@ -58,6 +91,18 @@ export class QualitySignature {
     ipAddress?: string;
     timestamp: Date;
   };
+
+  @Column({ default: false })
+  isReversed: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  reversedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  reversedByUserId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  reversalReason: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

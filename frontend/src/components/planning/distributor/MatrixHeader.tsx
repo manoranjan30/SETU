@@ -4,6 +4,7 @@ import { ChevronRight, ChevronDown, CheckSquare } from "lucide-react";
 interface MatrixHeaderProps {
   node: any; // EpsNode structure
   depth: number;
+  totalRows: number;
   onToggle: (type: "expand" | "collapse", nodeId: number) => void;
   onSelect: (nodeId: number) => void;
   expandedNodes: number[];
@@ -13,6 +14,8 @@ interface MatrixHeaderProps {
 
 export const MatrixHeader: React.FC<MatrixHeaderProps> = ({
   node,
+  depth,
+  totalRows,
   onToggle,
   onSelect,
   expandedNodes,
@@ -47,11 +50,14 @@ export const MatrixHeader: React.FC<MatrixHeaderProps> = ({
   };
 
   const colSpan = getVisibleLeafCount(node);
+  // Span remaining rows when this node is not expanded (i.e. has no visible children row below it)
+  const rowSpan = isExpanded && hasChildren ? 1 : totalRows - depth;
 
   return (
     <th
       colSpan={colSpan}
-      className="border-r border-b border-border-default bg-surface-base text-center p-2 align-top transition-colors hover:bg-surface-raised group relative"
+      rowSpan={rowSpan > 1 ? rowSpan : undefined}
+      className="border-r border-b border-border-default bg-surface-base text-center p-2 align-middle transition-colors hover:bg-surface-raised group relative"
       style={{
         minWidth: "100px",
         height: "40px",

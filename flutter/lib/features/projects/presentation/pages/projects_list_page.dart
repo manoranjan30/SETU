@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/navigation/deep_link_service.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
-import 'package:setu_mobile/features/projects/presentation/pages/module_selection_page.dart';
+import 'package:setu_mobile/features/projects/presentation/pages/project_dashboard_page.dart';
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:setu_mobile/features/profile/presentation/pages/user_profile_page.dart';
@@ -14,6 +15,10 @@ import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart'
 import 'package:setu_mobile/injection_container.dart';
 import 'package:shimmer/shimmer.dart';
 
+/// Landing page shown after successful login.
+/// Lists all projects assigned to the current user, each as a tappable card
+/// with a progress bar, status chip, and EPS zone count.
+/// Also listens for deep links that arrive from FCM notification taps.
 class ProjectsListPage extends StatefulWidget {
   const ProjectsListPage({super.key});
 
@@ -25,8 +30,55 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
   @override
   void initState() {
     super.initState();
-    // Load projects on page init
+    // Trigger initial project fetch from the API / cache
     context.read<ProjectBloc>().add(LoadProjects());
+    // Register deep-link listener so FCM notification taps navigate directly
+    // to the correct project + module without any extra user interaction
+    DeepLinkService.instance.notifier.addListener(_onDeepLink);
+  }
+
+  @override
+  void dispose() {
+    // Always remove the listener to prevent memory leaks
+    DeepLinkService.instance.notifier.removeListener(_onDeepLink);
+    super.dispose();
+  }
+
+  /// Called when [DeepLinkService] fires its notifier (e.g. user taps an FCM
+  /// notification while the app is open or resumes from background).
+  /// Consumes the pending link and navigates to [ProjectDashboardPage] with
+  /// the target module pre-selected via [pendingModule].
+  void _onDeepLink() {
+    final link = DeepLinkService.instance.consume();
+    if (link == null || link.projectId == null) return;
+    final state = context.read<ProjectBloc>().state;
+    if (state is ProjectsLoaded) {
+      try {
+        // Find the matching project in the already-loaded list
+        final project =
+            state.projects.firstWhere((p) => p.id == link.projectId);
+        // Schedule navigation after the current frame to avoid pushing a route
+        // during the build/listener phase
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProjectDashboardPage(
+                project: project,
+                // pendingModule causes the dashboard to auto-navigate on load
+                pendingModule: link.targetModule,
+              ),
+            ),
+          );
+        });
+      } catch (_) {
+        // Project not found in list — silently ignore
+      }
+    } else {
+      // Projects not loaded yet — reload and check again after load
+      context.read<ProjectBloc>().add(LoadProjects());
+    }
   }
 
   @override
@@ -35,6 +87,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       appBar: AppBar(
         title: Row(
           children: [
+            // Compact brand badge — "S" inside a primary-coloured rounded box
             Container(
               width: 30,
               height: 30,
@@ -58,7 +111,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ],
         ),
         actions: [
-          // User profile
+          // Navigate to the user's own profile page
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),
             tooltip: 'My Profile',
@@ -67,6 +120,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => BlocProvider<ProfileBloc>(
+                    // Provide a fresh ProfileBloc scoped to this route
                     create: (_) => sl<ProfileBloc>(),
                     child: const UserProfilePage(),
                   ),
@@ -74,7 +128,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               );
             },
           ),
-          // Offline data / download settings
+          // Navigate to offline data / download settings
           IconButton(
             icon: const Icon(Icons.download_for_offline_outlined),
             tooltip: 'Offline Data',
@@ -85,7 +139,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               );
             },
           ),
-          // Sync status indicator
+          // Live sync status dot — tapping opens the sync log for details
           LiveSyncStatusIndicator(
             onTap: () {
               Navigator.push(
@@ -95,6 +149,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             },
           ),
           const SizedBox(width: 8),
+          // Manual refresh — re-fires LoadProjects event
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
@@ -102,6 +157,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             },
             tooltip: 'Refresh',
           ),
+          // Logout — shows a confirmation dialog before dispatching Logout event
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             onPressed: () {
@@ -113,15 +169,20 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       ),
       body: Column(
         children: [
-          // Role-based pending approvals banner — only visible to approvers
+          // ── Pending approvals banner (role-gated) ──────────────────────────
+          // Only shown to users who have at least one approval permission.
+          // Uses AuthBloc to read permissions without causing a rebuild on
+          // every project-load state change.
           BlocBuilder<AuthBloc, AuthState>(
             builder: (context, authState) {
+              // Only render when the user is authenticated
               if (authState is! AuthAuthenticated) return const SizedBox.shrink();
               final user = authState.user;
               final isQualityApprover =
                   user.hasPermission('QUALITY.INSPECTION.APPROVE');
               final isProgressApprover =
                   user.hasPermission('EXECUTION.ENTRY.APPROVE');
+              // Hide banner entirely if the user has neither approval permission
               if (!isQualityApprover && !isProgressApprover) {
                 return const SizedBox.shrink();
               }
@@ -131,8 +192,10 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               );
             },
           ),
+          // ── Project list (BlocConsumer handles load / error / loaded) ──────
           Expanded(
             child: BlocConsumer<ProjectBloc, ProjectState>(
+              // Show a floating error snack when the project load fails
               listener: (context, state) {
                 if (state is ProjectError) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -145,6 +208,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                 }
               },
               builder: (context, state) {
+                // Show shimmer skeleton while the first load is in-flight
                 if (state is ProjectLoading) {
                   return _buildLoadingShimmer();
                 }
@@ -153,9 +217,11 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                   if (state.projects.isEmpty) {
                     return _buildEmptyState();
                   }
+                  // Render the scrollable project card list
                   return _buildProjectsList(state.projects);
                 }
 
+                // Fallback: empty state (covers initial / error states)
                 return _buildEmptyState();
               },
             ),
@@ -165,6 +231,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Shown when the user has no assigned projects or the load returned empty.
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -207,6 +274,8 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Wraps the project card list in a [RefreshIndicator] so pull-to-refresh
+  /// re-fires [LoadProjects].
   Widget _buildProjectsList(List<Project> projects) {
     return RefreshIndicator(
       onRefresh: () async {
@@ -222,8 +291,11 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Single project card showing name, code, status chip, progress bar,
+  /// and EPS zone count. Tapping navigates to [ProjectDashboardPage].
   Widget _buildProjectCard(Project project) {
     final progress = project.progress ?? 0;
+    // Convert 0-1 decimal to a display percentage string
     final progressPercent = (progress * 100).toStringAsFixed(0);
 
     return Container(
@@ -242,6 +314,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
         child: InkWell(
+        // Tap navigates to the project dashboard (module selection)
         onTap: () => _navigateToModuleSelection(project),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -250,7 +323,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             children: [
               Row(
                 children: [
-                  // Project icon
+                  // Project icon with gradient background
                   Container(
                     width: 52,
                     height: 52,
@@ -272,7 +345,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  // Project info
+                  // Project name + code
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,14 +372,14 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                       ],
                     ),
                   ),
-                  // Chevron
+                  // Navigation affordance
                   const Icon(
                     Icons.chevron_right_rounded,
                     color: AppColors.textSecondary,
                   ),
                 ],
               ),
-              // Progress and status row
+              // ── Status chip + progress percentage badge ─────────────────
               if (project.status != null || project.progress != null) ...[
                 const SizedBox(height: 14),
                 Row(
@@ -333,7 +406,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                   ],
                 ),
               ],
-              // Progress bar
+              // ── Overall progress bar ─────────────────────────────────────
               if (project.progress != null) ...[
                 const SizedBox(height: 12),
                 ClipRRect(
@@ -341,6 +414,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: AppColors.divider,
+                    // Green when 100% complete, primary blue otherwise
                     valueColor: AlwaysStoppedAnimation<Color>(
                       progress >= 1.0 ? AppColors.success : AppColors.primary,
                     ),
@@ -348,7 +422,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                   ),
                 ),
               ],
-              // EPS structure preview
+              // ── EPS zone count preview ───────────────────────────────────
               if (project.children.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -377,6 +451,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Maps a raw project status string to a colour-coded pill chip.
   Widget _buildStatusChip(String status) {
     Color chipColor;
     Color textColor;
@@ -403,6 +478,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       default:
         chipColor = AppColors.textSecondary;
         textColor = AppColors.textSecondary;
+        // Humanise unknown statuses by replacing underscores
         label = status.replaceAll('_', ' ');
     }
 
@@ -423,6 +499,8 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Shows a shimmer-animated skeleton list of 4 placeholder cards while
+  /// the real project data is loading.
   Widget _buildLoadingShimmer() {
     return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),
@@ -431,6 +509,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Single shimmer placeholder card matching the shape of [_buildProjectCard].
   Widget _buildShimmerCard() {
     return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginMD),
@@ -450,6 +529,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           children: [
             Row(
               children: [
+                // Icon placeholder
                 Container(
                   width: 52,
                   height: 52,
@@ -463,6 +543,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Title placeholder
                       Container(
                         height: 16,
                         width: double.infinity,
@@ -472,6 +553,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      // Subtitle placeholder
                       Container(
                         height: 12,
                         width: 100,
@@ -486,6 +568,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               ],
             ),
             const SizedBox(height: 14),
+            // Progress bar placeholder
             Container(
               height: 4,
               width: double.infinity,
@@ -500,15 +583,19 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  /// Pushes [ProjectDashboardPage] for [project].
+  /// This is the primary tap handler — no pendingModule means normal entry.
   void _navigateToModuleSelection(Project project) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ModuleSelectionPage(project: project),
+        builder: (_) => ProjectDashboardPage(project: project),
       ),
     );
   }
 
+  /// Confirmation dialog before dispatching the [Logout] event.
+  /// A two-step confirmation prevents accidental logouts in the field.
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -524,6 +611,8 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
+              // Dispatch Logout — AuthBloc will clear tokens and redirect to
+              // LoginPage via the global BlocListener in main.dart
               context.read<AuthBloc>().add(Logout());
             },
             style: ElevatedButton.styleFrom(
@@ -543,7 +632,10 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
 /// Shown at the top of the projects list for users who have approval permissions.
 /// Reminds approvers that pending items await action in their projects.
 class _PendingApprovalsBanner extends StatelessWidget {
+  /// Whether to show the Quality Inspections chip.
   final bool showQuality;
+
+  /// Whether to show the Progress Approvals chip.
   final bool showProgress;
 
   const _PendingApprovalsBanner({
@@ -558,6 +650,7 @@ class _PendingApprovalsBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: AppColors.warningSoft,
+        // Left accent border draws the eye to this important banner
         border: Border(
           left: BorderSide(color: AppColors.warning, width: 4),
           bottom: BorderSide(color: AppColors.divider),
@@ -582,9 +675,11 @@ class _PendingApprovalsBanner extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
+                // Quality chip — only shown when user has inspection approval perm
                 if (showQuality)
                   _buildChip(Icons.assignment_outlined, 'Quality',
                       AppColors.warning),
+                // Progress chip — only shown when user has progress approval perm
                 if (showProgress)
                   _buildChip(Icons.bar_chart_outlined, 'Progress',
                       AppColors.secondary),
@@ -596,6 +691,7 @@ class _PendingApprovalsBanner extends StatelessWidget {
     );
   }
 
+  /// Small rounded chip showing an icon + label in the given [color].
   Widget _buildChip(IconData icon, String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -621,4 +717,3 @@ class _PendingApprovalsBanner extends StatelessWidget {
     );
   }
 }
-

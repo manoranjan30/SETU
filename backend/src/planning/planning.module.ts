@@ -32,6 +32,12 @@ import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { User } from '../users/user.entity';
 import { Role } from '../roles/role.entity';
 import { ReleaseStrategyService } from './release-strategy.service';
+import { TowerProgressService } from './tower-progress.service';
+import { BuildingLineCoordinate } from './entities/building-line-coordinate.entity';
+import { BuildingLineCoordinateService } from './building-line-coordinate.service';
+import { QualityFloorStructure } from '../quality/entities/quality-floor-structure.entity';
+import { QualityUnit } from '../quality/entities/quality-unit.entity';
+import { QualityRoom } from '../quality/entities/quality-room.entity';
 
 @Module({
   imports: [
@@ -60,6 +66,10 @@ import { ReleaseStrategyService } from './release-strategy.service';
       TempUser,
       User,
       Role,
+      BuildingLineCoordinate,
+      QualityFloorStructure,
+      QualityUnit,
+      QualityRoom,
     ]),
     WbsModule,
     NotificationsModule,
@@ -71,7 +81,9 @@ import { ReleaseStrategyService } from './release-strategy.service';
     ImportExportService,
     SchedulingEngineService,
     ReleaseStrategyService,
+    TowerProgressService,
+    BuildingLineCoordinateService,
   ],
-  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService],
+  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService],
 })
 export class PlanningModule {}

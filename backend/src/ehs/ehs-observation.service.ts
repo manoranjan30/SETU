@@ -13,6 +13,7 @@ import {
 } from './entities/ehs-observation.entity';
 import { EhsProjectConfig } from './entities/ehs-project-config.entity';
 import { AuditService } from '../audit/audit.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 import {
   CreateEhsObservationDto,
   RectifyEhsObservationDto,
@@ -29,6 +30,7 @@ export class EhsObservationService {
     @InjectRepository(EhsProjectConfig)
     private readonly configRepo: Repository<EhsProjectConfig>,
     private readonly auditService: AuditService,
+    private readonly pushService: PushNotificationService,
   ) {}
 
   private sanitizeObservationCategories(categories?: unknown): string[] {
@@ -118,6 +120,29 @@ export class EhsObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
+    // Alert EHS supervisors for safety-critical observations (project-scoped)
+    if (
+      dto.severity === EhsObservationSeverity.CRITICAL ||
+      dto.severity === EhsObservationSeverity.MAJOR
+    ) {
+      this.pushService
+        .sendToProjectPermission(
+          dto.projectId,
+          'EHS.OBSERVATION.CLOSE',
+          `${dto.severity} EHS Observation Raised`,
+          `A ${dto.severity.toLowerCase()} EHS observation has been raised${dto.category ? ` — ${dto.category}` : ''}. Immediate attention required.`,
+          {
+            type: 'EHS_OBS_CRITICAL',
+            observationId: String(saved.id),
+            projectId: String(dto.projectId),
+            severity: dto.severity,
+          },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
+
     if (userId) {
       await this.auditService.log(
         parseInt(userId, 10),
@@ -150,6 +175,20 @@ export class EhsObservationService {
     obs.rectifiedAt = new Date();
 
     const saved = await this.observationRepo.save(obs);
+
+    // Notify the raiser that the observation has been rectified
+    if (obs.raisedById) {
+      this.pushService
+        .sendToUsers(
+          [parseInt(obs.raisedById, 10)],
+          'EHS Observation Rectified',
+          `Your EHS observation has been rectified. Please review and close.`,
+          { type: 'EHS_OBS_RECTIFIED', observationId: String(saved.id) },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
 
     if (userId) {
       await this.auditService.log(
@@ -192,6 +231,20 @@ export class EhsObservationService {
     obs.closedAt = new Date();
 
     const saved = await this.observationRepo.save(obs);
+
+    // Notify the raiser that the observation has been closed
+    if (obs.raisedById) {
+      this.pushService
+        .sendToUsers(
+          [parseInt(obs.raisedById, 10)],
+          'EHS Observation Closed',
+          `Your EHS observation has been closed.`,
+          { type: 'EHS_OBS_CLOSED', observationId: String(saved.id) },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
 
     if (userId) {
       await this.auditService.log(

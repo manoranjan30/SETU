@@ -1,19 +1,42 @@
 import 'package:flutter/foundation.dart';
 
-/// API endpoint constants for SETU backend
+/// Central registry of every REST endpoint path used by the SETU app.
+///
+/// All paths are relative to [baseUrl] unless otherwise noted.
+/// Parameterised routes are exposed as static methods that interpolate IDs
+/// directly into the path string — Dio appends these to [baseUrl] at call time.
+///
+/// Never instantiate this class; it is a pure static namespace.
 class ApiEndpoints {
+  // Private constructor prevents accidental instantiation.
   ApiEndpoints._();
 
+  // ---------------------------------------------------------------------------
+  // Environment / base-URL resolution
+  // ---------------------------------------------------------------------------
+
+  // Read at compile time via --dart-define=SETU_ENV=dev|staging|prod.
+  // Defaults to 'dev' so the app works out-of-the-box in a dev environment.
   static const String _environment =
       String.fromEnvironment('SETU_ENV', defaultValue: 'dev');
+
+  // Allows the full base URL to be overridden at build time, e.g. when
+  // pointing at a specific test server: --dart-define=SETU_BASE_URL=http://192.168.1.50:3000/api
   static const String _baseUrlOverride =
       String.fromEnvironment('SETU_BASE_URL', defaultValue: '');
 
-  /// Base URL resolved from compile-time environment variables.
-  /// Prefer:
-  /// `--dart-define=SETU_ENV=dev|staging|prod`
-  /// `--dart-define=SETU_BASE_URL=http://host:3000/api` (explicit override)
+  /// The effective base URL used by [SetuApiClient].
+  ///
+  /// Resolution order (highest priority first):
+  /// 1. `SETU_BASE_URL` dart-define (explicit override — wins always)
+  /// 2. Environment-specific constant (`SETU_ENV` dart-define)
+  /// 3. Falls back to [devUrl] for any unrecognised environment string.
+  ///
+  /// For physical devices in development use:
+  /// `--dart-define=SETU_BASE_URL=http://<your-machine-ip>:3000/api`
   static String get baseUrl {
+    // An explicit URL override always takes precedence — useful for CI or
+    // when pointing the app at a specific staging server without changing code.
     if (_baseUrlOverride.isNotEmpty) return _baseUrlOverride;
 
     switch (_environment) {
@@ -23,6 +46,7 @@ class ApiEndpoints {
         return stagingUrl;
       case 'dev':
       default:
+        // Unknown env strings also fall through to dev for safety.
         return devUrl;
     }
   }
@@ -36,16 +60,21 @@ class ApiEndpoints {
   // - iOS simulator / desktop / web -> localhost
   // - Physical devices should use SETU_BASE_URL with your machine IP/hostname.
   static String get devUrl {
+    // kIsWeb is a compile-time constant — the switch below is skipped on web.
     if (kIsWeb) return 'http://localhost:3000/api';
 
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
+        // Android emulator routes "10.0.2.2" to the host machine's loopback,
+        // which is where the NestJS server listens on port 3000.
         return 'http://10.0.2.2:3000/api';
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
       case TargetPlatform.windows:
       case TargetPlatform.linux:
       case TargetPlatform.fuchsia:
+        // All non-Android platforms that run simulators or as desktop apps
+        // can reach the local server via the standard loopback address.
         return 'http://localhost:3000/api';
     }
   }
@@ -62,84 +91,109 @@ class ApiEndpoints {
   static const String epsChildren = '/eps'; // /eps/:id/children
 
   // ==================== EXECUTION/PROGRESS ENDPOINTS ====================
+
   /// POST /execution/:projectId/measurements
+  /// Submits one or more quantity measurement entries for a project.
   static String measurements(int projectId) =>
       '/execution/$projectId/measurements';
 
   /// GET /execution/:projectId/logs
+  /// Fetches the history of submitted progress logs for a project.
   static String progressLogs(int projectId) => '/execution/$projectId/logs';
 
   /// PATCH /execution/logs/:logId
+  /// Updates the quantity of an existing progress log entry.
   static String updateLog(int logId) => '/execution/logs/$logId';
 
   /// DELETE /execution/logs/:logId
+  /// Permanently removes a progress log entry (typically requires approval role).
   static String deleteLog(int logId) => '/execution/logs/$logId';
 
   /// GET /execution/breakdown/:activityId/:epsNodeId
+  /// Returns how total progress is split across vendors for a specific
+  /// activity at a specific EPS node (tower/floor).
   static String executionBreakdown(int activityId, int epsNodeId) =>
       '/execution/breakdown/$activityId/$epsNodeId';
 
   /// GET /execution/has-micro/:activityId
+  /// Quick check — returns {hasMicro: bool} without fetching the full schedule.
+  /// Used to decide whether to show the micro-schedule progress entry UI.
   static String hasMicroSchedule(int activityId) =>
       '/execution/has-micro/$activityId';
 
   /// POST /execution/progress/micro
+  /// Saves progress entries that belong to a micro-schedule (sub-activity level).
   static const String saveMicroProgress = '/execution/progress/micro';
 
   /// GET /execution/:projectId/approvals/pending
+  /// Returns logs awaiting approval from the current user's role.
   static String pendingApprovals(int projectId) =>
       '/execution/$projectId/approvals/pending';
 
   /// POST /execution/approve
+  /// Bulk-approve a list of progress log IDs.
   static const String approveMeasurements = '/execution/approve';
 
   /// POST /execution/reject
+  /// Bulk-reject a list of progress log IDs with a mandatory reason.
   static const String rejectMeasurements = '/execution/reject';
 
   // ==================== MICRO SCHEDULE ENDPOINTS ====================
+
   /// GET /micro-schedules/delay-reasons
+  /// Returns the master list of standard delay reason codes.
   static const String delayReasons = '/micro-schedules/delay-reasons';
 
   /// POST /micro-schedules
+  /// Creates a new micro-schedule (weekly look-ahead plan) for an activity.
   static const String createMicroSchedule = '/micro-schedules';
 
   /// GET /micro-schedules/:id
   static String microSchedule(int id) => '/micro-schedules/$id';
 
   /// GET /micro-schedules/project/:projectId
+  /// Lists all micro-schedules for a given project.
   static String microSchedulesByProject(int projectId) =>
       '/micro-schedules/project/$projectId';
 
   /// GET /micro-schedules/activity/:activityId
+  /// Lists micro-schedules filtered to a single planning activity.
   static String microSchedulesByActivity(int activityId) =>
       '/micro-schedules/activity/$activityId';
 
   /// POST /micro-schedules/activities
+  /// Creates a new micro-schedule activity (a sub-task under a micro-schedule).
   static const String createMicroActivity = '/micro-schedules/activities';
 
   /// GET /micro-schedules/activities/:id
   static String microActivity(int id) => '/micro-schedules/activities/$id';
 
   /// GET /micro-schedules/:id/activities
+  /// Returns all micro-schedule activities belonging to a specific schedule.
   static String microScheduleActivities(int microScheduleId) =>
       '/micro-schedules/$microScheduleId/activities';
 
   // ==================== DAILY LOG ENDPOINTS ====================
+
   /// POST /micro-schedules/logs
+  /// Records a daily progress log entry against a micro-schedule activity.
   static const String createDailyLog = '/micro-schedules/logs';
 
   /// GET /micro-schedules/logs/:id
   static String dailyLog(int id) => '/micro-schedules/logs/$id';
 
   /// GET /micro-schedules/activities/:id/logs
+  /// Returns all daily logs for a given micro-schedule activity.
   static String activityLogs(int activityId) =>
       '/micro-schedules/activities/$activityId/logs';
 
   /// GET /micro-schedules/activities/:id/logs/range
+  /// Returns daily logs filtered by a date range (query params: from, to).
   static String activityLogsByRange(int activityId) =>
       '/micro-schedules/activities/$activityId/logs/range';
 
   /// GET /micro-schedules/:id/logs/today
+  /// Convenience endpoint — returns only today's logs for a micro-schedule.
   static String todayLogs(int microScheduleId) =>
       '/micro-schedules/$microScheduleId/logs/today';
 
@@ -150,132 +204,194 @@ class ApiEndpoints {
   static String deleteDailyLog(int id) => '/micro-schedules/logs/$id';
 
   // ==================== PLANNING ENDPOINTS ====================
+
   /// GET /planning/:epsNodeId/execution-ready
-  /// Returns activities ready for on-site execution at the given EPS node.
-  /// The backend recursively includes all descendant EPS nodes, so passing
-  /// a floor ID returns that floor's activities.
+  ///
+  /// Returns activities that have been released for on-site execution at the
+  /// given EPS node.  The backend recursively includes all descendant EPS
+  /// nodes, so passing a floor ID returns that floor's activities AND any
+  /// activities from units or sub-zones beneath it.
   static String executionReady(int epsNodeId) =>
       '/planning/$epsNodeId/execution-ready';
 
   /// GET /planning/projects/:projectId/activities (NOT USED - endpoint does not exist)
-  /// Kept for reference only. Use executionReady() instead.
+  ///
+  /// Kept for reference only. Use [executionReady] instead.
+  /// Calling this will result in a 404 from the backend.
   static String projectActivities(int projectId) =>
       '/planning/projects/$projectId/activities';
 
   /// GET /planning/activities/:id
+  /// Returns the full detail of a single planning activity by its database ID.
   static String activity(int id) => '/planning/activities/$id';
 
   // ==================== BOQ ENDPOINTS ====================
+
   /// GET /boq/project/:projectId
+  /// Returns all Bill-of-Quantities entries for a project.
   static String projectBoq(int projectId) => '/boq/project/$projectId';
 
   /// GET /boq/:id/items
+  /// Returns the line items under a specific BOQ document.
   static String boqItems(int boqId) => '/boq/$boqId/items';
 
   // ==================== URL RESOLVER ====================
 
-  /// Converts a server-relative path (e.g. "/uploads/abc.jpg") to a full URL
-  /// using the current base URL origin.  Absolute URLs pass through unchanged.
+  /// Converts a server-relative path (e.g. `/uploads/abc.jpg`) to a fully
+  /// qualified URL using the current [baseUrl] origin.
+  ///
+  /// This is necessary because the backend stores only the path portion of
+  /// uploaded file URLs in the database (e.g. `/uploads/uuid.jpg`), but
+  /// widgets like `CachedNetworkImage` require absolute `http://...` URLs.
+  ///
+  /// Absolute URLs (those starting with `http`) are returned unchanged so
+  /// that production URLs pointing to CDN hosts are not corrupted.
   static String resolveUrl(String url) {
+    // Pass-through: empty string or already-absolute URL needs no change.
     if (url.isEmpty || url.startsWith('http')) return url;
+
+    // Extract only scheme + host + port from baseUrl, discarding the `/api`
+    // path prefix — uploaded files are served from the server root, not /api.
     final base = Uri.parse(baseUrl);
     final origin = '${base.scheme}://${base.host}:${base.port}';
+
+    // Ensure a single slash between origin and the relative path.
     return url.startsWith('/') ? '$origin$url' : '$origin/$url';
   }
 
   // ==================== FILE UPLOAD ENDPOINTS ====================
+
   /// POST /files/upload
+  /// Accepts multipart/form-data with a `file` field and optional metadata.
   static const String uploadFile = '/files/upload';
 
   /// GET /files/:id
+  /// Downloads a previously-uploaded file by its database ID.
   static String downloadFile(int id) => '/files/$id';
 
   // ==================== QUALITY ENDPOINTS ====================
 
   /// GET /eps/:projectId/tree
+  /// Returns the full nested EPS hierarchy for a project, used to populate
+  /// the location picker in the quality inspection form.
   static String epsTree(int projectId) => '/eps/$projectId/tree';
 
   /// GET /quality/activity-lists?projectId=X&epsNodeId=Y
+  /// Returns QC activity lists (checklists) scoped to a project and optionally
+  /// a specific EPS node (e.g., filter to a particular floor).
   static const String qualityActivityLists = '/quality/activity-lists';
 
   /// GET /quality/activity-lists/:listId/activities
+  /// Returns the individual checkable activities within a QC activity list.
   static String qualityListActivities(int listId) =>
       '/quality/activity-lists/$listId/activities';
 
   /// GET /quality/inspections  (query: projectId, epsNodeId?, listId?)
+  /// Returns the list of inspection requests (RFIs) with optional filters.
   static const String qualityInspections = '/quality/inspections';
 
   /// GET /quality/inspections/:id
+  /// Returns a single inspection with its full checklist stages and items.
   static String qualityInspection(int id) => '/quality/inspections/$id';
 
-  /// POST /quality/inspections  → Raise RFI
+  /// POST /quality/inspections — Raise RFI
+  /// Creates a new inspection request against a specific activity and location.
   static const String raiseRfi = '/quality/inspections';
 
-  /// PATCH /quality/inspections/:id/status  → Approve / Reject
+  /// PATCH /quality/inspections/:id/status — Approve / Reject
+  /// Used for the legacy single-step approval (non-workflow path).
   static String inspectionStatus(int id) => '/quality/inspections/$id/status';
 
-  /// PATCH /quality/inspections/stage/:stageId  → Save checklist stage
+  /// PATCH /quality/inspections/stage/:stageId — Save checklist stage
+  /// Saves the status and item responses for one checklist stage.
   static String inspectionStage(int stageId) =>
       '/quality/inspections/stage/$stageId';
 
-  /// GET /quality/inspections/:id/workflow  → Fetch workflow run + steps
+  /// GET /quality/inspections/:id/workflow — Fetch workflow run + steps
+  /// Returns the multi-step approval workflow state for an inspection.
   static String inspectionWorkflow(int id) =>
       '/quality/inspections/$id/workflow';
 
-  /// POST /quality/inspections/:id/workflow/advance  → Approve current step
+  /// POST /quality/inspections/:id/workflow/advance — Approve current step
+  /// Moves the workflow to the next step; optionally attaches a digital signature.
   static String advanceWorkflow(int id) =>
       '/quality/inspections/$id/workflow/advance';
 
-  /// POST /quality/inspections/:id/workflow/reject  → Reject via workflow
+  /// POST /quality/inspections/:id/workflow/reject — Reject via workflow
+  /// Rejects the inspection at the current workflow step; comments are mandatory.
   static String rejectWorkflow(int id) =>
       '/quality/inspections/$id/workflow/reject';
 
-  /// POST /quality/inspections/:id/workflow/delegate  → Delegate current step
+  /// POST /quality/inspections/:id/workflow/delegate — Delegate current step
+  /// Reassigns the current pending step to another user (e.g., deputy).
   static String delegateWorkflow(int id) =>
       '/quality/inspections/$id/workflow/delegate';
 
-  /// POST /quality/inspections/:id/stages/:stageId/approve  → Sign off a stage
+  /// POST /quality/inspections/:id/workflow/reverse — Reverse (undo) approval
+  /// Allows a previously-approved step to be undone (admin/senior QC action).
+  static String reverseWorkflow(int id) =>
+      '/quality/inspections/$id/workflow/reverse';
+
+  /// GET /quality/inspections/my-pending?projectId=X
+  /// Returns only inspections where the current user is the next approver.
+  static const String myPendingInspections = '/quality/inspections/my-pending';
+
+  /// POST /quality/inspections/:id/stages/:stageId/approve — Sign off a stage
   static String approveStage(int id, int stageId) =>
       '/quality/inspections/$id/stages/$stageId/approve';
 
-  /// POST /quality/inspections/:id/final-approve  → Grant final approval
+  /// POST /quality/inspections/:id/final-approve — Grant final approval
+  /// Marks the inspection as fully approved after all workflow steps pass.
   static String finalApprove(int id) =>
       '/quality/inspections/$id/final-approve';
 
   /// GET /quality/inspections/unit-progress?projectId=X&epsNodeId=Y
+  /// Returns per-unit inspection completion percentages for dashboard tiles.
   static const String inspectionUnitProgress =
       '/quality/inspections/unit-progress';
 
   /// GET /quality/activities/:id/observations
+  /// Returns the list of QC observations raised against a specific activity.
   static String activityObservations(int activityId) =>
       '/quality/activities/$activityId/observations';
 
-  /// POST /quality/activities/:id/observation  → Raise observation
+  /// POST /quality/activities/:id/observation — Raise observation
+  /// Creates a new non-conformance observation linked to an activity (QC Inspector).
   static String raiseObservation(int activityId) =>
       '/quality/activities/$activityId/observation';
 
   /// PATCH /quality/activities/:actId/observation/:obsId/resolve
+  /// Site engineer submits rectification evidence to close an observation.
   static String resolveObservation(int activityId, String obsId) =>
       '/quality/activities/$activityId/observation/$obsId/resolve';
 
   /// PATCH /quality/activities/:actId/observation/:obsId/close
+  /// QC Inspector closes the observation after verifying rectification.
   static String closeObservation(int activityId, String obsId) =>
       '/quality/activities/$activityId/observation/$obsId/close';
+
+  /// DELETE /quality/activities/:actId/observation/:obsId
+  static String deleteActivityObservation(int activityId, String obsId) =>
+      '/quality/activities/$activityId/observation/$obsId';
 
   // ==================== QUALITY SITE OBSERVATION ENDPOINTS ====================
 
   /// GET /quality/site-observations?projectId=X&status=Y&severity=Z
+  /// Lists free-form quality site observations with optional filter params.
   static const String qualitySiteObservations = '/quality/site-observations';
 
   /// GET /quality/site-observations/:id
+  /// Returns the detail of a single quality site observation.
   static String qualitySiteObservation(String id) =>
       '/quality/site-observations/$id';
 
   /// PATCH /quality/site-observations/:id/rectify
+  /// Site team submits rectification notes + photos for a quality observation.
   static String rectifyQualitySiteObs(String id) =>
       '/quality/site-observations/$id/rectify';
 
   /// PATCH /quality/site-observations/:id/close
+  /// QC Inspector closes a quality observation after rectification is verified.
   static String closeQualitySiteObs(String id) =>
       '/quality/site-observations/$id/close';
 
@@ -286,6 +402,7 @@ class ApiEndpoints {
   // ==================== EHS SITE OBSERVATION ENDPOINTS ====================
 
   /// GET /ehs/site-observations?projectId=X&status=Y&severity=Z
+  /// Lists EHS (Environment, Health & Safety) site observations with filters.
   static const String ehsSiteObservations = '/ehs/site-observations';
 
   /// GET /ehs/site-observations/:id
@@ -293,10 +410,12 @@ class ApiEndpoints {
       '/ehs/site-observations/$id';
 
   /// PATCH /ehs/site-observations/:id/rectify
+  /// Site team submits corrective action details for an EHS observation.
   static String rectifyEhsSiteObs(String id) =>
       '/ehs/site-observations/$id/rectify';
 
   /// PATCH /ehs/site-observations/:id/close
+  /// EHS officer closes an observation after corrective action is verified.
   static String closeEhsSiteObs(String id) =>
       '/ehs/site-observations/$id/close';
 
@@ -305,18 +424,55 @@ class ApiEndpoints {
       '/ehs/site-observations/$id';
 
   /// GET /quality/inspections/active-vendors?projectId=X
+  /// Returns vendors who have active (ongoing) inspections in the project.
+  /// Used to populate the vendor filter in the approvals dashboard.
   static const String activeVendors = '/quality/inspections/active-vendors';
 
   // ==================== USER PROFILE ENDPOINTS ====================
 
   /// GET/PUT /users/me
+  /// GET returns the authenticated user's full profile.
+  /// PUT accepts updated fields (displayName, email, phone, designation).
   static const String userMe = '/users/me';
 
   /// GET/PUT /users/me/signature
+  /// GET returns {signatureData, signatureUpdatedAt}.
+  /// PUT accepts {signatureData} as a base64-encoded PNG data URI.
   static const String userSignature = '/users/me/signature';
 
   // ==================== FCM / PUSH NOTIFICATION ENDPOINTS ====================
 
-  /// POST /users/fcm-token  → Register/update device FCM token
+  /// POST /users/fcm-token — Register/update device FCM token
+  /// Called after login to ensure the backend can send push notifications to
+  /// this specific device.
   static const String fcmToken = '/users/fcm-token';
+
+  // ==================== LABOR ENDPOINTS ====================
+
+  /// GET /labor/categories?projectId=X
+  /// Returns the master list of labour trade categories (e.g. Mason, Carpenter).
+  static const String laborCategories = '/labor/categories';
+
+  /// GET /labor/presence/:projectId?date=YYYY-MM-DD
+  /// Returns labor attendance/presence records for a project on a given date.
+  static String laborPresence(int projectId) => '/labor/presence/$projectId';
+
+  // ==================== EHS INCIDENT ENDPOINTS ====================
+
+  /// GET /ehs/:projectId/incidents
+  /// Returns all EHS incidents reported for the given project.
+  static String ehsIncidents(int projectId) => '/ehs/$projectId/incidents';
+
+  /// POST /ehs/:projectId/incidents
+  /// Creates a new EHS incident report (near-miss, first aid, LTI, etc.).
+  static String createEhsIncident(int projectId) =>
+      '/ehs/$projectId/incidents';
+
+  // ==================== TOWER LENS / 3D PROGRESS ENDPOINTS ====================
+
+  /// GET /planning/:projectId/tower-progress
+  /// Returns per-floor aggregated progress for all towers in a project.
+  /// Single optimized endpoint replacing N×3 parallel client-side calls.
+  static String towerProgress(int projectId) =>
+      '/planning/$projectId/tower-progress';
 }

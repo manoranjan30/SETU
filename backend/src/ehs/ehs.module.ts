@@ -21,9 +21,11 @@ import { EpsNode } from '../eps/eps.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 
 import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
+    NotificationsModule,
     TypeOrmModule.forFeature([
       EhsObservation,
       EhsIncident,

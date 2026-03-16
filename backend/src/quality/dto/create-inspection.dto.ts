@@ -39,6 +39,16 @@ export class CreateInspectionDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  processCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  documentType?: string;
+
+  @IsOptional()
+  @IsString()
   requestDate?: string;
 
   @IsOptional()

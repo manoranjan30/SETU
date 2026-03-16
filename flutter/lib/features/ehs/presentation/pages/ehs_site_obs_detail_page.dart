@@ -4,6 +4,7 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_site_obs_bloc.dart';
 import 'package:setu_mobile/shared/widgets/obs_status_badge.dart';
+import 'package:setu_mobile/shared/widgets/photo_gallery_strip.dart';
 import 'package:setu_mobile/shared/widgets/rectify_sheet.dart';
 import 'package:setu_mobile/shared/widgets/severity_badge.dart';
 
@@ -113,7 +114,7 @@ class EhsSiteObsDetailPage extends StatelessWidget {
               _Section(
                 icon: Icons.photo_library_outlined,
                 title: 'Photos (${obs.photoUrls.length})',
-                child: _PhotoStrip(urls: obs.photoUrls),
+                child: PhotoGalleryStrip(urls: obs.photoUrls),
               ),
               const SizedBox(height: 12),
             ],
@@ -139,7 +140,7 @@ class EhsSiteObsDetailPage extends StatelessWidget {
                     ],
                     if (obs.rectificationPhotoUrls.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      _PhotoStrip(urls: obs.rectificationPhotoUrls),
+                      PhotoGalleryStrip(urls: obs.rectificationPhotoUrls),
                     ],
                   ],
                 ),
@@ -395,102 +396,4 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _PhotoStrip extends StatelessWidget {
-  final List<String> urls;
-  const _PhotoStrip({required this.urls});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 72,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: urls.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (_, i) => GestureDetector(
-          onTap: () => _openFullscreen(context, i),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              urls[i],
-              width: 72,
-              height: 72,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                width: 72,
-                height: 72,
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.broken_image_outlined,
-                    color: Colors.grey),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openFullscreen(BuildContext context, int initial) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _FullscreenGallery(urls: urls, initial: initial),
-      ),
-    );
-  }
-}
-
-class _FullscreenGallery extends StatefulWidget {
-  final List<String> urls;
-  final int initial;
-  const _FullscreenGallery({required this.urls, required this.initial});
-
-  @override
-  State<_FullscreenGallery> createState() => _FullscreenGalleryState();
-}
-
-class _FullscreenGalleryState extends State<_FullscreenGallery> {
-  late final PageController _pc;
-  late int _current;
-
-  @override
-  void initState() {
-    super.initState();
-    _current = widget.initial;
-    _pc = PageController(initialPage: widget.initial);
-  }
-
-  @override
-  void dispose() {
-    _pc.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text('${_current + 1} / ${widget.urls.length}'),
-      ),
-      body: PageView.builder(
-        controller: _pc,
-        itemCount: widget.urls.length,
-        onPageChanged: (i) => setState(() => _current = i),
-        itemBuilder: (_, i) => InteractiveViewer(
-          child: Center(
-            child: Image.network(
-              widget.urls[i],
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.broken_image_outlined,
-                      color: Colors.white54, size: 64),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// _PhotoStrip and _FullscreenGallery replaced by shared PhotoGalleryStrip widget.

@@ -56,6 +56,15 @@ export class QualityInspectionStage {
   @Column({ nullable: true })
   completedBy: string;
 
+  @Column({ default: false })
+  isLocked: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  lockedByUserId: number | null;
+
   @OneToMany(() => QualityExecutionItem, (item) => item.stage, {
     cascade: true,
   })

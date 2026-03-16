@@ -13,6 +13,7 @@ import {
 } from './entities/site-observation.entity';
 import { QualityRatingConfig } from './entities/quality-rating-config.entity';
 import { AuditService } from '../audit/audit.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 import {
   CreateSiteObservationDto,
   RectifySiteObservationDto,
@@ -29,6 +30,7 @@ export class SiteObservationService {
     @InjectRepository(QualityRatingConfig)
     private readonly configRepo: Repository<QualityRatingConfig>,
     private readonly auditService: AuditService,
+    private readonly pushService: PushNotificationService,
   ) {}
 
   private sanitizeObservationCategories(categories?: unknown): string[] {
@@ -117,6 +119,29 @@ export class SiteObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
+    // Alert QC supervisors for high-severity observations (project-scoped)
+    if (
+      dto.severity === SiteObservationSeverity.CRITICAL ||
+      dto.severity === SiteObservationSeverity.MAJOR
+    ) {
+      this.pushService
+        .sendToProjectPermission(
+          dto.projectId,
+          'QUALITY.OBSERVATION.RESOLVE',
+          `${dto.severity} Quality Observation Raised`,
+          `A ${dto.severity.toLowerCase()} quality observation has been raised${dto.category ? ` — ${dto.category}` : ''}.`,
+          {
+            type: 'QUALITY_OBS_RAISED',
+            observationId: String(saved.id),
+            projectId: String(dto.projectId),
+            severity: dto.severity,
+          },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
+
     if (userId) {
       await this.auditService.log(
         parseInt(userId, 10),
@@ -149,6 +174,20 @@ export class SiteObservationService {
     obs.rectifiedAt = new Date();
 
     const saved = await this.observationRepo.save(obs);
+
+    // Notify the raiser that their observation has been rectified
+    if (obs.raisedById) {
+      this.pushService
+        .sendToUsers(
+          [parseInt(obs.raisedById, 10)],
+          'Quality Observation Rectified',
+          `Observation has been rectified. Please review and close.`,
+          { type: 'OBS_RECTIFIED', observationId: String(saved.id) },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
 
     if (userId) {
       await this.auditService.log(
@@ -191,6 +230,20 @@ export class SiteObservationService {
     obs.closedAt = new Date();
 
     const saved = await this.observationRepo.save(obs);
+
+    // Notify the raiser that their observation has been closed
+    if (obs.raisedById) {
+      this.pushService
+        .sendToUsers(
+          [parseInt(obs.raisedById, 10)],
+          'Quality Observation Closed',
+          `Your quality observation has been closed.`,
+          { type: 'OBS_CLOSED', observationId: String(saved.id) },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
 
     if (userId) {
       await this.auditService.log(

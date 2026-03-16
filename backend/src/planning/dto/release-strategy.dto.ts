@@ -23,6 +23,7 @@ export class ReleaseStrategyStepDto {
   stepName: string;
   approverMode: ReleaseStrategyApproverMode;
   userId?: number | null;
+  userIds?: number[] | null;
   roleId?: number | null;
   minApprovalsRequired?: number;
   canDelegate?: boolean;

@@ -22,10 +22,19 @@ export class SpaFallbackFilter implements ExceptionFilter {
     const request = ctx.getRequest();
 
     if (request.url.startsWith('/api') || request.url.startsWith('/uploads')) {
+      const exceptionResponse = exception.getResponse();
+      const exceptionMessage =
+        typeof exceptionResponse === 'string'
+          ? exceptionResponse
+          : (exceptionResponse as any)?.message;
+      const normalizedMessage = Array.isArray(exceptionMessage)
+        ? exceptionMessage.join(', ')
+        : exceptionMessage;
       // API or Static Asset 404 -> Return JSON
       response.status(404).json({
         statusCode: 404,
-        message: `Endpoint or File not found: ${request.url}`,
+        message:
+          normalizedMessage || `Endpoint or File not found: ${request.url}`,
       });
     } else {
       // Frontend 404 -> Serve index.html (SPA)
@@ -48,6 +57,22 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
   app.enableCors();
+
+  app.use((request: any, _response: any, next: () => void) => {
+    if (typeof request.url === 'string') {
+      request.url = request.url
+        .replace(/\/%20approve(?=\/?$)/i, '/approve')
+        .replace(/\/\s+approve(?=\/?$)/i, '/approve');
+    }
+
+    if (
+      typeof request.url === 'string' &&
+      request.url.startsWith('/api/quality/inspections')
+    ) {
+      console.log(`[QualityRoute] ${request.method} ${request.url}`);
+    }
+    next();
+  });
 
   // Increase body limits for large payloads (e.g. for BOQ/WorkOrder imports)
   app.use(json({ limit: '50mb' }));

@@ -30,6 +30,8 @@ import { Permissions } from '../auth/permissions.decorator';
 import { Auditable } from '../audit/auditable.decorator';
 import { ReleaseStrategyService } from './release-strategy.service';
 import { ApprovalContextDto, ReleaseStrategyDto } from './dto/release-strategy.dto';
+import { TowerProgressService } from './tower-progress.service';
+import { BuildingLineCoordinateService } from './building-line-coordinate.service';
 
 @Controller('planning')
 @UseGuards(
@@ -44,7 +46,21 @@ export class PlanningController {
     private readonly versionService: ScheduleVersionService,
     private readonly importService: ImportExportService,
     private readonly releaseStrategyService: ReleaseStrategyService,
+    private readonly towerProgressService: TowerProgressService,
+    private readonly buildingLineCoordinateService: BuildingLineCoordinateService,
   ) {}
+
+  // ── Tower Lens — 3D progress visualization ────────────────────────────────
+
+  /// Returns per-floor aggregated progress data for all towers in a project.
+  /// Single optimized endpoint used by the mobile Tower Lens feature.
+  @Get(':projectId/tower-progress')
+  @Permissions('PLANNING.MATRIX.READ')
+  async getTowerProgress(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.towerProgressService.getTowerProgress(projectId);
+  }
 
   @Get(':projectId/release-strategies')
   @Permissions('RELEASE_STRATEGY.READ')
@@ -153,6 +169,35 @@ export class PlanningController {
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
     return this.releaseStrategyService.getConflicts(projectId);
+  }
+
+  @Get(':projectId/building-line-coordinates')
+  @Permissions('PLANNING.MATRIX.READ')
+  getBuildingLineCoordinates(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.buildingLineCoordinateService.getStructure(projectId);
+  }
+
+  @Put(':projectId/building-line-coordinates/:epsNodeId')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  updateBuildingLineCoordinate(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('epsNodeId', ParseIntPipe) epsNodeId: number,
+    @Body()
+    body: {
+      coordinatesText?: string | null;
+      heightMeters?: number | null;
+      structureSnapshot?: any;
+    },
+    @Request() req,
+  ) {
+    return this.buildingLineCoordinateService.upsertCoordinate(
+      projectId,
+      epsNodeId,
+      body,
+      req.user?.id,
+    );
   }
 
   @Post('release-engine/resolve-strategy')
@@ -303,7 +348,7 @@ export class PlanningController {
     );
   }
 
-  @Post('undistribute')
+  @Post('undistribute-schedule')
   @Permissions('PLANNING.MATRIX.UPDATE')
   @Auditable('SCHEDULE', 'UNDISTRIBUTE_ACTIVITIES')
   undistributeSchedule(

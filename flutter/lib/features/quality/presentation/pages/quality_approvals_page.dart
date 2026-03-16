@@ -310,10 +310,13 @@ class _InspectionCard extends StatelessWidget {
     final progress = inspection.totalStages == 0
         ? 0.0
         : inspection.completedStages / math.max(inspection.totalStages, 1);
-    final workflow = inspection.workflowCurrentLevel != null &&
-            inspection.workflowTotalLevels != null
-        ? 'L${inspection.workflowCurrentLevel}/${inspection.workflowTotalLevels}'
-        : null;
+    // Prefer the stage-driven pending label; fall back to old workflow level display
+    final pendingLabel = inspection.pendingApprovalDisplay ??
+        inspection.pendingApprovalLabel ??
+        (inspection.workflowCurrentLevel != null &&
+                inspection.workflowTotalLevels != null
+            ? 'L${inspection.workflowCurrentLevel}/${inspection.workflowTotalLevels}'
+            : null);
     final age = _ageLabel(inspection.requestDateTime);
     final overdue = _isOverdue(inspection);
 
@@ -370,8 +373,11 @@ class _InspectionCard extends StatelessWidget {
                 _MiniChip(
                     text: inspection.requestDate,
                     icon: Icons.calendar_today_outlined),
-              if (workflow != null)
-                _MiniChip(text: workflow, icon: Icons.rule_folder_outlined),
+              if (pendingLabel != null)
+                _MiniChip(
+                    text: pendingLabel,
+                    icon: Icons.pending_actions_outlined,
+                    color: Colors.blue.shade700),
               if (age != null)
                 _MiniChip(
                   text: overdue ? 'Overdue $age' : 'Age $age',

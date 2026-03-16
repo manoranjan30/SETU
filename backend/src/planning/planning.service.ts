@@ -505,21 +505,24 @@ export class PlanningService {
     });
     const savedRecord = await this.progressRepo.save(record);
 
-    // 2. Notify progress approvers (fire-and-forget)
-    this.pushService
-      .sendToPermission(
-        'EXECUTION.ENTRY.APPROVE',
-        'Progress Entry Submitted',
-        `New progress recorded — BOQ item #${savedRecord.boqItemId}`,
-        {
-          type: 'PROGRESS_SUBMITTED',
-          projectId: String(savedRecord.projectId ?? ''),
-          recordId: String(savedRecord.id),
-        },
-      )
-      .catch(() => {
-        /* non-fatal */
-      });
+    // 2. Notify project-scoped progress approvers (fire-and-forget)
+    if (savedRecord.projectId) {
+      this.pushService
+        .sendToProjectPermission(
+          savedRecord.projectId,
+          'EXECUTION.ENTRY.APPROVE',
+          'Progress Entry Submitted',
+          `New progress recorded — BOQ item #${savedRecord.boqItemId}`,
+          {
+            type: 'PROGRESS_SUBMITTED',
+            projectId: String(savedRecord.projectId),
+            recordId: String(savedRecord.id),
+          },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
 
     // 3. Trigger Schedule Recalculation for affected activities
     await this.recalculateScheduleFromBoq(savedRecord.boqItemId);
@@ -894,14 +897,19 @@ export class PlanningService {
           }
 
           // 3. Replicate WBS Path
-          // Path relative to Source Project Root
-          // We need to walk up from sourceAct.wbsNode until we hit the root (parentId null) OR until we hit the project ID boundary.
+          // Skip activities without a WBS node — cannot replicate path
+          if (!sourceAct.wbsNode) {
+            skippedCount++;
+            continue;
+          }
+
+          // Walk up from sourceAct.wbsNode until we hit the root (parentId null)
           const pathStack: WbsNode[] = [];
-          let current = sourceAct.wbsNode;
+          let current: WbsNode | null = sourceAct.wbsNode;
           while (current) {
             pathStack.unshift(current);
             if (!current.parent) break; // Reached root
-            current = current.parent;
+            current = current.parent ?? null;
           }
 
           // Now we have [Root, Level1, Level2, ParentOfActivity]
@@ -1051,7 +1059,21 @@ export class PlanningService {
       return { created: createdCount, skipped: skippedCount };
     } catch (error) {
       console.error('Distribution Error:', error);
-      throw error;
+      // Surface DB constraint violations as a readable 400 instead of raw 500
+      const msg: string = error?.message || '';
+      if (
+        msg.includes('unique constraint') ||
+        msg.includes('duplicate key') ||
+        msg.includes('UniqueConstraintViolationException')
+      ) {
+        throw new BadRequestException(
+          `Duplicate activity code detected during distribution. ` +
+            `Ensure source activities have unique codes before distributing. Detail: ${msg}`,
+        );
+      }
+      throw new BadRequestException(
+        `Distribution failed: ${msg || 'Unknown error'}`,
+      );
     }
   }
 

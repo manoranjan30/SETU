@@ -293,12 +293,14 @@ const ScheduleDistributionMatrix: React.FC = () => {
       if (!currentStatus) {
         // Link
         await api.post("/planning/distribute-schedule", {
+          projectId: Number(projectId),
           activityIds: activityIds,
           targetEpsIds: targetEpsIds,
         });
       } else {
         // Unlink
         await api.post("/planning/undistribute-schedule", {
+          projectId: Number(projectId),
           activityIds: activityIds,
           targetEpsIds: targetEpsIds,
         });
@@ -306,9 +308,11 @@ const ScheduleDistributionMatrix: React.FC = () => {
 
       // Refresh ONLY Matrix Data (Silent Refresh)
       await fetchMatrix();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Action failed");
+      const msg =
+        err?.response?.data?.message || err?.message || "Action failed";
+      alert(`Distribution failed:\n${msg}`);
     } finally {
       setProcessing((prev) => {
         const next = { ...prev };
@@ -531,6 +535,7 @@ const ScheduleDistributionMatrix: React.FC = () => {
                       key={node.id}
                       node={node}
                       depth={rowIndex}
+                      totalRows={headerRows.length}
                       onToggle={handleHeaderToggle}
                       onSelect={handleColumnSelect}
                       expandedNodes={expandedHeaders}

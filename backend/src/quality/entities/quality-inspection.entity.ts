@@ -111,8 +111,23 @@ export class QualityInspection {
   })
   contractorName: string | null;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  processCode: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  documentType: string | null;
+
   @Column({ type: 'text', nullable: true })
   comments: string;
+
+  @Column({ default: false })
+  isLocked: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  lockedByUserId: number | null;
 
   @OneToMany(() => QualityInspectionStage, (stage) => stage.inspection, {
     cascade: true,

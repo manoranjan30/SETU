@@ -23,6 +23,7 @@ import QualityDocuments from "./subviews/QualityDocuments";
 import QualityStructureManager from "./subviews/QualityStructureManager";
 import QualityRatingConfigTab from "./subviews/QualityRatingConfigTab";
 import QualityRatingDisplayTab from "./subviews/QualityRatingDisplayTab";
+import QualityApprovalDashboard from "./subviews/QualityApprovalDashboard";
 import InspectionRequestPage from "./InspectionRequestPage";
 import QualityApprovalsPage from "./QualityApprovalsPage";
 import ActivityListsPage from "./ActivityListsPage";
@@ -50,6 +51,7 @@ const QualityProjectDashboard = () => {
 
   const tabs = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "approval-board", label: "Approval Board", icon: ShieldCheck },
     { id: "requests", label: "Quality Requests", icon: FileText },
     { id: "approvals", label: "QA/QC Approvals", icon: ShieldCheck },
     { id: "activities", label: "Activity Lists", icon: ClipboardCheck },
@@ -70,6 +72,8 @@ const QualityProjectDashboard = () => {
     switch (activeTab) {
       case "overview":
         return <QualityOverview projectId={numericProjectId} />;
+      case "approval-board":
+        return <QualityApprovalDashboard projectId={numericProjectId} />;
       case "requests":
         return <InspectionRequestPage />;
       case "approvals":

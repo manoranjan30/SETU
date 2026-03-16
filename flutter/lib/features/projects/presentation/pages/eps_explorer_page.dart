@@ -11,10 +11,13 @@ import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart'
 import 'package:setu_mobile/injection_container.dart';
 import 'package:shimmer/shimmer.dart';
 
-/// EPS Explorer Page - Hierarchical navigation through project structure
-/// 
-/// This page implements the "Site Level" navigation flow as per the requirements:
-/// Project -> Zone -> Floor -> Activities
+/// EPS Explorer Page - Hierarchical navigation through project structure.
+///
+/// Implements the "Site Level" navigation flow:
+/// Project → Zone/Block → Tower → Floor → Activities
+///
+/// The breadcrumb at the top always reflects the current navigation depth.
+/// Back button pops one level up; long-pressing it returns to the projects list.
 class EpsExplorerPage extends StatefulWidget {
   final Project project;
 
@@ -31,19 +34,22 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
   @override
   void initState() {
     super.initState();
-    // Load project hierarchy on page init
+    // Kick off the initial hierarchy load when the page mounts
     context.read<ProjectBloc>().add(LoadProjectHierarchy(widget.project.id));
   }
 
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
+      // Intercept the hardware back button to navigate up within the EPS tree
+      // instead of immediately leaving the page
       onWillPop: _handleBackPress,
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: _handleBackTap,
+            // Long-press shortcuts the user all the way back to the projects list
             onLongPress: () {
               Navigator.of(context).popUntil((route) => route.isFirst);
             },
@@ -53,6 +59,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Project Structure'),
+              // Show the project name as a subtitle for context
               Text(
                 widget.project.name,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -62,6 +69,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
             ],
           ),
           actions: [
+            // Live sync status dot — tapping opens the sync log
             LiveSyncStatusIndicator(
               onTap: () {
                 Navigator.push(
@@ -71,6 +79,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
               },
             ),
             const SizedBox(width: 8),
+            // Manual refresh for the currently-viewed node
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () {
@@ -81,6 +90,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           ],
         ),
         body: BlocConsumer<ProjectBloc, ProjectState>(
+          // Show a floating error snack on any ProjectError state
           listener: (context, state) {
             if (state is ProjectError) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -93,18 +103,22 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
             }
           },
           builder: (context, state) {
+            // Full-screen shimmer while the initial load is in-flight
             if (state is ProjectLoading) {
               return _buildLoadingShimmer();
             }
 
+            // Main content once the EPS tree has been loaded
             if (state is EpsExplorerState) {
               return _buildExplorerContent(state);
             }
 
+            // Error state — show the full-page error widget
             if (state is ProjectError) {
               return _buildErrorState(state.message);
             }
 
+            // Fallback to shimmer for any unhandled state
             return _buildLoadingShimmer();
           },
         ),
@@ -112,10 +126,12 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Builds the main explorer body: breadcrumb strip + optional banners +
+  /// the scrollable list of child nodes and activities.
   Widget _buildExplorerContent(EpsExplorerState state) {
     return Column(
       children: [
-        // Breadcrumb navigation - sticky at top
+        // Sticky breadcrumb — tapping any crumb navigates to that level
         BreadcrumbWidget(
           path: state.currentPath,
           onNavigateToIndex: (index) {
@@ -123,15 +139,16 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           },
         ),
 
-        // Offline indicator
+        // Offline indicator — shown when serving from local cache
         if (state.isOffline)
           _buildOfflineBanner(),
 
-        // Loading indicator for children
+        // Thin progress bar at the top while child nodes are loading in the
+        // background (e.g. after tapping a folder)
         if (state.isLoadingChildren)
           const LinearProgressIndicator(minHeight: 2),
 
-        // Content
+        // Scrollable list of folders + activities for the current node
         Expanded(
           child: _isEffectivelyEmpty(state)
               ? _buildEmptyState()
@@ -141,6 +158,8 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Amber warning banner shown when the EPS tree is loaded from local cache
+  /// because the device is offline.
   Widget _buildOfflineBanner() {
     return Container(
       width: double.infinity,
@@ -165,11 +184,15 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Returns true when the current node has no child folders AND no activities
+  /// directly attached to it (activities on deeper children are excluded).
   bool _isEffectivelyEmpty(EpsExplorerState state) {
     if (state.childNodes.isNotEmpty) return false;
     return state.activities.every((a) => a.epsNodeId != state.currentNode.id);
   }
 
+  /// Renders the combined list of EPS folder items and leaf activities for
+  /// the currently-viewed node.
   Widget _buildItemsList(EpsExplorerState state) {
     // Only show activities directly assigned to the current node.
     // executionReady returns ALL descendant activities — activities for child
@@ -182,7 +205,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     return ListView(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),
       children: [
-        // Folder items (EPS nodes) section
+        // ── Folder items section ───────────────────────────────────────────
         if (state.childNodes.isNotEmpty) ...[
           _buildSectionHeader(
             _getSectionLabel(state.childNodes),
@@ -193,7 +216,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           ...state.childNodes.map((node) => _buildFolderItem(node, state)),
         ],
 
-        // Activity items section — only those directly on this node
+        // ── Leaf activity items — only those directly on this node ─────────
         if (directActivities.isNotEmpty) ...[
           const SizedBox(height: 16),
           _buildSectionHeader(
@@ -208,6 +231,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Small header row with an icon, section name, and an item count badge.
   Widget _buildSectionHeader(String title, int count, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 4),
@@ -223,6 +247,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                 ),
           ),
           const SizedBox(width: 8),
+          // Count badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
@@ -243,11 +268,12 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Card for an EPS folder node (Zone / Block / Tower / Floor etc.).
+  /// Tapping dispatches [NavigateToNode] to drill into that level.
   Widget _buildFolderItem(EpsNode node, EpsExplorerState state) {
-    // Get child count
+    // Child folder count (sub-nodes)
     final childCount = node.children.length;
-    
-    // Get activity count for this node
+    // Activities directly assigned to this folder node
     final activityCount = state.getActivitiesForNode(node.id).length;
 
     return Card(
@@ -258,6 +284,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
         side: const BorderSide(color: AppColors.divider, width: 1),
       ),
       child: InkWell(
+        // Navigate into this node when tapped
         onTap: () {
           context.read<ProjectBloc>().add(NavigateToNode(node));
         },
@@ -266,7 +293,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Node icon with type-based color
+              // Node type icon with a tinted background
               Container(
                 width: 48,
                 height: 48,
@@ -281,7 +308,6 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,6 +320,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
+                    // Subtitle shows child count + activity count in human form
                     Text(
                       _buildFolderSubtitle(childCount, activityCount, node.type),
                       style: const TextStyle(
@@ -304,7 +331,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                   ],
                 ),
               ),
-              // Chevron
+              // Navigation affordance
               const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.textSecondary,
@@ -317,6 +344,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Builds the descriptive subtitle for a folder card, e.g. "3 floors · 5 activities".
   String _buildFolderSubtitle(int childCount, int activityCount, String nodeType) {
     final parts = <String>[];
     if (childCount > 0) {
@@ -332,7 +360,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     return parts.join(' · ');
   }
 
-  /// Returns singular label for the expected child type
+  /// Returns the singular label for the expected child type of [parentType].
   String _childTypeLabelOf(String parentType) {
     switch (parentType.toUpperCase()) {
       case 'PROJECT': return 'block';
@@ -344,7 +372,8 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     }
   }
 
-  /// Returns a display label for the section header based on children's type
+  /// Returns a human-readable plural label for the section header based on
+  /// the type of the first child node.
   String _getSectionLabel(List<EpsNode> nodes) {
     if (nodes.isEmpty) return 'Zones';
     switch (nodes.first.type.toUpperCase()) {
@@ -359,12 +388,13 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     }
   }
 
+  /// Returns the section header icon for the given list of nodes.
   IconData _getSectionIcon(List<EpsNode> nodes) {
     if (nodes.isEmpty) return Icons.folder_outlined;
     return _getNodeIcon(nodes.first.type);
   }
 
-  /// Icon per EPS node type
+  /// Maps an EPS node type string to a Material icon.
   IconData _getNodeIcon(String type) {
     switch (type.toUpperCase()) {
       case 'BLOCK':    return Icons.domain_rounded;
@@ -378,7 +408,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     }
   }
 
-  /// Color per EPS node type
+  /// Maps an EPS node type to a distinctive colour used for the icon bg.
   Color _getNodeColor(String type) {
     switch (type.toUpperCase()) {
       case 'BLOCK':    return const Color(0xFF1565C0); // deep blue
@@ -392,6 +422,9 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     }
   }
 
+  /// Card for a leaf-level WBS [Activity].
+  /// Shows progress bar, status badge, and actual vs planned quantities.
+  /// Tapping navigates to [ProgressEntryPage].
   Widget _buildActivityItem(Activity activity, EpsExplorerState state) {
     final progress = activity.progress;
     final progressPercent = (progress * 100).toStringAsFixed(0);
@@ -403,13 +436,15 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.cardRadius),
         side: BorderSide(
-          color: isCompleted 
+          // Tinted green border for completed activities
+          color: isCompleted
               ? AppColors.success.withOpacity(0.3)
               : AppColors.divider,
           width: 1,
         ),
       ),
       child: InkWell(
+        // Navigate to progress entry form on tap
         onTap: () {
           _navigateToProgressEntry(activity, state);
         },
@@ -418,7 +453,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // Activity icon with background
+              // Activity icon — different icon for micro-schedule activities
               Container(
                 width: 48,
                 height: 48,
@@ -429,17 +464,17 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  activity.hasMicroSchedule 
-                      ? Icons.task_alt_rounded 
+                  // task_alt icon signals the activity has a micro schedule
+                  activity.hasMicroSchedule
+                      ? Icons.task_alt_rounded
                       : Icons.assignment_rounded,
-                  color: isCompleted 
-                      ? AppColors.success 
+                  color: isCompleted
+                      ? AppColors.success
                       : AppColors.primary,
                   size: 24,
                 ),
               ),
               const SizedBox(width: 12),
-              // Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,11 +490,12 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                             ),
                           ),
                         ),
+                        // Status chip (Completed / In Progress / Not Started)
                         _buildStatusChip(activity.status),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    // Progress bar
+                    // Progress bar showing completion as a coloured fill
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
@@ -475,6 +511,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        // Percentage completion text
                         Text(
                           '$progressPercent% Complete',
                           style: const TextStyle(
@@ -483,6 +520,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+                        // Actual vs planned quantity when data is available
                         if (activity.unit != null && activity.plannedQuantity != null)
                           Text(
                             '${activity.actualQuantity?.toStringAsFixed(1) ?? '0'} / ${activity.plannedQuantity!.toStringAsFixed(1)} ${activity.unit}',
@@ -497,7 +535,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Chevron
+              // Navigation affordance
               const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.textSecondary,
@@ -510,6 +548,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Pill chip coloured by activity status value.
   Widget _buildStatusChip(String? status) {
     if (status == null) return const SizedBox.shrink();
 
@@ -553,6 +592,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Full-page error state with a Retry button that reloads the hierarchy.
   Widget _buildErrorState(String message) {
     return Center(
       child: Padding(
@@ -594,6 +634,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: () {
+                // Re-fire the hierarchy load event
                 context
                     .read<ProjectBloc>()
                     .add(LoadProjectHierarchy(widget.project.id));
@@ -607,6 +648,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Empty state shown when the current node has no sub-zones or activities.
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -649,6 +691,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Shimmer-animated skeleton list shown during the initial load.
   Widget _buildLoadingShimmer() {
     return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),
@@ -657,6 +700,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Single shimmer placeholder tile matching the folder/activity card shape.
   Widget _buildShimmerTile() {
     return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginSM),
@@ -671,6 +715,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
         highlightColor: Colors.grey[100]!,
         child: Row(
           children: [
+            // Icon placeholder
             Container(
               width: 48,
               height: 48,
@@ -684,6 +729,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Title placeholder
                   Container(
                     height: 16,
                     width: double.infinity,
@@ -693,6 +739,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  // Subtitle placeholder
                   Container(
                     height: 12,
                     width: 150,
@@ -710,6 +757,9 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Pushes [ProgressEntryPage] for the selected [activity].
+  /// Passes [currentEpsNodeId] so the progress form uses the correct EPS node
+  /// (mirrors the web frontend's selectedEpsIds[0] selection).
   void _navigateToProgressEntry(Activity activity, EpsExplorerState state) {
     Navigator.push(
       context,
@@ -728,15 +778,20 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     );
   }
 
+  /// Handles the system back gesture.
+  /// Returns false (absorbs the event) if the user can navigate up within the
+  /// EPS tree; returns true to allow the OS to pop the route once at the root.
   Future<bool> _handleBackPress() async {
     final projectState = context.read<ProjectBloc>().state;
     if (projectState is EpsExplorerState && projectState.currentPath.length > 1) {
+      // Navigate up one level in the EPS tree
       context.read<ProjectBloc>().add(NavigateBack());
-      return false;
+      return false; // do NOT pop the route
     }
-    return true;
+    return true; // at root — allow the route to pop
   }
 
+  /// Handles the AppBar back button tap by reusing [_handleBackPress] logic.
   void _handleBackTap() {
     _handleBackPress().then((shouldPop) {
       if (shouldPop && mounted) {
@@ -745,4 +800,3 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     });
   }
 }
-

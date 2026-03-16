@@ -9,6 +9,7 @@ import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 
 // ==================== EVENTS ====================
 
+/// Base class for all project-related events.
 abstract class ProjectEvent extends Equatable {
   const ProjectEvent();
 
@@ -16,10 +17,13 @@ abstract class ProjectEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Load user's assigned projects
+/// Load the list of projects accessible to the current user.
+/// Triggered on the project selection screen.
 class LoadProjects extends ProjectEvent {}
 
-/// Load project hierarchy (EPS tree + activities) for offline use
+/// Drill into a specific project's EPS tree.
+/// The server returns a flat list of nodes; the BLoC builds the hierarchy
+/// client-side and then enters the [EpsExplorerState].
 class LoadProjectHierarchy extends ProjectEvent {
   final int projectId;
 
@@ -29,7 +33,9 @@ class LoadProjectHierarchy extends ProjectEvent {
   List<Object?> get props => [projectId];
 }
 
-/// Navigate to an EPS node (drill down)
+/// The user tapped a node in the EPS tree (e.g. Tower 1 → Floor 3).
+/// Emits immediately with the node's cached children, then fetches
+/// activities from the server in the background.
 class NavigateToNode extends ProjectEvent {
   final EpsNode node;
 
@@ -39,7 +45,8 @@ class NavigateToNode extends ProjectEvent {
   List<Object?> get props => [node];
 }
 
-/// Navigate back to a specific path index (breadcrumb tap)
+/// The user tapped a breadcrumb segment to jump up the hierarchy.
+/// Navigates to the node at [index] in the current path list.
 class NavigateToPathIndex extends ProjectEvent {
   final int index;
 
@@ -49,13 +56,16 @@ class NavigateToPathIndex extends ProjectEvent {
   List<Object?> get props => [index];
 }
 
-/// Navigate back one level
+/// Navigate back one level (equivalent to the device back button
+/// while inside the EPS explorer).
 class NavigateBack extends ProjectEvent {}
 
-/// Refresh current node data
+/// Re-fetch activities for the currently visible EPS node.
+/// Used to refresh the list after a progress entry is saved.
 class RefreshCurrentNode extends ProjectEvent {}
 
-/// Select an activity for progress entry
+/// The user tapped an activity row to enter a progress entry.
+/// Transitions to [ActivitySelected] which the progress BLoC listens to.
 class SelectActivity extends ProjectEvent {
   final Activity activity;
 
@@ -65,11 +75,12 @@ class SelectActivity extends ProjectEvent {
   List<Object?> get props => [activity];
 }
 
-/// Clear navigation state (return to project list)
+/// Return to the project list and reset all navigation state.
 class ClearNavigation extends ProjectEvent {}
 
 // ==================== STATES ====================
 
+/// Base class for all project states.
 abstract class ProjectState extends Equatable {
   const ProjectState();
 
@@ -77,13 +88,13 @@ abstract class ProjectState extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Initial state
+/// Initial state before any data is loaded.
 class ProjectInitial extends ProjectState {}
 
-/// Loading state
+/// Full-screen loading indicator while fetching project list or hierarchy.
 class ProjectLoading extends ProjectState {}
 
-/// Projects loaded successfully
+/// The project list has been successfully loaded.
 class ProjectsLoaded extends ProjectState {
   final List<Project> projects;
 
@@ -93,7 +104,15 @@ class ProjectsLoaded extends ProjectState {
   List<Object?> get props => [projects];
 }
 
-/// EPS Explorer state - for hierarchical navigation
+/// The EPS hierarchical navigator is active.
+///
+/// Carries:
+///   - [currentPath] — breadcrumb trail from project root to current node
+///   - [currentNode] — the node currently displayed
+///   - [childNodes]  — sub-nodes listed in the current pane
+///   - [activities]  — execution-ready activities at the current node
+///   - [activityIndexByEpsNode] — in-memory cache keyed by node ID so
+///     breadcrumb back-navigation is instant (no extra API calls)
 class EpsExplorerState extends ProjectState {
   final Project project;
   final List<EpsNode> currentPath; // Breadcrumb path
@@ -115,21 +134,22 @@ class EpsExplorerState extends ProjectState {
     this.isOffline = false,
   });
 
-  /// Get activities for a specific EPS node from the index
+  /// Look up pre-loaded activities for any node by ID from the in-memory index.
+  /// Returns empty list rather than null to simplify widget code.
   List<Activity> getActivitiesForNode(int epsNodeId) {
     return activityIndexByEpsNode[epsNodeId] ?? [];
   }
 
-  /// Check if current node has children
+  /// True when the current node has child sub-nodes to drill into.
   bool get hasChildren => childNodes.isNotEmpty;
 
-  /// Check if current node has activities
+  /// True when the current node has activities for progress entry.
   bool get hasActivities => activities.isNotEmpty;
 
-  /// Check if current node is empty (no children, no activities)
+  /// True when there is nothing to show at this node (leaf with no activities).
   bool get isEmpty => !hasChildren && !hasActivities;
 
-  /// Get breadcrumb display text
+  /// Display string for the breadcrumb bar, e.g. "Block A > Tower 1 > Floor 3".
   String get breadcrumbText => currentPath.map((n) => n.name).join(' > ');
 
   EpsExplorerState copyWith({
@@ -167,7 +187,8 @@ class EpsExplorerState extends ProjectState {
       ];
 }
 
-/// Activity selected for progress entry
+/// Transient state signalling that an activity was selected for progress entry.
+/// The progress entry screen listens for this state and opens accordingly.
 class ActivitySelected extends ProjectState {
   final Activity activity;
   final Project project;
@@ -183,7 +204,7 @@ class ActivitySelected extends ProjectState {
   List<Object?> get props => [activity, project, epsNode];
 }
 
-/// Error state
+/// An unrecoverable error occurred (e.g. no cache AND no network).
 class ProjectError extends ProjectState {
   final String message;
 
@@ -195,6 +216,16 @@ class ProjectError extends ProjectState {
 
 // ==================== BLOC ====================
 
+/// Manages EPS (Enterprise Project Structure) tree navigation.
+///
+/// Architecture notes:
+///   - The backend GET /eps endpoint returns a FLAT list of all node records.
+///     The tree is assembled client-side using [_buildChildrenIndex] and
+///     [_attachChildrenRecursive].
+///   - Activities are loaded lazily — only when the user navigates to a node.
+///   - Loaded activities are stored in [EpsExplorerState.activityIndexByEpsNode]
+///     so that breadcrumb back-navigation is instant.
+///   - All node/activity data is written to Drift (SQLite) for offline use.
 class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   final SetuApiClient _apiClient;
   final AppDatabase _database;
@@ -215,6 +246,9 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     on<ClearNavigation>(_onClearNavigation);
   }
 
+  /// Fetches the flat EPS list, extracts PROJECT-type nodes, builds their
+  /// children tree, caches the result, and emits [ProjectsLoaded].
+  /// Falls back to Drift cache on network failure.
   Future<void> _onLoadProjects(
     LoadProjects event,
     Emitter<ProjectState> emit,
@@ -242,6 +276,11 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }
   }
 
+  /// Builds the full EPS tree for a single project, starting from the flat
+  /// API response, and emits the initial [EpsExplorerState] at project root.
+  ///
+  /// The virtual root node uses a negative ID (-project.id) to guarantee
+  /// it never collides with a real EPS node ID from the database.
   Future<void> _onLoadProjectHierarchy(
     LoadProjectHierarchy event,
     Emitter<ProjectState> emit,
@@ -312,6 +351,14 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }
   }
 
+  /// Handles drilling down into an EPS child node.
+  ///
+  /// Strategy:
+  ///   1. Emit immediately with cached activities (if any) so UI snaps into
+  ///      place — no waiting before the screen changes.
+  ///   2. Fetch live activities from the server in the background.
+  ///   3. Only emit the updated activities if the user hasn't already
+  ///      navigated away from this node (stale-update guard).
   Future<void> _onNavigateToNode(
     NavigateToNode event,
     Emitter<ProjectState> emit,
@@ -341,9 +388,16 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     // GET /planning/:epsNodeId/execution-ready — same endpoint the web app uses.
     try {
       final response = await _apiClient.getExecutionReadyActivities(event.node.id);
-      final activities = response
-          .map<Activity>((json) => Activity.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final activities = response.map<Activity>((raw) {
+        final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+        // The execution-ready endpoint doesn't embed epsNodeId in its response.
+        // Activity.fromJson notes it "may be injected by the caller" — inject it
+        // here so the EpsExplorerPage filter (a.epsNodeId == currentNode.id) works.
+        if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
+          json['epsNodeId'] = event.node.id;
+        }
+        return Activity.fromJson(json);
+      }).toList();
 
       // Cache to local DB for offline use (non-fatal — complex plans JSON may fail)
       if (activities.isNotEmpty) {
@@ -357,7 +411,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
         }
       }
 
-      // Merge into the in-memory index
+      // Merge into the in-memory index so back-navigation stays instant
       final updatedIndex = Map<int, List<Activity>>.from(
         currentState.activityIndexByEpsNode,
       )..[event.node.id] = activities;
@@ -399,6 +453,8 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }
   }
 
+  /// Handles a breadcrumb tap — jump to path[index] without a server call
+  /// because activities for ancestor nodes are already in [activityIndexByEpsNode].
   void _onNavigateToPathIndex(
     NavigateToPathIndex event,
     Emitter<ProjectState> emit,
@@ -408,11 +464,11 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
 
     if (event.index < 0 || event.index >= currentState.currentPath.length) return;
 
-    // Navigate to the specified index
+    // Trim the path to the requested depth
     final newPath = currentState.currentPath.sublist(0, event.index + 1);
     final targetNode = newPath.last;
 
-    // Get activities for this node
+    // Get activities for this node from the in-memory index (no network call needed)
     final nodeActivities = currentState.activityIndexByEpsNode[targetNode.id] ?? [];
 
     emit(currentState.copyWith(
@@ -423,6 +479,11 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     ));
   }
 
+  /// Handles the device back button while inside the EPS explorer.
+  ///
+  /// When at the project root (path length == 1), we let the UI's
+  /// _handleBackPress() pop the route — emitting here would cause a
+  /// loading flicker because LoadProjects is heavy.
   void _onNavigateBack(
     NavigateBack event,
     Emitter<ProjectState> emit,
@@ -436,11 +497,15 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       return;
     }
 
-    // Go back one level
+    // Go back one level by navigating to parent index
     final newIndex = currentState.currentPath.length - 2;
     add(NavigateToPathIndex(newIndex));
   }
 
+  /// Re-fetches activities for the currently visible EPS node.
+  /// Used after a progress entry is saved to refresh the activity list.
+  /// Marks offline only when the current activities list was already empty —
+  /// avoids flashing "Offline" unnecessarily on a transient error.
   Future<void> _onRefreshCurrentNode(
     RefreshCurrentNode event,
     Emitter<ProjectState> emit,
@@ -455,10 +520,13 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       // (The old code wrongly called getProjectActivities which is deprecated.)
       final activitiesResponse = await _apiClient
           .getExecutionReadyActivities(currentState.currentNode.id);
-      final activities = activitiesResponse
-          .map<Activity>(
-              (json) => Activity.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final activities = activitiesResponse.map<Activity>((raw) {
+        final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+        if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
+          json['epsNodeId'] = currentState.currentNode.id;
+        }
+        return Activity.fromJson(json);
+      }).toList();
 
       // Update only this node's slice in the in-memory index
       final updatedIndex = Map<int, List<Activity>>.from(
@@ -481,6 +549,8 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }
   }
 
+  /// Transitions to [ActivitySelected] so the progress entry screen can open.
+  /// Captures the current EPS node as context for the progress entry.
   void _onSelectActivity(
     SelectActivity event,
     Emitter<ProjectState> emit,
@@ -494,13 +564,15 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
 
     emit(ActivitySelected(
       activity: event.activity,
-      project: currentState is EpsExplorerState 
-          ? currentState.project 
+      project: currentState is EpsExplorerState
+          ? currentState.project
           : throw StateError('Invalid state'),
       epsNode: epsNode,
     ));
   }
 
+  /// Resets navigation state and re-loads the project list.
+  /// Called when the user taps "Back to Projects" from within the explorer.
   void _onClearNavigation(
     ClearNavigation event,
     Emitter<ProjectState> emit,
@@ -531,11 +603,13 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   }
 
   /// Builds a parentId → [children] index from a flat node list.
+  /// Nodes without a parentId (root nodes) are excluded from the index.
   Map<int, List<Map<String, dynamic>>> _buildChildrenIndex(
     List<Map<String, dynamic>> allNodes,
   ) {
     final index = <int, List<Map<String, dynamic>>>{};
     for (final node in allNodes) {
+      // Backend may use either camelCase or snake_case field names.
       final parentId = node['parentId'] as int? ?? node['parent_id'] as int?;
       if (parentId != null) {
         index.putIfAbsent(parentId, () => []).add(node);
@@ -546,6 +620,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
 
   /// Recursively attaches `children` lists to a node map using the index.
   /// Children are sorted by: explicit `order` field first, then natural name order.
+  /// Natural sort ensures "Floor 10" comes after "Floor 9", not after "Floor 1".
   Map<String, dynamic> _attachChildrenRecursive(
     Map<String, dynamic> node,
     Map<int, List<Map<String, dynamic>>> childrenByParentId,
@@ -555,6 +630,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       childrenByParentId[id] ?? [],
     );
     children.sort((a, b) {
+      // Prefer explicit order field; fall back to natural name comparison.
       final aOrder = (a['order'] as num?)?.toInt() ?? 999999;
       final bOrder = (b['order'] as num?)?.toInt() ?? 999999;
       if (aOrder != bOrder) return aOrder.compareTo(bOrder);
@@ -574,8 +650,10 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
   }
 
   /// Natural string comparison: "Floor 2" < "Floor 10" < "Floor 20".
+  ///
   /// Splits strings into runs of digits and non-digits and compares each
   /// numeric segment numerically, so "10" > "2" rather than "10" < "2".
+  /// Without this, "Floor 10" would sort before "Floor 2" lexicographically.
   int _naturalCompare(String a, String b) {
     final regex = RegExp(r'(\d+|\D+)');
     final aParts = regex.allMatches(a).map((m) => m.group(0)!).toList();
@@ -586,17 +664,20 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       final an = int.tryParse(ap);
       final bn = int.tryParse(bp);
       if (an != null && bn != null) {
+        // Both segments are numeric — compare as integers, not strings
         if (an != bn) return an.compareTo(bn);
       } else {
         final cmp = ap.compareTo(bp);
         if (cmp != 0) return cmp;
       }
     }
+    // Shorter string sorts first when all shared segments are equal
     return aParts.length.compareTo(bParts.length);
   }
 
   // ---------------------------------------------------------------------------
 
+  /// Persists a list of projects (and their EPS subtrees) to Drift.
   Future<void> _cacheProjects(List<Project> projects) async {
     await _database.batch((batch) {
       for (final project in projects) {
@@ -616,11 +697,13 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       }
     });
 
+    // Recursively persist the EPS node tree for each project
     for (final project in projects) {
       await _cacheEpsNodesRecursive(project.children, project.id);
     }
   }
 
+  /// Recursively walks the EPS tree and writes each node to the local DB.
   Future<void> _cacheEpsNodesRecursive(List<EpsNode> nodes, int projectId) async {
     for (final node in nodes) {
       await _database.cacheEpsNodes([
@@ -639,6 +722,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }
   }
 
+  /// Loads cached project records from Drift (offline fallback).
   Future<List<Project>> _loadCachedProjects() async {
     final cached = await _database.select(_database.cachedProjects).get();
     if (cached.isEmpty) return [];
@@ -649,6 +733,11 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     }).toList();
   }
 
+  /// Reconstructs a full [EpsExplorerState] from the local Drift database.
+  ///
+  /// Used when the server is unreachable and a cached hierarchy exists.
+  /// Rebuilds the node tree using the same parent→children approach as the
+  /// live path, then restores the in-memory activity index from cached rows.
   Future<EpsExplorerState?> _loadCachedHierarchy(int projectId) async {
     final cachedProject = await (_database.select(_database.cachedProjects)
           ..where((t) => t.id.equals(projectId))
@@ -663,12 +752,14 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     final cachedActivities = await _database.getActivitiesForProject(projectId);
     final projectJson = jsonDecode(cachedProject.rawData) as Map<String, dynamic>;
 
+    // Build a quick lookup map so we can reconstruct children by parent ID
     final nodeById = <int, CachedEpsNode>{for (final node in cachedNodes) node.id: node};
     final childIdsByParent = <int?, List<int>>{};
     for (final node in cachedNodes) {
       childIdsByParent.putIfAbsent(node.parentId, () => []).add(node.id);
     }
 
+    // Recursive helper that reassembles an EpsNode from the flat cache rows
     EpsNode buildNode(int nodeId) {
       final cachedNode = nodeById[nodeId]!;
       final children = (childIdsByParent[nodeId] ?? <int>[])
@@ -708,6 +799,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       children: rootNodes,
     );
 
+    // Rebuild the activity index keyed by epsNodeId for instant breadcrumb nav
     final activityIndex = <int, List<Activity>>{};
     for (final cachedActivity in cachedActivities) {
       final activityJson = jsonDecode(cachedActivity.rawData) as Map<String, dynamic>;

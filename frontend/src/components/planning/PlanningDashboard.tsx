@@ -8,6 +8,7 @@ import {
   FileText,
   ListChecks,
   Users,
+  Map,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -77,6 +78,12 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       icon: <ShieldCheck size={18} />,
       label: "Release Strategy",
       permission: PermissionCode.RELEASE_STRATEGY_READ,
+    },
+    {
+      key: "building_lines",
+      icon: <Map size={18} />,
+      label: "Building Lines",
+      permission: PermissionCode.PLANNING_MATRIX_READ,
     },
   ];
 

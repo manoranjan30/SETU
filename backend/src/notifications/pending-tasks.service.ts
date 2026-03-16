@@ -30,9 +30,8 @@ export class PendingTasksService {
 
   async getPendingTasks(userId: number, projectId?: number) {
     // 1. RFIs pending my approval (Workflow steps assigned to me)
-    const pendingRFIs = await this.stepRepo.find({
+    const candidatePendingRFIs = await this.stepRepo.find({
       where: {
-        assignedUserId: userId,
         status: WorkflowStepStatus.PENDING,
         ...(projectId ? { run: { inspection: { projectId } } } : {}),
       },
@@ -42,6 +41,14 @@ export class PendingTasksService {
         'run.inspection.activity',
         'workflowNode',
       ],
+    });
+    const pendingRFIs = candidatePendingRFIs.filter((step) => {
+      const assignedUserIds = step.assignedUserIds?.length
+        ? step.assignedUserIds
+        : step.assignedUserId
+          ? [step.assignedUserId]
+          : [];
+      return assignedUserIds.includes(userId);
     });
 
     // 2. RFIs raised by me that are still pending

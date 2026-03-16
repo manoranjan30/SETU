@@ -10,6 +10,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
 import { LocalStrategy } from './local.strategy';
 import { ProjectsModule } from '../projects/projects.module';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { Role } from '../roles/role.entity';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { TempUser } from '../temp-user/entities/temp-user.entity';
     PassportModule,
     PermissionsModule,
     ProjectsModule,
-    TypeOrmModule.forFeature([TempUser]),
+    TypeOrmModule.forFeature([TempUser, Role]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'supersecretkey',
       signOptions: { expiresIn: '24h' },

@@ -12,12 +12,19 @@ import { Role } from '../roles/role.entity';
 import { Permission } from '../permissions/permission.entity';
 
 const TEMP_USER_PERMISSION_ALLOWLIST = new Set<string>([
+  'EPS.NODE.READ',
+  'QUALITY.DASHBOARD.READ',
+  'QUALITY.ACTIVITYLIST.READ',
+  'QUALITY.ACTIVITY.READ',
   'QUALITY.INSPECTION.RAISE',
   'QUALITY.INSPECTION.READ',
+  'QUALITY.INSPECTION.APPROVE',
+  'QUALITY.OBSERVATION.RESOLVE',
   'QUALITY.SITE_OBS.READ',
   'QUALITY.SITE_OBS.RECTIFY',
   'QUALITY.DOCUMENT.MANAGE',
   'QUALITY.CHECKLIST.CREATE',
+  'EXECUTION.ENTRY.READ',
   'EXECUTION.ENTRY.CREATE',
   'EXECUTION.MICRO.CREATE',
   'PROGRESS.DASHBOARD.READ',
@@ -97,8 +104,12 @@ export class TempRoleService {
       relations: ['permissions'],
     });
 
+    const expandedPermissionCodes = this.expandTempPermissions(
+      template.allowedPermissions,
+    );
+
     const permissions = await this.permRepo.find({
-      where: { permissionCode: In(template.allowedPermissions) },
+      where: { permissionCode: In(expandedPermissionCodes) },
     });
 
     if (!role) {
@@ -113,6 +124,42 @@ export class TempRoleService {
     }
 
     await this.roleRepo.save(role);
+  }
+
+  private expandTempPermissions(permissionCodes: string[]) {
+    const expanded = new Set<string>(permissionCodes);
+
+    expanded.add('EPS.NODE.READ');
+
+    const hasQualityAccess = Array.from(expanded).some((code) =>
+      code.startsWith('QUALITY.'),
+    );
+    if (hasQualityAccess) {
+      expanded.add('QUALITY.DASHBOARD.READ');
+    }
+
+    if (
+      expanded.has('QUALITY.INSPECTION.RAISE') ||
+      expanded.has('QUALITY.INSPECTION.READ') ||
+      expanded.has('QUALITY.INSPECTION.APPROVE')
+    ) {
+      expanded.add('QUALITY.ACTIVITYLIST.READ');
+      expanded.add('QUALITY.ACTIVITY.READ');
+    }
+
+    if (expanded.has('QUALITY.INSPECTION.APPROVE')) {
+      expanded.add('QUALITY.INSPECTION.STAGE_APPROVE');
+      expanded.add('QUALITY.INSPECTION.FINAL_APPROVE');
+    }
+
+    if (
+      expanded.has('EXECUTION.ENTRY.CREATE') ||
+      expanded.has('EXECUTION.ENTRY.UPDATE')
+    ) {
+      expanded.add('EXECUTION.ENTRY.READ');
+    }
+
+    return Array.from(expanded);
   }
 
   private validateAllowedPermissions(permissionCodes: string[]) {

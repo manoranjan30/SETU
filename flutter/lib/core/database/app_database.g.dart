@@ -4789,6 +4789,701 @@ class CachedQualityActivitiesCompanion
   }
 }
 
+class $CachedQualitySiteObsTable extends CachedQualitySiteObs
+    with TableInfo<$CachedQualitySiteObsTable, CachedQualitySiteOb> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedQualitySiteObsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _severityMeta =
+      const VerificationMeta('severity');
+  @override
+  late final GeneratedColumn<String> severity = GeneratedColumn<String>(
+      'severity', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, projectId, status, severity, rawData, cachedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_quality_site_obs';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<CachedQualitySiteOb> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('severity')) {
+      context.handle(_severityMeta,
+          severity.isAcceptableOrUnknown(data['severity']!, _severityMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedQualitySiteOb map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedQualitySiteOb(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      severity: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}severity']),
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedQualitySiteObsTable createAlias(String alias) {
+    return $CachedQualitySiteObsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedQualitySiteOb extends DataClass
+    implements Insertable<CachedQualitySiteOb> {
+  final String id;
+  final int projectId;
+  final String status;
+  final String? severity;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedQualitySiteOb(
+      {required this.id,
+      required this.projectId,
+      required this.status,
+      this.severity,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['project_id'] = Variable<int>(projectId);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || severity != null) {
+      map['severity'] = Variable<String>(severity);
+    }
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedQualitySiteObsCompanion toCompanion(bool nullToAbsent) {
+    return CachedQualitySiteObsCompanion(
+      id: Value(id),
+      projectId: Value(projectId),
+      status: Value(status),
+      severity: severity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(severity),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedQualitySiteOb.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedQualitySiteOb(
+      id: serializer.fromJson<String>(json['id']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      status: serializer.fromJson<String>(json['status']),
+      severity: serializer.fromJson<String?>(json['severity']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'projectId': serializer.toJson<int>(projectId),
+      'status': serializer.toJson<String>(status),
+      'severity': serializer.toJson<String?>(severity),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedQualitySiteOb copyWith(
+          {String? id,
+          int? projectId,
+          String? status,
+          Value<String?> severity = const Value.absent(),
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedQualitySiteOb(
+        id: id ?? this.id,
+        projectId: projectId ?? this.projectId,
+        status: status ?? this.status,
+        severity: severity.present ? severity.value : this.severity,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedQualitySiteOb copyWithCompanion(CachedQualitySiteObsCompanion data) {
+    return CachedQualitySiteOb(
+      id: data.id.present ? data.id.value : this.id,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      status: data.status.present ? data.status.value : this.status,
+      severity: data.severity.present ? data.severity.value : this.severity,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedQualitySiteOb(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('status: $status, ')
+          ..write('severity: $severity, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, projectId, status, severity, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedQualitySiteOb &&
+          other.id == this.id &&
+          other.projectId == this.projectId &&
+          other.status == this.status &&
+          other.severity == this.severity &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedQualitySiteObsCompanion
+    extends UpdateCompanion<CachedQualitySiteOb> {
+  final Value<String> id;
+  final Value<int> projectId;
+  final Value<String> status;
+  final Value<String?> severity;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  final Value<int> rowid;
+  const CachedQualitySiteObsCompanion({
+    this.id = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.severity = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedQualitySiteObsCompanion.insert({
+    required String id,
+    required int projectId,
+    required String status,
+    this.severity = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        projectId = Value(projectId),
+        status = Value(status),
+        rawData = Value(rawData);
+  static Insertable<CachedQualitySiteOb> custom({
+    Expression<String>? id,
+    Expression<int>? projectId,
+    Expression<String>? status,
+    Expression<String>? severity,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (projectId != null) 'project_id': projectId,
+      if (status != null) 'status': status,
+      if (severity != null) 'severity': severity,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedQualitySiteObsCompanion copyWith(
+      {Value<String>? id,
+      Value<int>? projectId,
+      Value<String>? status,
+      Value<String?>? severity,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt,
+      Value<int>? rowid}) {
+    return CachedQualitySiteObsCompanion(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      status: status ?? this.status,
+      severity: severity ?? this.severity,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (severity.present) {
+      map['severity'] = Variable<String>(severity.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedQualitySiteObsCompanion(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('status: $status, ')
+          ..write('severity: $severity, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedEhsSiteObsTable extends CachedEhsSiteObs
+    with TableInfo<$CachedEhsSiteObsTable, CachedEhsSiteOb> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedEhsSiteObsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _projectIdMeta =
+      const VerificationMeta('projectId');
+  @override
+  late final GeneratedColumn<int> projectId = GeneratedColumn<int>(
+      'project_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _severityMeta =
+      const VerificationMeta('severity');
+  @override
+  late final GeneratedColumn<String> severity = GeneratedColumn<String>(
+      'severity', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawDataMeta =
+      const VerificationMeta('rawData');
+  @override
+  late final GeneratedColumn<String> rawData = GeneratedColumn<String>(
+      'raw_data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cachedAtMeta =
+      const VerificationMeta('cachedAt');
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+      'cached_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, projectId, status, severity, rawData, cachedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_ehs_site_obs';
+  @override
+  VerificationContext validateIntegrity(Insertable<CachedEhsSiteOb> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(_projectIdMeta,
+          projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta));
+    } else if (isInserting) {
+      context.missing(_projectIdMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('severity')) {
+      context.handle(_severityMeta,
+          severity.isAcceptableOrUnknown(data['severity']!, _severityMeta));
+    }
+    if (data.containsKey('raw_data')) {
+      context.handle(_rawDataMeta,
+          rawData.isAcceptableOrUnknown(data['raw_data']!, _rawDataMeta));
+    } else if (isInserting) {
+      context.missing(_rawDataMeta);
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(_cachedAtMeta,
+          cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CachedEhsSiteOb map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedEhsSiteOb(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      projectId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}project_id'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      severity: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}severity']),
+      rawData: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_data'])!,
+      cachedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}cached_at'])!,
+    );
+  }
+
+  @override
+  $CachedEhsSiteObsTable createAlias(String alias) {
+    return $CachedEhsSiteObsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedEhsSiteOb extends DataClass implements Insertable<CachedEhsSiteOb> {
+  final String id;
+  final int projectId;
+  final String status;
+  final String? severity;
+  final String rawData;
+  final DateTime cachedAt;
+  const CachedEhsSiteOb(
+      {required this.id,
+      required this.projectId,
+      required this.status,
+      this.severity,
+      required this.rawData,
+      required this.cachedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['project_id'] = Variable<int>(projectId);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || severity != null) {
+      map['severity'] = Variable<String>(severity);
+    }
+    map['raw_data'] = Variable<String>(rawData);
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  CachedEhsSiteObsCompanion toCompanion(bool nullToAbsent) {
+    return CachedEhsSiteObsCompanion(
+      id: Value(id),
+      projectId: Value(projectId),
+      status: Value(status),
+      severity: severity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(severity),
+      rawData: Value(rawData),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory CachedEhsSiteOb.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedEhsSiteOb(
+      id: serializer.fromJson<String>(json['id']),
+      projectId: serializer.fromJson<int>(json['projectId']),
+      status: serializer.fromJson<String>(json['status']),
+      severity: serializer.fromJson<String?>(json['severity']),
+      rawData: serializer.fromJson<String>(json['rawData']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'projectId': serializer.toJson<int>(projectId),
+      'status': serializer.toJson<String>(status),
+      'severity': serializer.toJson<String?>(severity),
+      'rawData': serializer.toJson<String>(rawData),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  CachedEhsSiteOb copyWith(
+          {String? id,
+          int? projectId,
+          String? status,
+          Value<String?> severity = const Value.absent(),
+          String? rawData,
+          DateTime? cachedAt}) =>
+      CachedEhsSiteOb(
+        id: id ?? this.id,
+        projectId: projectId ?? this.projectId,
+        status: status ?? this.status,
+        severity: severity.present ? severity.value : this.severity,
+        rawData: rawData ?? this.rawData,
+        cachedAt: cachedAt ?? this.cachedAt,
+      );
+  CachedEhsSiteOb copyWithCompanion(CachedEhsSiteObsCompanion data) {
+    return CachedEhsSiteOb(
+      id: data.id.present ? data.id.value : this.id,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      status: data.status.present ? data.status.value : this.status,
+      severity: data.severity.present ? data.severity.value : this.severity,
+      rawData: data.rawData.present ? data.rawData.value : this.rawData,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedEhsSiteOb(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('status: $status, ')
+          ..write('severity: $severity, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, projectId, status, severity, rawData, cachedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedEhsSiteOb &&
+          other.id == this.id &&
+          other.projectId == this.projectId &&
+          other.status == this.status &&
+          other.severity == this.severity &&
+          other.rawData == this.rawData &&
+          other.cachedAt == this.cachedAt);
+}
+
+class CachedEhsSiteObsCompanion extends UpdateCompanion<CachedEhsSiteOb> {
+  final Value<String> id;
+  final Value<int> projectId;
+  final Value<String> status;
+  final Value<String?> severity;
+  final Value<String> rawData;
+  final Value<DateTime> cachedAt;
+  final Value<int> rowid;
+  const CachedEhsSiteObsCompanion({
+    this.id = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.severity = const Value.absent(),
+    this.rawData = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedEhsSiteObsCompanion.insert({
+    required String id,
+    required int projectId,
+    required String status,
+    this.severity = const Value.absent(),
+    required String rawData,
+    this.cachedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        projectId = Value(projectId),
+        status = Value(status),
+        rawData = Value(rawData);
+  static Insertable<CachedEhsSiteOb> custom({
+    Expression<String>? id,
+    Expression<int>? projectId,
+    Expression<String>? status,
+    Expression<String>? severity,
+    Expression<String>? rawData,
+    Expression<DateTime>? cachedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (projectId != null) 'project_id': projectId,
+      if (status != null) 'status': status,
+      if (severity != null) 'severity': severity,
+      if (rawData != null) 'raw_data': rawData,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedEhsSiteObsCompanion copyWith(
+      {Value<String>? id,
+      Value<int>? projectId,
+      Value<String>? status,
+      Value<String?>? severity,
+      Value<String>? rawData,
+      Value<DateTime>? cachedAt,
+      Value<int>? rowid}) {
+    return CachedEhsSiteObsCompanion(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      status: status ?? this.status,
+      severity: severity ?? this.severity,
+      rawData: rawData ?? this.rawData,
+      cachedAt: cachedAt ?? this.cachedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<int>(projectId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (severity.present) {
+      map['severity'] = Variable<String>(severity.value);
+    }
+    if (rawData.present) {
+      map['raw_data'] = Variable<String>(rawData.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedEhsSiteObsCompanion(')
+          ..write('id: $id, ')
+          ..write('projectId: $projectId, ')
+          ..write('status: $status, ')
+          ..write('severity: $severity, ')
+          ..write('rawData: $rawData, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4805,6 +5500,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $CachedQualityActivityListsTable(this);
   late final $CachedQualityActivitiesTable cachedQualityActivities =
       $CachedQualityActivitiesTable(this);
+  late final $CachedQualitySiteObsTable cachedQualitySiteObs =
+      $CachedQualitySiteObsTable(this);
+  late final $CachedEhsSiteObsTable cachedEhsSiteObs =
+      $CachedEhsSiteObsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4818,7 +5517,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         cachedBoqItems,
         cachedEpsNodes,
         cachedQualityActivityLists,
-        cachedQualityActivities
+        cachedQualityActivities,
+        cachedQualitySiteObs,
+        cachedEhsSiteObs
       ];
 }
 
@@ -7127,6 +7828,389 @@ typedef $$CachedQualityActivitiesTableProcessedTableManager
         ),
         CachedQualityActivity,
         PrefetchHooks Function()>;
+typedef $$CachedQualitySiteObsTableCreateCompanionBuilder
+    = CachedQualitySiteObsCompanion Function({
+  required String id,
+  required int projectId,
+  required String status,
+  Value<String?> severity,
+  required String rawData,
+  Value<DateTime> cachedAt,
+  Value<int> rowid,
+});
+typedef $$CachedQualitySiteObsTableUpdateCompanionBuilder
+    = CachedQualitySiteObsCompanion Function({
+  Value<String> id,
+  Value<int> projectId,
+  Value<String> status,
+  Value<String?> severity,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+  Value<int> rowid,
+});
+
+class $$CachedQualitySiteObsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedQualitySiteObsTable> {
+  $$CachedQualitySiteObsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get severity => $composableBuilder(
+      column: $table.severity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedQualitySiteObsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedQualitySiteObsTable> {
+  $$CachedQualitySiteObsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get severity => $composableBuilder(
+      column: $table.severity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedQualitySiteObsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedQualitySiteObsTable> {
+  $$CachedQualitySiteObsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get severity =>
+      $composableBuilder(column: $table.severity, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedQualitySiteObsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedQualitySiteObsTable,
+    CachedQualitySiteOb,
+    $$CachedQualitySiteObsTableFilterComposer,
+    $$CachedQualitySiteObsTableOrderingComposer,
+    $$CachedQualitySiteObsTableAnnotationComposer,
+    $$CachedQualitySiteObsTableCreateCompanionBuilder,
+    $$CachedQualitySiteObsTableUpdateCompanionBuilder,
+    (
+      CachedQualitySiteOb,
+      BaseReferences<_$AppDatabase, $CachedQualitySiteObsTable,
+          CachedQualitySiteOb>
+    ),
+    CachedQualitySiteOb,
+    PrefetchHooks Function()> {
+  $$CachedQualitySiteObsTableTableManager(
+      _$AppDatabase db, $CachedQualitySiteObsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedQualitySiteObsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedQualitySiteObsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedQualitySiteObsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<String?> severity = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CachedQualitySiteObsCompanion(
+            id: id,
+            projectId: projectId,
+            status: status,
+            severity: severity,
+            rawData: rawData,
+            cachedAt: cachedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required int projectId,
+            required String status,
+            Value<String?> severity = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CachedQualitySiteObsCompanion.insert(
+            id: id,
+            projectId: projectId,
+            status: status,
+            severity: severity,
+            rawData: rawData,
+            cachedAt: cachedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedQualitySiteObsTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $CachedQualitySiteObsTable,
+        CachedQualitySiteOb,
+        $$CachedQualitySiteObsTableFilterComposer,
+        $$CachedQualitySiteObsTableOrderingComposer,
+        $$CachedQualitySiteObsTableAnnotationComposer,
+        $$CachedQualitySiteObsTableCreateCompanionBuilder,
+        $$CachedQualitySiteObsTableUpdateCompanionBuilder,
+        (
+          CachedQualitySiteOb,
+          BaseReferences<_$AppDatabase, $CachedQualitySiteObsTable,
+              CachedQualitySiteOb>
+        ),
+        CachedQualitySiteOb,
+        PrefetchHooks Function()>;
+typedef $$CachedEhsSiteObsTableCreateCompanionBuilder
+    = CachedEhsSiteObsCompanion Function({
+  required String id,
+  required int projectId,
+  required String status,
+  Value<String?> severity,
+  required String rawData,
+  Value<DateTime> cachedAt,
+  Value<int> rowid,
+});
+typedef $$CachedEhsSiteObsTableUpdateCompanionBuilder
+    = CachedEhsSiteObsCompanion Function({
+  Value<String> id,
+  Value<int> projectId,
+  Value<String> status,
+  Value<String?> severity,
+  Value<String> rawData,
+  Value<DateTime> cachedAt,
+  Value<int> rowid,
+});
+
+class $$CachedEhsSiteObsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedEhsSiteObsTable> {
+  $$CachedEhsSiteObsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get severity => $composableBuilder(
+      column: $table.severity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$CachedEhsSiteObsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedEhsSiteObsTable> {
+  $$CachedEhsSiteObsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get projectId => $composableBuilder(
+      column: $table.projectId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get severity => $composableBuilder(
+      column: $table.severity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawData => $composableBuilder(
+      column: $table.rawData, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+      column: $table.cachedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$CachedEhsSiteObsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedEhsSiteObsTable> {
+  $$CachedEhsSiteObsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get severity =>
+      $composableBuilder(column: $table.severity, builder: (column) => column);
+
+  GeneratedColumn<String> get rawData =>
+      $composableBuilder(column: $table.rawData, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+}
+
+class $$CachedEhsSiteObsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $CachedEhsSiteObsTable,
+    CachedEhsSiteOb,
+    $$CachedEhsSiteObsTableFilterComposer,
+    $$CachedEhsSiteObsTableOrderingComposer,
+    $$CachedEhsSiteObsTableAnnotationComposer,
+    $$CachedEhsSiteObsTableCreateCompanionBuilder,
+    $$CachedEhsSiteObsTableUpdateCompanionBuilder,
+    (
+      CachedEhsSiteOb,
+      BaseReferences<_$AppDatabase, $CachedEhsSiteObsTable, CachedEhsSiteOb>
+    ),
+    CachedEhsSiteOb,
+    PrefetchHooks Function()> {
+  $$CachedEhsSiteObsTableTableManager(
+      _$AppDatabase db, $CachedEhsSiteObsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedEhsSiteObsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedEhsSiteObsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedEhsSiteObsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<int> projectId = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<String?> severity = const Value.absent(),
+            Value<String> rawData = const Value.absent(),
+            Value<DateTime> cachedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CachedEhsSiteObsCompanion(
+            id: id,
+            projectId: projectId,
+            status: status,
+            severity: severity,
+            rawData: rawData,
+            cachedAt: cachedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required int projectId,
+            required String status,
+            Value<String?> severity = const Value.absent(),
+            required String rawData,
+            Value<DateTime> cachedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CachedEhsSiteObsCompanion.insert(
+            id: id,
+            projectId: projectId,
+            status: status,
+            severity: severity,
+            rawData: rawData,
+            cachedAt: cachedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CachedEhsSiteObsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $CachedEhsSiteObsTable,
+    CachedEhsSiteOb,
+    $$CachedEhsSiteObsTableFilterComposer,
+    $$CachedEhsSiteObsTableOrderingComposer,
+    $$CachedEhsSiteObsTableAnnotationComposer,
+    $$CachedEhsSiteObsTableCreateCompanionBuilder,
+    $$CachedEhsSiteObsTableUpdateCompanionBuilder,
+    (
+      CachedEhsSiteOb,
+      BaseReferences<_$AppDatabase, $CachedEhsSiteObsTable, CachedEhsSiteOb>
+    ),
+    CachedEhsSiteOb,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7152,4 +8236,8 @@ class $AppDatabaseManager {
   $$CachedQualityActivitiesTableTableManager get cachedQualityActivities =>
       $$CachedQualityActivitiesTableTableManager(
           _db, _db.cachedQualityActivities);
+  $$CachedQualitySiteObsTableTableManager get cachedQualitySiteObs =>
+      $$CachedQualitySiteObsTableTableManager(_db, _db.cachedQualitySiteObs);
+  $$CachedEhsSiteObsTableTableManager get cachedEhsSiteObs =>
+      $$CachedEhsSiteObsTableTableManager(_db, _db.cachedEhsSiteObs);
 }

@@ -41,6 +41,9 @@ export class ReleaseStrategyStep {
   @Column({ type: 'int', nullable: true })
   userId: number | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  userIds: number[] | null;
+
   @Column({ type: 'int', nullable: true })
   roleId: number | null;
 

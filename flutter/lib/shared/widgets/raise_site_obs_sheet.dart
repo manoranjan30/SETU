@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
@@ -108,24 +109,36 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
     final picker = ImagePicker();
     final file = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
+      imageQuality: 70, // pre-shrink at picker level before compressor runs
     );
     if (file == null) return;
 
+    // Guard: reject files >15 MB before attempting compression
+    final fileSizeBytes = await File(file.path).length();
+    if (fileSizeBytes > 15 * 1024 * 1024) {
+      if (mounted) {
+        setState(() =>
+            _errorMessage = 'Image too large. Please retake with lower resolution.');
+      }
+      return;
+    }
+
     setState(() => _uploading = true);
+    String? compressed;
     try {
-      final compressed = await PhotoCompressor.compress(file.path);
+      compressed = await PhotoCompressor.compress(file.path);
       final result = await sl<SetuApiClient>().uploadFile(filePath: compressed);
       final url = result['url'] as String? ?? result['path'] as String? ?? '';
       if (url.isNotEmpty) {
         setState(() => _photoUrls.add(url));
       }
-      PhotoCompressor.deleteTempFile(compressed);
     } catch (e) {
       if (mounted) {
         setState(() => _errorMessage = 'Photo upload failed. Please retry.');
       }
     } finally {
+      // Always delete temp file — success or failure
+      if (compressed != null) PhotoCompressor.deleteTempFile(compressed);
       if (mounted) setState(() => _uploading = false);
     }
   }

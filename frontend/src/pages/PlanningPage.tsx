@@ -12,6 +12,7 @@ import LookAheadView from "../components/planning/LookAheadView";
 import MicroSchedulePage from "./micro-schedule/MicroSchedulePage";
 import { VendorUserManagementPage } from "./planning/VendorUserManagementPage";
 import ReleaseStrategyPage from "./planning/ReleaseStrategyPage";
+import BuildingLineCoordinatesPage from "./planning/BuildingLineCoordinatesPage";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -48,6 +49,8 @@ const PlanningPage = () => {
         return <VendorUserManagementPage />;
       case "release_strategy":
         return <ReleaseStrategyPage />;
+      case "building_lines":
+        return <BuildingLineCoordinatesPage />;
       case "recovery":
         return (
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">

@@ -63,6 +63,8 @@ interface QualityInspection {
   partNo?: number;
   totalParts?: number;
   partLabel?: string;
+  processCode?: string;
+  documentType?: string;
 }
 
 interface ActivityList {
@@ -324,6 +326,24 @@ export default function InspectionRequestPage() {
     return map;
   }, [inspections]);
 
+  const buildInspectionRequestPayload = (
+    activity: QualityActivity,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    projectId: Number(projectId),
+    epsNodeId: selectedNodeId,
+    listId: selectedListId,
+    activityId: activity.id,
+    processCode: "QA_QC_APPROVAL",
+    documentType:
+      activity.applicabilityLevel === "ROOM"
+        ? "ROOM_RFI"
+        : activity.applicabilityLevel === "UNIT"
+          ? "UNIT_RFI"
+          : "FLOOR_RFI",
+    ...extra,
+  });
+
   const findNodeById = (nodes: EpsNode[], id: number): EpsNode | null => {
     for (const node of nodes) {
       if (node.id === id) return node;
@@ -371,15 +391,14 @@ export default function InspectionRequestPage() {
     )
       return;
     try {
-      await api.post("/quality/inspections", {
-        projectId: Number(projectId),
-        epsNodeId: selectedNodeId,
-        listId: selectedListId,
-        activityId: activity.id,
-        qualityUnitId: undefined,
-        comments: "Requested via Web",
-        vendorId: selectedVendorId,
-      });
+      await api.post(
+        "/quality/inspections",
+        buildInspectionRequestPayload(activity, {
+          qualityUnitId: undefined,
+          comments: "Requested via Web",
+          vendorId: selectedVendorId,
+        }),
+      );
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to raise RFI");
@@ -397,20 +416,19 @@ export default function InspectionRequestPage() {
       return;
     }
     try {
-      await api.post("/quality/inspections", {
-        projectId: Number(projectId),
-        epsNodeId: selectedNodeId,
-        listId: selectedListId,
-        activityId: activity.id,
-        partNo,
-        totalParts,
-        partLabel: totalParts > 1 ? `Part ${partNo}` : "Single",
-        comments:
-          totalParts > 1
-            ? `Requested via Web (Part ${partNo}/${totalParts})`
-            : "Requested via Web",
-        vendorId: selectedVendorId,
-      });
+      await api.post(
+        "/quality/inspections",
+        buildInspectionRequestPayload(activity, {
+          partNo,
+          totalParts,
+          partLabel: totalParts > 1 ? `Part ${partNo}` : "Single",
+          comments:
+            totalParts > 1
+              ? `Requested via Web (Part ${partNo}/${totalParts})`
+              : "Requested via Web",
+          vendorId: selectedVendorId,
+        }),
+      );
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to raise RFI");
@@ -427,15 +445,14 @@ export default function InspectionRequestPage() {
       return;
     }
     try {
-      await api.post("/quality/inspections", {
-        projectId: Number(projectId),
-        epsNodeId: selectedNodeId,
-        listId: selectedListId,
-        activityId: activity.id,
-        qualityUnitId: unitId,
-        comments: "Requested via Web",
-        vendorId: selectedVendorId,
-      });
+      await api.post(
+        "/quality/inspections",
+        buildInspectionRequestPayload(activity, {
+          qualityUnitId: unitId,
+          comments: "Requested via Web",
+          vendorId: selectedVendorId,
+        }),
+      );
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to raise unit RFI");
@@ -454,15 +471,14 @@ export default function InspectionRequestPage() {
     setRaisingBatch(true);
     try {
       for (const unitId of progress.pendingUnitIds) {
-        await api.post("/quality/inspections", {
-          projectId: Number(projectId),
-          epsNodeId: selectedNodeId,
-          listId: selectedListId,
-          activityId: activity.id,
-          qualityUnitId: unitId,
-          comments: "Requested via Web",
-          vendorId: selectedVendorId,
-        });
+        await api.post(
+          "/quality/inspections",
+          buildInspectionRequestPayload(activity, {
+            qualityUnitId: unitId,
+            comments: "Requested via Web",
+            vendorId: selectedVendorId,
+          }),
+        );
       }
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
@@ -521,35 +537,33 @@ export default function InspectionRequestPage() {
         const totalParts =
           rfiMode === "MULTIPLE" ? Math.max(2, Number(rfiParts) || 2) : 1;
         const firstPartNo = 1;
-        await api.post("/quality/inspections", {
-          projectId: Number(projectId),
-          epsNodeId: selectedNodeId,
-          listId: selectedListId,
-          activityId: rfiModalActivity.id,
-          partNo: firstPartNo,
-          totalParts,
-          partLabel: totalParts > 1 ? `Part ${firstPartNo}` : "Single",
-          comments:
-            totalParts > 1
-              ? `Requested via Web (Part ${firstPartNo}/${totalParts})`
-              : "Requested via Web",
-          vendorId: selectedVendorId,
-        });
+        await api.post(
+          "/quality/inspections",
+          buildInspectionRequestPayload(rfiModalActivity, {
+            partNo: firstPartNo,
+            totalParts,
+            partLabel: totalParts > 1 ? `Part ${firstPartNo}` : "Single",
+            comments:
+              totalParts > 1
+                ? `Requested via Web (Part ${firstPartNo}/${totalParts})`
+                : "Requested via Web",
+            vendorId: selectedVendorId,
+          }),
+        );
       } else if (rfiModalActivity.applicabilityLevel === "UNIT") {
         if (selectedUnitIds.length === 0) {
           alert("Select at least one unit.");
           return;
         }
         for (const unitId of selectedUnitIds) {
-          await api.post("/quality/inspections", {
-            projectId: Number(projectId),
-            epsNodeId: selectedNodeId,
-            listId: selectedListId,
-            activityId: rfiModalActivity.id,
-            qualityUnitId: unitId,
-            comments: "Requested via Web",
-            vendorId: selectedVendorId,
-          });
+          await api.post(
+            "/quality/inspections",
+            buildInspectionRequestPayload(rfiModalActivity, {
+              qualityUnitId: unitId,
+              comments: "Requested via Web",
+              vendorId: selectedVendorId,
+            }),
+          );
         }
       } else {
         await handleRaiseRFI(rfiModalActivity);

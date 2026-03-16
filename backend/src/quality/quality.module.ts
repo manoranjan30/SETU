@@ -58,6 +58,8 @@ import { ChecklistTemplateController } from './checklist-template.controller';
 import { ComplianceService } from './compliance.service';
 import { QualityReportService } from './quality-report.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PlanningModule } from '../planning/planning.module';
+import { CommonModule } from '../common/common.module';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
@@ -81,6 +83,8 @@ import { QualityRatingController } from './quality-rating.controller';
     MulterModule.register({ dest: './uploads/quality-csv' }),
     NotificationsModule,
     AuditModule,
+    PlanningModule,
+    CommonModule,
     TypeOrmModule.forFeature([
       QualityInspection,
       QualityMaterialTest,
@@ -121,6 +125,7 @@ import { QualityRatingController } from './quality-rating.controller';
       User,
       Vendor,
       WorkOrder,
+      InspectionWorkflowRun,
     ]),
   ],
   controllers: [

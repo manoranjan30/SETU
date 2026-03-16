@@ -30,7 +30,7 @@ export class QualityChecklistSmartImport1710200000000
 
     await queryRunner.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_checklist_no_project
-      ON quality_checklist_templates(projectId, checklist_no)
+      ON quality_checklist_templates("projectId", checklist_no)
       WHERE checklist_no IS NOT NULL
     `);
 

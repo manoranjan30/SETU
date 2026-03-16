@@ -26,8 +26,8 @@ import {
 import { PermissionCode } from "../../config/permissions";
 
 const MODULE_OPTIONS = ["QUALITY", "PLANNING", "BOQ", "WORKORDER", "MICRO", "EXECUTION", "EHS", "DESIGN"];
-const PROCESS_OPTIONS = ["RFI_APPROVAL", "MICRO_SCHEDULE_APPROVAL", "WORK_ORDER_RELEASE", "BOQ_CHANGE_APPROVAL", "LOOKAHEAD_RELEASE", "DOCUMENT_RELEASE"];
-const DOCUMENT_TYPES = ["RFI", "MICRO_SCHEDULE", "WORK_ORDER", "BOQ_CHANGE", "LOOKAHEAD", "DRAWING"];
+const PROCESS_OPTIONS = ["RFI_APPROVAL", "INSPECTION_APPROVAL", "QA_QC_APPROVAL", "OBSERVATION_RECTIFICATION_APPROVAL", "MICRO_SCHEDULE_APPROVAL", "WORK_ORDER_RELEASE", "BOQ_CHANGE_APPROVAL", "LOOKAHEAD_RELEASE", "DOCUMENT_RELEASE"];
+const DOCUMENT_TYPES = ["FLOOR_RFI", "UNIT_RFI", "ROOM_RFI", "INSPECTION", "QA_QC_CHECKLIST", "OBSERVATION_RECTIFICATION", "MICRO_SCHEDULE", "WORK_ORDER", "BOQ_CHANGE", "LOOKAHEAD", "DRAWING"];
 const OPERATOR_OPTIONS: ConditionOperator[] = ["EQ", "NE", "IN", "NOT_IN", "GT", "GTE", "LT", "LTE", "BETWEEN", "EXISTS", "NOT_EXISTS"];
 const APPROVER_MODES: ApproverMode[] = ["USER", "PROJECT_ROLE"];
 
@@ -35,7 +35,7 @@ const blankStrategy = (): ReleaseStrategyDto => ({
   name: "",
   moduleCode: "QUALITY",
   processCode: "RFI_APPROVAL",
-  documentType: "RFI",
+  documentType: "FLOOR_RFI",
   priority: 100,
   status: "DRAFT",
   version: 1,
@@ -50,6 +50,7 @@ const blankStrategy = (): ReleaseStrategyDto => ({
       approverMode: "PROJECT_ROLE",
       roleId: null,
       userId: null,
+      userIds: [],
       minApprovalsRequired: 1,
       canDelegate: false,
       escalationDays: null,
@@ -84,7 +85,7 @@ export default function ReleaseStrategyPage() {
     projectId: pId,
     moduleCode: "QUALITY",
     processCode: "RFI_APPROVAL",
-    documentType: "RFI",
+    documentType: "FLOOR_RFI",
     documentId: null,
     initiatorUserId: null,
     amount: null,
@@ -135,6 +136,7 @@ export default function ReleaseStrategyPage() {
       })),
       steps: (detail.steps || []).map((step, index) => ({
         ...step,
+        userIds: step.userIds || (step.userId ? [step.userId] : []),
         levelNo: step.levelNo ?? index + 1,
         sequence: step.sequence ?? index + 1,
       })),
@@ -163,11 +165,18 @@ export default function ReleaseStrategyPage() {
   );
 
   const roleOptions = useMemo(() => {
-    const allIds = new Set<number>();
+    const roleMap = new Map<number, string>();
     actors.forEach((actor) =>
-      actor.projectRoleIds.forEach((id: number) => allIds.add(id)),
+      actor.projectRoleIds.forEach((id: number, index: number) => {
+        roleMap.set(
+          id,
+          actor.projectRoleNames?.[index] || actor.primaryRoleLabel || `Role ${id}`,
+        );
+      }),
     );
-    return Array.from(allIds).sort((a, b) => a - b);
+    return Array.from(roleMap.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([id, name]) => ({ id, name }));
   }, [actors]);
 
   const readiness = useMemo(() => {
@@ -177,14 +186,20 @@ export default function ReleaseStrategyPage() {
       {
         label: "All steps have assignee definitions",
         ok: (form.steps || []).every((step) =>
-          step.approverMode === "USER" ? !!step.userId : !!step.roleId,
+          step.approverMode === "USER"
+            ? !!(step.userIds || []).length || !!step.userId
+            : !!step.roleId,
         ),
       },
       {
         label: "Every step resolves at least one active actor",
         ok: (form.steps || []).every((step) =>
           step.approverMode === "USER"
-            ? actors.some((actor) => actor.userId === step.userId)
+            ? actors.some((actor) =>
+                (step.userIds || (step.userId ? [step.userId] : [])).includes(
+                  actor.userId,
+                ),
+              )
             : actors.some((actor) =>
                 actor.projectRoleIds.includes(step.roleId ?? -1),
               ),
@@ -228,6 +243,27 @@ export default function ReleaseStrategyPage() {
         })),
         steps: (form.steps || []).map((step, index) => ({
           ...step,
+          userIds:
+            step.approverMode === "USER"
+              ? Array.from(
+                  new Set(
+                    (step.userIds || [])
+                      .map((userId) => Number(userId))
+                      .filter((userId) => Number.isFinite(userId) && userId > 0),
+                  ),
+                )
+              : [],
+          userId:
+            step.approverMode === "USER"
+              ? (
+                  step.userIds?.length
+                    ? step.userIds
+                    : step.userId
+                      ? [step.userId]
+                      : []
+                ).find(Boolean) || null
+              : null,
+          roleId: step.approverMode === "PROJECT_ROLE" ? step.roleId : null,
           levelNo: index + 1,
           sequence: index + 1,
         })),
@@ -563,6 +599,7 @@ export default function ReleaseStrategyPage() {
                         approverMode: "PROJECT_ROLE",
                         roleId: null,
                         userId: null,
+                        userIds: [],
                         minApprovalsRequired: 1,
                         canDelegate: false,
                         escalationDays: null,
@@ -579,9 +616,10 @@ export default function ReleaseStrategyPage() {
           </div>
           <div className="space-y-3">
             {(form.steps || []).map((step, index) => {
+              const selectedUserIds = step.userIds || (step.userId ? [step.userId] : []);
               const stepApprovers =
                 step.approverMode === "USER"
-                  ? actors.filter((actor) => actor.userId === step.userId)
+                  ? actors.filter((actor) => selectedUserIds.includes(actor.userId))
                   : actors.filter((actor) =>
                       actor.projectRoleIds.includes(step.roleId ?? -1),
                     );
@@ -622,6 +660,7 @@ export default function ReleaseStrategyPage() {
                         updateStep(index, {
                           approverMode: e.target.value as ApproverMode,
                           userId: null,
+                          userIds: [],
                           roleId: null,
                         })
                       }
@@ -635,16 +674,27 @@ export default function ReleaseStrategyPage() {
                     </select>
                     {step.approverMode === "USER" ? (
                       <select
-                        value={step.userId || ""}
-                        onChange={(e) =>
-                          updateStep(index, { userId: Number(e.target.value) || null })
-                        }
+                        multiple
+                        value={selectedUserIds.map(String)}
+                        onChange={(e) => {
+                          const userIds = Array.from(e.target.selectedOptions)
+                            .map((option) => Number(option.value))
+                            .filter((userId) => Number.isFinite(userId) && userId > 0);
+                          updateStep(index, {
+                            userIds,
+                            userId: userIds[0] || null,
+                            minApprovalsRequired: Math.min(
+                              step.minApprovalsRequired || 1,
+                              Math.max(userIds.length, 1),
+                            ),
+                          });
+                        }}
                         className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                        size={Math.min(Math.max(actors.length, 3), 6)}
                       >
-                        <option value="">Select user</option>
                         {actors.map((actor) => (
                           <option key={actor.userId} value={actor.userId}>
-                            {actor.displayName} • {actor.sourceType}
+                            {actor.displayName} - {actor.companyLabel} - {actor.primaryRoleLabel || actor.sourceType}
                           </option>
                         ))}
                       </select>
@@ -657,9 +707,9 @@ export default function ReleaseStrategyPage() {
                         className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
                       >
                         <option value="">Select project role</option>
-                        {roleOptions.map((roleId) => (
-                          <option key={roleId} value={roleId}>
-                            Role #{roleId}
+                        {roleOptions.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
                           </option>
                         ))}
                       </select>
@@ -698,7 +748,12 @@ export default function ReleaseStrategyPage() {
                   <div className="mt-2 text-xs text-text-muted">
                     Resolved approvers:{" "}
                     {stepApprovers.length > 0
-                      ? stepApprovers.map((actor) => actor.displayName).join(", ")
+                      ? stepApprovers
+                          .map(
+                            (actor) =>
+                              `${actor.displayName} (${actor.companyLabel}${actor.primaryRoleLabel ? ` - ${actor.primaryRoleLabel}` : ""})`,
+                          )
+                          .join(", ")
                       : "No eligible project actor resolved"}
                   </div>
                 </div>
@@ -723,7 +778,7 @@ export default function ReleaseStrategyPage() {
                 <div className="font-medium text-text-primary">{actor.displayName}</div>
                 <div className="text-xs text-text-muted">
                   {actor.sourceType} • Roles:{" "}
-                  {actor.projectRoleIds.join(", ") || "None"}
+                  {(actor.projectRoleNames || []).join(", ") || actor.primaryRoleLabel || "None"}
                 </div>
                 {actor.vendorId && (
                   <div className="mt-1 text-xs text-text-disabled">

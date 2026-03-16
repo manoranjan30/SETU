@@ -34,6 +34,34 @@ export class TempUserService {
     private readonly projectAssignmentService: ProjectAssignmentService,
   ) {}
 
+  private async ensureProjectTeamAssignment(
+    projectId: number | null | undefined,
+    userId: number | null | undefined,
+    templateId: number | null | undefined,
+    performedByUserId?: number,
+  ) {
+    if (!projectId || !userId || !templateId) return;
+
+    const roleName = `TEMP_ROLE_${templateId}`;
+    let role = await this.roleRepo.findOneBy({ name: roleName });
+    if (!role) {
+      role = this.roleRepo.create({
+        name: roleName,
+        description: 'Auto-generated fallback',
+      });
+      role = await this.roleRepo.save(role);
+    }
+
+    await this.projectAssignmentService.assignUser(
+      projectId,
+      userId,
+      [role.id],
+      ProjectScopeType.FULL,
+      undefined,
+      performedByUserId,
+    );
+  }
+
   async getVendorsForProject(projectId: number) {
     const workOrders = await this.workOrderRepo.find({
       where: [
@@ -176,26 +204,10 @@ export class TempUserService {
     });
     await this.repo.save(tempUser);
 
-    // 6. Add to project team
-    // Find auto-generated role for this template
-    const roleName = `TEMP_ROLE_${template.id}`;
-    let role = await this.roleRepo.findOneBy({ name: roleName });
-    if (!role) {
-      // Create if missing just in case
-      // This is a minimal fallback
-      role = this.roleRepo.create({
-        name: roleName,
-        description: 'Auto-generated fallback',
-      });
-      role = await this.roleRepo.save(role);
-    }
-
-    await this.projectAssignmentService.assignUser(
+    await this.ensureProjectTeamAssignment(
       dto.projectId,
       user.id,
-      [role.id],
-      ProjectScopeType.FULL,
-      undefined,
+      template.id,
       createdByUserId,
     );
 
@@ -263,7 +275,14 @@ export class TempUserService {
     tempUser.suspensionReason = null as any;
     tempUser.expiryDate = new Date(workOrder.orderValidityEnd);
 
-    return this.repo.save(tempUser);
+    const saved = await this.repo.save(tempUser);
+    await this.ensureProjectTeamAssignment(
+      tempUser.projectId,
+      tempUser.userId,
+      tempUser.tempRoleTemplateId,
+      reactivatedByUserId,
+    );
+    return saved;
   }
 
   async updateStatus(id: number, isActive: boolean, updatedByUserId: number) {
@@ -290,6 +309,16 @@ export class TempUserService {
       tempUser.user.isActive = isActive;
       await this.userRepo.save(tempUser.user);
     }
+
+    if (isActive) {
+      await this.ensureProjectTeamAssignment(
+        tempUser.projectId,
+        tempUser.userId,
+        tempUser.tempRoleTemplateId,
+        updatedByUserId,
+      );
+    }
+
     return tempUser;
   }
 

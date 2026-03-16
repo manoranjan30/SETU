@@ -35,6 +35,7 @@ export interface ReleaseStrategyStepDto {
   stepName: string;
   approverMode: ApproverMode;
   userId?: number | null;
+  userIds?: number[] | null;
   roleId?: number | null;
   minApprovalsRequired?: number;
   canDelegate?: boolean;
@@ -65,6 +66,9 @@ export interface EligibleApproverDto {
   displayName: string;
   sourceType: "PERMANENT" | "TEMP_VENDOR";
   projectRoleIds: number[];
+  projectRoleNames: string[];
+  companyLabel: string;
+  primaryRoleLabel?: string | null;
   vendorId?: number | null;
   workOrderId?: number | null;
   activeStatus: string;

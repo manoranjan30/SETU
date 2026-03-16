@@ -32,12 +32,30 @@ export class InspectionWorkflowRun {
   @JoinColumn({ name: 'inspectionId' })
   inspection: QualityInspection;
 
-  @Column()
-  workflowTemplateId: number;
+  @Column({ type: 'int', nullable: true })
+  workflowTemplateId: number | null;
 
-  @ManyToOne(() => ApprovalWorkflowTemplate, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => ApprovalWorkflowTemplate, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({ name: 'workflowTemplateId' })
-  workflowTemplate: ApprovalWorkflowTemplate;
+  workflowTemplate: ApprovalWorkflowTemplate | null;
+
+  @Column({ type: 'int', nullable: true })
+  releaseStrategyId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  releaseStrategyVersion: number | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  strategyName: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  moduleCode: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  processCode: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  documentType: string | null;
 
   @Column({ default: 1 })
   currentStepOrder: number;

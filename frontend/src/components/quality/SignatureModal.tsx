@@ -5,7 +5,7 @@ import api from "../../api/axios";
 
 /** Manual trim: extracts just the drawn area from a canvas, bypassing broken trim-canvas dep */
 function trimCanvasToDataUrl(canvas: HTMLCanvasElement): string {
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return canvas.toDataURL("image/png");
   const { width, height } = canvas;
   const imageData = ctx.getImageData(0, 0, width, height);
@@ -35,7 +35,7 @@ function trimCanvasToDataUrl(canvas: HTMLCanvasElement): string {
   trimmed.width = tWidth;
   trimmed.height = tHeight;
   trimmed
-    .getContext("2d")!
+    .getContext("2d", { willReadFrequently: true })!
     .putImageData(ctx.getImageData(tLeft, tTop, tWidth, tHeight), 0, 0);
   return trimmed.toDataURL("image/png");
 }

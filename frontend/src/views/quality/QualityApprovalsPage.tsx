@@ -7,7 +7,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Save,
   ShieldCheck,
   UserCheck,
   MessageSquareWarning,
@@ -60,7 +59,49 @@ interface QualityInspection {
   pendingObservationCount?: number;
   workflowCurrentLevel?: number;
   workflowTotalLevels?: number;
+  pendingApprovalLevel?: number;
+  pendingApprovalLabel?: string;
+  pendingApprovalDisplay?: string;
+  pendingApproverNames?: string[];
+  pendingApprovalBy?: number | string;
+  workflowSummary?: {
+    runStatus?: string;
+    releaseStrategyId?: number;
+    releaseStrategyVersion?: number;
+    strategyName?: string;
+    processCode?: string;
+    documentType?: string;
+    pendingStep?: {
+      stepOrder?: number;
+      stepName?: string;
+      status?: string;
+      assignedUserId?: number | null;
+      assignedUserIds?: number[];
+      assignedRoleId?: number | null;
+      pendingApproverNames?: string[];
+      pendingApprovalDisplay?: string | null;
+      currentApprovalCount?: number;
+      minApprovalsRequired?: number;
+      approvedUserIds?: number[];
+    } | null;
+    completedSteps?: Array<{
+      stepOrder?: number;
+      stepName?: string;
+      currentApprovalCount?: number;
+      minApprovalsRequired?: number;
+      signerDisplayName?: string;
+      signerCompany?: string;
+      signerRole?: string;
+      completedAt?: string;
+    }>;
+  };
+  stageApprovalSummary?: {
+    approvedStages?: number;
+    totalStages?: number;
+    pendingFinalApproval?: boolean;
+  };
   slaDueAt?: string;
+  isLocked?: boolean;
   stages?: any[]; // Populated in detail view
 }
 
@@ -126,6 +167,27 @@ function getFloorLabel(insp: QualityInspection) {
   return hierarchy.find((h) => h.toLowerCase().includes("floor")) || "Unmapped";
 }
 
+function isStageApproved(stage: any) {
+  if (stage?.stageApproval?.fullyApproved) return true;
+  if (stage?.status === "APPROVED" || stage?.isLocked) return true;
+  return (stage?.signatures || []).some(
+    (signature: any) =>
+      signature?.actionType === "STAGE_APPROVE" && !signature?.isReversed,
+  );
+}
+
+function getCheckedStageItems(stage: any) {
+  return (stage?.items || []).filter(
+    (item: any) =>
+      item?.value === "YES" || item?.value === "NA" || item?.isOk,
+  ).length;
+}
+
+function isStageChecklistComplete(stage: any) {
+  const totalItems = stage?.items?.length || 0;
+  return totalItems > 0 && getCheckedStageItems(stage) === totalItems;
+}
+
 function getSlaBucket(insp: QualityInspection): SlaBucket {
   if (!isPendingStatus(insp.status)) return "Upcoming";
   const now = Date.now();
@@ -178,6 +240,9 @@ export default function QualityApprovalsPage() {
     "PENDING" | "RECTIFIED" | "CLOSED" | "ALL"
   >("PENDING");
   const [showObsModal, setShowObsModal] = useState(false);
+  const [selectedObservationStageId, setSelectedObservationStageId] = useState<
+    number | null
+  >(null);
   const [showDelegationModal, setShowDelegationModal] = useState(false);
   const [delegating, setDelegating] = useState(false);
   const [eligibleUsers, setEligibleUsers] = useState<any[]>([]);
@@ -197,12 +262,15 @@ export default function QualityApprovalsPage() {
 
   // Signature Modals
   const [showFinalApproveSig, setShowFinalApproveSig] = useState(false);
+  const [activeStageId, setActiveStageId] = useState<number | null>(null);
   // showReversalSig could also be added if reversal needs digital signature, but reason is already captured in modal.
 
   // User info
-  const { user, hasPermission } = useAuth();
-  const [showDraftOrSignModal, setShowDraftOrSignModal] = useState(false);
+  const { hasPermission } = useAuth();
   const isAdmin = hasPermission(PermissionCode.QUALITY_INSPECTION_DELETE);
+  const canApproveInspection = hasPermission(
+    PermissionCode.QUALITY_INSPECTION_APPROVE,
+  );
 
   // Helper for correct image URLs
   const getFileUrl = (path: string) => {
@@ -371,19 +439,24 @@ export default function QualityApprovalsPage() {
     };
   }, [approvalMetrics.pending, inspections]);
 
+  const stageScopedObservations = useMemo(() => {
+    if (selectedObservationStageId == null) return observations;
+    return observations.filter((o) => o.stageId === selectedObservationStageId);
+  }, [observations, selectedObservationStageId]);
+
   const filteredObservations = useMemo(() => {
     if (obsTab === "PENDING")
-      return observations.filter(
+      return stageScopedObservations.filter(
         (o) => o.status === "PENDING" || o.status === "OPEN",
       );
     if (obsTab === "RECTIFIED")
-      return observations.filter((o) => o.status === "RECTIFIED");
+      return stageScopedObservations.filter((o) => o.status === "RECTIFIED");
     if (obsTab === "CLOSED")
-      return observations.filter(
+      return stageScopedObservations.filter(
         (o) => o.status === "CLOSED" || o.status === "RESOLVED",
       );
-    return observations;
-  }, [observations, obsTab]);
+    return stageScopedObservations;
+  }, [stageScopedObservations, obsTab]);
 
   const getDaysOpen = (createdAt: string) => {
     const days = Math.floor(
@@ -424,43 +497,115 @@ export default function QualityApprovalsPage() {
     });
   };
 
-  const saveChecklistProgress = async () => {
-    if (!inspectionDetail) return;
-    try {
-      // Must save each stage sequentially
-      for (const stage of inspectionDetail.stages) {
-        const checkedCount = stage.items.filter(
-          (it: any) => it.value === "YES" || it.value === "NA" || it.isOk,
-        ).length;
-        const totalCount = stage.items.length;
+  const itemIsChecked = (item: any) =>
+    item?.value === "YES" || item?.value === "NA" || item?.isOk;
 
-        let stageStatus = stage.status;
-        if (checkedCount > 0 && checkedCount < totalCount) {
-          stageStatus = "IN_PROGRESS";
-        } else if (checkedCount === totalCount && totalCount > 0) {
-          stageStatus = "COMPLETED";
-        }
+  const getApiErrorMessage = (err: any, fallback: string) => {
+    const message = err?.response?.data?.message;
+    if (Array.isArray(message)) {
+      return message.filter(Boolean).join(", ") || fallback;
+    }
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+    if (typeof err?.message === "string" && err.message.trim()) {
+      return err.message.trim();
+    }
+    return fallback;
+  };
 
-        await api.patch(`/quality/inspections/stage/${stage.id}`, {
-          status: stageStatus, // Keep existing status or update to IN_PROGRESS
-          items: stage.items.map((it: any) => ({
-            id: it.id,
-            value: it.value,
-            isOk: it.value === "YES" || it.value === "NA" || it.isOk,
-            remarks: it.remarks,
-          })),
+  const updateStage = async (stageId: number, payload: Record<string, any>) => {
+    const stageInspectionId =
+      inspectionDetail?.id ||
+      inspections.find((entry) =>
+        (entry.stages || []).some((stage: any) => stage.id === stageId),
+      )?.id;
+
+    const attempts: Array<{ method: "patch" | "post"; url: string }> = [];
+
+    if (stageInspectionId) {
+      attempts.push(
+        {
+          method: "patch",
+          url: `/quality/inspections/${stageInspectionId}/stages/${stageId}`,
+        },
+        {
+          method: "post",
+          url: `/quality/inspections/${stageInspectionId}/stages/${stageId}`,
+        },
+      );
+
+      if (payload.status === "APPROVED" && payload.signature?.data) {
+        attempts.push({
+          method: "post",
+          url: `/quality/inspections/${stageInspectionId}/stages/${stageId}/approve`,
         });
       }
-      alert("RFI checklist progress saved successfully.");
-      setRefreshKey((k) => k + 1);
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to save progress.");
     }
+
+    attempts.push(
+      { method: "patch", url: `/quality/inspections/stage/${stageId}` },
+      { method: "post", url: `/quality/inspections/stage/${stageId}` },
+    );
+
+    let lastError: any = null;
+    for (const attempt of attempts) {
+      try {
+        if (attempt.method === "patch") {
+          return await api.patch(attempt.url, payload);
+        }
+        return await api.post(attempt.url, payload);
+      } catch (err: any) {
+        lastError = err;
+        if (err?.response?.status !== 404) {
+          throw err;
+        }
+      }
+    }
+
+    throw lastError;
+  };
+
+  const approveStageWithSignature = async (
+    inspectionId: number,
+    stageId: number,
+    signatureData: string,
+  ) => {
+    return api.post(`/quality/inspections/${inspectionId}/stages/${stageId}/approve`, {
+      signatureData,
+      comments: "Stage approved from checklist stage action",
+    });
+  };
+
+  const persistStageBeforeApproval = async (stage: any) => {
+    const checkedCount = (stage.items || []).filter((it: any) =>
+      itemIsChecked(it),
+    ).length;
+    const totalCount = stage.items?.length || 0;
+
+    let stageStatus = stage.status;
+    if (checkedCount > 0 && checkedCount < totalCount) {
+      stageStatus = "IN_PROGRESS";
+    } else if (checkedCount === totalCount && totalCount > 0) {
+      stageStatus = "COMPLETED";
+    }
+
+    await updateStage(stage.id, {
+      status: stageStatus,
+      items: (stage.items || []).map((it: any) => ({
+        id: it.id,
+        value: it.value,
+        isOk: itemIsChecked(it),
+        remarks: it.remarks,
+      })),
+    });
   };
 
   const fetchEligibleUsers = async () => {
     try {
-      const res = await api.get("/users/list"); // Assuming a user list endpoint exists
+      const res = await api.get("/quality/inspections/eligible-approvers/list", {
+        params: { projectId },
+      });
       setEligibleUsers(res.data);
     } catch (err) {
       console.error("Failed to fetch users", err);
@@ -488,60 +633,51 @@ export default function QualityApprovalsPage() {
       setWorkflowState(wfRes.data);
       alert("Step successfully delegated.");
     } catch (err: any) {
-      alert(err.response?.data?.message || "Delegation failed.");
+      alert(getApiErrorMessage(err, "Delegation failed."));
     } finally {
       setDelegating(false);
     }
   };
-  const handleInitiateApprove = async () => {
-    // Just save progress and show signature modal
-    await saveChecklistProgress();
+  const handleApproveStage = async (stage: any) => {
+    if (!canApproveInspection) {
+      alert("You do not have permission to approve this stage.");
+      return;
+    }
+    if (!isStageChecklistComplete(stage)) {
+      alert("Complete all checklist items in this stage before approving it.");
+      return;
+    }
+    setActiveStageId(stage.id);
     setShowFinalApproveSig(true);
   };
 
   const executeFinalApprove = async (signatureData: string) => {
     try {
-      if (workflowState) {
-        const currentStep = workflowState.steps.find(
-          (s: any) => s.stepOrder === workflowState.currentStepOrder,
+      if (activeStageId != null && inspectionDetail) {
+        const targetStage = (inspectionDetail.stages || []).find(
+          (stage: any) => stage.id === activeStageId,
         );
-        const wfRes = await api.post(
-          `/quality/inspections/${inspectionDetail.id}/workflow/advance`,
-          {
-            signatureData,
-            signedBy:
-              user?.displayName ||
-              user?.username ||
-              currentStep?.workflowNode?.label ||
-              "Approver",
-            comments: "Approved digitally",
-          },
-        );
-
-        if (wfRes.data?.isFinal) {
-          alert(
-            "All workflow steps completed. RFI is now fully approved!",
-          );
-        } else {
-          alert("Workflow step approved.");
+        if (targetStage) {
+          await persistStageBeforeApproval(targetStage);
         }
-      } else {
-        // Legacy / Direct final approve
-        await api.post(
-          `/quality/inspections/${inspectionDetail.id}/final-approve`,
-          {
-            signatureData,
-            comments: "Final Approval given digitally",
-          },
+        await approveStageWithSignature(
+          inspectionDetail.id,
+          activeStageId,
+          signatureData,
         );
-        alert("RFI final approval completed.");
+        alert("Stage approved successfully.");
+        setShowFinalApproveSig(false);
+        setActiveStageId(null);
+        setRefreshKey((k) => k + 1);
+        return;
       }
 
-      setShowFinalApproveSig(false);
-      setSelectedInspectionId(null);
-      setRefreshKey((k) => k + 1);
+      throw new Error(
+        "Checklist approval is automatic once all stages complete all required approval levels.",
+      );
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to approve RFI.");
+      alert(getApiErrorMessage(err, "Failed to approve RFI."));
+      setActiveStageId(null);
     }
   };
 
@@ -552,7 +688,7 @@ export default function QualityApprovalsPage() {
     try {
       // Save checklist progress first
       for (const stage of inspectionDetail.stages) {
-        await api.patch(`/quality/inspections/stage/${stage.id}`, {
+        await updateStage(stage.id, {
           status: "REJECTED",
           items: stage.items.map((it: any) => ({
             id: it.id,
@@ -581,7 +717,7 @@ export default function QualityApprovalsPage() {
       setSelectedInspectionId(null);
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to reject RFI.");
+      alert(getApiErrorMessage(err, "Failed to reject RFI."));
     }
   };
 
@@ -599,46 +735,12 @@ export default function QualityApprovalsPage() {
       });
       setCurrentPhotos((prev) => [...prev, res.data.url]);
     } catch (err: any) {
-      alert(err.response?.data?.message || "Upload failed");
+      alert(getApiErrorMessage(err, "Upload failed"));
     } finally {
       setUploading(false);
     }
   };
 
-  const handleProvisionallyApprove = async () => {
-    const reason = prompt(
-      "Please enter justification for Provisional Approval:",
-    );
-    if (!reason) return;
-
-    try {
-      // Save checklist progress first
-      for (const stage of inspectionDetail.stages) {
-        await api.patch(`/quality/inspections/stage/${stage.id}`, {
-          status: "COMPLETED",
-          items: stage.items.map((it: any) => ({
-            id: it.id,
-            value: it.value,
-            isOk: it.isOk,
-            remarks: it.remarks,
-          })),
-        });
-      }
-
-      await api.patch(`/quality/inspections/${inspectionDetail.id}/status`, {
-        status: "PROVISIONALLY_APPROVED",
-        comments: reason,
-        inspectionDate: new Date().toISOString().split("T")[0],
-      });
-      alert("RFI provisionally approved.");
-      setSelectedInspectionId(null);
-      setRefreshKey((k) => k + 1);
-    } catch (err: any) {
-      alert(
-        err.response?.data?.message || "Failed to provisionally approve RFI.",
-      );
-    }
-  };
 
   const handleRaiseObservation = async () => {
     if (!obsText.trim()) return;
@@ -650,11 +752,14 @@ export default function QualityApprovalsPage() {
           observationText: obsText,
           type: obsType,
           photos: currentPhotos,
+          inspectionId: inspectionDetail.id,
+          stageId: selectedObservationStageId,
         },
       );
       alert("Observation Raised.");
       setObsText("");
       setCurrentPhotos([]);
+      setSelectedObservationStageId(null);
       // Refresh to show in the list inside the modal
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
@@ -688,19 +793,70 @@ export default function QualityApprovalsPage() {
     }
   };
 
-  const allChecked = useMemo(() => {
-    if (!inspectionDetail?.stages) return false;
-    if (inspectionDetail.stages.length === 0) return true; // Empty checklist can be approved
-    return inspectionDetail.stages.every((s: any) =>
-      s.items?.every(
-        (i: any) => i.value === "YES" || i.value === "NA" || i.isOk,
-      ),
-    );
-  }, [inspectionDetail]);
-
   const pendingObservationsCount = useMemo(() => {
     return observations.filter((o) => o.status !== "CLOSED").length;
   }, [observations]);
+
+  const getStagePendingObservationCount = (stageId: number) =>
+    observations.filter(
+      (o) => o.stageId === stageId && o.status !== "CLOSED",
+    ).length;
+
+  const formatSignatureMeta = (signature: any) => {
+    const bits = [
+      signature?.signerDisplayName || signature?.signedBy,
+      signature?.signerCompany,
+      signature?.signerRoleLabel || signature?.signerRole,
+    ].filter(Boolean);
+    return bits.join(" - ");
+  };
+
+  const formatSignatureAction = (signature: any) => {
+    if (!signature?.actionType) return "Signed";
+    if (signature.actionType === "SAVE_PROGRESS") return "Progress Signed";
+    if (signature.actionType === "STAGE_APPROVE") return "Stage Approved";
+    if (signature.actionType === "FINAL_APPROVE") return "Final Approved";
+    return signature.actionType.replaceAll("_", " ");
+  };
+
+  const approvalHistory = useMemo(() => {
+    if (!inspectionDetail) return [];
+
+    const workflowEntries = (
+      inspectionDetail.workflowSummary?.completedSteps || []
+    ).map((step: any) => ({
+      key: `workflow-${step.stepOrder}`,
+      scope: "Workflow Level",
+      title: `Level ${step.stepOrder}: ${step.stepName || "Approval Step"}`,
+      action:
+        (step.minApprovalsRequired || 1) > 1
+          ? `Workflow Approved (${step.currentApprovalCount || 0}/${step.minApprovalsRequired})`
+          : "Workflow Approved",
+      meta: [step.signerDisplayName, step.signerCompany, step.signerRole]
+        .filter(Boolean)
+        .join(" - "),
+      at: step.completedAt || null,
+      status: "COMPLETED",
+    }));
+
+    const stageEntries = (inspectionDetail.stages || []).flatMap((stage: any) =>
+      (stage.signatures || []).map((signature: any, index: number) => ({
+        key: `stage-${stage.id}-${index}`,
+        scope: "Stage",
+        title: stage.stageTemplate?.name || `Stage ${stage.id}`,
+        action: formatSignatureAction(signature),
+        meta: formatSignatureMeta(signature),
+        at: signature.signedAt || signature.createdAt || null,
+        status: signature.isReversed ? "REVERSED" : "SIGNED",
+      })),
+    );
+
+    return [...workflowEntries, ...stageEntries].sort((a, b) => {
+      const aTime = a.at ? new Date(a.at).getTime() : 0;
+      const bTime = b.at ? new Date(b.at).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [inspectionDetail]);
 
   return (
     <>
@@ -1015,6 +1171,14 @@ export default function QualityApprovalsPage() {
                                     `Node ${insp.epsNodeId}`}
                                 </span>
                               </div>
+                              {insp.pendingApprovalLevel ? (
+                                <div className="mt-2 text-[11px] text-amber-800">
+                                  Pending Level {insp.pendingApprovalLevel}
+                                  {insp.pendingApprovalLabel
+                                    ? ` - ${insp.pendingApprovalLabel}`
+                                    : ""}
+                                </div>
+                              ) : null}
                             </button>
                           );
                         })
@@ -1099,6 +1263,40 @@ export default function QualityApprovalsPage() {
                           </span>
                         )}
                       </div>
+                      <div className="mt-2 space-y-1 text-[11px]">
+                        {insp.pendingApprovalLevel ? (
+                          <div className="rounded-md bg-warning-muted px-2 py-1 text-amber-800">
+                            {insp.pendingApprovalDisplay ||
+                              `Level ${insp.pendingApprovalLevel} Pending${
+                                insp.pendingApprovalLabel
+                                  ? `: ${insp.pendingApprovalLabel}`
+                                  : ""
+                              }`}
+                            {insp.workflowSummary?.pendingStep
+                              ?.minApprovalsRequired &&
+                            (insp.workflowSummary?.pendingStep
+                              ?.minApprovalsRequired || 1) > 1
+                              ? ` (${insp.workflowSummary?.pendingStep?.currentApprovalCount || 0}/${insp.workflowSummary?.pendingStep?.minApprovalsRequired} approvals)`
+                              : ""}
+                          </div>
+                        ) : insp.workflowSummary?.runStatus === "COMPLETED" ? (
+                          <div className="rounded-md bg-success-muted px-2 py-1 text-emerald-800">
+                            All approval levels completed
+                          </div>
+                        ) : null}
+                        {insp.stageApprovalSummary?.totalStages ? (
+                          <div className="text-text-muted">
+                            Stage approvals:{" "}
+                            <span className="font-semibold text-text-primary">
+                              {insp.stageApprovalSummary.approvedStages || 0}/
+                              {insp.stageApprovalSummary.totalStages}
+                            </span>
+                            {insp.stageApprovalSummary.pendingFinalApproval
+                              ? " - awaiting final approval"
+                              : ""}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })
@@ -1151,18 +1349,57 @@ export default function QualityApprovalsPage() {
                         </span>
                       )}
                     </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      {inspectionDetail.workflowSummary?.strategyName ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary">
+                          {inspectionDetail.workflowSummary.strategyName}
+                          {inspectionDetail.workflowSummary.releaseStrategyVersion
+                            ? ` v${inspectionDetail.workflowSummary.releaseStrategyVersion}`
+                            : ""}
+                        </span>
+                      ) : null}
+                      {inspectionDetail.workflowSummary?.processCode ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary">
+                          {inspectionDetail.workflowSummary.processCode}
+                        </span>
+                      ) : null}
+                      {inspectionDetail.workflowSummary?.documentType ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary">
+                          {inspectionDetail.workflowSummary.documentType}
+                        </span>
+                      ) : null}
+                      {inspectionDetail.pendingApprovalLevel ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning-muted px-3 py-1 font-semibold text-amber-800">
+                          Pending Level {inspectionDetail.pendingApprovalLevel}
+                          {inspectionDetail.pendingApprovalLabel
+                            ? ` - ${inspectionDetail.pendingApprovalLabel}`
+                            : ""}
+                          {inspectionDetail.workflowSummary?.pendingStep
+                            ?.minApprovalsRequired &&
+                          (inspectionDetail.workflowSummary?.pendingStep
+                            ?.minApprovalsRequired || 1) > 1
+                            ? ` (${inspectionDetail.workflowSummary?.pendingStep?.currentApprovalCount || 0}/${inspectionDetail.workflowSummary?.pendingStep?.minApprovalsRequired})`
+                            : ""}
+                        </span>
+                      ) : null}
+                      {inspectionDetail.stageApprovalSummary?.totalStages ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary">
+                          Stage Signoff{" "}
+                          {inspectionDetail.stageApprovalSummary.approvedStages ||
+                            0}
+                          /
+                          {inspectionDetail.stageApprovalSummary.totalStages}
+                        </span>
+                      ) : null}
+                      {inspectionDetail.stageApprovalSummary
+                        ?.pendingFinalApproval ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-info-muted px-3 py-1 font-semibold text-blue-800">
+                          Waiting for final approval
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setShowDraftOrSignModal(true)}
-                      disabled={
-                        inspectionDetail.status !== "PENDING" &&
-                        inspectionDetail.status !== "PARTIALLY_APPROVED"
-                      }
-                      className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-surface-base shadow-sm disabled:opacity-50"
-                    >
-                      <Save className="w-4 h-4" /> Save Progress
-                    </button>
                     {/* PDF Download */}
                     <button
                       onClick={async () => {
@@ -1274,16 +1511,17 @@ export default function QualityApprovalsPage() {
                             const stepLabel =
                               isLastStepNode && !isRaiserStep
                                 ? "Final Approval"
-                                : step.workflowNode?.label ||
+                                : step.stepName ||
+                                  step.workflowNode?.label ||
                                   `Step ${step.stepOrder}`;
                             const stepSubtitle = isCompleted
                               ? isRaiserStep
                                 ? "RFI Raised"
-                                : `Signed by ${step.signedBy}`
+                                : `Signed by ${step.signerDisplayName || step.signedBy}${step.signerCompany ? ` - ${step.signerCompany}` : ""}${step.signerRole ? ` - ${step.signerRole}` : ""}`
                               : isRejected
                                 ? "Rejected"
                                 : isCurrent
-                                  ? "Pending Approval"
+                                  ? `Pending Approval${step.stepName ? ` - ${step.stepName}` : ""}`
                                   : "Waiting";
 
                             return (
@@ -1333,6 +1571,98 @@ export default function QualityApprovalsPage() {
                       </div>
                     )}
 
+                    {inspectionDetail.workflowSummary?.completedSteps?.length >
+                      0 && (
+                      <div className="rounded-xl border bg-surface-card p-4">
+                        <div className="text-sm font-semibold text-text-primary">
+                          Completed Approval Levels
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {inspectionDetail.workflowSummary.completedSteps.map(
+                            (step: any) => (
+                              <div
+                                key={`wf-complete-${step.stepOrder}`}
+                                className="rounded-lg border border-emerald-200 bg-success-muted px-3 py-2 text-xs text-emerald-900"
+                              >
+                                <div className="font-semibold">
+                                  Level {step.stepOrder}:{" "}
+                                  {step.stepName || "Approval Step"}
+                                </div>
+                                {(step.minApprovalsRequired || 1) > 1 && (
+                                  <div className="mt-1">
+                                    Quorum met: {step.currentApprovalCount || 0}/
+                                    {step.minApprovalsRequired}
+                                  </div>
+                                )}
+                                <div className="mt-1">
+                                  {[
+                                    step.signerDisplayName,
+                                    step.signerCompany,
+                                    step.signerRole,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" - ") || "Signed"}
+                                </div>
+                                {step.completedAt && (
+                                  <div className="mt-1 text-emerald-700">
+                                    {new Date(step.completedAt).toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {approvalHistory.length > 0 && (
+                      <div className="rounded-xl border bg-surface-card p-4">
+                        <div className="text-sm font-semibold text-text-primary">
+                          Approval History
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {approvalHistory.map((entry: any) => (
+                            <div
+                              key={entry.key}
+                              className="rounded-lg border border-border-subtle bg-surface-base px-3 py-3 text-xs"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <div className="font-semibold text-text-primary">
+                                    {entry.title}
+                                  </div>
+                                  <div className="mt-1 text-text-secondary">
+                                    {entry.scope} - {entry.action}
+                                  </div>
+                                  {entry.meta && (
+                                    <div className="mt-1 text-text-muted">
+                                      {entry.meta}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span
+                                    className={`rounded-full px-2 py-1 font-semibold ${
+                                      entry.status === "REVERSED"
+                                        ? "bg-warning-muted text-amber-800"
+                                        : "bg-surface-raised text-text-secondary"
+                                    }`}
+                                  >
+                                    {entry.status}
+                                  </span>
+                                  {entry.at && (
+                                    <span className="text-text-muted">
+                                      {new Date(entry.at).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Observation Banner */}
                     {pendingObservationsCount > 0 && (
                       <div className="bg-warning-muted border border-amber-200 rounded-xl px-4 py-3 flex gap-3 text-amber-800">
@@ -1356,28 +1686,197 @@ export default function QualityApprovalsPage() {
                         No checklist template assigned to this activity.
                       </div>
                     ) : (
-                      inspectionDetail.stages.map(
-                        (stage: any, sIdx: number) => (
+                      inspectionDetail.stages.map((stage: any, sIdx: number) => {
+                        const stageApproval = stage.stageApproval;
+                        const stageLevels = stageApproval?.levels || [];
+                        const latestStageApproval = [...(stage.signatures || [])]
+                          .reverse()
+                          .find(
+                            (signature: any) =>
+                              signature?.actionType === "STAGE_APPROVE" &&
+                              !signature?.isReversed,
+                          );
+
+                        return (
                           <div
                             key={stage.id}
                             className="bg-surface-card rounded-xl shadow-sm border overflow-hidden"
                           >
                             <div className="bg-surface-base px-4 py-2.5 border-b flex flex-wrap justify-between items-center gap-2">
-                              <h3 className="font-semibold text-text-primary">
-                                Stage {sIdx + 1}:{" "}
-                                {stage.stageTemplate?.name || "General Checks"}
-                              </h3>
-                              <span className="text-xs text-text-muted">
-                                {
-                                  stage.items?.filter(
-                                    (i: any) =>
-                                      i.value === "YES" ||
-                                      i.value === "NA" ||
-                                      i.isOk,
-                                  ).length
-                                }{" "}
-                                / {stage.items?.length} Completed
-                              </span>
+                              <div>
+                                <h3 className="font-semibold text-text-primary">
+                                  Stage {sIdx + 1}:{" "}
+                                  {stage.stageTemplate?.name || "General Checks"}
+                                </h3>
+                                <p className="text-xs text-text-muted mt-1">
+                                  {stageApproval?.fullyApproved
+                                    ? "Stage approved at all release-strategy levels and locked"
+                                    : stageApproval?.pendingDisplay
+                                      ? `Pending approvals: ${stageApproval.pendingDisplay}`
+                                      : stage.isLocked
+                                        ? "Stage approved and locked"
+                                        : "Stage approval pending"}
+                                </p>
+                                {stageLevels.length > 0 ? (
+                                  <div className="mt-2 space-y-1">
+                                    {stageLevels.map((level: any) => (
+                                      <p
+                                        key={`stage-level-summary-${stage.id}-${level.stepOrder}`}
+                                        className="text-xs text-text-muted"
+                                      >
+                                        <span className="font-medium text-text-secondary">
+                                          Level {level.stepOrder}: {level.stepName}
+                                        </span>
+                                        {" - "}
+                                        {level.approved
+                                          ? `${level.signerDisplayName || "Approved"}${
+                                              level.signerCompany
+                                                ? ` - ${level.signerCompany}`
+                                                : ""
+                                            }${
+                                              level.signerRoleLabel
+                                                ? ` - ${level.signerRoleLabel}`
+                                                : ""
+                                            }${
+                                              level.autoInherited
+                                                ? " (auto-filled by higher level)"
+                                                : ""
+                                            }`
+                                          : "Pending"}
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : latestStageApproval ? (
+                                  <p className="text-xs text-text-muted mt-1">
+                                    Approved by{" "}
+                                    {latestStageApproval.signerDisplayName ||
+                                      latestStageApproval.signedBy}
+                                    {latestStageApproval.signerCompany &&
+                                      ` - ${latestStageApproval.signerCompany}`}
+                                    {latestStageApproval.signerRoleLabel &&
+                                      ` - ${latestStageApproval.signerRoleLabel}`}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-text-muted">
+                                  {
+                                    stage.items?.filter(
+                                      (i: any) =>
+                                        i.value === "YES" ||
+                                        i.value === "NA" ||
+                                        i.isOk,
+                                    ).length
+                                  }{" "}
+                                  / {stage.items?.length} Completed
+                                </span>
+                                <span
+                                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${
+                                    isStageApproved(stage)
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-surface-raised text-text-muted"
+                                  }`}
+                                >
+                                  {isStageApproved(stage)
+                                    ? "Approved & Locked"
+                                    : stageApproval?.approvedLevelCount
+                                      ? `${stageApproval.approvedLevelCount}/${stageApproval.requiredLevelCount} Levels Approved`
+                                      : stage.status}
+                                </span>
+                                {isAdmin && isStageApproved(stage) && inspectionDetail.status !== "APPROVED" && (
+                                  <button
+                                    onClick={async () => {
+                                      const reason = prompt("Enter reason to reverse this stage approval:");
+                                      if (!reason) return;
+                                      await api.post(
+                                        `/quality/inspections/${inspectionDetail.id}/stages/${stage.id}/reverse`,
+                                        { reason },
+                                      );
+                                      setRefreshKey((k) => k + 1);
+                                    }}
+                                    className="px-2 py-1 text-[10px] font-bold uppercase rounded border border-amber-300 text-amber-700 hover:bg-amber-50"
+                                  >
+                                    Reverse Stage
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="border-b bg-surface-base/60 px-4 py-3">
+                              {stageLevels.length > 0 ? (
+                                <div className="space-y-2">
+                                  {stageLevels.map((level: any) => (
+                                    <div
+                                      key={`stage-matrix-${stage.id}-${level.stepOrder}`}
+                                      className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface-card px-3 py-2 text-xs"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="font-semibold text-text-primary">
+                                          Level {level.stepOrder}: {level.stepName}
+                                        </span>
+                                        <span
+                                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                            level.approved
+                                              ? "bg-emerald-100 text-emerald-700"
+                                              : "bg-amber-100 text-amber-700"
+                                          }`}
+                                        >
+                                          {level.approved ? "Approved" : "Pending"}
+                                        </span>
+                                      </div>
+                                      <div className="text-text-secondary">
+                                        {level.approved
+                                          ? [
+                                              level.signerDisplayName,
+                                              level.signerCompany,
+                                              level.signerRoleLabel,
+                                            ]
+                                              .filter(Boolean)
+                                              .join(" - ")
+                                          : "Awaiting approval at this level"}
+                                        {level.autoInherited
+                                          ? " (auto-filled by higher level approval)"
+                                          : ""}
+                                      </div>
+                                      {level.approvedAt && (
+                                        <div className="text-text-muted">
+                                          {new Date(level.approvedAt).toLocaleString()}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : stage.signatures?.length > 0 ? (
+                                <div className="space-y-2">
+                                  {stage.signatures.map(
+                                    (signature: any, sigIdx: number) => (
+                                      <div
+                                        key={`stage-signature-${stage.id}-${sigIdx}`}
+                                        className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface-card px-3 py-2 text-xs"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <span className="font-semibold text-text-primary">
+                                            {formatSignatureAction(signature)}
+                                          </span>
+                                          {signature.signedAt && (
+                                            <span className="text-text-muted">
+                                              {new Date(
+                                                signature.signedAt,
+                                              ).toLocaleString()}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-text-secondary">
+                                          {formatSignatureMeta(signature)}
+                                        </div>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-border-default px-3 py-2 text-xs text-text-muted">
+                                  No stage approval recorded yet.
+                                </div>
+                              )}
                             </div>
                             <div className="divide-y">
                               {[...(stage.items || [])]
@@ -1400,6 +1899,8 @@ export default function QualityApprovalsPage() {
                                           )
                                         }
                                         disabled={
+                                          (stage.isLocked && !isAdmin) ||
+                                          (inspectionDetail.isLocked && !isAdmin) ||
                                           ![
                                             "PENDING",
                                             "PARTIALLY_APPROVED",
@@ -1417,6 +1918,8 @@ export default function QualityApprovalsPage() {
                                           )
                                         }
                                         disabled={
+                                          (stage.isLocked && !isAdmin) ||
+                                          (inspectionDetail.isLocked && !isAdmin) ||
                                           ![
                                             "PENDING",
                                             "PARTIALLY_APPROVED",
@@ -1448,6 +1951,10 @@ export default function QualityApprovalsPage() {
                                               e.target.value,
                                             )
                                           }
+                                          disabled={
+                                            (stage.isLocked && !isAdmin) ||
+                                            (inspectionDetail.isLocked && !isAdmin)
+                                          }
                                           className="mt-2 w-full text-sm border-border-strong rounded-md shadow-sm focus:ring-secondary focus:border-secondary"
                                         />
                                       ) : (
@@ -1461,9 +1968,61 @@ export default function QualityApprovalsPage() {
                                   </div>
                                 ))}
                             </div>
+                            {["PENDING", "PARTIALLY_APPROVED"].includes(
+                              inspectionDetail.status,
+                            ) &&
+                              (!inspectionDetail.isLocked || isAdmin) && (
+                              <div className="border-t bg-surface-base px-4 py-3">
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                  <div className="text-xs text-text-muted">
+                                    {isStageApproved(stage)
+                                      ? "This stage is already approved and locked."
+                                      : isStageChecklistComplete(stage)
+                                        ? stageApproval?.pendingDisplay
+                                          ? `Checklist complete. Approving now will record up to your allowed level. Remaining: ${stageApproval.pendingDisplay}.`
+                                          : "All checklist items are complete. This stage is ready for approval."
+                                        : "Complete all checklist items in this stage, then approve it."}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedObservationStageId(stage.id);
+                                        setShowObsModal(true);
+                                      }}
+                                      className="px-4 py-2 bg-surface-card border border-amber-200 text-amber-700 rounded-lg hover:bg-warning-muted text-sm font-medium"
+                                    >
+                                      Observations ({getStagePendingObservationCount(stage.id)})
+                                    </button>
+                                    <button
+                                      onClick={() => handleApproveStage(stage)}
+                                      disabled={
+                                        !canApproveInspection ||
+                                        isStageApproved(stage) ||
+                                        inspectionDetail.isLocked ||
+                                        !isStageChecklistComplete(stage) ||
+                                        getStagePendingObservationCount(stage.id) > 0
+                                      }
+                                      className="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-secondary-dark disabled:opacity-50 text-sm font-medium"
+                                      title={
+                                        !canApproveInspection
+                                          ? "You do not have approval access for this stage."
+                                          : getStagePendingObservationCount(stage.id) > 0
+                                            ? "Close all observations for this stage before approval."
+                                          : !isStageChecklistComplete(stage)
+                                            ? "Complete all checklist items in this stage before approval."
+                                            : ""
+                                      }
+                                    >
+                                      <ShieldCheck className="w-4 h-4 inline mr-1" />
+                                      Approve Stage
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ),
-                      )
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -1471,31 +2030,16 @@ export default function QualityApprovalsPage() {
                 {/* Final Action Bar */}
                 {["PENDING", "PARTIALLY_APPROVED"].includes(
                   inspectionDetail.status,
-                ) && (
+                ) &&
+                  (!inspectionDetail.isLocked || isAdmin) && (
                   <div className="border-t border-border-default bg-surface-card px-5 py-4">
                     <div className="max-w-5xl mx-auto flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="text-sm min-h-5">
-                        {!allChecked && pendingObservationsCount === 0 && (
-                          <span className="text-error font-medium flex items-center gap-1.5">
-                            <AlertCircle className="w-4 h-4" /> Please complete
-                            all checklist items before approving.
-                          </span>
-                        )}
-                        {allChecked && pendingObservationsCount === 0 && (
-                          <span className="text-success font-medium flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4" /> Checklist
-                            complete. Ready for approval.
-                          </span>
-                        )}
+                        <span className="text-text-secondary font-medium flex items-center gap-1.5">
+                          <Clock className="w-4 h-4" /> Checklist approval is stage-driven. Each stage must complete all release-strategy levels, and the checklist will auto-approve once every stage is complete.
+                        </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                        <button
-                          onClick={() => setShowObsModal(true)}
-                          className="px-4 py-2 bg-surface-card border border-amber-200 text-amber-700 rounded-lg hover:bg-warning-muted focus:ring-2 focus:ring-amber-200 font-medium flex items-center gap-2 text-sm"
-                        >
-                          <MessageSquareWarning className="w-4 h-4" />{" "}
-                          Observations ({observations.length})
-                        </button>
                         <button
                           onClick={handleReject}
                           className="px-4 py-2 bg-surface-card border border-red-200 text-error rounded-lg hover:bg-error-muted focus:ring-2 focus:ring-red-200 font-medium text-sm border-l"
@@ -1513,24 +2057,6 @@ export default function QualityApprovalsPage() {
                             <UserCheck className="w-4 h-4" /> Delegate
                           </button>
                         )}
-                        {!workflowState && (
-                          <button
-                            onClick={handleProvisionallyApprove}
-                            className="px-4 py-2 bg-surface-card border border-blue-200 text-primary rounded-lg hover:bg-primary-muted focus:ring-2 focus:ring-blue-200 font-medium text-sm"
-                          >
-                            Provisional Approval
-                          </button>
-                        )}
-                        <button
-                          onClick={handleInitiateApprove}
-                          disabled={!allChecked || pendingObservationsCount > 0}
-                          className="px-6 py-2 bg-secondary text-white rounded-lg hover:bg-secondary-dark disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm shadow-indigo-200 transition-all text-sm flex items-center gap-2"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          {workflowState
-                            ? "Approve Workflow Step"
-                            : "Final Approve"}
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -1893,10 +2419,17 @@ export default function QualityApprovalsPage() {
       {/* Signature Modals */}
       <SignatureModal
         isOpen={showFinalApproveSig}
-        onClose={() => setShowFinalApproveSig(false)}
+        onClose={() => {
+          setShowFinalApproveSig(false);
+          setActiveStageId(null);
+        }}
         onSign={executeFinalApprove}
-        title="Final Approval Signature"
-        description="Sign to grant final approval for this RFI."
+        title={activeStageId != null ? "Stage Approval Signature" : "Final Approval Signature"}
+        description={
+          activeStageId != null
+            ? "Sign to approve this checklist stage."
+            : "Sign to grant final approval for this RFI."
+        }
       />
       {/* Delegation Modal */}
       {showDelegationModal && (
@@ -1923,7 +2456,7 @@ export default function QualityApprovalsPage() {
                 <option value="">-- Choose User --</option>
                 {eligibleUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} ({u.role})
+                    {u.name} ({u.role}{u.company ? ` • ${u.company}` : ""})
                   </option>
                 ))}
               </select>
@@ -1942,54 +2475,6 @@ export default function QualityApprovalsPage() {
                 className="flex-1 px-4 py-2 bg-secondary text-white rounded-lg text-sm font-medium hover:bg-secondary-dark disabled:opacity-50"
               >
                 {delegating ? "Delegating..." : "Confirm Delegation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Draft vs Sign Modal */}
-      {showDraftOrSignModal && (
-        <div className="fixed inset-0 bg-surface-overlay flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-card rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-border-default">
-            <div className="p-6">
-              <h3 className="text-lg font-bold text-text-primary mb-2">
-                Save Progress
-              </h3>
-              <p className="text-sm text-text-muted mb-6">
-                Would you like to just save this checklist as a draft, or sign
-                and approve this stage?
-              </p>
-              <div className="space-y-3">
-                <button
-                  onClick={async () => {
-                    setShowDraftOrSignModal(false);
-                    await saveChecklistProgress();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border-default rounded-xl hover:bg-surface-base text-text-secondary font-medium"
-                >
-                  <Save className="w-4 h-4" /> Save as Draft
-                </button>
-                <button
-                  onClick={() => {
-                    setShowDraftOrSignModal(false);
-                    handleInitiateApprove();
-                  }}
-                  disabled={!allChecked || pendingObservationsCount > 0}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-white rounded-xl hover:bg-secondary-dark font-medium disabled:opacity-50 shadow-sm"
-                  title={
-                    !allChecked || pendingObservationsCount > 0
-                      ? "You must complete all checklist items and close all observations before approving."
-                      : ""
-                  }
-                >
-                  <ShieldCheck className="w-4 h-4" /> Sign & Approve Step
-                </button>
-              </div>
-              <button
-                onClick={() => setShowDraftOrSignModal(false)}
-                className="mt-4 w-full text-center text-sm text-text-disabled hover:text-text-secondary font-medium"
-              >
-                Cancel
               </button>
             </div>
           </div>
