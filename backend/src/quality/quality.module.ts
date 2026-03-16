@@ -52,10 +52,14 @@ import { QualitySequencerService } from './quality-sequencer.service';
 import { QualitySequencerController } from './quality-sequencer.controller';
 
 import { ChecklistTemplateService } from './checklist-template.service';
+import { ChecklistExcelParserService } from './checklist-excel-parser.service';
+import { ChecklistPdfParserService } from './checklist-pdf-parser.service';
 import { ChecklistTemplateController } from './checklist-template.controller';
 import { ComplianceService } from './compliance.service';
 import { QualityReportService } from './quality-report.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PlanningModule } from '../planning/planning.module';
+import { CommonModule } from '../common/common.module';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
@@ -79,6 +83,8 @@ import { QualityRatingController } from './quality-rating.controller';
     MulterModule.register({ dest: './uploads/quality-csv' }),
     NotificationsModule,
     AuditModule,
+    PlanningModule,
+    CommonModule,
     TypeOrmModule.forFeature([
       QualityInspection,
       QualityMaterialTest,
@@ -119,6 +125,7 @@ import { QualityRatingController } from './quality-rating.controller';
       User,
       Vendor,
       WorkOrder,
+      InspectionWorkflowRun,
     ]),
   ],
   controllers: [
@@ -139,6 +146,8 @@ import { QualityRatingController } from './quality-rating.controller';
     QualityInspectionService, // Added
     QualitySequencerService,
     ChecklistTemplateService,
+    ChecklistExcelParserService,
+    ChecklistPdfParserService,
     ComplianceService,
     QualityReportService,
     ApprovalWorkflowService,
@@ -154,6 +163,8 @@ import { QualityRatingController } from './quality-rating.controller';
     QualityInspectionService, // Added
     QualitySequencerService,
     QualityReportService,
+    ChecklistExcelParserService,
+    ChecklistPdfParserService,
     ApprovalWorkflowService,
     InspectionWorkflowService,
     SiteObservationService,

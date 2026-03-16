@@ -23,10 +23,14 @@ export class UsersService {
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
-    const existing = await this.usersRepository.findOneBy({ username: createUserDto.username });
+    const existing = await this.usersRepository.findOneBy({
+      username: createUserDto.username,
+    });
     if (existing) {
       if (existing.isTempUser) {
-        throw new ConflictException('This username is already associated with a temporary vendor user.');
+        throw new ConflictException(
+          'This username is already associated with a temporary vendor user.',
+        );
       }
       throw new ConflictException('Username is already taken.');
     }
@@ -63,9 +67,12 @@ export class UsersService {
   }
 
   async findAll(): Promise<User[]> {
-    return this.usersRepository.createQueryBuilder('user')
+    return this.usersRepository
+      .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'roles')
-      .where('user.isTempUser = :isTemp OR user.isTempUser IS NULL', { isTemp: false })
+      .where('user.isTempUser = :isTemp OR user.isTempUser IS NULL', {
+        isTemp: false,
+      })
       .getMany();
   }
 
@@ -77,7 +84,9 @@ export class UsersService {
     if (!user) return null;
 
     if (user.isTempUser) {
-      throw new BadRequestException('Cannot modify temporary users through the permanent user management module.');
+      throw new BadRequestException(
+        'Cannot modify temporary users through the permanent user management module.',
+      );
     }
 
     if (updateUserDto.password) {
@@ -214,7 +223,9 @@ export class UsersService {
       throw new ForbiddenException('Cannot delete the Admin user');
     }
     if (user.isTempUser) {
-      throw new BadRequestException('Cannot delete temporary users through the permanent user management module.');
+      throw new BadRequestException(
+        'Cannot delete temporary users through the permanent user management module.',
+      );
     }
     await this.usersRepository.delete(id);
   }

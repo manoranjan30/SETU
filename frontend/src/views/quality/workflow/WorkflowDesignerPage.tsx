@@ -1,266 +1,180 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-    ReactFlow,
-    Controls,
-    Background,
-    useNodesState,
-    useEdgesState,
-    addEdge,
-    MarkerType,
-    type Connection,
-    type Edge,
-    type Node,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Save, Plus, Settings } from 'lucide-react';
-import api from '../../../api/axios';
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, ShieldCheck, Users, GitBranch } from "lucide-react";
+import { releaseStrategyService, type ReleaseStrategyDto } from "../../../services/releaseStrategy.service";
 
-// Custom Node component
-import WorkflowNode from './WorkflowNode';
-import NodePropertiesPanel from './NodePropertiesPanel';
+export default function WorkflowDesignerPage() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [strategies, setStrategies] = useState<ReleaseStrategyDto[]>([]);
+  const [actors, setActors] = useState<any[]>([]);
 
-const nodeTypes = {
-    approvalNode: WorkflowNode,
-};
-
-const WorkflowDesignerPage: React.FC = () => {
-    const { projectId } = useParams();
-    const navigate = useNavigate();
-
-    const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-
-    useEffect(() => {
-        fetchWorkflow();
-    }, [projectId]);
-
-    const fetchWorkflow = async () => {
-        try {
-            setIsLoading(true);
-            const res = await api.get(`/quality/workflow-templates?projectId=${projectId}`);
-            if (res.data) {
-                // Map backend entities to React Flow nodes/edges
-                const mappedNodes = res.data.nodes.map((n: any) => ({
-                    id: n.id.toString(), // or clientId if we mapped it back
-                    type: 'approvalNode',
-                    position: n.position || { x: Math.random() * 200, y: Math.random() * 200 },
-                    data: { ...n } as Record<string, unknown>,
-                }));
-
-                const mappedEdges = res.data.edges.map((e: any) => ({
-                    id: `e-${e.sourceNodeId}-${e.targetNodeId}`,
-                    source: e.sourceNodeId.toString(),
-                    target: e.targetNodeId.toString(),
-                    type: 'smoothstep',
-                    markerEnd: {
-                        type: MarkerType.ArrowClosed,
-                    },
-                }));
-
-                setNodes(mappedNodes);
-                setEdges(mappedEdges);
-            }
-        } catch (error: any) {
-            if (error.response?.status !== 404) {
-                console.error('Failed to load workflow template:', error);
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const onConnect = useCallback((params: Connection | Edge) => {
-        setEdges((eds: Edge[]) => addEdge({ ...params, markerEnd: { type: MarkerType.ArrowClosed }, type: 'smoothstep' }, eds));
-    }, [setEdges]);
-
-    const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
-        setSelectedNode(node);
-    }, []);
-
-    const onPaneClick = useCallback(() => {
-        setSelectedNode(null);
-    }, []);
-
-    const deleteNode = useCallback((nodeId: string) => {
-        setNodes((nds: Node[]) => nds.filter(n => n.id !== nodeId));
-        setEdges((eds: Edge[]) => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
-        if (selectedNode?.id === nodeId) setSelectedNode(null);
-    }, [setNodes, setEdges, selectedNode]);
-
-    const displayNodes = React.useMemo(() => {
-        const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
-        return nodes.map(n => ({
-            ...n,
-            data: {
-                ...n.data,
-                canDelete: nodes.length > 2 && (n.data.stepOrder as number) === maxOrder,
-                onDelete: deleteNode
-            }
-        }));
-    }, [nodes, deleteNode]);
-
-    const addNode = () => {
-        const sortedNodes = [...nodes].sort((a, b) => ((a.data.stepOrder as number) || 0) - ((b.data.stepOrder as number) || 0));
-        const lastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
-        const maxOrder = Math.max(0, ...nodes.map(n => (n.data.stepOrder as number) || 0));
-
-        const newNodeId = `node_${Date.now()}`;
-        const newNode: Node = {
-            id: newNodeId,
-            type: 'approvalNode',
-            position: lastNode ? { x: lastNode.position.x + 300, y: lastNode.position.y } : { x: 250, y: 150 },
-            data: {
-                label: `New Step ${maxOrder + 1}`,
-                stepType: 'APPROVE',
-                assignmentMode: 'USER',
-                stepOrder: maxOrder + 1,
-                isOptional: false,
-                canDelegate: false,
-                allowRaiseRFI: false,
-                allowStageApprove: false,
-                allowFinalApprove: false,
-                allowReject: false,
-                allowObservation: false,
-            },
-        };
-
-        setNodes((nds: Node[]) => nds.concat(newNode));
-
-        if (lastNode) {
-            setEdges((eds: Edge[]) => eds.concat({
-                id: `e-${lastNode.id}-${newNodeId}`,
-                source: lastNode.id,
-                target: newNodeId,
-                type: 'smoothstep',
-                markerEnd: { type: MarkerType.ArrowClosed }
-            }));
-        }
-    };
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            const payload = {
-                projectId: projectId,
-                name: `Global Quality Workflow`,
-                nodes: nodes.map((n: Node) => ({
-                    clientId: n.id,
-                    position: n.position,
-                    ...n.data,
-                })),
-                edges: edges.map((e: Edge) => ({
-                    sourceClientId: e.source,
-                    targetClientId: e.target,
-                })),
-            };
-
-            await api.post(`/quality/workflow-templates`, payload);
-            alert('Workflow saved successfully!');
-            fetchWorkflow(); // Refresh IDs
-        } catch (error) {
-            console.error('Failed to save workflow:', error);
-            alert('Failed to save workflow. Please try again.');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleNodeUpdate = (id: string, updatedData: any) => {
-        setNodes((nds: Node[]) =>
-            nds.map((node: Node) => {
-                if (node.id === id) {
-                    node.data = { ...node.data, ...updatedData };
-                }
-                return node;
-            })
+  useEffect(() => {
+    const run = async () => {
+      if (!projectId) return;
+      setLoading(true);
+      try {
+        const [allStrategies, eligibleActors] = await Promise.all([
+          releaseStrategyService.list(Number(projectId), { moduleCode: "QUALITY" }),
+          releaseStrategyService.getActors(Number(projectId)),
+        ]);
+        setStrategies(
+          allStrategies
+            .filter((item) => item.moduleCode === "QUALITY")
+            .sort((a, b) => (b.priority || 0) - (a.priority || 0)),
         );
-        if (selectedNode && selectedNode.id === id) {
-            setSelectedNode((prev: any) => ({ ...prev, data: { ...prev.data, ...updatedData } }));
-        }
+        setActors(eligibleActors);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    return (
-        <div className="flex flex-col h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-20 relative">
-                <div className="flex items-center space-x-4">
-                    <button
-                        onClick={() => navigate(`/dashboard/projects/${projectId}/quality/activity-lists`)}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                        <ArrowLeft className="h-5 w-5 text-gray-600" />
-                    </button>
-                    <div>
-                        <h1 className="text-xl font-semibold text-gray-800">Global Approval Pipeline</h1>
-                        <p className="text-sm text-gray-500">Define the project-wide QC approval sequence</p>
-                    </div>
-                </div>
-                <div className="flex space-x-3">
-                    <button
-                        onClick={addNode}
-                        className="flex items-center space-x-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
-                    >
-                        <Plus className="h-4 w-4" />
-                        <span>Add Step</span>
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center space-x-2 bg-[#0E0E0E] text-white px-4 py-2 rounded-md hover:bg-black transition-colors disabled:opacity-50"
-                    >
-                        <Save className="h-4 w-4" />
-                        <span>{isSaving ? 'Saving...' : 'Save Workflow'}</span>
-                    </button>
-                </div>
-            </div>
+    run();
+  }, [projectId]);
 
-            {/* Main Content */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Canvas */}
-                <div className="flex-1 h-full relative">
-                    {isLoading ? (
-                        <div className="flex h-full items-center justify-center">Loading workflow...</div>
-                    ) : (
-                        <ReactFlow
-                            nodes={displayNodes}
-                            edges={edges}
-                            onNodesChange={onNodesChange}
-                            onEdgesChange={onEdgesChange}
-                            onConnect={onConnect}
-                            onNodeClick={onNodeClick}
-                            onPaneClick={onPaneClick}
-                            nodeTypes={nodeTypes}
-                            fitView
-                            attributionPosition="bottom-left"
-                        >
-                            <Background gap={16} />
-                            <Controls />
-                        </ReactFlow>
-                    )}
-                </div>
-
-                {/* Properties Panel */}
-                {selectedNode ? (
-                    <div className="w-80 border-l bg-white flex flex-col shadow-lg z-10 overflow-y-auto">
-                        <NodePropertiesPanel
-                            node={selectedNode}
-                            onChange={(updatedData: any) => handleNodeUpdate(selectedNode.id, updatedData)}
-                            projectId={Number(projectId)}
-                        />
-                    </div>
-                ) : (
-                    <div className="w-80 border-l bg-gray-50 flex flex-col items-center justify-center text-gray-400 p-8 text-center shadow-inner z-10">
-                        <Settings className="h-12 w-12 mb-4 opacity-50" />
-                        <p>Select a node to edit its properties and permissions.</p>
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="min-h-screen bg-surface-base">
+      <div className="bg-surface-card border-b px-6 py-4 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() =>
+              navigate(`/dashboard/projects/${projectId}/quality/activity-lists`)
+            }
+            className="p-2 hover:bg-surface-raised rounded-full transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 text-text-secondary" />
+          </button>
+          <div>
+            <h1 className="text-xl font-semibold text-text-primary">
+              Quality Approval Map
+            </h1>
+            <p className="text-sm text-text-muted">
+              Quality approvals now resolve from Release Strategy.
+            </p>
+          </div>
         </div>
-    );
-};
+        <button
+          onClick={() => navigate(`/dashboard/projects/${projectId}/planning`)}
+          className="px-4 py-2 bg-[#0E0E0E] text-white rounded-lg text-sm font-medium hover:bg-black"
+        >
+          Open Release Strategy
+        </button>
+      </div>
 
-export default WorkflowDesignerPage;
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-surface-card border rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <div>
+                <div className="text-xs uppercase tracking-widest text-text-muted">
+                  Active Strategies
+                </div>
+                <div className="text-2xl font-bold text-text-primary">
+                  {strategies.filter((s) => s.status === "ACTIVE").length}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-surface-card border rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <Users className="w-5 h-5 text-indigo-600" />
+              <div>
+                <div className="text-xs uppercase tracking-widest text-text-muted">
+                  Eligible Approvers
+                </div>
+                <div className="text-2xl font-bold text-text-primary">
+                  {actors.length}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-surface-card border rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <GitBranch className="w-5 h-5 text-amber-600" />
+              <div>
+                <div className="text-xs uppercase tracking-widest text-text-muted">
+                  Quality Process
+                </div>
+                <div className="text-sm font-semibold text-text-primary mt-1">
+                  QUALITY / Release Strategy Driven
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-indigo-50 border border-indigo-100 text-indigo-900 rounded-2xl px-5 py-4 text-sm">
+          This page is now read-only. Approval routing in Quality is controlled by
+          Release Strategy, and project-scoped team members plus temporary users
+          are resolved automatically at runtime.
+        </div>
+
+        {loading ? (
+          <div className="bg-surface-card border rounded-2xl p-8 text-center text-text-muted">
+            Loading quality release strategies...
+          </div>
+        ) : strategies.length === 0 ? (
+          <div className="bg-surface-card border rounded-2xl p-8 text-center text-text-muted">
+            No quality release strategies found for this project.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {strategies.map((strategy) => (
+              <div key={strategy.id} className="bg-surface-card border rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b bg-surface-base flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-text-primary">
+                      {strategy.name}
+                    </h2>
+                    <p className="text-sm text-text-muted mt-1">
+                      {strategy.processCode}
+                      {strategy.documentType ? ` • ${strategy.documentType}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-full bg-surface-raised text-text-secondary font-bold uppercase">
+                      {strategy.status}
+                    </span>
+                    <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-bold uppercase">
+                      Priority {strategy.priority || 0}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-3">
+                  {(strategy.steps || [])
+                    .slice()
+                    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+                    .map((step) => (
+                      <div
+                        key={`${strategy.id}-${step.sequence}-${step.levelNo}`}
+                        className="border rounded-xl p-4 bg-surface-base"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs uppercase tracking-widest text-text-muted">
+                              Level {step.levelNo}
+                            </div>
+                            <div className="font-semibold text-text-primary">
+                              {step.stepName}
+                            </div>
+                          </div>
+                          <div className="text-sm text-text-secondary">
+                            {step.approverMode === "USER"
+                              ? "Specific User"
+                              : "Project Role"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

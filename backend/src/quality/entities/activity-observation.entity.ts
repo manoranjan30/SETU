@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { QualityActivity } from './quality-activity.entity';
 import { QualityInspection } from './quality-inspection.entity';
+import { QualityInspectionStage } from './quality-inspection-stage.entity';
 
 export enum ActivityObservationStatus {
   PENDING = 'PENDING',
@@ -37,6 +38,13 @@ export class ActivityObservation {
   @ManyToOne(() => QualityInspection, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'inspectionId' })
   inspection: QualityInspection;
+
+  @Column({ nullable: true })
+  stageId: number | null;
+
+  @ManyToOne(() => QualityInspectionStage, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'stageId' })
+  stage: QualityInspectionStage | null;
 
   @Column({ nullable: true })
   inspectorId: string; // Foreign Key to User (String based on current app pattern)

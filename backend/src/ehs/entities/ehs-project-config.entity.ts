@@ -36,6 +36,22 @@ export class EhsProjectConfig {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 95 })
   targetSafetyScore: number;
 
+  @Column('jsonb', {
+    default: [
+      'General Safety',
+      'Work at Height',
+      'PPE',
+      'Electrical Safety',
+      'Housekeeping',
+      'Fire Safety',
+      'Lifting Operations',
+      'Scaffolding',
+      'Excavation',
+      'Plant & Machinery',
+    ],
+  })
+  observationCategories: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 

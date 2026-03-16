@@ -13,11 +13,16 @@ class ObservationCard extends StatelessWidget {
   /// Called by site engineer to fix/rectify a PENDING observation.
   final VoidCallback? onRectify;
 
+  /// Called to delete the observation (only passed if user has
+  /// QUALITY.OBSERVATION.CREATE permission — enforced by the caller).
+  final VoidCallback? onDelete;
+
   const ObservationCard({
     super.key,
     required this.obs,
     this.onClose,
     this.onRectify,
+    this.onDelete,
   });
 
   @override
@@ -170,11 +175,20 @@ class ObservationCard extends StatelessWidget {
             ],
 
             // Action buttons
-            if (onRectify != null || onClose != null) ...[
+            if (onRectify != null || onClose != null || onDelete != null) ...[
               const SizedBox(height: 10),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  if (onDelete != null)
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: Icon(Icons.delete_outline,
+                          size: 18, color: Colors.red.shade400),
+                      tooltip: 'Delete observation',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                    ),
+                  const Spacer(),
                   if (onRectify != null)
                     OutlinedButton.icon(
                       onPressed: onRectify,

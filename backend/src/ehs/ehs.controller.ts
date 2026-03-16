@@ -26,32 +26,6 @@ export class EhsController {
     return this.ehsService.getSummary(projectId);
   }
 
-  @Get(':projectId/observations')
-  @Permissions('EHS.OBSERVATION.READ')
-  async getObservations(@Param('projectId') projectId: number) {
-    return this.ehsService.getObservations(projectId);
-  }
-
-  @Post(':projectId/observations')
-  @Permissions('EHS.OBSERVATION.CREATE')
-  async createObservation(
-    @Param('projectId') projectId: number,
-    @Body() data: any,
-    @Request() req,
-  ) {
-    return this.ehsService.createObservation({
-      ...data,
-      projectId,
-      reportedById: req.user.id,
-    });
-  }
-
-  @Put('observations/:id')
-  @Permissions('EHS.OBSERVATION.UPDATE')
-  async updateObservation(@Param('id') id: number, @Body() data: any) {
-    return this.ehsService.updateObservation(id, data);
-  }
-
   @Get(':projectId/incidents')
   @Permissions('EHS.INCIDENT.READ')
   async getIncidents(@Param('projectId') projectId: number) {
@@ -96,6 +70,31 @@ export class EhsController {
   @Permissions('EHS.DASHBOARD.READ')
   async getTrends(@Param('projectId') projectId: number) {
     return this.ehsService.getTrends(projectId);
+  }
+
+  @Get(':projectId/config')
+  @Permissions('EHS.SITE_OBS.READ')
+  async getProjectConfig(@Param('projectId') projectId: number) {
+    const config = await this.ehsService.getProjectConfig(projectId);
+    return {
+      ...config,
+      observationCategories:
+        await this.ehsService.getObservationCategories(projectId),
+    };
+  }
+
+  @Put(':projectId/config/observation-categories')
+  @Permissions('EHS.SITE_OBS.CREATE')
+  async updateObservationCategories(
+    @Param('projectId') projectId: number,
+    @Body('categories') categories: string[],
+  ) {
+    return {
+      observationCategories: await this.ehsService.updateObservationCategories(
+        projectId,
+        categories,
+      ),
+    };
   }
 
   @Get(':projectId/performance')

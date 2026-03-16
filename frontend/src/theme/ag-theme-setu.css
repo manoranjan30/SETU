@@ -1,0 +1,90 @@
+.ag-theme-setu {
+  --ag-background-color: var(--color-surface-card);
+  --ag-foreground-color: var(--color-text-secondary);
+  --ag-header-background-color: var(--color-surface-raised);
+  --ag-header-foreground-color: var(--color-text-primary);
+  --ag-border-color: var(--color-border-default);
+  --ag-secondary-border-color: var(--color-border-subtle);
+  --ag-odd-row-background-color: var(--color-surface-base);
+  --ag-row-hover-color: color-mix(
+    in srgb,
+    var(--color-primary) 10%,
+    transparent
+  );
+  --ag-selected-row-background-color: color-mix(
+    in srgb,
+    var(--color-primary) 20%,
+    transparent
+  );
+  --ag-range-selection-border-color: color-mix(
+    in srgb,
+    var(--color-primary) 50%,
+    transparent
+  );
+  --ag-range-selection-background-color: color-mix(
+    in srgb,
+    var(--color-primary) 16%,
+    transparent
+  );
+  --ag-header-column-resize-handle-color: color-mix(
+    in srgb,
+    var(--color-primary) 70%,
+    transparent
+  );
+  --ag-row-border-color: var(--color-border-subtle);
+  --ag-input-focus-border-color: var(--color-primary);
+  --ag-font-size: 13px;
+  --ag-font-family: Manrope, Inter, "Segoe UI", sans-serif;
+}
+
+.ag-theme-setu .ag-root-wrapper {
+  border-radius: 14px;
+  border: 1px solid var(--color-border-default);
+  box-shadow: 0 10px 26px
+    color-mix(in srgb, var(--color-primary) 11%, transparent);
+  overflow: hidden;
+}
+
+.ag-theme-setu .ag-header {
+  border-bottom: 1px solid var(--color-border-default);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-primary-muted) 70%, white 30%),
+    var(--color-surface-raised)
+  );
+}
+
+.ag-theme-setu .ag-header-cell-label {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ag-theme-setu .ag-row {
+  transition: background-color 120ms ease;
+}
+
+.ag-theme-setu .ag-row-even {
+  background-color: color-mix(
+    in srgb,
+    var(--color-surface-card) 92%,
+    var(--color-primary-muted) 8%
+  );
+}
+
+.ag-theme-setu .ag-row-odd {
+  background-color: color-mix(
+    in srgb,
+    var(--color-surface-card) 97%,
+    var(--color-secondary-muted) 3%
+  );
+}
+
+.ag-theme-setu .ag-row-hover {
+  box-shadow: inset 2px 0 0
+    color-mix(in srgb, var(--color-primary) 45%, transparent);
+}
+
+.ag-theme-setu .ag-paging-panel {
+  border-top: 1px solid var(--color-border-default);
+  background: color-mix(in srgb, var(--color-surface-base) 80%, white 20%);
+}

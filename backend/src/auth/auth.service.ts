@@ -4,6 +4,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { expandPermissions } from './permission-config';
 import { ProjectAssignmentService } from '../projects/project-assignment.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { Role } from '../roles/role.entity';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +15,10 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private assignmentService: ProjectAssignmentService,
+    @InjectRepository(TempUser)
+    private readonly tempUserRepo: Repository<TempUser>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
   ) {}
 
   async validateUser(username: string, pass: string): Promise<any> {
@@ -55,10 +63,10 @@ export class AuthService {
     }
 
     // Fetch Project Assignments to add Project-specific permissions and Project IDs
-    const assignments = await this.assignmentService.getUserAssignments(
+    let assignments = await this.assignmentService.getUserAssignments(
       user.id,
     );
-    const assignedProjectIds = assignments.map((a) => a.project?.id);
+    let assignedProjectIds = assignments.map((a) => a.project?.id);
 
     // Merge project-specific role permissions into the raw permissions set
     assignments.forEach((assignment) => {
@@ -66,6 +74,32 @@ export class AuthService {
         role.permissions?.forEach((p) => rawPermissions.add(p.permissionCode));
       });
     });
+
+    if (user.isTempUser) {
+      const activeTempUser = await this.tempUserRepo.findOne({
+        where: { user: { id: user.id }, status: 'ACTIVE' },
+        relations: ['tempRoleTemplate'],
+        order: { id: 'DESC' },
+      });
+
+      if (activeTempUser && assignedProjectIds.length === 0) {
+        await this.ensureTempUserProjectAssignment(activeTempUser);
+        assignments = await this.assignmentService.getUserAssignments(user.id);
+        assignedProjectIds = assignments.map((a) => a.project?.id);
+
+        assignments.forEach((assignment) => {
+          assignment.roles?.forEach((role) => {
+            role.permissions?.forEach((p) => rawPermissions.add(p.permissionCode));
+          });
+        });
+      }
+
+      if (activeTempUser?.tempRoleTemplate?.allowedPermissions?.length) {
+        this.expandTempPermissions(
+          activeTempUser.tempRoleTemplate.allowedPermissions,
+        ).forEach((code) => rawPermissions.add(code));
+      }
+    }
 
     // Expand permissions to include implied dependencies
     const permissions = expandPermissions(Array.from(rawPermissions));
@@ -98,5 +132,61 @@ export class AuthService {
         isFirstLogin: user.isFirstLogin,
       },
     };
+  }
+
+  private expandTempPermissions(permissionCodes: string[]) {
+    const expanded = new Set<string>(permissionCodes);
+
+    expanded.add('EPS.NODE.READ');
+
+    const hasQualityAccess = Array.from(expanded).some((code) =>
+      code.startsWith('QUALITY.'),
+    );
+    if (hasQualityAccess) {
+      expanded.add('QUALITY.DASHBOARD.READ');
+    }
+
+    if (
+      expanded.has('QUALITY.INSPECTION.RAISE') ||
+      expanded.has('QUALITY.INSPECTION.READ') ||
+      expanded.has('QUALITY.INSPECTION.APPROVE')
+    ) {
+      expanded.add('QUALITY.ACTIVITYLIST.READ');
+      expanded.add('QUALITY.ACTIVITY.READ');
+    }
+
+    if (expanded.has('QUALITY.INSPECTION.APPROVE')) {
+      expanded.add('QUALITY.INSPECTION.STAGE_APPROVE');
+      expanded.add('QUALITY.INSPECTION.FINAL_APPROVE');
+    }
+
+    if (
+      expanded.has('EXECUTION.ENTRY.CREATE') ||
+      expanded.has('EXECUTION.ENTRY.UPDATE')
+    ) {
+      expanded.add('EXECUTION.ENTRY.READ');
+    }
+
+    return Array.from(expanded);
+  }
+
+  private async ensureTempUserProjectAssignment(tempUser: TempUser) {
+    if (!tempUser.projectId || !tempUser.userId || !tempUser.tempRoleTemplateId) {
+      return;
+    }
+
+    const roleName = `TEMP_ROLE_${tempUser.tempRoleTemplateId}`;
+    let role = await this.roleRepo.findOneBy({ name: roleName });
+    if (!role) {
+      role = this.roleRepo.create({
+        name: roleName,
+        description: 'Auto-generated fallback',
+      });
+      role = await this.roleRepo.save(role);
+    }
+
+    await this.assignmentService.assignUser(tempUser.projectId, tempUser.userId, [
+      role.id,
+    ]);
   }
 }

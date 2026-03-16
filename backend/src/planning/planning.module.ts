@@ -23,6 +23,21 @@ import { ImportExportService } from './import-export.service';
 import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
 import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { Vendor } from '../workdoc/entities/vendor.entity';
+import { ReleaseStrategy } from './entities/release-strategy.entity';
+import { ReleaseStrategyCondition } from './entities/release-strategy-condition.entity';
+import { ReleaseStrategyStep } from './entities/release-strategy-step.entity';
+import { ReleaseStrategyVersionAudit } from './entities/release-strategy-version-audit.entity';
+import { UserProjectAssignment } from '../projects/entities/user-project-assignment.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { User } from '../users/user.entity';
+import { Role } from '../roles/role.entity';
+import { ReleaseStrategyService } from './release-strategy.service';
+import { TowerProgressService } from './tower-progress.service';
+import { BuildingLineCoordinate } from './entities/building-line-coordinate.entity';
+import { BuildingLineCoordinateService } from './building-line-coordinate.service';
+import { QualityFloorStructure } from '../quality/entities/quality-floor-structure.entity';
+import { QualityUnit } from '../quality/entities/quality-unit.entity';
+import { QualityRoom } from '../quality/entities/quality-room.entity';
 
 @Module({
   imports: [
@@ -43,6 +58,18 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
       WorkOrderItem,
       WorkOrder,
       Vendor,
+      ReleaseStrategy,
+      ReleaseStrategyCondition,
+      ReleaseStrategyStep,
+      ReleaseStrategyVersionAudit,
+      UserProjectAssignment,
+      TempUser,
+      User,
+      Role,
+      BuildingLineCoordinate,
+      QualityFloorStructure,
+      QualityUnit,
+      QualityRoom,
     ]),
     WbsModule,
     NotificationsModule,
@@ -53,7 +80,10 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
     ScheduleVersionService,
     ImportExportService,
     SchedulingEngineService,
+    ReleaseStrategyService,
+    TowerProgressService,
+    BuildingLineCoordinateService,
   ],
-  exports: [PlanningService, ScheduleVersionService],
+  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService],
 })
 export class PlanningModule {}

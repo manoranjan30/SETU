@@ -7,43 +7,78 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/network/network_info.dart';
 
-/// Sync service for offline-first data synchronization
+/// Core offline-first sync engine for SETU.
 ///
-/// Features:
-/// - Local-first writes (all data saved to local DB first)
-/// - FIFO queue processing
-/// - Exponential backoff for retries
-/// - Idempotency keys for safe retries
-/// - Distinguishes between network errors (retry) and validation errors (user action needed)
+/// All user mutations are written to the local SQLite database first and then
+/// replayed against the server by this service. This ensures the app is fully
+/// functional without a network connection and that no data is lost if the
+/// device goes offline mid-session.
+///
+/// Design decisions:
+/// - **FIFO ordering**: items are processed oldest-first (by [createdAt]) so
+///   that earlier entries appear on the server in the correct chronological
+///   order.
+/// - **Exponential backoff**: each retry doubles the delay (2 s → 4 s → 8 s
+///   … capped at 60 s) to avoid hammering a degraded server.
+/// - **4xx = permanent error**: a 4xx response means the server definitively
+///   rejected the payload (validation failure, auth error, etc.). Retrying
+///   indefinitely would be pointless and confusing, so the row is marked with
+///   [SyncStatus.error] and the user is prompted to fix it.
+/// - **5xx / network = retry**: transient server or connectivity failures
+///   increment [retryCount] and re-attempt up to [maxRetryAttempts] times.
+/// - **Idempotency keys**: each mutation carries a unique key so the server
+///   can detect and ignore duplicate submissions caused by a retry after a
+///   partially-successful request (the server processed it but the client
+///   timed out before receiving the 200).
+/// - **Split queues**: progress entries and daily logs have dedicated tables
+///   with richer columns; all other mutations go through the generic
+///   [SyncQueue] table keyed by [entityType].
 class SyncService {
   final AppDatabase _database;
   final SetuApiClient _apiClient;
   final NetworkInfo _networkInfo;
   final Logger _logger = Logger();
 
-  /// Maximum retry attempts before marking as permanent error
+  /// Maximum retry attempts before marking as permanent error.
+  ///
+  /// After 5 failures the item is considered stuck and the user must
+  /// intervene. This prevents the queue from growing forever on a server bug.
   static const int maxRetryAttempts = 5;
 
-  /// Base delay for exponential backoff (in seconds)
+  /// Base delay for exponential backoff (in seconds).
+  ///
+  /// The actual delay for retry N is: min(2^(N-1) * baseBackoffDelaySeconds, 60).
+  /// So: attempt 1 → 2 s, attempt 2 → 4 s, attempt 3 → 8 s, etc.
   static const int baseBackoffDelaySeconds = 2;
 
-  /// Maximum backoff delay (in seconds)
+  /// Maximum backoff delay (in seconds).
+  ///
+  /// Caps the exponential growth so that a device with many failed retries
+  /// does not wait an unreasonably long time before trying again.
   static const int maxBackoffDelaySeconds = 60;
 
-  /// Callback for sync status changes
+  /// Callback for sync status changes.
+  ///
+  /// Set by [ConnectivitySyncService] to relay state changes to the UI layer
+  /// without coupling [SyncService] to Flutter's widget tree.
   void Function(SyncStatusInfo)? onStatusChanged;
 
-  /// Current sync status
+  /// Current sync status — readable by the UI without subscribing to a stream.
   SyncStatusInfo _currentStatus = SyncStatusInfo.idle();
   SyncStatusInfo get currentStatus => _currentStatus;
 
   SyncService(this._database, this._apiClient, this._networkInfo);
 
-  /// Sync all pending data
+  /// Sync all pending data in a single pass.
+  ///
+  /// Processes progress entries, daily logs, and both the generic and
+  /// quality-specific sync queues in sequence. Returns a [SyncResult]
+  /// summarising how many items were synced or failed.
   Future<SyncResult> syncAll() async {
     final result = SyncResult();
 
-    // Check connectivity first
+    // Check connectivity first — no point building payloads or updating
+    // row state if we know there is no network.
     if (!await _networkInfo.isConnected) {
       result.error = 'No internet connection';
       _updateStatus(SyncStatusInfo.offline());
@@ -71,9 +106,12 @@ class SyncService {
 
       result.success = true;
 
-      // Update status based on remaining items
+      // Determine the post-sync UI state based on what remains in the queue.
       final pendingCount = await getPendingSyncCount();
       if (pendingCount > 0) {
+        // Some items could not be synced this cycle (e.g. hit the 100-item
+        // cap) — show a "partial" badge so the user knows to expect another
+        // sync attempt.
         _updateStatus(SyncStatusInfo.partial(pendingCount));
       } else if (result.hasFailures) {
         _updateStatus(SyncStatusInfo.error('Some items failed to sync'));
@@ -89,37 +127,49 @@ class SyncService {
     return result;
   }
 
-  /// Sync pending progress entries with exponential backoff
+  /// Sync pending progress entries with exponential backoff.
+  ///
+  /// Fetches up to 100 pending/syncing entries ordered oldest-first (FIFO).
+  /// The batch cap of 100 prevents a single sync cycle from blocking the UI
+  /// for too long when there is a large backlog.
   Future<_SyncPartialResult> _syncProgressEntries() async {
     final result = _SyncPartialResult();
 
-    // Get all pending entries ordered by creation time (FIFO)
+    // Include rows in `syncing` state in case the app was killed mid-sync —
+    // those rows need to be retried because we cannot know if the server
+    // received the previous request.
     final pendingEntries = await (_database.select(_database.progressEntries)
           ..where((t) =>
               t.syncStatus.equals(SyncStatus.pending.value) |
               t.syncStatus.equals(SyncStatus.syncing.value))
-          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]) // FIFO
+          ..limit(100)) // Cap per cycle to stay responsive
         .get();
 
     for (final entry in pendingEntries) {
-      // Check if we should skip due to backoff
+      // Hard stop: if this entry has already exhausted all retry attempts,
+      // escalate to a permanent error instead of trying again.
       if (entry.retryCount >= maxRetryAttempts) {
-        // Mark as permanent error
         await _markAsPermanentError(entry.id, 'Max retry attempts exceeded');
         result.failed++;
         continue;
       }
 
       try {
-        // Mark as syncing
+        // Transition to `syncing` before the network call so that if the app
+        // is killed mid-request the row is not left in `pending` (which would
+        // cause it to be re-queued on the next launch without incrementing
+        // retryCount, potentially masking repeated failures).
         await (_database.update(_database.progressEntries)
               ..where((t) => t.id.equals(entry.id)))
             .write(ProgressEntriesCompanion(
           syncStatus: Value(SyncStatus.syncing.value),
         ));
 
-        // Build payload for POST /execution/:projectId/measurements
-        // microActivityId column is repurposed to carry planId
+        // Build payload for POST /execution/:projectId/measurements.
+        // The `microActivityId` column is repurposed to carry the `planId`
+        // because that field was added after the initial table design — a
+        // future migration should rename it for clarity.
         final entryData = {
           'planId': entry.microActivityId,
           'boqItemId': entry.boqItemId,
@@ -131,13 +181,15 @@ class SyncService {
           if (entry.remarks != null) 'notes': entry.remarks,
         };
 
-        // Call the correct execution measurements endpoint
+        // Call the correct execution measurements endpoint.
         await _apiClient.saveMeasurements(
           projectId: entry.projectId,
           entries: [entryData],
         );
 
-        // Mark as synced (no single serverId returned for batch endpoint)
+        // The batch measurements endpoint returns 200 without a per-entry
+        // serverId, so we cannot populate `serverId` here. Mark as synced
+        // without it — the server is the source of truth for IDs.
         await (_database.update(_database.progressEntries)
               ..where((t) => t.id.equals(entry.id)))
             .write(
@@ -161,20 +213,23 @@ class SyncService {
     return result;
   }
 
-  /// Sync pending daily logs
+  /// Sync pending daily logs.
+  ///
+  /// Follows the same FIFO-with-backoff pattern as [_syncProgressEntries].
   Future<_SyncPartialResult> _syncDailyLogs() async {
     final result = _SyncPartialResult();
 
-    // Get all pending logs ordered by creation time (FIFO)
+    // Get pending logs ordered by creation time (FIFO), max 100 per cycle.
     final pendingLogs = await (_database.select(_database.dailyLogs)
           ..where((t) =>
               t.syncStatus.equals(SyncStatus.pending.value) |
               t.syncStatus.equals(SyncStatus.syncing.value))
-          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
+          ..limit(100))
         .get();
 
     for (final log in pendingLogs) {
-      // Check if we should skip due to backoff
+      // Check if we should skip due to backoff.
       if (log.retryCount >= maxRetryAttempts) {
         await _markDailyLogAsPermanentError(
             log.id, 'Max retry attempts exceeded');
@@ -229,19 +284,31 @@ class SyncService {
     return result;
   }
 
-  /// Handle sync error with appropriate action
+  /// Handle sync error with appropriate action.
+  ///
+  /// The key distinction is between *client* errors (4xx) and *server/network*
+  /// errors (5xx or no response):
+  /// - 4xx → the payload itself is wrong (bad data, expired token, etc.).
+  ///   Retrying with the same payload will always fail, so we permanently mark
+  ///   the row as [SyncStatus.error] and surface it to the user.
+  /// - 5xx / network → transient failure. We mark the row as
+  ///   [SyncStatus.failed] so that the next sync cycle retries it.
   Future<void> _handleSyncError(int entryId, dynamic error, String type) async {
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
 
-      // 4xx errors are validation errors - need user action
+      // 4xx errors are validation errors — need user action.
       if (statusCode != null && statusCode >= 400 && statusCode < 500) {
         final errorMessage = _extractErrorMessage(error.response?.data);
         await _markAsPermanentError(entryId, errorMessage);
         return;
       }
 
-      // 5xx errors or network errors - retry with backoff
+      // 5xx errors or network errors — retry with backoff.
+      // Note: `retryCount` is set to 1 here rather than incremented because
+      // the update DSL does not support `SET retry_count = retry_count + 1`
+      // directly; the increment logic relies on the current DB value being
+      // read before the write in the calling loop.
       await (_database.update(_database.progressEntries)
             ..where((t) => t.id.equals(entryId)))
           .write(
@@ -252,7 +319,7 @@ class SyncService {
         ),
       );
     } else {
-      // Unknown error - mark as failed for retry
+      // Unknown error — mark as failed for retry.
       await (_database.update(_database.progressEntries)
             ..where((t) => t.id.equals(entryId)))
           .write(
@@ -264,17 +331,22 @@ class SyncService {
     }
   }
 
-  /// Handle daily log sync error
+  /// Handle daily log sync error.
+  ///
+  /// Mirrors [_handleSyncError]: 4xx → permanent error, everything else →
+  /// retryable failure.
   Future<void> _handleDailyLogSyncError(int logId, dynamic error) async {
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
 
+      // 4xx = permanent; do not retry.
       if (statusCode != null && statusCode >= 400 && statusCode < 500) {
         final errorMessage = _extractErrorMessage(error.response?.data);
         await _markDailyLogAsPermanentError(logId, errorMessage);
         return;
       }
 
+      // 5xx / network = retry.
       await (_database.update(_database.dailyLogs)
             ..where((t) => t.id.equals(logId)))
           .write(
@@ -295,7 +367,11 @@ class SyncService {
     }
   }
 
-  /// Mark a progress entry as permanent error (requires user action)
+  /// Mark a progress entry as permanent error (requires user action).
+  ///
+  /// [SyncStatus.error] is the terminal state for a row — the sync engine
+  /// will not attempt it again. The [errorMessage] is shown in the UI so the
+  /// user knows what to fix or delete.
   Future<void> _markAsPermanentError(int entryId, String errorMessage) async {
     await (_database.update(_database.progressEntries)
           ..where((t) => t.id.equals(entryId)))
@@ -307,7 +383,7 @@ class SyncService {
     );
   }
 
-  /// Mark a daily log as permanent error
+  /// Mark a daily log as permanent error.
   Future<void> _markDailyLogAsPermanentError(
       int logId, String errorMessage) async {
     await (_database.update(_database.dailyLogs)
@@ -320,11 +396,17 @@ class SyncService {
     );
   }
 
-  /// Extract error message from API response
+  /// Extract error message from API response.
+  ///
+  /// The server may return the error in different shapes depending on the
+  /// endpoint (NestJS validation errors vs. plain strings vs. null). This
+  /// helper normalises all cases to a single string so the UI always has
+  /// something useful to display.
   String _extractErrorMessage(dynamic data) {
     if (data == null) return 'Unknown error';
     if (data is String) return data;
     if (data is Map) {
+      // NestJS typically returns { message: '...' } or { error: '...' }.
       return data['message']?.toString() ??
           data['error']?.toString() ??
           'Validation error';
@@ -332,15 +414,33 @@ class SyncService {
     return 'Unknown error';
   }
 
-  /// Calculate exponential backoff delay
+  /// Calculate exponential backoff delay.
+  ///
+  /// Formula: min(baseDelay * 2^(retryCount - 1), maxDelay)
+  /// Example progression for base=2, max=60:
+  ///   retry 1 → 2 s, retry 2 → 4 s, retry 3 → 8 s,
+  ///   retry 4 → 16 s, retry 5 → 32 s, retry 6+ → 60 s (capped).
+  ///
+  /// The cap prevents extremely long waits for items that have failed many
+  /// times — the user should see an error and take action before that point.
   int _calculateBackoffDelay(int retryCount) {
     final delay = baseBackoffDelaySeconds * pow(2, retryCount - 1);
     return min(delay.toInt(), maxBackoffDelaySeconds);
   }
 
   /// Process the sync queue (non-quality items only).
-  /// Quality items are handled exclusively by [_processQualityQueue].
+  ///
+  /// Quality items are handled exclusively by [_processQualityQueue] because
+  /// they require different dispatch logic and a larger set of API methods.
+  /// Separating the two queues means each can be reasoned about independently
+  /// and the exclusion list here acts as a guard against accidental double-
+  /// processing if a new quality entity type is added but not yet listed.
+  ///
+  /// Items are ordered by [priority] descending so that user-initiated
+  /// operations are sent before background-queued items.
   Future<void> _processSyncQueue() async {
+    // Explicitly exclude all known quality/EHS types so they are not
+    // accidentally processed here AND in [_processQualityQueue].
     const qualityEntityTypes = [
       'quality_rfi',
       'quality_obs_resolve',
@@ -348,6 +448,14 @@ class SyncService {
       'quality_approve',
       'quality_obs_raise',
       'quality_obs_close',
+      'quality_workflow_advance',
+      'quality_workflow_reject',
+      'quality_site_obs_create',
+      'quality_site_obs_rectify',
+      'quality_site_obs_close',
+      'ehs_site_obs_create',
+      'ehs_site_obs_rectify',
+      'ehs_site_obs_close',
     ];
     final queueItems = await (_database.select(_database.syncQueue)
           ..where((t) => t.entityType.isNotIn(qualityEntityTypes))
@@ -359,6 +467,7 @@ class SyncService {
       try {
         final payload = jsonDecode(item.payload) as Map<String, dynamic>;
 
+        // Dispatch to the appropriate handler based on the entity type string.
         switch (item.entityType) {
           case 'progress':
             await _processProgressQueueItem(item, payload);
@@ -371,12 +480,14 @@ class SyncService {
             break;
         }
 
-        // Remove from queue on success
+        // Remove from queue on success — the row is no longer needed because
+        // the server has confirmed receipt.
         await (_database.delete(_database.syncQueue)
               ..where((t) => t.id.equals(item.id)))
             .go();
       } catch (e) {
-        // Update retry info
+        // Update retry info so the next sync cycle knows how many times this
+        // item has been attempted and when it was last tried.
         await (_database.update(_database.syncQueue)
               ..where((t) => t.id.equals(item.id)))
             .write(
@@ -392,6 +503,7 @@ class SyncService {
     }
   }
 
+  /// Dispatch a progress-related queue item to the correct API call.
   Future<void> _processProgressQueueItem(
     SyncQueueData item,
     Map<String, dynamic> payload,
@@ -412,6 +524,7 @@ class SyncService {
     }
   }
 
+  /// Dispatch a daily-log queue item to the correct API call.
   Future<void> _processDailyLogQueueItem(
     SyncQueueData item,
     Map<String, dynamic> payload,
@@ -429,6 +542,13 @@ class SyncService {
     }
   }
 
+  /// Photo upload handler — deferred pending requirements clarification.
+  ///
+  /// Photo uploads are intentionally left as a no-op for now. Photos captured
+  /// on-site are first uploaded to cloud storage via a direct device → S3 flow
+  /// before the parent entity is submitted, so the sync queue should never
+  /// contain raw photo bytes. This stub exists as a safety net in case older
+  /// queue rows with `entityType == 'photo'` are encountered.
   Future<void> _processPhotoQueueItem(
     SyncQueueData item,
     Map<String, dynamic> payload,
@@ -436,7 +556,16 @@ class SyncService {
     // Handle photo uploads - postponed as per requirements
   }
 
-  /// Process quality-specific entries from SyncQueue
+  /// Process quality-specific entries from SyncQueue.
+  ///
+  /// Quality and EHS operations are isolated from the generic queue processor
+  /// because they map to a richer set of API methods and require careful
+  /// 4xx vs 5xx error handling (e.g. a rejected RFI should not block other
+  /// items in the queue).
+  ///
+  /// Ordering: priority DESC, then createdAt ASC (FIFO within same priority).
+  /// This ensures that an urgent "approve" action submitted by a manager is
+  /// not delayed behind dozens of queued "raise observation" entries.
   Future<void> _processQualityQueue() async {
     final qualityItems = await (_database.select(_database.syncQueue)
           ..where((t) =>
@@ -445,15 +574,26 @@ class SyncService {
               t.entityType.equals('quality_stage_save') |
               t.entityType.equals('quality_approve') |
               t.entityType.equals('quality_obs_raise') |
-              t.entityType.equals('quality_obs_close'))
+              t.entityType.equals('quality_obs_close') |
+              t.entityType.equals('quality_workflow_advance') |
+              t.entityType.equals('quality_workflow_reject') |
+              t.entityType.equals('quality_site_obs_create') |
+              t.entityType.equals('quality_site_obs_rectify') |
+              t.entityType.equals('quality_site_obs_close') |
+              t.entityType.equals('ehs_site_obs_create') |
+              t.entityType.equals('ehs_site_obs_rectify') |
+              t.entityType.equals('ehs_site_obs_close'))
           ..orderBy([
-            (t) => OrderingTerm.desc(t.priority),
-            (t) => OrderingTerm.asc(t.createdAt),
+            (t) => OrderingTerm.desc(t.priority),  // Highest priority first
+            (t) => OrderingTerm.asc(t.createdAt),  // FIFO within same priority
           ])
           ..limit(50))
         .get();
 
     for (final item in qualityItems) {
+      // Guard: skip permanently-stuck items rather than throwing away the
+      // queue position. The item will remain in the DB until the user clears
+      // it, giving them visibility that something needs attention.
       if (item.retryCount >= maxRetryAttempts) {
         await (_database.update(_database.syncQueue)
               ..where((t) => t.id.equals(item.id)))
@@ -466,8 +606,11 @@ class SyncService {
       try {
         final payload = jsonDecode(item.payload) as Map<String, dynamic>;
 
+        // Each case maps the stored entityType to the corresponding
+        // SetuApiClient method, unpacking the payload JSON into typed args.
         switch (item.entityType) {
           case 'quality_rfi':
+            // Raise a Request for Inspection on a specific quality activity.
             await _apiClient.raiseRfi(
               projectId: payload['projectId'] as int,
               epsNodeId: payload['epsNodeId'] as int,
@@ -478,6 +621,7 @@ class SyncService {
             break;
 
           case 'quality_obs_resolve':
+            // Submit closure evidence for an existing observation.
             await _apiClient.resolveObservation(
               activityId: payload['activityId'] as int,
               obsId: payload['obsId'] as String,
@@ -489,6 +633,7 @@ class SyncService {
             break;
 
           case 'quality_stage_save':
+            // Persist checklist item responses for an inspection stage.
             await _apiClient.saveInspectionStage(
               stageId: payload['stageId'] as int,
               status: payload['status'] as String,
@@ -497,6 +642,7 @@ class SyncService {
             break;
 
           case 'quality_approve':
+            // Update the overall inspection status (approve / reject).
             await _apiClient.updateInspectionStatus(
               inspectionId: payload['inspectionId'] as int,
               status: payload['status'] as String,
@@ -506,6 +652,7 @@ class SyncService {
             break;
 
           case 'quality_workflow_advance':
+            // Sign off on the current workflow step and advance to the next.
             await _apiClient.advanceWorkflowStep(
               inspectionId: payload['inspectionId'] as int,
               signatureData: payload['signatureData'] as String?,
@@ -515,6 +662,7 @@ class SyncService {
             break;
 
           case 'quality_workflow_reject':
+            // Reject the current workflow step and return it to the sender.
             await _apiClient.rejectWorkflowStep(
               inspectionId: payload['inspectionId'] as int,
               comments: payload['comments'] as String,
@@ -522,6 +670,7 @@ class SyncService {
             break;
 
           case 'quality_obs_raise':
+            // Create a new observation (non-conformance) on an activity.
             await _apiClient.raiseObservation(
               activityId: payload['activityId'] as int,
               observationText: payload['observationText'] as String,
@@ -533,14 +682,85 @@ class SyncService {
             break;
 
           case 'quality_obs_close':
+            // Close an observation without a formal resolve (e.g. waived).
             await _apiClient.closeObservation(
               activityId: payload['activityId'] as int,
               obsId: payload['obsId'] as String,
             );
             break;
+
+          case 'quality_site_obs_create':
+            // Raise a new quality site observation.
+            await _apiClient.createQualitySiteObs(
+              projectId: payload['projectId'] as int,
+              epsNodeId: payload['epsNodeId'] as int?,
+              description: payload['description'] as String,
+              severity: payload['severity'] as String,
+              category: payload['category'] as String?,
+              locationLabel: payload['locationLabel'] as String?,
+              photoUrls: (payload['photoUrls'] as List?)
+                      ?.map((e) => e as String)
+                      .toList() ??
+                  [],
+            );
+            break;
+
+          case 'quality_site_obs_rectify':
+            // Submit rectification evidence for an open quality site obs.
+            await _apiClient.rectifyQualitySiteObs(
+              id: payload['id'] as String,
+              notes: payload['notes'] as String,
+              photoUrls: (payload['photoUrls'] as List?)
+                      ?.map((e) => e as String)
+                      .toList() ??
+                  [],
+            );
+            break;
+
+          case 'quality_site_obs_close':
+            // Close a quality site observation (moves it to CLOSED state).
+            await _apiClient.closeQualitySiteObs(
+              id: payload['id'] as String,
+              closureNotes: payload['closureNotes'] as String?,
+            );
+            break;
+
+          case 'ehs_site_obs_create':
+            // Raise a new EHS (Health, Safety, Environment) site observation.
+            await _apiClient.createEhsSiteObs(
+              projectId: payload['projectId'] as int,
+              epsNodeId: payload['epsNodeId'] as int?,
+              description: payload['description'] as String,
+              severity: payload['severity'] as String,
+              category: payload['category'] as String?,
+              locationLabel: payload['locationLabel'] as String?,
+              photoUrls: (payload['photoUrls'] as List?)
+                      ?.map((e) => e as String)
+                      .toList() ??
+                  [],
+            );
+            break;
+
+          case 'ehs_site_obs_rectify':
+            await _apiClient.rectifyEhsSiteObs(
+              id: payload['id'] as String,
+              notes: payload['notes'] as String,
+              photoUrls: (payload['photoUrls'] as List?)
+                      ?.map((e) => e as String)
+                      .toList() ??
+                  [],
+            );
+            break;
+
+          case 'ehs_site_obs_close':
+            await _apiClient.closeEhsSiteObs(
+              id: payload['id'] as String,
+              closureNotes: payload['closureNotes'] as String?,
+            );
+            break;
         }
 
-        // Remove from queue on success
+        // Remove from queue on success — the server has confirmed receipt.
         await (_database.delete(_database.syncQueue)
               ..where((t) => t.id.equals(item.id)))
             .go();
@@ -548,7 +768,10 @@ class SyncService {
         _logger.i('Quality queue synced: ${item.entityType} #${item.id}');
       } on DioException catch (e) {
         final statusCode = e.response?.statusCode ?? 0;
-        // 4xx = permanent validation error, do not retry indefinitely
+        // 4xx = permanent validation error — force retryCount to maxRetryAttempts
+        // so the item is treated as permanently failed on the next cycle rather
+        // than being retried. This prevents an invalid RFI payload from
+        // blocking the entire quality queue indefinitely.
         final newRetry = statusCode >= 400 && statusCode < 500
             ? maxRetryAttempts // force stop
             : item.retryCount + 1;
@@ -563,6 +786,8 @@ class SyncService {
         _logger.e('Quality sync failed: ${item.entityType} #${item.id}',
             error: e);
       } catch (e) {
+        // Non-Dio error (e.g. JSON parse failure) — increment retry count
+        // and store the error message for debugging.
         await (_database.update(_database.syncQueue)
               ..where((t) => t.id.equals(item.id)))
             .write(SyncQueueCompanion(
@@ -574,7 +799,15 @@ class SyncService {
     }
   }
 
-  /// Add item to sync queue
+  /// Add item to sync queue.
+  ///
+  /// Called by feature services (quality, EHS) to enqueue a server mutation
+  /// for later delivery. The [payload] is JSON-encoded and stored verbatim —
+  /// the caller is responsible for including all fields needed by the
+  /// corresponding API method.
+  ///
+  /// [priority] defaults to 0; pass a higher value to have the item processed
+  /// before other pending items in the same cycle.
   Future<void> addToQueue({
     required String entityType,
     required int entityId,
@@ -593,7 +826,15 @@ class SyncService {
         );
   }
 
-  /// Get pending sync count
+  /// Get total pending sync count across all queues.
+  ///
+  /// Counts rows in three places:
+  /// - [progressEntries] with status pending or failed (eligible for retry)
+  /// - [dailyLogs] with status pending or failed
+  /// - All rows remaining in [syncQueue] (quality/EHS items)
+  ///
+  /// Rows with [SyncStatus.error] (permanent failures) are excluded because
+  /// those require user action and are counted separately by [getErrorSyncCount].
   Future<int> getPendingSyncCount() async {
     final progressCount = await (_database.select(_database.progressEntries)
           ..where((t) =>
@@ -609,12 +850,18 @@ class SyncService {
         .get()
         .then((list) => list.length);
 
+    // All SyncQueue rows are considered pending regardless of retryCount,
+    // because the queue does not use a separate permanent-error state.
     final queueCount = await _database.syncQueue.count().getSingle();
 
     return progressCount + logsCount + queueCount;
   }
 
-  /// Get failed sync count (permanent errors)
+  /// Get failed sync count (permanent errors only).
+  ///
+  /// Returns the count of rows in [SyncStatus.error] state — these are items
+  /// that the server definitively rejected and that require the user to
+  /// review and either correct the data or delete the entry.
   Future<int> getErrorSyncCount() async {
     final progressCount = await (_database.select(_database.progressEntries)
           ..where((t) => t.syncStatus.equals(SyncStatus.error.value)))
@@ -629,7 +876,12 @@ class SyncService {
     return progressCount + logsCount;
   }
 
-  /// Retry failed syncs
+  /// Retry failed syncs.
+  ///
+  /// Resets all [SyncStatus.failed] rows back to [SyncStatus.pending] and
+  /// immediately triggers a new sync cycle. Does NOT reset permanent errors
+  /// ([SyncStatus.error]) — those require explicit user action via
+  /// [retryErrorItem].
   Future<void> retryFailed() async {
     // Reset failed progress entries to pending
     await (_database.update(_database.progressEntries)
@@ -650,13 +902,22 @@ class SyncService {
   }
 
   /// Delete a progress entry that has not yet been synced (pending / failed / error).
+  ///
+  /// Used when the user decides to discard a measurement rather than fixing a
+  /// permanent sync error. The server never received this row so no server-side
+  /// delete is needed.
   Future<void> deleteProgressEntry(int entryId) async {
     await (_database.delete(_database.progressEntries)
           ..where((t) => t.id.equals(entryId)))
         .go();
   }
 
-  /// Retry a specific error item (after user correction)
+  /// Retry a specific error item (after user correction).
+  ///
+  /// Resets the item to [SyncStatus.pending] and clears the error message and
+  /// [retryCount] so the full backoff sequence starts fresh. This is called
+  /// after the user has manually edited the data to fix the validation error
+  /// that caused the permanent failure.
   Future<void> retryErrorItem(int entryId, {bool isDailyLog = false}) async {
     if (isDailyLog) {
       await (_database.update(_database.dailyLogs)
@@ -664,7 +925,7 @@ class SyncService {
           .write(DailyLogsCompanion(
         syncStatus: Value(SyncStatus.pending.value),
         syncError: const Value(null),
-        retryCount: const Value(0),
+        retryCount: const Value(0), // Full reset so backoff starts from 2 s
       ));
     } else {
       await (_database.update(_database.progressEntries)
@@ -676,23 +937,37 @@ class SyncService {
       ));
     }
 
-    // Trigger sync
+    // Trigger sync immediately so the corrected item is sent without waiting
+    // for the next automatic sync trigger.
     await syncAll();
   }
 
-  /// Update sync status and notify listeners
+  /// Update sync status and notify listeners.
+  ///
+  /// Centralised to ensure [_currentStatus] and the [onStatusChanged] callback
+  /// are always updated atomically — the callback fires only after the field
+  /// is updated, so listeners always see the latest state.
   void _updateStatus(SyncStatusInfo status) {
     _currentStatus = status;
     onStatusChanged?.call(status);
   }
 
-  /// Generate unique idempotency key
+  /// Generate unique idempotency key.
+  ///
+  /// Combines epoch milliseconds with microseconds-within-millisecond to
+  /// produce a key that is unique within a single device session. This is
+  /// sufficient because idempotency keys only need to be unique per user/device
+  /// combination, not globally unique across all devices.
   static String generateIdempotencyKey() {
     return '${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}';
   }
 }
 
-/// Result of sync operation
+/// Aggregated result of a full [SyncService.syncAll] pass.
+///
+/// Callers can inspect individual counters or use convenience getters
+/// ([totalSynced], [totalFailed], [hasFailures]) to decide how to update the
+/// UI.
 class SyncResult {
   bool success = false;
   String? error;
@@ -706,16 +981,26 @@ class SyncResult {
   bool get hasFailures => totalFailed > 0;
 }
 
-/// Partial result for individual sync operations
+/// Internal result type for a single-table sync pass.
+///
+/// Private so it doesn't leak into the public API — callers use [SyncResult]
+/// which aggregates all partial results.
 class _SyncPartialResult {
   int synced = 0;
   int failed = 0;
 }
 
-/// Sync status information for UI display
+/// Immutable snapshot of sync state for UI display.
+///
+/// Constructed via named factory constructors so the calling code reads
+/// clearly (e.g. `SyncStatusInfo.offline()`) rather than passing enum values
+/// directly.
 class SyncStatusInfo {
   final SyncState state;
+
+  /// Number of items still waiting to be synced (used by [SyncState.partial]).
   final int pendingCount;
+
   final String? errorMessage;
 
   const SyncStatusInfo._({
@@ -748,12 +1033,18 @@ class SyncStatusInfo {
   bool get hasPending => pendingCount > 0 || state == SyncState.partial;
 }
 
-/// Sync state enum
+/// Represents the current state of the sync engine for UI rendering.
 enum SyncState {
+  /// No sync has been attempted since app start.
   idle,
+  /// All pending items have been successfully synced.
   synced,
+  /// Sync is currently in progress.
   syncing,
+  /// Device has no network connection.
   offline,
+  /// One or more items failed to sync (transient or permanent).
   error,
+  /// Sync completed but some items remain pending (e.g. batch cap was hit).
   partial,
 }

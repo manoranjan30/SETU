@@ -5,6 +5,8 @@ import { QualityChecklistTemplate } from './entities/quality-checklist-template.
 import { QualityStageTemplate } from './entities/quality-stage-template.entity';
 import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-template.entity';
 import { QualityChecklist } from './entities/quality-checklist.entity';
+import { CreateChecklistTemplateDto } from './dto/create-checklist-template.dto';
+import { ChecklistImportPreviewResponseDto } from './dto/checklist-template.types';
 
 @Injectable()
 export class ChecklistTemplateService {
@@ -49,38 +51,43 @@ export class ChecklistTemplateService {
       name: data.name,
       description: data.description,
       status: 'ACTIVE',
+      checklistNo: data.checklistNo || null,
+      revNo: data.revNo || '01',
+      activityTitle: data.activityTitle || data.name || null,
+      activityType: data.activityType || null,
+      discipline: data.discipline || null,
+      applicableTrade: data.applicableTrade || null,
+      isGlobal: data.isGlobal || false,
     });
 
     const savedTemplate = await this.templateRepo.save(template);
+    await this.saveStages(savedTemplate.id, data.stages);
 
-    if (data.stages && Array.isArray(data.stages)) {
-      for (const stageData of data.stages) {
-        const stage = this.stageRepo.create({
-          templateId: savedTemplate.id,
-          name: stageData.name,
-          sequence: stageData.sequence,
-          isHoldPoint: stageData.isHoldPoint || false,
-          isWitnessPoint: stageData.isWitnessPoint || false,
-          responsibleParty: stageData.responsibleParty || 'Contractor',
-        });
-        const savedStage = await this.stageRepo.save(stage);
+    return this.findOne(savedTemplate.id);
+  }
 
-        if (stageData.items && Array.isArray(stageData.items)) {
-          for (const itemData of stageData.items) {
-            const item = this.itemRepo.create({
-              stageId: savedStage.id,
-              itemText: itemData.itemText,
-              type: itemData.type,
-              isMandatory: itemData.isMandatory || false,
-              photoRequired: itemData.photoRequired || false,
-              options: itemData.options,
-              sequence: itemData.sequence,
-            });
-            await this.itemRepo.save(item);
-          }
-        }
-      }
-    }
+  async update(id: number, data: CreateChecklistTemplateDto) {
+    const existing = await this.templateRepo.findOne({
+      where: { id },
+      relations: ['stages', 'stages.items'],
+    });
+    if (!existing) throw new NotFoundException('Template not found');
+
+    Object.assign(existing, {
+      name: data.name,
+      description: data.description,
+      checklistNo: data.checklistNo || null,
+      revNo: data.revNo || '01',
+      activityTitle: data.activityTitle || data.name || null,
+      activityType: data.activityType || null,
+      discipline: data.discipline || null,
+      applicableTrade: data.applicableTrade || null,
+      isGlobal: data.isGlobal || false,
+    });
+
+    const savedTemplate = await this.templateRepo.save(existing);
+    await this.stageRepo.delete({ templateId: savedTemplate.id });
+    await this.saveStages(savedTemplate.id, data.stages);
 
     return this.findOne(savedTemplate.id);
   }
@@ -105,6 +112,7 @@ export class ChecklistTemplateService {
       // 1. Create Template
       const template = await this.create(projectId, {
         name,
+        activityTitle: name,
         description: `Migrated from legacy checklists (Category: ${instances[0].category})`,
         stages: [
           {
@@ -133,5 +141,77 @@ export class ChecklistTemplateService {
   async delete(id: number) {
     const template = await this.findOne(id);
     return this.templateRepo.remove(template);
+  }
+
+  private async saveStages(
+    templateId: number,
+    stages?: CreateChecklistTemplateDto['stages'],
+  ) {
+    if (!stages || !Array.isArray(stages)) {
+      return;
+    }
+
+    for (const [stageIndex, stageData] of stages.entries()) {
+      const stage = this.stageRepo.create({
+        templateId,
+        name: stageData.name,
+        sequence: stageData.sequence ?? stageIndex,
+        isHoldPoint: stageData.isHoldPoint || false,
+        isWitnessPoint: stageData.isWitnessPoint || false,
+        responsibleParty: stageData.responsibleParty || 'Contractor',
+        signatureSlots: stageData.signatureSlots || null,
+      });
+      const savedStage = await this.stageRepo.save(stage);
+
+      if (!stageData.items || !Array.isArray(stageData.items)) {
+        continue;
+      }
+
+      for (const [itemIndex, itemData] of stageData.items.entries()) {
+        const item = this.itemRepo.create({
+          stageId: savedStage.id,
+          itemText: itemData.itemText,
+          type: itemData.type,
+          isMandatory: itemData.isMandatory || false,
+          photoRequired: itemData.photoRequired || false,
+          options: itemData.options,
+          sequence: itemData.sequence ?? itemIndex,
+        });
+        await this.itemRepo.save(item);
+      }
+    }
+  }
+
+  async buildPreview(
+    previews: ChecklistImportPreviewResponseDto,
+  ): Promise<ChecklistImportPreviewResponseDto> {
+    return previews;
+  }
+
+  async saveImportedTemplates(
+    projectId: number,
+    templates: CreateChecklistTemplateDto[],
+    overwriteExisting = false,
+  ) {
+    const saved: QualityChecklistTemplate[] = [];
+
+    for (const template of templates) {
+      const checklistNo = template.checklistNo?.trim();
+      if (overwriteExisting && checklistNo) {
+        const existing = await this.templateRepo.findOne({
+          where: { projectId, checklistNo },
+        });
+        if (existing) {
+          await this.templateRepo.delete(existing.id);
+        }
+      }
+
+      saved.push(await this.create(projectId, template));
+    }
+
+    return {
+      savedCount: saved.length,
+      templates: saved,
+    };
   }
 }

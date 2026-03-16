@@ -100,8 +100,34 @@ export class QualityInspection {
   @Column({ type: 'varchar', nullable: true })
   partLabel: string | null;
 
+  @Column({ type: 'varchar', name: 'drawing_no', length: 100, nullable: true })
+  drawingNo: string | null;
+
+  @Column({
+    type: 'varchar',
+    name: 'contractor_name',
+    length: 255,
+    nullable: true,
+  })
+  contractorName: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  processCode: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  documentType: string | null;
+
   @Column({ type: 'text', nullable: true })
   comments: string;
+
+  @Column({ default: false })
+  isLocked: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  lockedByUserId: number | null;
 
   @OneToMany(() => QualityInspectionStage, (stage) => stage.inspection, {
     cascade: true,

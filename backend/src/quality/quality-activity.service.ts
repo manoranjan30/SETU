@@ -75,6 +75,8 @@ export interface CreateObservationDto {
   remarks?: string;
   photos?: string[];
   checklistId?: number;
+  inspectionId?: number;
+  stageId?: number;
 }
 
 export interface ResolveObservationDto {
@@ -232,6 +234,7 @@ export class QualityActivityService {
   async getObservations(id: number): Promise<ActivityObservation[]> {
     return this.obsRepo.find({
       where: { activityId: id },
+      relations: ['stage'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -254,6 +257,8 @@ export class QualityActivityService {
       activityId: id,
       inspectorId: userId,
       checklistId: dto.checklistId,
+      inspectionId: dto.inspectionId,
+      stageId: dto.stageId ?? null,
       type: dto.type,
       observationText: dto.observationText,
       remarks: dto.remarks,

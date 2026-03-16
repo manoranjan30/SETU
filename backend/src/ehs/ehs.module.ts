@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EhsController } from './ehs.controller';
+import { EhsObservationController } from './ehs-observation.controller';
 import { EhsService } from './ehs.service';
+import { EhsObservationService } from './ehs-observation.service';
 import { EhsObservation } from './entities/ehs-observation.entity';
 import { EhsIncident } from './entities/ehs-incident.entity';
 import { EhsTraining } from './entities/ehs-training.entity';
@@ -18,8 +20,12 @@ import { EhsCompetency } from './entities/ehs-competency.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 
+import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+
 @Module({
   imports: [
+    NotificationsModule,
     TypeOrmModule.forFeature([
       EhsObservation,
       EhsIncident,
@@ -37,9 +43,10 @@ import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entit
       EpsNode,
       DailyLaborPresence,
     ]),
+    AuditModule,
   ],
-  controllers: [EhsController],
-  providers: [EhsService],
+  controllers: [EhsController, EhsObservationController],
+  providers: [EhsService, EhsObservationService],
   exports: [EhsService],
 })
 export class EhsModule {}

@@ -17,10 +17,25 @@ export class QualityRatingSummarySource implements IDataSource {
   scope = 'GLOBAL' as const;
 
   fields: DataSourceField[] = [
-    { key: 'projectName', label: 'Project Name', type: 'string', groupable: true },
-    { key: 'projectCode', label: 'Project Code', type: 'string', groupable: true },
+    {
+      key: 'projectName',
+      label: 'Project Name',
+      type: 'string',
+      groupable: true,
+    },
+    {
+      key: 'projectCode',
+      label: 'Project Code',
+      type: 'string',
+      groupable: true,
+    },
     { key: 'period', label: 'Rating Period', type: 'string', groupable: true },
-    { key: 'overallScore', label: 'Overall Score', type: 'percent', aggregatable: true },
+    {
+      key: 'overallScore',
+      label: 'Overall Score',
+      type: 'percent',
+      aggregatable: true,
+    },
     {
       key: 'qualityProgressPercent',
       label: 'Quality Progress %',

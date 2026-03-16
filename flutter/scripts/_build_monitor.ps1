@@ -1,13 +1,12 @@
 # _build_monitor.ps1
 # Animated in-place progress bar for Flutter release builds.
 # Reads flutter build stdout+stderr from stdin; draws a live bar.
+# Errors are printed immediately (not just in the end summary).
 #
 # Usage (called by build scripts):
 #   flutter build apk ... 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -File "_build_monitor.ps1"
 
 # ── Stage map ─────────────────────────────────────────────────────────────────
-# Each stage has a keyword pattern (regex), the % we jump to when detected,
-# and a short label shown in the progress bar.
 $stages = @(
     [PSCustomObject]@{ Pattern = 'Running|pub.get|Launching|Resolving';                        Pct =  4; Label = 'Initializing'          }
     [PSCustomObject]@{ Pattern = 'Compiling|compiling|kernel|snapshot|dart2js';               Pct = 14; Label = 'Compiling Dart'         }
@@ -22,11 +21,12 @@ $stages = @(
     [PSCustomObject]@{ Pattern = 'Built |Gradle build done';                                   Pct =100; Label = 'Build complete!'        }
 )
 
-$BAR_W  = 26      # number of fill chars inside [ ]
+$BAR_W  = 26
 $start  = Get-Date
-$script:pct   = 0
-$script:label = 'Starting...'
-$script:barRow = 0
+$script:pct      = 0
+$script:label    = 'Starting...'
+$script:barRow   = 0
+$script:errorRow = 0      # row where live errors are printed (below bar area)
 $errors = [System.Collections.Generic.List[string]]::new()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,32 +70,55 @@ function drawActivity([string]$text) {
     [Console]::Write($act.PadRight($cw))
 }
 
+# Print an error immediately below the reserved bar area (rows barRow, barRow+1, barRow+2)
+# so errors are never swallowed.
+function printError([string]$msg) {
+    $cw = [Math]::Max([Console]::WindowWidth - 1, 79)
+    # Move cursor below the separator row (barRow + 3) and print
+    $targetRow = safeRow ($script:barRow + 3 + $errors.Count)
+    # Expand buffer if needed
+    $needed = $targetRow + 5
+    if ([Console]::BufferHeight -lt $needed) {
+        try { [Console]::BufferHeight = $needed + 10 } catch {}
+    }
+    $saved = [Console]::CursorTop
+    [Console]::SetCursorPosition(0, $targetRow)
+    $prefix = '  [ERROR] '
+    $out = $prefix + $msg
+    if ($out.Length -gt $cw) { $out = $out.Substring(0, $cw - 3) + '...' }
+    [Console]::ForegroundColor = [ConsoleColor]::Red
+    [Console]::Write($out.PadRight($cw))
+    [Console]::ResetColor()
+    # Restore cursor to avoid layout shifts mid-stream
+    $restore = [Math]::Min($saved, [Console]::BufferHeight - 1)
+    [Console]::SetCursorPosition(0, $restore)
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 [Console]::CursorVisible = $false
 
-# Ensure the console buffer is tall enough for our 4 reserved rows.
-# In some CMD sessions the buffer can be as small as 30 lines.
 $neededBuf = [Console]::CursorTop + 10
 if ([Console]::BufferHeight -lt $neededBuf) {
     try { [Console]::BufferHeight = $neededBuf + 20 } catch {}
 }
 
 try {
-    # Print separator line, then anchor barRow AFTER it so the bar
-    # always lands on a freshly scrolled-into-view row.
     $cw = [Math]::Max([Console]::WindowWidth - 1, 79)
     [Console]::Write(('  ' + ('-' * ($cw - 2))).PadRight($cw))
     [Console]::WriteLine()
 
     $script:barRow = [Console]::CursorTop
-    [Console]::WriteLine()   # row barRow   = progress bar (overwritten each tick)
-    [Console]::WriteLine()   # row barRow+1 = current activity line
-    [Console]::WriteLine()   # row barRow+2 = blank buffer row
+    [Console]::WriteLine()   # row barRow   = progress bar
+    [Console]::WriteLine()   # row barRow+1 = current activity
+    [Console]::WriteLine()   # row barRow+2 = blank buffer
 
-    # Expand buffer again now that we've scrolled, if needed
-    $neededBuf2 = $script:barRow + 6
+    # Closing separator row (barRow+3) — pre-print so it exists in the buffer
+    [Console]::Write(('  ' + ('-' * ($cw - 2))).PadRight($cw))
+    [Console]::WriteLine()
+
+    $neededBuf2 = $script:barRow + 10
     if ([Console]::BufferHeight -lt $neededBuf2) {
-        try { [Console]::BufferHeight = $neededBuf2 + 10 } catch {}
+        try { [Console]::BufferHeight = $neededBuf2 + 20 } catch {}
     }
 
     drawBar 0 $script:label 0 0
@@ -113,8 +136,7 @@ try {
             }
         }
 
-        # Slow time-crawl: advance 0.25% per second, but stop 3% before the
-        # next stage boundary so stage jumps still feel snappy.
+        # Slow time-crawl
         $nextPct = ($stages | Where-Object { $_.Pct -gt $script:pct } |
                     Select-Object -First 1 -ExpandProperty Pct)
         if (-not $nextPct) { $nextPct = 95 }
@@ -127,33 +149,38 @@ try {
         # ETA
         $eta = 0
         if ($script:pct -gt 5 -and $elapsed -gt 3) {
-            $rate = [double]$elapsed / [double]$script:pct   # seconds per 1%
+            $rate = [double]$elapsed / [double]$script:pct
             $eta  = [int]($rate * (100 - $script:pct))
         }
 
-        # Capture errors (exclude noisy Gradle version warnings)
-        if ($trimmed -match '(^error:|^Error:|FAILED|Exception)' -and
-            $trimmed -notmatch '(Gradle [0-9]|file://|\.java:\d|^\s*at )') {
-            $errors.Add($trimmed)
+        # Capture + immediately display errors
+        if ($trimmed -match '(^error:|^Error:|cannot find symbol|FAIL(ED|URE)|Exception|Cannot access|does not exist|What went wrong|Execution failed|symbol:\s+class)' -and
+            $trimmed -notmatch '(Gradle [0-9]\.|file://|\.java:\d+: note|^\s*at |^> Run |^> Check |^> Get more|^> See the)') {
+            if (-not $errors.Contains($trimmed)) {
+                $errors.Add($trimmed)
+                printError $trimmed
+            }
         }
 
-        # Redraw
+        # Redraw bar + activity
         drawBar  $script:pct $script:label $elapsed $eta
         drawActivity $trimmed
     }
 
-    # Final bar at 100%
+    # Final bar
     $total = [int]((Get-Date) - $start).TotalSeconds
     drawBar ([Math]::Min($script:pct, 100)) $script:label $total 0
     drawActivity ''
 
-    # Clear activity row, draw closing separator, move cursor below
+    # Clear activity row
     $cw = [Math]::Max([Console]::WindowWidth - 1, 79)
     [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 1)))
     [Console]::Write((' ' * $cw))
-    [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 2)))
-    [Console]::Write(('  ' + ('-' * ($cw - 2))).PadRight($cw))
-    [Console]::SetCursorPosition(0, (safeRow ($script:barRow + 3)))
+
+    # Move cursor below error rows (if any)
+    $belowRow = $script:barRow + 4 + [Math]::Max($errors.Count, 0)
+    $belowRow = safeRow $belowRow
+    [Console]::SetCursorPosition(0, $belowRow)
 
 } finally {
     [Console]::CursorVisible = $true
@@ -166,9 +193,15 @@ Write-Host ("  Build time: $(fmtTime $total)") -ForegroundColor White
 
 if ($errors.Count -gt 0) {
     Write-Host ''
-    Write-Host "  $($errors.Count) error(s) found:" -ForegroundColor Red
+    Write-Host "  $($errors.Count) error(s) — full list:" -ForegroundColor Red
+    $i = 1
     foreach ($e in $errors) {
-        Write-Host "    $e" -ForegroundColor Red
+        Write-Host ("  " + $i + ". " + $e) -ForegroundColor Red
+        $i++
     }
+    Write-Host ''
+    Write-Host '  Tip: Run with --verbose for the full Gradle stack trace.' -ForegroundColor Yellow
+} else {
+    Write-Host '  No errors detected.' -ForegroundColor Green
 }
 Write-Host ''

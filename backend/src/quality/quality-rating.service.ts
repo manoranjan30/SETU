@@ -16,6 +16,29 @@ export class QualityRatingService {
     private observationRepo: Repository<SiteObservation>,
   ) {}
 
+  private sanitizeObservationCategories(categories?: unknown): string[] {
+    const values = Array.isArray(categories) ? categories : [];
+    const deduped = Array.from(
+      new Set(
+        values
+          .map((value) => String(value ?? '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    return deduped.length > 0
+      ? deduped
+      : [
+          'Structural',
+          'Architectural',
+          'MEP',
+          'Finishes',
+          'Materials',
+          'Workmanship',
+          'General / Others',
+        ];
+  }
+
   async getConfig(projectId: number): Promise<QualityRatingConfig> {
     let config = await this.configRepo.findOne({
       where: { projectNodeId: projectId },
@@ -25,6 +48,9 @@ export class QualityRatingService {
       config = this.configRepo.create({ projectNodeId: projectId });
       await this.configRepo.save(config);
     }
+    config.observationCategories = this.sanitizeObservationCategories(
+      config.observationCategories,
+    );
     return config;
   }
 
@@ -34,7 +60,26 @@ export class QualityRatingService {
   ): Promise<QualityRatingConfig> {
     const config = await this.getConfig(projectId);
     Object.assign(config, update);
+    config.observationCategories = this.sanitizeObservationCategories(
+      config.observationCategories,
+    );
     return this.configRepo.save(config);
+  }
+
+  async getObservationCategories(projectId: number): Promise<string[]> {
+    const config = await this.getConfig(projectId);
+    return this.sanitizeObservationCategories(config.observationCategories);
+  }
+
+  async updateObservationCategories(
+    projectId: number,
+    categories: unknown,
+  ): Promise<string[]> {
+    const config = await this.getConfig(projectId);
+    config.observationCategories =
+      this.sanitizeObservationCategories(categories);
+    await this.configRepo.save(config);
+    return config.observationCategories;
   }
 
   async calculateProjectRating(

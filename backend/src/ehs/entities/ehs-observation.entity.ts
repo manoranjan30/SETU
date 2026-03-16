@@ -2,112 +2,93 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
   JoinColumn,
 } from 'typeorm';
 import { EpsNode } from '../../eps/eps.entity';
-import { User } from '../../users/user.entity';
 
-export enum ObservationType {
-  UNSAFE_ACT = 'UNSAFE_ACT',
-  UNSAFE_CONDITION = 'UNSAFE_CONDITION',
-  GOOD_PRACTICE = 'GOOD_PRACTICE',
-}
-
-export enum SeverityLevel {
-  CRITICAL = 'CRITICAL',
-  SERIOUS = 'SERIOUS',
+export enum EhsObservationSeverity {
+  INFO = 'INFO',
   MINOR = 'MINOR',
-  NEGLIGIBLE = 'NEGLIGIBLE',
+  MAJOR = 'MAJOR',
+  CRITICAL = 'CRITICAL',
 }
 
-export enum ObservationStatus {
+export enum EhsObservationStatus {
   OPEN = 'OPEN',
-  IN_PROGRESS = 'IN_PROGRESS',
-  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  RECTIFIED = 'RECTIFIED',
   CLOSED = 'CLOSED',
-  ESCALATED = 'ESCALATED',
 }
 
 @Entity('ehs_observations')
 export class EhsObservation {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column()
   projectId: number;
 
-  @ManyToOne(() => EpsNode)
-  @JoinColumn({ name: 'projectId' })
-  project: EpsNode;
+  @Column({ nullable: true })
+  epsNodeId: number;
 
-  @Column({ type: 'date' })
-  date: string;
+  @ManyToOne(() => EpsNode, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'epsNodeId' })
+  epsNode: EpsNode;
 
-  @Column()
+  @Column({
+    type: 'enum',
+    enum: EhsObservationSeverity,
+    default: EhsObservationSeverity.MINOR,
+  })
+  severity: EhsObservationSeverity;
+
+  @Column({ type: 'text', default: 'General Safety' })
   category: string;
-
-  @Column({
-    type: 'enum',
-    enum: ObservationType,
-    default: ObservationType.UNSAFE_CONDITION,
-  })
-  observationType: ObservationType;
-
-  @Column({
-    type: 'enum',
-    enum: SeverityLevel,
-    default: SeverityLevel.MINOR,
-  })
-  severity: SeverityLevel;
-
-  @Column({ type: 'text' })
-  location: string;
 
   @Column({ type: 'text' })
   description: string;
 
-  @Column({ nullable: true })
-  photoUrl: string;
+  @Column({ type: 'text', nullable: true })
+  remarks: string;
 
-  @Column()
-  reportedById: number;
-
-  @ManyToOne(() => User)
-  @JoinColumn({ name: 'reportedById' })
-  reportedBy: User;
+  @Column('text', { array: true, default: [] })
+  photos: string[];
 
   @Column({ nullable: true })
-  assignedToId: number;
-
-  @ManyToOne(() => User)
-  @JoinColumn({ name: 'assignedToId' })
-  assignedTo: User;
-
-  @Column({ type: 'date', nullable: true })
-  targetDate: string;
+  raisedById: string;
 
   @Column({ type: 'text', nullable: true })
-  correctiveAction: string;
+  rectificationText: string;
+
+  @Column('text', { array: true, default: [] })
+  rectificationPhotos: string[];
+
+  @Column({ nullable: true })
+  rectifiedById: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rectifiedAt: Date;
+
+  @Column({ nullable: true })
+  closedById: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  closedAt: Date;
+
+  @Column({ type: 'text', nullable: true })
+  closureRemarks: string;
 
   @Column({
     type: 'enum',
-    enum: ObservationStatus,
-    default: ObservationStatus.OPEN,
+    enum: EhsObservationStatus,
+    default: EhsObservationStatus.OPEN,
   })
-  status: ObservationStatus;
+  status: EhsObservationStatus;
 
   @Column({ type: 'date', nullable: true })
-  closedDate: string;
-
-  @Column({ nullable: true })
-  closedById: number;
-
-  @ManyToOne(() => User)
-  @JoinColumn({ name: 'closedById' })
-  closedBy: User;
+  targetDate: string;
 
   @CreateDateColumn()
   createdAt: Date;

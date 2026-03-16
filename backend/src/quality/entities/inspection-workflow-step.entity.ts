@@ -49,6 +49,30 @@ export class InspectionWorkflowStep {
   @Column({ type: 'int', nullable: true })
   assignedUserId: number | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  assignedUserIds: number[] | null;
+
+  @Column({ type: 'int', nullable: true })
+  assignedRoleId: number | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  stepName: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  approverMode: string | null;
+
+  @Column({ default: false })
+  canDelegate: boolean;
+
+  @Column({ type: 'int', default: 1 })
+  minApprovalsRequired: number;
+
+  @Column({ type: 'int', default: 0 })
+  currentApprovalCount: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  approvedUserIds: number[] | null;
+
   @Column({
     type: 'enum',
     enum: WorkflowStepStatus,
@@ -65,6 +89,15 @@ export class InspectionWorkflowStep {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   signedBy: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  signerDisplayName: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  signerCompany: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  signerRole: string | null;
 
   @Column({ type: 'timestamp', nullable: true })
   completedAt: Date | null;

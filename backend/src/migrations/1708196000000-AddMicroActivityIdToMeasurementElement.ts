@@ -7,41 +7,51 @@ import {
 
 export class AddMicroActivityIdToMeasurementElement1708196000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add microActivityId column to measurement_element table
-    await queryRunner.addColumn(
-      'measurement_element',
-      new TableColumn({
-        name: 'microActivityId',
-        type: 'int',
-        isNullable: true,
-      }),
+    const table = await queryRunner.getTable('measurement_element');
+    const hasColumn = table?.findColumnByName('microActivityId');
+
+    if (!hasColumn) {
+      await queryRunner.addColumn(
+        'measurement_element',
+        new TableColumn({
+          name: 'microActivityId',
+          type: 'int',
+          isNullable: true,
+        }),
+      );
+    }
+
+    const refreshedTable = await queryRunner.getTable('measurement_element');
+    const hasForeignKey = refreshedTable?.foreignKeys.some(
+      (fk) =>
+        fk.columnNames.length === 1 &&
+        fk.columnNames[0] === 'microActivityId' &&
+        fk.referencedTableName === 'micro_schedule_activity',
     );
 
-    // Add foreign key constraint
-    await queryRunner.createForeignKey(
-      'measurement_element',
-      new TableForeignKey({
-        columnNames: ['microActivityId'],
-        referencedColumnNames: ['id'],
-        referencedTableName: 'micro_schedule_activity',
-        onDelete: 'SET NULL',
-      }),
-    );
+    if (!hasForeignKey) {
+      await queryRunner.createForeignKey(
+        'measurement_element',
+        new TableForeignKey({
+          columnNames: ['microActivityId'],
+          referencedColumnNames: ['id'],
+          referencedTableName: 'micro_schedule_activity',
+          onDelete: 'SET NULL',
+        }),
+      );
+    }
 
-    // Create index for performance
     await queryRunner.query(`
-            CREATE INDEX IDX_measurement_element_micro_activity 
-            ON measurement_element(microActivityId)
-        `);
+      CREATE INDEX IF NOT EXISTS "IDX_measurement_element_micro_activity"
+      ON "measurement_element" ("microActivityId")
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Drop index
     await queryRunner.query(
-      `DROP INDEX IDX_measurement_element_micro_activity ON measurement_element`,
+      `DROP INDEX IF EXISTS "IDX_measurement_element_micro_activity"`,
     );
 
-    // Drop foreign key
     const table = await queryRunner.getTable('measurement_element');
     if (table) {
       const foreignKey = table.foreignKeys.find(
@@ -52,7 +62,9 @@ export class AddMicroActivityIdToMeasurementElement1708196000000 implements Migr
       }
     }
 
-    // Drop column
-    await queryRunner.dropColumn('measurement_element', 'microActivityId');
+    const refreshedTable = await queryRunner.getTable('measurement_element');
+    if (refreshedTable?.findColumnByName('microActivityId')) {
+      await queryRunner.dropColumn('measurement_element', 'microActivityId');
+    }
   }
 }

@@ -4,17 +4,38 @@ import 'package:setu_mobile/core/api/api_endpoints.dart';
 
 // ==================== ENUMS ====================
 
+/// The display status of a quality activity row in the site engineer's checklist.
+///
+/// This is a CLIENT-SIDE concept derived by [QualityRequestBloc._buildRows]
+/// from the combination of the activity's backend status + its inspection record
+/// + the predecessor chain. It drives the row's icon, colour, and available actions.
 enum ActivityDisplayStatus {
+  /// Predecessor activity has not yet been approved — cannot raise RFI yet.
   locked,
+
+  /// All predecessors are approved (or allowBreak=true) — RFI can be raised.
   ready,
+
+  /// RFI has been raised and is awaiting the QC inspector's evaluation.
   pending,
+
+  /// The QC inspector approved this activity.
   approved,
+
+  /// The QC inspector rejected this activity — needs rework and re-inspection.
   rejected,
+
+  /// Provisionally approved — approved with a pending minor follow-up.
   provisionallyApproved,
+
+  /// The QC inspector raised a defect observation — the site engineer must
+  /// rectify the issue and submit evidence before re-inspection.
   pendingObservation,
 }
 
+/// Extension providing UI-ready properties for [ActivityDisplayStatus].
 extension ActivityDisplayStatusX on ActivityDisplayStatus {
+  /// Human-readable label shown in the activity row badge.
   String get label {
     switch (this) {
       case ActivityDisplayStatus.locked:
@@ -34,6 +55,7 @@ extension ActivityDisplayStatusX on ActivityDisplayStatus {
     }
   }
 
+  /// Foreground colour for the status badge text and icon.
   Color get color {
     switch (this) {
       case ActivityDisplayStatus.locked:
@@ -53,6 +75,7 @@ extension ActivityDisplayStatusX on ActivityDisplayStatus {
     }
   }
 
+  /// Background colour for the status badge chip.
   Color get backgroundColor {
     switch (this) {
       case ActivityDisplayStatus.locked:
@@ -72,6 +95,7 @@ extension ActivityDisplayStatusX on ActivityDisplayStatus {
     }
   }
 
+  /// Icon shown alongside the status badge.
   IconData get icon {
     switch (this) {
       case ActivityDisplayStatus.locked:
@@ -92,6 +116,7 @@ extension ActivityDisplayStatusX on ActivityDisplayStatus {
   }
 }
 
+/// Server-side status of a [QualityInspection] (RFI) record.
 enum InspectionStatus {
   pending,
   partiallyApproved,
@@ -101,6 +126,7 @@ enum InspectionStatus {
   canceled,
   reversed;
 
+  /// Parse from the backend string value (case-insensitive).
   static InspectionStatus fromString(String v) {
     switch (v.toUpperCase()) {
       case 'PENDING':
@@ -122,6 +148,7 @@ enum InspectionStatus {
     }
   }
 
+  /// Display label for the inspection status chip.
   String get label {
     switch (this) {
       case InspectionStatus.pending:
@@ -141,6 +168,7 @@ enum InspectionStatus {
     }
   }
 
+  /// Foreground colour for the status chip.
   Color get color {
     switch (this) {
       case InspectionStatus.pending:
@@ -159,16 +187,19 @@ enum InspectionStatus {
     }
   }
 
+  /// Background colour — derived from [color] at 10% opacity.
   Color get backgroundColor {
     return color.withValues(alpha: 0.1);
   }
 }
 
+/// Lifecycle status of an activity-level defect observation.
 enum ObservationStatus {
   pending,
   rectified,
   closed;
 
+  /// Parse from the backend string value.
   static ObservationStatus fromString(String v) {
     switch (v.toUpperCase()) {
       case 'RECTIFIED':
@@ -203,12 +234,16 @@ enum ObservationStatus {
   }
 }
 
-/// Status for a single checklist item. null = not yet evaluated.
+/// Status of a single checklist item. `null` means not yet evaluated.
 enum ChecklistItemStatus {
   pass,
   na;
 
-  /// Parse from JSON — supports new `status` string field and old `isOk` bool.
+  /// Parse from a checklist item JSON object.
+  ///
+  /// Supports two backend formats:
+  ///   - New format: `"status": "PASS"` or `"status": "NA"`
+  ///   - Old format: `"isOk": true` (treated as PASS; false → null/unevaluated)
   static ChecklistItemStatus? fromJson(Map<String, dynamic> json) {
     final statusStr = json['status'] as String?;
     if (statusStr != null) {
@@ -225,6 +260,7 @@ enum ChecklistItemStatus {
     return isOk == true ? ChecklistItemStatus.pass : null;
   }
 
+  /// Value sent to the API when saving checklist progress.
   String get apiValue {
     switch (this) {
       case ChecklistItemStatus.pass:
@@ -234,6 +270,7 @@ enum ChecklistItemStatus {
     }
   }
 
+  /// Label shown next to the toggle button in the checklist UI.
   String get label {
     switch (this) {
       case ChecklistItemStatus.pass:
@@ -246,7 +283,8 @@ enum ChecklistItemStatus {
 
 // ==================== MODELS ====================
 
-/// Quality activity list (a named checklist template assigned to an EPS node)
+/// A named checklist template assigned to an EPS location node.
+/// Lists group related quality activities (e.g. "Structural Slab Checklist").
 class QualityActivityList extends Equatable {
   final int id;
   final String name;
@@ -271,6 +309,8 @@ class QualityActivityList extends Equatable {
       description: json['description'] as String?,
       projectId: json['projectId'] as int? ?? 0,
       epsNodeId: json['epsNodeId'] as int?,
+      // Prefer the pre-computed count field; fall back to counting the
+      // embedded activities array if it was included in the response.
       activityCount: (json['activityCount'] as int?) ??
           (json['activities'] as List?)?.length ??
           0,
@@ -278,10 +318,18 @@ class QualityActivityList extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, description, projectId, epsNodeId, activityCount];
+  List<Object?> get props =>
+      [id, name, description, projectId, epsNodeId, activityCount];
 }
 
-/// A single quality activity within a list
+/// A single quality activity (checklist item) within a [QualityActivityList].
+///
+/// [holdPoint] = true means work must stop until QC approves this activity.
+/// [witnessPoint] = true means QC must witness the work (but doesn't block it).
+/// [allowBreak] = true means this activity can be raised out-of-sequence
+///   (i.e. the normal predecessor gate is overridden).
+/// [incomingEdges] defines the multi-predecessor graph (takes priority over
+///   the legacy [previousActivityId] single-chain model).
 class QualityActivity extends Equatable {
   final int id;
   final int listId;
@@ -328,7 +376,8 @@ class QualityActivity extends Equatable {
     );
   }
 
-  /// Compute display status based on activity status string and inspection
+  /// Compute the display status for this activity from its backend status
+  /// and its latest inspection record. Used in the offline list view.
   ActivityDisplayStatus displayStatus(QualityInspection? inspection) {
     if (status == 'PENDING_OBSERVATION') {
       return ActivityDisplayStatus.pendingObservation;
@@ -347,20 +396,27 @@ class QualityActivity extends Equatable {
           return ActivityDisplayStatus.pending;
       }
     }
+    // No inspection and not pending observation — default to locked.
     return ActivityDisplayStatus.locked;
   }
 
+  /// True when the site engineer is allowed to raise an RFI for this activity.
   bool canRaiseRfi(bool predecessorDone) =>
       (status == 'NOT_STARTED') && (predecessorDone || allowBreak);
 
+  /// True when the site engineer must resolve an outstanding observation before
+  /// any further action on this activity.
   bool get needsObservationFix => status == 'PENDING_OBSERVATION';
 
   @override
   List<Object?> get props => [id, listId, sequence, activityName, status];
 }
 
-/// Incoming edge for predecessor tracking
+/// A directed edge from a predecessor activity to this activity.
+/// Used to enforce that predecessor work is approved before this activity
+/// can be unlocked for inspection.
 class IncomingEdge extends Equatable {
+  /// The ID of the activity that must be approved before this one is unlocked.
   final int sourceId;
 
   const IncomingEdge({required this.sourceId});
@@ -375,7 +431,12 @@ class IncomingEdge extends Equatable {
   List<Object?> get props => [sourceId];
 }
 
-/// Inspection record (RFI)
+/// An inspection record (RFI) raised by a site engineer for a quality activity.
+///
+/// The server response includes several optional location fields that may come
+/// from different sources (top-level, `location` sub-object, or `epsNode`).
+/// [fromJson] normalises these into flat fields using the [readString] /
+/// [readInt] helpers so the UI never has to parse nested JSON.
 class QualityInspection extends Equatable {
   final int id;
   final int activityId;
@@ -389,7 +450,33 @@ class QualityInspection extends Equatable {
   final String? inspectedBy;
   final String? activityName; // joined from activity relation
   final String? epsNodeLabel; // joined from epsNode relation
+  final String? blockName;
+  final String? towerName;
+  final String? floorName;
+  final String? unitName;
+  final String? locationPath;
+  final int? workflowCurrentLevel;
+  final int? workflowTotalLevels;
+  final int pendingObservationCount;
+  final DateTime? slaDueAt;
   final List<InspectionStage> stages;
+
+  // Multi-part RFI support (e.g. "Part 1 of 3")
+  final int partNo;
+  final int totalParts;
+  final String? partLabel;
+
+  // Vendor captured at RFI creation
+  final int? vendorId;
+  final String? vendorName;
+
+  /// Stage-driven pending approval display, e.g. "Stage Pre-Execution - Level 2 Pending: QC Engineer".
+  /// Set by the backend's `attachWorkflowSummary` — null until the inspection
+  /// enters the approval flow.
+  final String? pendingApprovalDisplay;
+
+  /// Short label for the approval cards list, e.g. "2 stages pending".
+  final String? pendingApprovalLabel;
 
   const QualityInspection({
     required this.id,
@@ -404,54 +491,236 @@ class QualityInspection extends Equatable {
     this.inspectedBy,
     this.activityName,
     this.epsNodeLabel,
+    this.blockName,
+    this.towerName,
+    this.floorName,
+    this.unitName,
+    this.locationPath,
+    this.workflowCurrentLevel,
+    this.workflowTotalLevels,
+    this.pendingObservationCount = 0,
+    this.slaDueAt,
     this.stages = const [],
+    this.partNo = 1,
+    this.totalParts = 1,
+    this.partLabel,
+    this.vendorId,
+    this.vendorName,
+    this.pendingApprovalDisplay,
+    this.pendingApprovalLabel,
   });
 
   factory QualityInspection.fromJson(Map<String, dynamic> json) {
+    // Inline helpers for defensive field extraction across different API versions.
     final activity = json['activity'] as Map<String, dynamic>?;
     final epsNode = json['epsNode'] as Map<String, dynamic>?;
+    final location = json['location'] as Map<String, dynamic>?;
+
+    // Accepts a raw value that may be null, DateTime, or ISO string.
+    DateTime? parseDate(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is DateTime) return raw;
+      if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+      return null;
+    }
+
+    // Returns the first non-empty string from a list of candidate values.
+    // Used to normalise location fields that may arrive under different keys.
+    String? readString(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        if (candidate is String && candidate.trim().isNotEmpty) {
+          return candidate.trim();
+        }
+      }
+      return null;
+    }
+
+    // Returns the first parseable int from a list of candidate values.
+    // Handles int, num, and numeric string representations.
+    int? readInt(List<dynamic> candidates) {
+      for (final candidate in candidates) {
+        if (candidate is int) return candidate;
+        if (candidate is num) return candidate.toInt();
+        if (candidate is String) {
+          final parsed = int.tryParse(candidate);
+          if (parsed != null) return parsed;
+        }
+      }
+      return null;
+    }
+
     return QualityInspection(
       id: json['id'] as int,
       activityId: json['activityId'] as int? ?? 0,
       epsNodeId: json['epsNodeId'] as int?,
       listId: json['listId'] as int?,
       projectId: json['projectId'] as int?,
-      status: InspectionStatus.fromString(json['status'] as String? ?? 'PENDING'),
+      status:
+          InspectionStatus.fromString(json['status'] as String? ?? 'PENDING'),
       requestDate: json['requestDate'] as String? ?? '',
       inspectionDate: json['inspectionDate'] as String?,
       comments: json['comments'] as String?,
       inspectedBy: json['inspectedBy'] as String?,
       activityName: activity?['activityName'] as String?,
       epsNodeLabel: epsNode?['label'] as String? ?? epsNode?['name'] as String?,
+      // Normalise location fields from multiple possible source keys.
+      blockName: readString(
+          [json['blockName'], location?['blockName'], location?['block']]),
+      towerName: readString(
+          [json['towerName'], location?['towerName'], location?['tower']]),
+      floorName: readString(
+          [json['floorName'], location?['floorName'], location?['floor']]),
+      unitName: readString(
+          [json['unitName'], location?['unitName'], location?['unit']]),
+      locationPath: readString(
+          [json['locationPath'], location?['path'], location?['locationPath']]),
+      // Workflow level fields may come from different API shapes depending on
+      // which endpoint returned this inspection.
+      workflowCurrentLevel: readInt([
+        json['workflowCurrentLevel'],
+        json['currentApprovalLevel'],
+        json['currentLevel'],
+      ]),
+      workflowTotalLevels: readInt([
+        json['workflowTotalLevels'],
+        json['approvalLevels'],
+        json['totalLevels'],
+      ]),
+      // Similarly, pending observation count may be named differently.
+      pendingObservationCount: readInt([
+            json['pendingObservationCount'],
+            json['openObservationCount'],
+            json['observationPendingCount'],
+          ]) ??
+          0,
+      slaDueAt: parseDate(json['slaDueAt'] ?? json['dueAt']),
       stages: (json['stages'] as List<dynamic>?)
               ?.map((e) => InspectionStage.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      partNo: json['partNo'] as int? ?? 1,
+      totalParts: json['totalParts'] as int? ?? 1,
+      partLabel: json['partLabel'] as String?,
+      vendorId: json['vendorId'] as int?,
+      vendorName: json['vendorName'] as String?,
+      pendingApprovalDisplay: json['pendingApprovalDisplay'] as String?,
+      pendingApprovalLabel: json['pendingApprovalLabel'] as String?,
     );
   }
 
+  /// True when this RFI is one of multiple parts (e.g. Part 2 of 3).
+  bool get isMultiPart => totalParts > 1;
+
+  /// Display label for multi-part RFI, e.g. "Part 1 of 3" or a custom label.
+  String get partDisplay =>
+      partLabel?.isNotEmpty == true ? partLabel! : 'Part $partNo of $totalParts';
+
   bool get isPending => status == InspectionStatus.pending;
+  DateTime? get requestDateTime =>
+      requestDate.isEmpty ? null : DateTime.tryParse(requestDate);
+
+  /// Count of stages where all items have been evaluated.
+  int get completedStages => stages.where((s) => s.allOk).length;
+  int get totalStages => stages.length;
+
+  /// Returns the first floor-like part of the location hierarchy for compact display.
+  String? get primaryFloorLabel {
+    if (floorName != null && floorName!.isNotEmpty) return floorName;
+    for (final part in locationHierarchy) {
+      if (part.toLowerCase().contains('floor')) return part;
+    }
+    return null;
+  }
+
+  /// Builds an ordered list of non-empty location labels (block, tower, floor, unit).
+  /// Falls back to splitting [locationPath] or [epsNodeLabel] by common delimiters.
+  List<String> get locationHierarchy {
+    final hierarchy = <String>[
+      if (blockName != null && blockName!.isNotEmpty) blockName!,
+      if (towerName != null && towerName!.isNotEmpty) towerName!,
+      if (floorName != null && floorName!.isNotEmpty) floorName!,
+      if (unitName != null && unitName!.isNotEmpty) unitName!,
+    ];
+    if (hierarchy.isNotEmpty) return hierarchy;
+
+    // Fall back to splitting the raw location path by common separators.
+    final raw = locationPath ?? epsNodeLabel;
+    if (raw == null || raw.trim().isEmpty) return const [];
+    final parts = raw
+        .split(RegExp(r'[>/|,]'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    return parts;
+  }
+
+  /// Single-line location string for list tiles (e.g. "Block A > Tower 1 > Floor 3").
+  String get locationDisplay {
+    final hierarchy = locationHierarchy;
+    if (hierarchy.isNotEmpty) return hierarchy.join(' > ');
+    return 'Location unavailable';
+  }
 
   @override
-  List<Object?> get props => [id, activityId, status, requestDate, stages];
+  List<Object?> get props => [
+        id,
+        activityId,
+        status,
+        requestDate,
+        inspectionDate,
+        comments,
+        inspectedBy,
+        activityName,
+        epsNodeLabel,
+        blockName,
+        towerName,
+        floorName,
+        unitName,
+        locationPath,
+        workflowCurrentLevel,
+        workflowTotalLevels,
+        pendingObservationCount,
+        slaDueAt,
+        stages,
+        partNo,
+        totalParts,
+        partLabel,
+        vendorId,
+        vendorName,
+        pendingApprovalDisplay,
+        pendingApprovalLabel,
+      ];
 }
 
-/// A checklist stage within an inspection
+/// A checklist stage within an inspection.
+/// Stages group related checklist items (e.g. "Pre-Pour Checks", "Post-Pour Checks").
 class InspectionStage extends Equatable {
   final int id;
   final String? stageName;
   final String status;
   final List<ChecklistItem> items;
 
+  /// Stage-level approval matrix from the backend's `attachWorkflowSummary`.
+  /// Null when the inspection has not yet entered the approval flow.
+  final StageApproval? stageApproval;
+
+  /// Count of open (pending) observations linked to this stage.
+  /// A stage cannot be approved while this is > 0.
+  final int openObservationCount;
+
   const InspectionStage({
     required this.id,
     this.stageName,
     required this.status,
     this.items = const [],
+    this.stageApproval,
+    this.openObservationCount = 0,
   });
 
   factory InspectionStage.fromJson(Map<String, dynamic> json) {
+    // Stage name comes from the stageTemplate relation, not directly on the stage record.
     final template = json['stageTemplate'] as Map<String, dynamic>?;
+    final approvalRaw = json['stageApproval'] as Map<String, dynamic>?;
     return InspectionStage(
       id: json['id'] as int,
       stageName: template?['name'] as String? ?? 'General Checks',
@@ -460,35 +729,57 @@ class InspectionStage extends Equatable {
               ?.map((e) => ChecklistItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      stageApproval:
+          approvalRaw != null ? StageApproval.fromJson(approvalRaw) : null,
+      openObservationCount: json['openObservationCount'] as int? ?? 0,
     );
   }
 
-  /// Items marked PASS.
+  /// Count of items explicitly marked as PASS.
   int get completedCount => items.where((i) => i.isOk).length;
-  /// Items marked PASS or N/A (i.e. evaluated).
+
+  /// Count of items that have been evaluated in any way (PASS or N/A).
   int get resolvedCount => items.where((i) => i.itemStatus != null).length;
   int get totalCount => items.length;
-  /// True when every item has been evaluated (PASS or N/A).
-  bool get allOk => items.isNotEmpty && items.every((i) => i.itemStatus != null);
 
+  /// True when every item has been evaluated (none left as null/unevaluated).
+  bool get allOk =>
+      items.isNotEmpty && items.every((i) => i.itemStatus != null);
+
+  /// True when this stage has been fully approved through all release levels.
+  bool get isFullyApproved => stageApproval?.fullyApproved == true;
+
+  /// True when items are all evaluated, no open observations, and not yet approved.
+  bool get canApprove =>
+      allOk && openObservationCount == 0 && !isFullyApproved;
+
+  /// Returns a new [InspectionStage] with the given items, preserving other fields.
   InspectionStage copyWithItems(List<ChecklistItem> newItems) {
     return InspectionStage(
       id: id,
       stageName: stageName,
       status: status,
       items: newItems,
+      stageApproval: stageApproval,
+      openObservationCount: openObservationCount,
     );
   }
 
   @override
-  List<Object?> get props => [id, stageName, status, items];
+  List<Object?> get props =>
+      [id, stageName, status, items, stageApproval, openObservationCount];
 }
 
-/// A single checklist item within a stage
+/// A single checklist item within an [InspectionStage].
+///
+/// [itemStatus] = null means the item has not been evaluated yet.
+/// [itemText] comes from the `itemTemplate` relation (the template defines
+/// the question text; the instance record carries the inspector's response).
 class ChecklistItem extends Equatable {
   final int id;
   final String itemText;
   final int sequence;
+
   /// null = not yet evaluated, pass = Yes, na = Not Applicable
   final ChecklistItemStatus? itemStatus;
   final String? remarks;
@@ -507,18 +798,20 @@ class ChecklistItem extends Equatable {
   bool get isOk => itemStatus == ChecklistItemStatus.pass;
 
   factory ChecklistItem.fromJson(Map<String, dynamic> json) {
+    // Item text comes from the itemTemplate relation, not the instance record.
     final template = json['itemTemplate'] as Map<String, dynamic>?;
     return ChecklistItem(
       id: json['id'] as int,
       itemText: template?['itemText'] as String? ?? 'Checklist Item',
       sequence: template?['sequence'] as int? ?? 0,
+      // Delegates to ChecklistItemStatus.fromJson to handle both new and old formats.
       itemStatus: ChecklistItemStatus.fromJson(json),
       remarks: json['remarks'] as String?,
       value: json['value'] as String?,
     );
   }
 
-  /// Copy with updated remarks only.
+  /// Copy with updated remarks only. Used by [UpdateItemRemarks] in the BLoC.
   ChecklistItem copyWith({String? remarks}) {
     return ChecklistItem(
       id: id,
@@ -530,7 +823,7 @@ class ChecklistItem extends Equatable {
     );
   }
 
-  /// Copy with a new status (pass / na / null to clear).
+  /// Copy with a new status value. Used by [SetChecklistItemStatus] in the BLoC.
   ChecklistItem copyWithStatus(ChecklistItemStatus? newStatus) {
     return ChecklistItem(
       id: id,
@@ -542,6 +835,8 @@ class ChecklistItem extends Equatable {
     );
   }
 
+  /// Serialises to the format expected by the PATCH /quality/stages/:id endpoint.
+  /// Sends both `isOk` (backward compat) and `status` (new format).
   Map<String, dynamic> toApiPayload() => {
         'id': id,
         'isOk': isOk, // backward compat with older backend versions
@@ -554,9 +849,13 @@ class ChecklistItem extends Equatable {
   List<Object?> get props => [id, itemStatus, remarks, value];
 }
 
-/// An observation (defect) logged by QC Inspector
+/// A defect observation raised by a QC inspector on a specific activity.
+///
+/// Lifecycle: pending → rectified (by site engineer) → closed (by QC inspector).
+/// Photos are resolved to absolute URLs via [ApiEndpoints.resolveUrl] at parse
+/// time so widgets never need to know the server base URL.
 class ActivityObservation extends Equatable {
-  final String id; // UUID
+  final String id; // UUID from backend
   final int activityId;
   final String observationText;
   final String type; // Minor / Major / Critical
@@ -587,6 +886,7 @@ class ActivityObservation extends Equatable {
       observationText: json['observationText'] as String? ?? '',
       type: json['type'] as String? ?? 'Minor',
       remarks: json['remarks'] as String?,
+      // Resolve relative photo paths to absolute URLs using the configured base URL.
       photos: (json['photos'] as List<dynamic>?)
               ?.map((e) => ApiEndpoints.resolveUrl(e.toString()))
               .toList() ??
@@ -596,8 +896,8 @@ class ActivityObservation extends Equatable {
               ?.map((e) => ApiEndpoints.resolveUrl(e.toString()))
               .toList() ??
           [],
-      status: ObservationStatus.fromString(
-          json['status'] as String? ?? 'PENDING'),
+      status:
+          ObservationStatus.fromString(json['status'] as String? ?? 'PENDING'),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -606,14 +906,106 @@ class ActivityObservation extends Equatable {
 
   bool get isPending => status == ObservationStatus.pending;
   bool get isRectified => status == ObservationStatus.rectified;
+  bool get isClosed => status == ObservationStatus.closed;
 
   @override
   List<Object?> get props =>
       [id, activityId, observationText, status, closureText];
 }
 
+// ==================== STAGE APPROVAL MODELS ====================
+
+/// A single level in the stage-level approval matrix.
+///
+/// Mirrors the `buildStageApprovalDetails` response from the backend:
+/// each level corresponds to one release-strategy step.
+class StageApprovalLevel extends Equatable {
+  final int stepOrder;
+  final String stepName;
+  final bool approved;
+  final bool autoInherited;
+  final String? signerDisplayName;
+  final String? signerCompany;
+  final String? signerRoleLabel;
+  final String? approvedAt;
+
+  const StageApprovalLevel({
+    required this.stepOrder,
+    required this.stepName,
+    required this.approved,
+    this.autoInherited = false,
+    this.signerDisplayName,
+    this.signerCompany,
+    this.signerRoleLabel,
+    this.approvedAt,
+  });
+
+  factory StageApprovalLevel.fromJson(Map<String, dynamic> json) {
+    return StageApprovalLevel(
+      stepOrder: json['stepOrder'] as int? ?? 0,
+      stepName: json['stepName'] as String? ?? '',
+      approved: json['approved'] as bool? ?? false,
+      autoInherited: json['autoInherited'] as bool? ?? false,
+      signerDisplayName: json['signerDisplayName'] as String?,
+      signerCompany: json['signerCompany'] as String?,
+      signerRoleLabel: json['signerRoleLabel'] as String?,
+      approvedAt: json['approvedAt'] as String?,
+    );
+  }
+
+  @override
+  List<Object?> get props =>
+      [stepOrder, stepName, approved, autoInherited, signerDisplayName, approvedAt];
+}
+
+/// Aggregated approval state for a single checklist stage.
+///
+/// Returned by `attachWorkflowSummary` on the backend under each stage's
+/// `stageApproval` key.
+class StageApproval extends Equatable {
+  final List<StageApprovalLevel> levels;
+  final List<StageApprovalLevel> pendingLevels;
+  final int approvedLevelCount;
+  final int requiredLevelCount;
+  final bool fullyApproved;
+  final String? pendingDisplay;
+
+  const StageApproval({
+    this.levels = const [],
+    this.pendingLevels = const [],
+    this.approvedLevelCount = 0,
+    this.requiredLevelCount = 0,
+    this.fullyApproved = false,
+    this.pendingDisplay,
+  });
+
+  factory StageApproval.fromJson(Map<String, dynamic> json) {
+    return StageApproval(
+      levels: (json['levels'] as List<dynamic>?)
+              ?.map((e) => StageApprovalLevel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      pendingLevels: (json['pendingLevels'] as List<dynamic>?)
+              ?.map((e) => StageApprovalLevel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      approvedLevelCount: json['approvedLevelCount'] as int? ?? 0,
+      requiredLevelCount: json['requiredLevelCount'] as int? ?? 0,
+      fullyApproved: json['fullyApproved'] as bool? ?? false,
+      pendingDisplay: json['pendingDisplay'] as String?,
+    );
+  }
+
+  String get progressLabel => '$approvedLevelCount / $requiredLevelCount';
+
+  @override
+  List<Object?> get props =>
+      [approvedLevelCount, requiredLevelCount, fullyApproved, pendingDisplay];
+}
+
 // ==================== WORKFLOW MODELS ====================
 
+/// Overall status of a multi-level approval workflow run.
 enum WorkflowRunStatus {
   inProgress,
   completed,
@@ -634,6 +1026,7 @@ enum WorkflowRunStatus {
   }
 }
 
+/// Status of a single step within a workflow run.
 enum WorkflowStepStatus {
   waiting,
   pending,
@@ -694,7 +1087,11 @@ enum WorkflowStepStatus {
   }
 }
 
-/// A single step in an inspection approval workflow run
+/// A single step in an inspection approval workflow run.
+///
+/// [isRaiseStep] = true for the synthetic first step that represents the
+/// site engineer raising the RFI. This step is excluded when computing
+/// "Level X of Y" approval progress display.
 class InspectionWorkflowStep extends Equatable {
   final int id;
   final int stepOrder;
@@ -721,12 +1118,13 @@ class InspectionWorkflowStep extends Equatable {
   });
 
   factory InspectionWorkflowStep.fromJson(Map<String, dynamic> json) {
+    // Step label and type come from the workflowNode template record.
     final node = json['workflowNode'] as Map<String, dynamic>?;
     return InspectionWorkflowStep(
       id: json['id'] as int,
       stepOrder: json['stepOrder'] as int? ?? 0,
-      status: WorkflowStepStatus.fromString(
-          json['status'] as String? ?? 'WAITING'),
+      status:
+          WorkflowStepStatus.fromString(json['status'] as String? ?? 'WAITING'),
       stepLabel: node?['label'] as String? ?? node?['name'] as String?,
       stepType: node?['stepType'] as String?,
       assignedUserId: json['assignedUserId'] as int?,
@@ -737,8 +1135,10 @@ class InspectionWorkflowStep extends Equatable {
     );
   }
 
+  /// True when this is the synthetic RFI-raise step — not a real approval level.
   bool get isRaiseStep => stepType == 'RAISE_RFI';
 
+  /// True when this step is currently awaiting action.
   bool get isActive =>
       status == WorkflowStepStatus.pending ||
       status == WorkflowStepStatus.inProgress;
@@ -748,7 +1148,10 @@ class InspectionWorkflowStep extends Equatable {
       [id, stepOrder, status, stepType, assignedUserId, signedBy, comments];
 }
 
-/// The running workflow for an inspection (multi-level approval)
+/// The running workflow for an inspection (multi-level approval chain).
+///
+/// [currentStepOrder] tracks which step is currently awaiting action.
+/// [steps] is the full ordered list of approval levels.
 class InspectionWorkflowRun extends Equatable {
   final int id;
   final int inspectionId;
@@ -772,13 +1175,14 @@ class InspectionWorkflowRun extends Equatable {
       status: WorkflowRunStatus.fromString(
           json['status'] as String? ?? 'IN_PROGRESS'),
       steps: (json['steps'] as List<dynamic>?)
-              ?.map((e) => InspectionWorkflowStep.fromJson(
-                  e as Map<String, dynamic>))
+              ?.map((e) =>
+                  InspectionWorkflowStep.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
   }
 
+  /// Returns the step currently awaiting action, or null if not found.
   InspectionWorkflowStep? get currentStep =>
       steps.where((s) => s.stepOrder == currentStepOrder).firstOrNull;
 
@@ -793,7 +1197,9 @@ class InspectionWorkflowRun extends Equatable {
 
 // ==================== EPS MODELS ====================
 
-/// EPS tree node (for location selection)
+/// A node in the EPS location tree used by the quality location picker.
+/// Structurally similar to [EpsNode] in the projects feature but scoped
+/// to the quality domain and loaded from the quality-specific endpoint.
 class EpsTreeNode extends Equatable {
   final int id;
   final String label;
@@ -810,6 +1216,7 @@ class EpsTreeNode extends Equatable {
   factory EpsTreeNode.fromJson(Map<String, dynamic> json) {
     return EpsTreeNode(
       id: json['id'] as int,
+      // Accept either 'label' or 'name' depending on the API shape.
       label: json['label'] as String? ?? json['name'] as String? ?? '',
       type: json['type'] as String?,
       children: (json['children'] as List<dynamic>?)
@@ -819,13 +1226,18 @@ class EpsTreeNode extends Equatable {
     );
   }
 
+  /// True when this node has no children (leaf node — a specific location).
   bool get isLeaf => children.isEmpty;
 
   @override
   List<Object?> get props => [id, label, type];
 }
 
-/// Combined activity row used in the Request screen (activity + inspection + observations)
+/// Merged view of an activity row in the quality request screen.
+///
+/// Combines a [QualityActivity], its latest [QualityInspection] (if any),
+/// the computed [ActivityDisplayStatus], the predecessor chain state,
+/// and any current observations. Used by the activity list widget.
 class ActivityRow extends Equatable {
   final QualityActivity activity;
   final QualityInspection? inspection;
@@ -844,4 +1256,140 @@ class ActivityRow extends Equatable {
   @override
   List<Object?> get props =>
       [activity, inspection, displayStatus, predecessorDone, observations];
+}
+
+// ==================== QUALITY SITE OBSERVATION ====================
+
+/// Lifecycle status of a site-level quality observation.
+enum SiteObsStatus {
+  open,
+  rectified,
+  closed;
+
+  static SiteObsStatus fromString(String v) {
+    switch (v.toUpperCase()) {
+      case 'RECTIFIED':
+        return SiteObsStatus.rectified;
+      case 'CLOSED':
+        return SiteObsStatus.closed;
+      default:
+        return SiteObsStatus.open;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case SiteObsStatus.open:
+        return 'Open';
+      case SiteObsStatus.rectified:
+        return 'Rectified';
+      case SiteObsStatus.closed:
+        return 'Closed';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case SiteObsStatus.open:
+        return const Color(0xFFDC2626);
+      case SiteObsStatus.rectified:
+        return const Color(0xFF2563EB);
+      case SiteObsStatus.closed:
+        return const Color(0xFF16A34A);
+    }
+  }
+}
+
+/// A site-level quality observation — not tied to a specific checklist activity.
+///
+/// These are raised by QC inspectors for general site defects (e.g. rebar
+/// cover issue, concrete finishing defect) that span multiple activities or
+/// cannot be attributed to a single checklist item.
+/// Photo URLs are resolved to absolute paths at parse time.
+class QualitySiteObservation extends Equatable {
+  final String id; // UUID from backend
+  final int projectId;
+  final int? epsNodeId;
+  final String description;
+  final String severity; // INFO | MINOR | MAJOR | CRITICAL (DB enum)
+  final String? category;
+  final String? locationLabel;
+  final SiteObsStatus status;
+  final List<String> photoUrls;
+  final String? raisedByName;
+  final String? rectificationNotes;
+  final List<String> rectificationPhotoUrls;
+  final String? closureNotes;
+  final DateTime createdAt;
+  final DateTime? rectifiedAt;
+  final DateTime? closedAt;
+
+  const QualitySiteObservation({
+    required this.id,
+    required this.projectId,
+    this.epsNodeId,
+    required this.description,
+    required this.severity,
+    this.category,
+    this.locationLabel,
+    required this.status,
+    this.photoUrls = const [],
+    this.raisedByName,
+    this.rectificationNotes,
+    this.rectificationPhotoUrls = const [],
+    this.closureNotes,
+    required this.createdAt,
+    this.rectifiedAt,
+    this.closedAt,
+  });
+
+  factory QualitySiteObservation.fromJson(Map<String, dynamic> json) {
+    // Resolve photo paths to absolute URLs.
+    List<String> resolvePhotos(dynamic raw) {
+      if (raw == null) return const [];
+      return (raw as List<dynamic>)
+          .map((e) => ApiEndpoints.resolveUrl(e.toString()))
+          .toList();
+    }
+
+    // Parse date from multiple input types (null, DateTime, or ISO string).
+    DateTime? parseDate(dynamic raw) {
+      if (raw == null || raw == '') return null;
+      if (raw is DateTime) return raw;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    // raisedBy may be a nested user object or a flat name string.
+    final raisedBy = json['raisedBy'] as Map<String, dynamic>?;
+    return QualitySiteObservation(
+      id: json['id'].toString(),
+      projectId: json['projectId'] as int? ?? 0,
+      epsNodeId: json['epsNodeId'] as int?,
+      description: json['description'] as String? ?? '',
+      severity: json['severity'] as String? ?? 'MINOR',
+      category: json['category'] as String?,
+      locationLabel: json['locationLabel'] as String?,
+      status: SiteObsStatus.fromString(json['status'] as String? ?? 'OPEN'),
+      // Support both 'photoUrls' and legacy 'photos' field names.
+      photoUrls: resolvePhotos(json['photoUrls'] ?? json['photos']),
+      raisedByName: raisedBy?['name'] as String? ??
+          json['raisedByName'] as String?,
+      rectificationNotes: json['rectificationNotes'] as String?,
+      rectificationPhotoUrls: resolvePhotos(
+          json['rectificationPhotoUrls'] ?? json['rectificationPhotos']),
+      closureNotes: json['closureNotes'] as String?,
+      createdAt: parseDate(json['createdAt']) ?? DateTime.now(),
+      rectifiedAt: parseDate(json['rectifiedAt']),
+      closedAt: parseDate(json['closedAt']),
+    );
+  }
+
+  bool get isOpen => status == SiteObsStatus.open;
+  bool get isRectified => status == SiteObsStatus.rectified;
+  bool get isClosed => status == SiteObsStatus.closed;
+
+  @override
+  List<Object?> get props => [
+        id, projectId, description, severity, status, createdAt,
+      ];
 }

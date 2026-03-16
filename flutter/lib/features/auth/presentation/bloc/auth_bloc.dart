@@ -5,6 +5,8 @@ import 'package:setu_mobile/features/auth/data/models/user_model.dart';
 
 // ==================== EVENTS ====================
 
+/// Base class for all authentication events.
+/// Uses Equatable so BLoC can deduplicate identical event dispatches.
 abstract class AuthEvent extends Equatable {
   const AuthEvent();
 
@@ -12,10 +14,12 @@ abstract class AuthEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Check if user is already authenticated
+/// Fired on app start to check if a valid token already exists in secure storage.
+/// If a token is found, the app skips the login screen entirely.
 class CheckAuthStatus extends AuthEvent {}
 
-/// Login with username and password
+/// Login with username and password.
+/// Dispatched by the login form submit button.
 class Login extends AuthEvent {
   final String username;
   final String password;
@@ -29,14 +33,16 @@ class Login extends AuthEvent {
   List<Object?> get props => [username, password];
 }
 
-/// Logout current user
+/// Logout current user — clears token from secure storage.
 class Logout extends AuthEvent {}
 
-/// Refresh user profile
+/// Re-fetch the user profile from the server (e.g. after a profile update).
+/// Only fires if already authenticated — does not navigate away on failure.
 class RefreshProfile extends AuthEvent {}
 
 // ==================== STATES ====================
 
+/// Base class for all authentication states.
 abstract class AuthState extends Equatable {
   const AuthState();
 
@@ -44,13 +50,16 @@ abstract class AuthState extends Equatable {
   List<Object?> get props => [];
 }
 
-/// Initial state - checking auth status
+/// Emitted while [CheckAuthStatus] is in progress.
+/// Shown as a splash screen or activity indicator before routing.
 class AuthInitial extends AuthState {}
 
-/// Loading state - during login/check
+/// Emitted immediately when any auth action starts (login, check, logout).
+/// The UI shows a loading spinner during this state.
 class AuthLoading extends AuthState {}
 
-/// Authenticated state - user is logged in
+/// Emitted after successful login or a valid token is found on startup.
+/// Carries the full [User] object so the app can render user-specific UI.
 class AuthAuthenticated extends AuthState {
   final User user;
 
@@ -60,7 +69,8 @@ class AuthAuthenticated extends AuthState {
   List<Object?> get props => [user];
 }
 
-/// Unauthenticated state - user needs to login
+/// Emitted when no valid token is found (fresh install / expired session).
+/// The optional [message] is displayed in snackbars (e.g. after a logout).
 class AuthUnauthenticated extends AuthState {
   final String? message;
 
@@ -70,7 +80,8 @@ class AuthUnauthenticated extends AuthState {
   List<Object?> get props => [message];
 }
 
-/// Error state - login failed
+/// Emitted when login fails. Carries a human-readable [message].
+/// The UI stays on the login page and renders this message inline.
 class AuthError extends AuthState {
   final String message;
 
@@ -82,6 +93,14 @@ class AuthError extends AuthState {
 
 // ==================== BLOC ====================
 
+/// Manages the authentication lifecycle for the entire app.
+///
+/// Flow:
+///   1. App opens → dispatches [CheckAuthStatus]
+///   2. Token found → [AuthAuthenticated] → navigate to home
+///   3. No token   → [AuthUnauthenticated] → navigate to login
+///   4. User logs in → [Login] → success → [AuthAuthenticated]
+///   5. User logs out → [Logout] → [AuthUnauthenticated]
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService _authService;
 
@@ -94,7 +113,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<RefreshProfile>(_onRefreshProfile);
   }
 
-  /// Check if user is already authenticated
+  /// Reads stored token from secure storage and attempts to fetch the profile.
+  /// On failure (expired / missing token), silently transitions to Unauthenticated
+  /// rather than showing an error — this is an expected cold-start state.
   Future<void> _onCheckAuthStatus(
     CheckAuthStatus event,
     Emitter<AuthState> emit,
@@ -104,17 +125,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       final isLoggedIn = await _authService.isLoggedIn();
       if (isLoggedIn) {
+        // Token exists — hydrate the user object so the app can render
+        // permission-gated UI without a separate profile fetch.
         final user = await _authService.getProfile();
         emit(AuthAuthenticated(user));
       } else {
+        // No token — fall through to login screen without an error message.
         emit(const AuthUnauthenticated());
       }
     } catch (e) {
+      // Any unexpected error (e.g. DB corruption) — treat as unauthenticated
+      // to avoid getting stuck on the splash screen.
       emit(const AuthUnauthenticated());
     }
   }
 
-  /// Handle login
+  /// Sends credentials to [AuthService.login] and emits the result.
+  /// On failure, delegates to [_parseError] to produce a user-friendly string.
   Future<void> _onLogin(
     Login event,
     Emitter<AuthState> emit,
@@ -126,18 +153,30 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         username: event.username,
         password: event.password,
       );
+      // Login succeeded — navigate away from login page.
       emit(AuthAuthenticated(user));
     } catch (e) {
+      // Map the raw exception to a readable message before showing it.
       final errorMessage = _parseError(e);
       emit(AuthError(errorMessage));
     }
   }
 
-  /// Parse error to user-friendly message
+  /// Converts raw exception strings into user-readable login error messages.
+  ///
+  /// Error categories handled:
+  ///   - Connection refused / failed  → WiFi / firewall guidance
+  ///   - Timeout                      → network connectivity hint
+  ///   - TEMP_EXPIRED                 → vendor temporary-access expiry
+  ///   - 401 / Unauthorized           → bad credentials
+  ///   - 500 / Server Error           → server-side fault
+  ///   - Socket / network             → general connectivity
+  ///   - Everything else              → cleaned-up raw message
   String _parseError(dynamic e) {
     final errorString = e.toString().toLowerCase();
 
-    // Connection errors
+    // Connection errors — common when the phone is on a different WiFi SSID
+    // or when Windows Firewall blocks inbound connections on port 3000.
     if (errorString.contains('connectionerror') ||
         errorString.contains('connection refused') ||
         errorString.contains('connection failed')) {
@@ -153,6 +192,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
 
     // Authentication errors
+    // TEMP_EXPIRED is a custom backend code for vendor accounts whose access window
+    // has lapsed or been manually revoked by an admin.
     if (errorString.contains('temp_expired')) {
       return 'Temporary vendor access has expired or was revoked.';
     }
@@ -171,11 +212,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       return 'Network error. Please check your internet connection.';
     }
 
-    // Default: return a cleaned up version
+    // Default: strip Dio/Exception prefixes and show the remaining message.
     return 'Login failed: ${e.toString().replaceAll('Exception: ', '').replaceAll('DioException: ', '')}';
   }
 
-  /// Handle logout
+  /// Clears the session token from secure storage.
+  /// Even if the server-side logout call fails (e.g. no connectivity),
+  /// the local state is cleared so the user is not stuck in a broken session.
   Future<void> _onLogout(
     Logout event,
     Emitter<AuthState> emit,
@@ -186,12 +229,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       await _authService.logout();
       emit(const AuthUnauthenticated());
     } catch (e) {
-      // Even if logout fails, clear local state
+      // Even if logout fails, clear local state — security over consistency.
       emit(const AuthUnauthenticated());
     }
   }
 
-  /// Refresh user profile
+  /// Re-fetches the user profile from the server.
+  /// Used after the user updates their profile details so the in-memory
+  /// user object reflects the latest state without requiring a re-login.
+  /// Silently ignores failures to avoid disrupting an active session.
   Future<void> _onRefreshProfile(
     RefreshProfile event,
     Emitter<AuthState> emit,
@@ -200,7 +246,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final user = await _authService.getProfile();
       emit(AuthAuthenticated(user));
     } catch (e) {
-      // If refresh fails, keep current state
+      // If refresh fails, keep current state — don't log the user out.
     }
   }
 }

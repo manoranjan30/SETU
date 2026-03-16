@@ -44,7 +44,7 @@ export class SiteObservation {
   })
   severity: SiteObservationSeverity;
 
-  @Column({ default: 'General' })
+  @Column({ type: 'text', default: 'General' })
   category: string;
 
   @Column({ type: 'text' })

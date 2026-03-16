@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { QualityChecklistTemplate } from './quality-checklist-template.entity';
 import { QualityChecklistItemTemplate } from './quality-checklist-item-template.entity';
+import { SignatureSlotConfig } from '../dto/checklist-template.types';
 
 @Entity('quality_stage_templates')
 export class QualityStageTemplate {
@@ -39,6 +40,9 @@ export class QualityStageTemplate {
 
   @Column({ length: 50, default: 'Contractor' })
   responsibleParty: string;
+
+  @Column({ name: 'signature_slots', type: 'jsonb', nullable: true })
+  signatureSlots: SignatureSlotConfig[] | null;
 
   @OneToMany(() => QualityChecklistItemTemplate, (item) => item.stage, {
     cascade: true,

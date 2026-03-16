@@ -15,8 +15,6 @@ import {
   InspectionWorkflowStep,
   WorkflowStepStatus,
 } from './entities/inspection-workflow-step.entity';
-import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
-import { AssignmentMode } from './entities/approval-workflow-node.entity';
 import {
   UserProjectAssignment,
   AssignmentStatus,
@@ -28,6 +26,10 @@ import {
 } from './entities/quality-inspection.entity';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { ReleaseStrategyService } from '../planning/release-strategy.service';
+import { StageStatus } from './entities/quality-inspection-stage.entity';
+import { RestartPolicy } from '../planning/entities/release-strategy.entity';
+import { ApprovalRuntimeService, ProjectApprovalActor } from '../common/approval-runtime.service';
 
 @Injectable()
 export class InspectionWorkflowService {
@@ -36,19 +38,18 @@ export class InspectionWorkflowService {
     private readonly runRepo: Repository<InspectionWorkflowRun>,
     @InjectRepository(InspectionWorkflowStep)
     private readonly stepRepo: Repository<InspectionWorkflowStep>,
-    @InjectRepository(ApprovalWorkflowTemplate)
-    private readonly templateRepo: Repository<ApprovalWorkflowTemplate>,
     @InjectRepository(UserProjectAssignment)
     private readonly assignmentRepo: Repository<UserProjectAssignment>,
     @InjectRepository(QualitySignature)
     private readonly signatureRepo: Repository<QualitySignature>,
     @InjectRepository(QualityInspection)
     private readonly inspectionRepo: Repository<QualityInspection>,
+    private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
+    private readonly approvalRuntimeService: ApprovalRuntimeService,
   ) {}
 
-  // ─── Signature Hash ─────────────────────────────────────────────────
   private generateSignatureHash(
     signatureData: string,
     userId: number,
@@ -58,207 +59,378 @@ export class InspectionWorkflowService {
     return createHash('sha256').update(payload).digest('hex');
   }
 
-  /**
-   * Instantiates a workflow run for a newly created RFI if an Approval Template exists for the project.
-   * Resolves ROLE-based assignments to specific users based on Project Teams.
-   * Notifies ALL eligible approvers for step 2 (next after raiser) via project-scoped push.
-   */
+  private async getInspectionOrThrow(inspectionId: number) {
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id: inspectionId },
+      relations: ['stages', 'stages.stageTemplate', 'activity'],
+    });
+    if (!inspection) {
+      throw new NotFoundException('Inspection not found');
+    }
+    return inspection;
+  }
+
+  private async getActorMap(projectId: number): Promise<Map<number, ProjectApprovalActor>> {
+    return this.approvalRuntimeService.getProjectActorMap(projectId);
+  }
+
+  private buildApprovalContext(inspection: QualityInspection) {
+    return {
+      projectId: inspection.projectId,
+      moduleCode: 'QUALITY',
+      processCode: inspection.processCode || 'QA_QC_APPROVAL',
+      documentType: inspection.documentType || null,
+      documentId: inspection.id,
+      initiatorUserId: inspection.requestedById ?? null,
+      epsNodeId: inspection.epsNodeId ?? null,
+      vendorId: inspection.vendorId ?? null,
+      extraAttributes: {
+        activityId: inspection.activityId,
+        listId: inspection.listId,
+        partNo: inspection.partNo,
+        totalParts: inspection.totalParts,
+      },
+    };
+  }
+
+  private async notifyStep(
+    projectId: number,
+    inspectionId: number,
+    step: InspectionWorkflowStep | undefined | null,
+    title: string,
+    message: string,
+  ) {
+    if (!step) return;
+    if (step.assignedRoleId) {
+      this.pushService
+        .sendToProjectRole(projectId, step.assignedRoleId, title, message, {
+          inspectionId: String(inspectionId),
+          type: 'PENDING_APPROVAL',
+        })
+        .catch(() => {
+          /* non-fatal */
+        });
+      return;
+    }
+
+    const assignedUserIds = step.assignedUserIds?.length
+      ? step.assignedUserIds
+      : step.assignedUserId
+        ? [step.assignedUserId]
+        : [];
+
+    if (assignedUserIds.length > 0) {
+      this.pushService
+        .sendToUsers(assignedUserIds, title, message, {
+          inspectionId: String(inspectionId),
+          type: 'PENDING_APPROVAL',
+        })
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
+  }
+
+  private async getRestartPolicy(
+    inspection: QualityInspection,
+    run: InspectionWorkflowRun,
+  ): Promise<RestartPolicy> {
+    if (!run.releaseStrategyId) {
+      return RestartPolicy.RESTART_FROM_LEVEL_1;
+    }
+
+    try {
+      const strategy = await this.releaseStrategyService.getStrategy(
+        inspection.projectId,
+        run.releaseStrategyId,
+      );
+      return strategy.restartPolicy || RestartPolicy.RESTART_FROM_LEVEL_1;
+    } catch {
+      return RestartPolicy.RESTART_FROM_LEVEL_1;
+    }
+  }
+
+  private async assertUserCanApproveStep(
+    inspection: QualityInspection,
+    step: InspectionWorkflowStep,
+    userId: number,
+    isAdmin: boolean,
+  ) {
+    if (isAdmin) return;
+
+    const assignedUserIds = step.assignedUserIds?.length
+      ? step.assignedUserIds
+      : step.assignedUserId
+        ? [step.assignedUserId]
+        : [];
+
+    if (assignedUserIds.includes(userId)) {
+      return;
+    }
+
+    if (step.assignedRoleId) {
+      const projectRoleIds = await this.approvalRuntimeService.getProjectRoleIds(
+        inspection.projectId,
+        userId,
+      );
+      if (projectRoleIds.includes(step.assignedRoleId)) {
+        return;
+      }
+    }
+
+    throw new ForbiddenException(
+      'You are not allowed to approve this workflow step',
+    );
+  }
+
+  async assertUserCanApproveInspectionStep(
+    inspectionId: number,
+    userId: number,
+    isAdmin: boolean,
+    stepOrder?: number,
+  ) {
+    let run = await this.runRepo.findOne({
+      where: { inspectionId },
+      relations: ['inspection', 'steps'],
+    });
+
+    if (!run) {
+      const inspection = await this.getInspectionOrThrow(inspectionId);
+      await this.startWorkflowForInspection(
+        inspectionId,
+        inspection.listId,
+        inspection.projectId,
+        inspection.requestedById || userId,
+      );
+
+      run = await this.runRepo.findOne({
+        where: { inspectionId },
+        relations: ['inspection', 'steps'],
+      });
+    }
+
+    if (!run) {
+      throw new NotFoundException('Workflow is not configured for this inspection');
+    }
+
+    const targetOrder = stepOrder ?? run.currentStepOrder;
+    const targetStep = run.steps.find((step) => step.stepOrder === targetOrder);
+
+    if (!targetStep) {
+      throw new NotFoundException('Workflow step not found');
+    }
+
+    await this.assertUserCanApproveStep(run.inspection, targetStep, userId, isAdmin);
+    return targetStep;
+  }
+
+  async getOrStartWorkflowState(
+    inspectionId: number,
+    userId?: number,
+  ): Promise<InspectionWorkflowRun | null> {
+    let run = await this.runRepo.findOne({
+      where: { inspectionId },
+      relations: ['inspection', 'steps', 'steps.signature'],
+      order: { steps: { stepOrder: 'ASC' } },
+    });
+
+    if (!run) {
+      const inspection = await this.getInspectionOrThrow(inspectionId);
+      await this.startWorkflowForInspection(
+        inspectionId,
+        inspection.listId,
+        inspection.projectId,
+        inspection.requestedById || userId || 1,
+      );
+      run = await this.runRepo.findOne({
+        where: { inspectionId },
+        relations: ['inspection', 'steps', 'steps.signature'],
+        order: { steps: { stepOrder: 'ASC' } },
+      });
+    }
+
+    return run;
+  }
+
+  async getEligibleApprovalStepsForUser(
+    inspectionId: number,
+    userId: number,
+    isAdmin: boolean,
+  ): Promise<InspectionWorkflowStep[]> {
+    const run = await this.getOrStartWorkflowState(inspectionId, userId);
+    if (!run) {
+      throw new NotFoundException('Workflow is not configured for this inspection');
+    }
+
+    const inspection = run.inspection || (await this.getInspectionOrThrow(inspectionId));
+    if (isAdmin) {
+      return [...(run.steps || [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    }
+
+    const eligibleSteps: InspectionWorkflowStep[] = [];
+    for (const step of run.steps || []) {
+      try {
+        await this.assertUserCanApproveStep(inspection, step, userId, false);
+        eligibleSteps.push(step);
+      } catch {
+        // not eligible for this step
+      }
+    }
+    return eligibleSteps.sort((a, b) => a.stepOrder - b.stepOrder);
+  }
+
   async startWorkflowForInspection(
     inspectionId: number,
     listId: number,
     projectId: number,
     raiserUserId: number,
   ): Promise<InspectionWorkflowRun | null> {
-    const template = await this.templateRepo.findOne({
-      where: { projectId, isActive: true },
-      relations: ['nodes', 'edges'],
-    });
+    const inspection = await this.getInspectionOrThrow(inspectionId);
+    const processCandidates: string[] = Array.from(
+      new Set(
+        [
+          'QA_QC_APPROVAL',
+          inspection.processCode,
+          'INSPECTION_APPROVAL',
+          'RFI_APPROVAL',
+        ].filter((value): value is string => Boolean(value)),
+      ),
+    );
 
-    if (!template) {
+    let resolved: Awaited<
+      ReturnType<typeof this.releaseStrategyService.resolveStrategy>
+    > | null = null;
+    let matchedProcessCode: string | null = null;
+
+    for (const processCode of processCandidates) {
+      const context = {
+        ...this.buildApprovalContext(inspection),
+        processCode,
+      };
+      const candidate = await this.releaseStrategyService.resolveStrategy(
+        projectId,
+        context,
+      );
+      if (candidate?.matchedStrategy?.resolvedSteps?.length) {
+        resolved = candidate;
+        matchedProcessCode = processCode;
+        break;
+      }
+    }
+
+    if (!resolved?.matchedStrategy?.resolvedSteps?.length) {
       return null;
     }
 
-    if (!template.nodes || template.nodes.length === 0) {
-      return null;
+    if (matchedProcessCode && inspection.processCode !== matchedProcessCode) {
+      inspection.processCode = matchedProcessCode;
+      await this.inspectionRepo.save(inspection);
     }
 
-    // Sort nodes by stepOrder to correctly determine the first real approval step
-    const sortedNodes = [...template.nodes].sort(
-      (a, b) => a.stepOrder - b.stepOrder,
+    const actorMap = await this.getActorMap(projectId);
+    const stepsPayload = [...resolved.matchedStrategy.resolvedSteps].sort(
+      (a, b) => a.levelNo - b.levelNo,
+    );
+    const firstStep = stepsPayload[0];
+    const raiserActor = actorMap.get(raiserUserId);
+    const now = new Date();
+
+    const run = await this.runRepo.save(
+      this.runRepo.create({
+        inspectionId,
+        workflowTemplateId: null,
+        releaseStrategyId: resolved.matchedStrategy.id,
+        releaseStrategyVersion: resolved.matchedStrategy.version ?? null,
+        strategyName: resolved.matchedStrategy.name,
+        moduleCode: resolved.matchedStrategy.moduleCode,
+        processCode: resolved.matchedStrategy.processCode,
+        documentType: resolved.matchedStrategy.documentType || null,
+        currentStepOrder: firstStep.levelNo,
+        status: WorkflowRunStatus.IN_PROGRESS,
+      }),
     );
 
-    // Find the first REAL approval step (skip RAISE_RFI node)
-    // RaiseRFI is auto-completed when user raises the RFI, so approval starts at the next step
-    const raiserNode = sortedNodes.find(
-      (n) => n.stepType === 'RAISE_RFI' || n.stepOrder === 1,
-    );
-    const firstApprovalNode = sortedNodes.find(
-      (n) =>
-        n.stepType !== 'RAISE_RFI' && n.stepOrder > (raiserNode?.stepOrder || 0),
-    );
-
-    // If there is no approval step beyond RaiseRFI, the workflow is already complete
-    const initialStepOrder = firstApprovalNode
-      ? firstApprovalNode.stepOrder
-      : raiserNode
-        ? raiserNode.stepOrder
-        : 1;
-
-    const run = this.runRepo.create({
-      inspectionId,
-      workflowTemplateId: template.id,
-      currentStepOrder: initialStepOrder,
-      status: firstApprovalNode
-        ? WorkflowRunStatus.IN_PROGRESS
-        : WorkflowRunStatus.COMPLETED,
-    });
-
-    const savedRun = await this.runRepo.save(run);
-
-    // Fetch ONLY ACTIVE project team members (project-scoped isolation)
-    const teamMembers = await this.assignmentRepo.find({
-      where: {
-        project: { id: projectId },
-        status: AssignmentStatus.ACTIVE,
-      },
-      relations: ['user', 'roles'],
-    });
-
-    const steps = sortedNodes.map((node) => {
-      let resolvedUserId = node.assignedUserId;
-
-      if (node.assignmentMode === AssignmentMode.ROLE && node.assignedRoleId) {
-        const eligibleMembers = teamMembers.filter((member) =>
-          member.roles.some((r) => r.id === node.assignedRoleId),
-        );
-
-        if (eligibleMembers.length > 0) {
-          resolvedUserId = eligibleMembers[0].user.id;
-        } else {
-          console.warn(
-            `[Workflow] No project team member found for role=${node.assignedRoleId} in project=${projectId}. Step ${node.stepOrder} will have no assigned user.`,
-          );
-          resolvedUserId = null;
-        }
-      }
-
-      // Determine if this is the RaiseRFI step
-      const isRaiserStep =
-        node.stepType === 'RAISE_RFI' || node.stepOrder === (raiserNode?.stepOrder || 1);
-
-      if (isRaiserStep) {
-        resolvedUserId = raiserUserId;
-      }
-
-      // RaiseRFI step is auto-COMPLETED because raising the RFI IS the action.
-      // The first real approval step starts as PENDING.
-      // All other steps are WAITING.
-      let stepStatus: WorkflowStepStatus;
-      if (isRaiserStep) {
-        stepStatus = WorkflowStepStatus.COMPLETED;
-      } else if (firstApprovalNode && node.stepOrder === firstApprovalNode.stepOrder) {
-        stepStatus = WorkflowStepStatus.PENDING;
-      } else {
-        stepStatus = WorkflowStepStatus.WAITING;
-      }
-
+    const stepEntities = stepsPayload.map((step, index) => {
+      const primaryActor = step.approvers?.[0] || null;
+      const isFirst = index === 0;
       return this.stepRepo.create({
-        runId: savedRun.id,
-        workflowNodeId: node.id,
-        stepOrder: node.stepOrder,
-        assignedUserId: resolvedUserId,
-        status: stepStatus,
-        // Auto-sign the raiser step
-        ...(isRaiserStep
-          ? {
-              signedBy: String(raiserUserId),
-              completedAt: new Date(),
-              comments: 'Auto-completed: RFI raised by user',
-            }
-          : {}),
+        runId: run.id,
+        workflowNodeId: null,
+        stepOrder: step.levelNo,
+        assignedUserId:
+          step.approverMode === 'USER'
+            ? step.userIds?.[0] || step.userId || null
+            : null,
+        assignedUserIds:
+          step.approverMode === 'USER'
+            ? step.userIds?.length
+              ? step.userIds
+              : step.userId
+                ? [step.userId]
+                : []
+            : null,
+        assignedRoleId: step.roleId || null,
+        stepName: step.stepName,
+        approverMode: step.approverMode,
+        canDelegate: Boolean(step.canDelegate),
+        minApprovalsRequired: step.minApprovalsRequired ?? 1,
+        currentApprovalCount: 0,
+        approvedUserIds: [],
+        status: isFirst ? WorkflowStepStatus.PENDING : WorkflowStepStatus.WAITING,
+        signerDisplayName: null,
+        signerCompany: null,
+        signerRole: null,
       });
     });
 
-    await this.stepRepo.save(steps);
+    await this.stepRepo.save(stepEntities);
 
-    // If no real approval step exists, auto-approve the inspection
-    if (!firstApprovalNode) {
-      const inspection = await this.inspectionRepo.findOne({
-        where: { id: inspectionId },
-      });
-      if (inspection) {
-        inspection.status = 'APPROVED' as any;
-        inspection.inspectionDate = new Date().toISOString().split('T')[0];
-        inspection.inspectedBy = String(raiserUserId);
-        await this.inspectionRepo.save(inspection);
-      }
-    } else {
-      // Notify ALL eligible approvers for the first real approval step
-      const nextNode = firstApprovalNode;
-      if (
-        nextNode.assignmentMode === AssignmentMode.ROLE &&
-        nextNode.assignedRoleId
-      ) {
-        this.pushService
-          .sendToProjectRole(
-            projectId,
-            nextNode.assignedRoleId,
-            'New RFI Awaiting Approval 📋',
-            `RFI #${inspectionId} has been raised and requires your approval.`,
-            { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
-          )
-          .catch(() => {
-            /* non-fatal */
-          });
-      } else {
-        const approvalStep = steps.find(
-          (s) => s.stepOrder === nextNode.stepOrder,
-        );
-        if (approvalStep?.assignedUserId) {
-          this.pushService
-            .sendToUsers(
-              [approvalStep.assignedUserId],
-              'New RFI Awaiting Approval 📋',
-              `RFI #${inspectionId} has been raised and requires your approval.`,
-              { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
-            )
-            .catch(() => {
-              /* non-fatal */
-            });
-        }
-      }
+    if (raiserActor) {
+      await this.auditService.log(
+        raiserUserId,
+        'QUALITY',
+        'START_RELEASE_STRATEGY_WORKFLOW',
+        String(inspectionId),
+        inspection.epsNodeId,
+        {
+          listId,
+          strategyId: run.releaseStrategyId,
+          strategyVersion: run.releaseStrategyVersion,
+          strategyName: run.strategyName,
+          raiser: raiserActor.displayName,
+        },
+      );
     }
 
-    return this.runRepo.findOne({
-      where: { id: savedRun.id },
-      relations: ['steps', 'steps.workflowNode'],
-    });
+    await this.notifyStep(
+      projectId,
+      inspectionId,
+      stepEntities[0],
+      'New RFI Awaiting Approval',
+      `RFI #${inspectionId} is awaiting approval.`,
+    );
+
+    return this.getWorkflowState(inspectionId);
   }
 
   async getWorkflowState(
     inspectionId: number,
   ): Promise<InspectionWorkflowRun | null> {
-    const run = await this.runRepo.findOne({
+    return this.runRepo.findOne({
       where: { inspectionId },
-      relations: [
-        'steps',
-        'steps.workflowNode',
-        'steps.signature',
-        'workflowTemplate',
-      ],
+      relations: ['steps', 'steps.signature', 'workflowTemplate'],
       order: {
         steps: {
           stepOrder: 'ASC',
         },
       },
     });
-    return run;
   }
 
-  /**
-   * Completes the current step and advances to the next step.
-   * Generates auditable SHA-256 signature hash for each approval.
-   */
+  async getEligibleApprovers(projectId: number) {
+    return this.approvalRuntimeService.getEligibleApproverOptions(projectId);
+  }
+
   async advanceWorkflow(
     inspectionId: number,
     userId: number,
@@ -272,50 +444,73 @@ export class InspectionWorkflowService {
     if (!run) {
       throw new NotFoundException('Workflow run not found');
     }
-
     if (run.status !== WorkflowRunStatus.IN_PROGRESS) {
       throw new BadRequestException('Workflow is not in progress');
     }
 
+    const inspection = await this.getInspectionOrThrow(inspectionId);
+    if (inspection.isLocked && !isAdmin) {
+      throw new ForbiddenException(
+        'This inspection is locked after approval. Only admin can modify it.',
+      );
+    }
+
     const currentStep = run.steps.find(
-      (s) => s.stepOrder === run.currentStepOrder,
+      (step) => step.stepOrder === run.currentStepOrder,
     );
     if (!currentStep) {
       throw new NotFoundException('Current workflow step not found');
     }
 
     if (
-      !isAdmin &&
-      currentStep.assignedUserId &&
-      currentStep.assignedUserId !== userId
+      currentStep.status !== WorkflowStepStatus.PENDING &&
+      currentStep.status !== WorkflowStepStatus.IN_PROGRESS
     ) {
-      throw new ForbiddenException(
-        'You are not the assigned user for this approval step',
-      );
+      throw new BadRequestException('This workflow step is not open for approval');
     }
+
+    await this.assertUserCanApproveStep(inspection, currentStep, userId, isAdmin);
 
     let effectiveSignatureId = signatureId;
     const now = new Date();
+    const actorMap = await this.getActorMap(inspection.projectId);
+    const actor = actorMap.get(userId);
 
-    // Enforce signature on all approval steps
     if (!effectiveSignatureId && !signatureData) {
       throw new BadRequestException(
         'A digital signature is required to approve this workflow step.',
       );
     }
 
-    // Create signature with SHA-256 audit hash
-    if (!effectiveSignatureId && signatureData) {
-      const signatureHash = this.generateSignatureHash(
-        signatureData,
-        userId,
-        now,
+    const existingApprovals = await this.signatureRepo.count({
+      where: {
+        workflowStepId: currentStep.id,
+        signedByUserId: userId,
+        isReversed: false,
+      } as any,
+    });
+    if (existingApprovals > 0) {
+      throw new BadRequestException(
+        'You have already approved this workflow level.',
       );
+    }
 
+    if (!effectiveSignatureId && signatureData) {
+      const signatureHash = this.generateSignatureHash(signatureData, userId, now);
       const sig = this.signatureRepo.create({
-        role: currentStep.workflowNode?.label || 'Approver',
+        inspectionId,
+        workflowStepId: currentStep.id,
+        userId,
+        signedByUserId: userId,
+        actionType: 'FINAL_APPROVE',
+        role: actor?.primaryRoleLabel || currentStep.stepName || 'Approver',
         signedBy: signedByName,
-        signatureData: signatureData,
+        signerDisplayName: actor?.displayName || signedByName,
+        signerCompany: actor?.companyLabel || 'Internal Team',
+        signerRoleLabel:
+          actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || currentStep.stepName,
+        sourceType: actor?.sourceType || 'PERMANENT',
+        signatureData,
         lockHash: signatureHash,
         metadata: {
           timestamp: now,
@@ -327,91 +522,94 @@ export class InspectionWorkflowService {
 
     currentStep.status = WorkflowStepStatus.COMPLETED;
     currentStep.signatureId =
-      effectiveSignatureId > 0 ? effectiveSignatureId : null;
+      effectiveSignatureId && effectiveSignatureId > 0 ? effectiveSignatureId : null;
     currentStep.signedBy = signedByName;
-    currentStep.completedAt = now;
-    currentStep.comments = comments || '';
+    currentStep.signerDisplayName = actor?.displayName || signedByName;
+    currentStep.signerCompany = actor?.companyLabel || 'Internal Team';
+    currentStep.signerRole =
+      actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || currentStep.stepName;
+    const approvedUserIds = Array.from(
+      new Set([...(currentStep.approvedUserIds || []), userId]),
+    );
+    currentStep.approvedUserIds = approvedUserIds;
+    currentStep.currentApprovalCount = approvedUserIds.length;
+    currentStep.comments = comments || currentStep.comments || '';
 
+    const requiredApprovals = Math.max(1, currentStep.minApprovalsRequired || 1);
+    const stepSatisfied = currentStep.currentApprovalCount >= requiredApprovals;
+
+    if (!stepSatisfied) {
+      currentStep.status = WorkflowStepStatus.IN_PROGRESS;
+      currentStep.completedAt = null;
+      await this.stepRepo.save(currentStep);
+      const savedRun = await this.runRepo.save(run);
+      return { run: savedRun, isFinal: false };
+    }
+
+    currentStep.status = WorkflowStepStatus.COMPLETED;
+    currentStep.completedAt = now;
     await this.stepRepo.save(currentStep);
 
     const nextStep = run.steps.find(
-      (s) => s.stepOrder === run.currentStepOrder + 1,
+      (step) => step.stepOrder === run.currentStepOrder + 1,
     );
-
     let isFinal = false;
 
     if (nextStep) {
       nextStep.status = WorkflowStepStatus.PENDING;
       await this.stepRepo.save(nextStep);
-      run.currentStepOrder += 1;
+      run.currentStepOrder = nextStep.stepOrder;
 
-      // Mark parent inspection as PARTIALLY_APPROVED
-      const inspection = await this.inspectionRepo.findOne({
-        where: { id: inspectionId },
-      });
       if (
-        inspection &&
-        (inspection.status === 'PENDING' ||
-          inspection.status === ('PARTIALLY_APPROVED' as any))
+        inspection.status === InspectionStatus.PENDING ||
+        inspection.status === InspectionStatus.PARTIALLY_APPROVED
       ) {
-        if (inspection.status !== 'PARTIALLY_APPROVED') {
-          inspection.status = 'PARTIALLY_APPROVED' as any;
-          await this.inspectionRepo.save(inspection);
-        }
+        inspection.status = InspectionStatus.PARTIALLY_APPROVED;
+        await this.inspectionRepo.save(inspection);
       }
 
-      // PROJECT-SCOPED: Notify the next approver(s)
-      // If step is role-based, notify ALL project team members with that role
-      // If step is user-based, notify that specific user
-      const nextNode = nextStep.workflowNode;
-      if (nextNode && nextNode.assignmentMode === AssignmentMode.ROLE && nextNode.assignedRoleId) {
-        const projectId = inspection?.projectId;
-        if (projectId) {
-          this.pushService
-            .sendToProjectRole(
-              projectId,
-              nextNode.assignedRoleId,
-              'Approval Required 📋',
-              `RFI #${inspectionId} is awaiting your approval at Step ${nextStep.stepOrder}.`,
-              { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
-            )
-            .catch(() => { /* non-fatal */ });
-        }
-      } else if (nextStep.assignedUserId) {
-        this.pushService
-          .sendToUsers(
-            [nextStep.assignedUserId],
-            'Approval Required 📋',
-            `RFI #${inspectionId} is awaiting your approval at Step ${nextStep.stepOrder}.`,
-            { inspectionId: String(inspectionId), type: 'PENDING_APPROVAL' },
-          )
-          .catch(() => { /* non-fatal */ });
-      }
+      await this.notifyStep(
+        inspection.projectId,
+        inspectionId,
+        nextStep,
+        'Approval Required',
+        `RFI #${inspectionId} is awaiting approval at level ${nextStep.stepOrder}.`,
+      );
     } else {
+      const refreshedInspection = await this.getInspectionOrThrow(inspectionId);
+      const pendingStages = refreshedInspection.stages.filter(
+        (stage) => stage.status !== StageStatus.APPROVED,
+      );
+      if (pendingStages.length > 0) {
+        const pendingNames = pendingStages
+          .map((stage) => stage.stageTemplate?.name || `Stage #${stage.id}`)
+          .join(', ');
+        throw new BadRequestException(
+          `Cannot give final approval. The following stages are not yet approved: ${pendingNames}`,
+        );
+      }
+
       run.status = WorkflowRunStatus.COMPLETED;
       isFinal = true;
+      refreshedInspection.status = InspectionStatus.APPROVED;
+      refreshedInspection.inspectionDate = now.toISOString().split('T')[0];
+      refreshedInspection.inspectedBy = actor?.displayName || signedByName;
+      refreshedInspection.isLocked = true;
+      refreshedInspection.lockedAt = now;
+      refreshedInspection.lockedByUserId = userId;
+      await this.inspectionRepo.save(refreshedInspection);
 
-      // Auto-approve the parent inspection
-      const inspection = await this.inspectionRepo.findOne({
-        where: { id: inspectionId },
-      });
-      if (inspection) {
-        inspection.status = 'APPROVED' as any;
-        inspection.inspectionDate = now.toISOString().split('T')[0];
-        inspection.inspectedBy = String(userId);
-        await this.inspectionRepo.save(inspection);
-
-        // Notify the RFI raiser that workflow is fully approved
-        if (inspection.requestedById) {
-          this.pushService
-            .sendToUsers(
-              [inspection.requestedById],
-              'RFI Fully Approved ✅',
-              `Your RFI #${inspectionId} has been approved through all workflow levels.`,
-              { inspectionId: String(inspectionId), type: 'APPROVED' },
-            )
-            .catch(() => { /* non-fatal */ });
-        }
+      if (refreshedInspection.requestedById) {
+        this.pushService
+          .sendToUsers(
+            [refreshedInspection.requestedById],
+            'RFI Fully Approved',
+            `Your RFI #${inspectionId} has completed all approval levels.`,
+            { inspectionId: String(inspectionId), type: 'APPROVED' },
+          )
+          .catch(() => {
+            /* non-fatal */
+          });
       }
     }
 
@@ -427,75 +625,116 @@ export class InspectionWorkflowService {
   ): Promise<InspectionWorkflowRun> {
     const run = await this.getWorkflowState(inspectionId);
     if (!run) throw new NotFoundException('Workflow run not found');
-
     if (run.status !== WorkflowRunStatus.IN_PROGRESS) {
       throw new BadRequestException('Workflow is not in progress');
     }
 
+    const inspection = await this.getInspectionOrThrow(inspectionId);
     const currentStep = run.steps.find(
-      (s) => s.stepOrder === run.currentStepOrder,
+      (step) => step.stepOrder === run.currentStepOrder,
     );
-    if (!currentStep)
+    if (!currentStep) {
       throw new NotFoundException('Current workflow step not found');
-
-    if (
-      !isAdmin &&
-      currentStep.assignedUserId &&
-      currentStep.assignedUserId !== userId
-    ) {
-      throw new ForbiddenException(
-        'You are not the assigned user for this approval step',
-      );
     }
 
-    // Mark current step as rejected to keep a record
+    await this.assertUserCanApproveStep(inspection, currentStep, userId, isAdmin);
+
+    const sortedSteps = [...run.steps].sort((a, b) => a.stepOrder - b.stepOrder);
+    const firstStep = sortedSteps[0];
+    const restartPolicy = await this.getRestartPolicy(inspection, run);
+    const restartStep =
+      restartPolicy === RestartPolicy.NO_RESTART ? currentStep : firstStep;
+
     currentStep.status = WorkflowStepStatus.REJECTED;
-    currentStep.comments = comments || 'Rejected. Falling back to start.';
+    currentStep.comments = comments || 'Rejected';
     await this.stepRepo.save(currentStep);
 
-    // Fall back to the first REAL approval step (skip auto-completed RaiseRFI step)
-    const sortedSteps = [...run.steps].sort(
-      (a, b) => a.stepOrder - b.stepOrder,
-    );
-    const firstApprovalStep = sortedSteps.find(
-      (s) =>
-        s.workflowNode?.stepType !== 'RAISE_RFI' &&
-        s.stepOrder > 1,
-    ) || sortedSteps.find((s) => s.stepOrder > 1) || sortedSteps[0];
+    for (const step of sortedSteps) {
+      if (!restartStep) break;
 
-    if (firstApprovalStep) {
-      firstApprovalStep.status = WorkflowStepStatus.PENDING;
-      firstApprovalStep.completedAt = null;
-      firstApprovalStep.comments = `Fell back due to rejection at step ${run.currentStepOrder}: ${comments}`;
-      await this.stepRepo.save(firstApprovalStep);
+      if (step.id === restartStep.id) {
+        step.status = WorkflowStepStatus.PENDING;
+        step.completedAt = null;
+        step.signatureId = null;
+        step.currentApprovalCount = 0;
+        step.approvedUserIds = [];
+        step.signedBy = null;
+        step.signerDisplayName = null;
+        step.signerCompany = null;
+        step.signerRole = null;
+        step.comments =
+          restartPolicy === RestartPolicy.NO_RESTART
+            ? `Rework required at level ${step.stepOrder}: ${comments || 'Rejected'}`
+            : `Restarted after rejection: ${comments || 'Rejected'}`;
+        await this.stepRepo.save(step);
+        continue;
+      }
 
-      // Reset any intermediate steps between the fallback step and the rejected step
-      for (const step of sortedSteps) {
-        if (
-          step.stepOrder > firstApprovalStep.stepOrder &&
-          step.stepOrder < run.currentStepOrder &&
-          step.status === WorkflowStepStatus.COMPLETED
-        ) {
+      if (restartPolicy === RestartPolicy.NO_RESTART) {
+        if (step.stepOrder > currentStep.stepOrder) {
           step.status = WorkflowStepStatus.WAITING;
           step.completedAt = null;
+          step.signatureId = null;
+          step.currentApprovalCount = 0;
+          step.approvedUserIds = [];
+          step.signedBy = null;
+          step.signerDisplayName = null;
+          step.signerCompany = null;
+          step.signerRole = null;
           await this.stepRepo.save(step);
         }
+        continue;
+      }
+
+      if (step.stepOrder > restartStep.stepOrder || step.id === currentStep.id) {
+        step.status = WorkflowStepStatus.WAITING;
+        step.completedAt = null;
+        step.signatureId = null;
+        step.currentApprovalCount = 0;
+        step.approvedUserIds = [];
+        step.signedBy = null;
+        step.signerDisplayName = null;
+        step.signerCompany = null;
+        step.signerRole = null;
+        if (step.id !== restartStep.id) {
+          step.comments = null;
+        }
+        await this.stepRepo.save(step);
+        continue;
+      }
+
+      if (step.stepOrder < restartStep.stepOrder) {
+        step.status = WorkflowStepStatus.WAITING;
+        step.completedAt = null;
+        step.signatureId = null;
+        step.currentApprovalCount = 0;
+        step.approvedUserIds = [];
+        step.signedBy = null;
+        step.signerDisplayName = null;
+        step.signerCompany = null;
+        step.signerRole = null;
+        step.comments = null;
+        await this.stepRepo.save(step);
       }
     }
 
-    // Set run back to the first approval step but keep status IN_PROGRESS so it can be re-run
-    run.currentStepOrder = firstApprovalStep?.stepOrder || 1;
+    run.currentStepOrder = restartStep?.stepOrder || run.currentStepOrder;
+    inspection.status = InspectionStatus.PENDING;
+    inspection.isLocked = false;
+    inspection.lockedAt = null;
+    inspection.lockedByUserId = null;
+    await this.inspectionRepo.save(inspection);
 
-    // Notify the original raiser
-    const inspection = await this.inspectionRepo.findOne({
-      where: { id: inspectionId },
-    });
-    if (inspection?.requestedById) {
+    if (inspection.requestedById) {
       this.pushService
         .sendToUsers(
           [inspection.requestedById],
-          'RFI Workflow Rejected ⚠️',
-          `Your RFI #${inspectionId} was rejected and fell back to the first step. Reason: ${comments}`,
+          'RFI Workflow Rejected',
+          `Your RFI #${inspectionId} was rejected. Reason: ${comments}. Workflow will resume from ${
+            restartPolicy === RestartPolicy.NO_RESTART
+              ? `level ${currentStep.stepOrder}`
+              : 'level 1'
+          }.`,
           { inspectionId: String(inspectionId), type: 'REJECTED' },
         )
         .catch(() => {
@@ -503,94 +742,100 @@ export class InspectionWorkflowService {
         });
     }
 
+    await this.auditService.log(
+      userId,
+      'QUALITY',
+      'REJECT_RFI_WORKFLOW',
+      String(inspectionId),
+      inspection.epsNodeId,
+      {
+        comments,
+        restartPolicy,
+        restartFromStep: run.currentStepOrder,
+      },
+    );
+
     return this.runRepo.save(run);
   }
 
-  /**
-   * Reverses an already-completed workflow.
-   * Resets all steps back to WAITING and sets run to IN_PROGRESS at step 1.
-   * Notifies the original RFI raiser about the reversal.
-   */
   async reverseWorkflow(
     inspectionId: number,
     userId: number,
     reason: string,
     isAdmin: boolean = false,
   ): Promise<InspectionWorkflowRun> {
+    if (!isAdmin) {
+      throw new ForbiddenException('Only admin can reverse approved workflows');
+    }
+
     const run = await this.getWorkflowState(inspectionId);
     if (!run) throw new NotFoundException('Workflow run not found');
 
-    if (run.status !== WorkflowRunStatus.COMPLETED) {
-      throw new BadRequestException('Only completed workflows can be reversed');
-    }
-
-    // Update the inspection status to REVERSED
-    const inspection = await this.inspectionRepo.findOne({
-      where: { id: inspectionId },
-    });
-    if (!inspection) throw new NotFoundException('Inspection not found');
+    const inspection = await this.getInspectionOrThrow(inspectionId);
+    const now = new Date();
 
     inspection.status = InspectionStatus.REVERSED;
+    inspection.isLocked = false;
+    inspection.lockedAt = null;
+    inspection.lockedByUserId = null;
     await this.inspectionRepo.save(inspection);
 
-    // Reset workflow steps: keep RaiseRFI step as COMPLETED, reset others
-    const sortedSteps = [...run.steps].sort(
-      (a, b) => a.stepOrder - b.stepOrder,
-    );
-    const firstApprovalStep = sortedSteps.find(
-      (s) =>
-        s.workflowNode?.stepType !== 'RAISE_RFI' &&
-        s.stepOrder > 1,
-    ) || sortedSteps.find((s) => s.stepOrder > 1);
-
-    for (const step of run.steps) {
-      const isRaiserStep =
-        step.workflowNode?.stepType === 'RAISE_RFI' || step.stepOrder === 1;
-
-      if (isRaiserStep) {
-        // Keep RaiseRFI step as COMPLETED — the RFI was already raised
-        step.comments = `REVERSED: ${reason} (RFI raise preserved)`;
-      } else if (firstApprovalStep && step.stepOrder === firstApprovalStep.stepOrder) {
+    const sortedSteps = [...run.steps].sort((a, b) => a.stepOrder - b.stepOrder);
+    const firstStep = sortedSteps[0];
+    for (const step of sortedSteps) {
+      if (step.stepOrder === firstStep?.stepOrder) {
         step.status = WorkflowStepStatus.PENDING;
-        step.completedAt = null;
-        step.comments = `REVERSED: ${reason}`;
       } else {
         step.status = WorkflowStepStatus.WAITING;
-        step.completedAt = null;
-        step.comments = null;
       }
-      // Keep signature references for audit trail (do NOT delete)
+      step.completedAt = null;
+      step.signatureId = null;
+      step.currentApprovalCount = 0;
+      step.approvedUserIds = [];
+      step.signedBy = null;
+      step.signerDisplayName = null;
+      step.signerCompany = null;
+      step.signerRole = null;
+      step.comments = step.stepOrder === firstStep?.stepOrder ? `REVERSED: ${reason}` : null;
+      await this.stepRepo.save(step);
     }
-    await this.stepRepo.save(run.steps);
 
-    // Reset the run to the first real approval step
+    await this.signatureRepo.update(
+      { inspectionId, isReversed: false },
+      {
+        isReversed: true,
+        reversedAt: now,
+        reversedByUserId: userId,
+        reversalReason: reason,
+      },
+    );
+
     run.status = WorkflowRunStatus.REVERSED;
-    run.currentStepOrder = firstApprovalStep?.stepOrder || 1;
+    run.currentStepOrder = firstStep?.stepOrder || 1;
     const savedRun = await this.runRepo.save(run);
 
-    // Audit log
+    // Notify the original raiser that their approved RFI has been reversed
+    if (inspection.requestedById) {
+      this.pushService
+        .sendToUsers(
+          [inspection.requestedById],
+          'RFI Approval Reversed',
+          `RFI #${inspectionId} approval has been reversed by admin. Reason: ${reason}`,
+          { inspectionId: String(inspectionId), type: 'WORKFLOW_REVERSED' },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
+
     await this.auditService.log(
       userId,
       'QUALITY',
       'REVERSE_RFI',
       String(inspectionId),
       inspection.epsNodeId,
-      { reason, previousStatus: 'COMPLETED' },
+      { reason, previousStatus: 'APPROVED' },
     );
-
-    // Notify the original raiser
-    if (inspection.requestedById) {
-      this.pushService
-        .sendToUsers(
-          [inspection.requestedById],
-          'RFI Reversed ⚠️',
-          `Your RFI #${inspectionId} has been reversed. Reason: ${reason}`,
-          { inspectionId: String(inspectionId), type: 'REVERSED' },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
 
     return savedRun;
   }
@@ -609,37 +854,56 @@ export class InspectionWorkflowService {
     });
     if (!run) throw new NotFoundException('Workflow run not found');
 
-    const orderToDelegate =
-      stepOrder !== undefined ? stepOrder : run.currentStepOrder;
-    const targetStep = run.steps.find((s) => s.stepOrder === orderToDelegate);
-
+    const inspection = await this.getInspectionOrThrow(inspectionId);
+    const targetOrder = stepOrder ?? run.currentStepOrder;
+    const targetStep = run.steps.find((step) => step.stepOrder === targetOrder);
     if (!targetStep) throw new NotFoundException('Workflow step not found');
 
-    if (!isAdmin && targetStep.assignedUserId !== currentUserId) {
-      throw new ForbiddenException(
-        'You can only delegate steps assigned to you.',
+    if (!targetStep.canDelegate && !isAdmin) {
+      throw new ForbiddenException('This step cannot be delegated');
+    }
+
+    await this.assertUserCanApproveStep(
+      inspection,
+      targetStep,
+      currentUserId,
+      isAdmin,
+    );
+
+    const eligibleActors = await this.getEligibleApprovers(inspection.projectId);
+    const delegate = eligibleActors.find((actor) => actor.userId === newUserId);
+    if (!delegate) {
+      throw new BadRequestException(
+        'Delegate must be an active user from the project team',
       );
     }
 
-    if (targetStep.status === WorkflowStepStatus.COMPLETED) {
-      throw new BadRequestException('Cannot delegate a completed step.');
-    }
-
     targetStep.assignedUserId = newUserId;
+    targetStep.assignedRoleId = null;
     targetStep.comments =
-      comments || `Delegated by ${isAdmin ? 'Admin' : 'User ' + currentUserId}`;
-
+      comments || `Delegated by ${isAdmin ? 'Admin' : `User ${currentUserId}`}`;
     await this.stepRepo.save(targetStep);
 
-    // Audit log
+    // Notify the delegate that a workflow step has been assigned to them
+    this.pushService
+      .sendToUsers(
+        [newUserId],
+        'RFI Approval Delegated to You',
+        `RFI #${inspectionId} step ${targetOrder} has been delegated to you for approval.`,
+        { inspectionId: String(inspectionId), type: 'WORKFLOW_DELEGATED' },
+      )
+      .catch(() => {
+        /* non-fatal */
+      });
+
     await this.auditService.log(
       currentUserId,
       'QUALITY',
       'DELEGATE_WORKFLOW_STEP',
       String(inspectionId),
-      0,
+      inspection.epsNodeId,
       {
-        stepOrder: orderToDelegate,
+        stepOrder: targetOrder,
         from: currentUserId,
         to: newUserId,
         comments,

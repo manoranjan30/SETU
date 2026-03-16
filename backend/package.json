@@ -8,6 +8,9 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "migration:run": "typeorm-ts-node-commonjs -d src/data-source.ts migration:run",
+    "migration:revert": "typeorm-ts-node-commonjs -d src/data-source.ts migration:revert",
+    "migration:show": "typeorm-ts-node-commonjs -d src/data-source.ts migration:show",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",

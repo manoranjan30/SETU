@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
-import {
-  EhsObservation,
-  ObservationStatus,
-} from './entities/ehs-observation.entity';
+import { EhsObservation } from './entities/ehs-observation.entity';
 import {
   EhsIncident,
   IncidentStatus,
@@ -56,6 +53,57 @@ export class EhsService {
     @InjectRepository(EhsCompetency)
     private readonly competencyRepo: Repository<EhsCompetency>,
   ) {}
+
+  private sanitizeObservationCategories(categories?: unknown): string[] {
+    const values = Array.isArray(categories) ? categories : [];
+    const deduped = Array.from(
+      new Set(
+        values
+          .map((value) => String(value ?? '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    return deduped.length > 0
+      ? deduped
+      : [
+          'General Safety',
+          'Work at Height',
+          'PPE',
+          'Electrical Safety',
+          'Housekeeping',
+          'Fire Safety',
+          'Lifting Operations',
+          'Scaffolding',
+          'Excavation',
+          'Plant & Machinery',
+        ];
+  }
+
+  async getProjectConfig(projectId: number): Promise<EhsProjectConfig> {
+    let config = await this.configRepo.findOne({ where: { projectId } });
+    if (!config) {
+      config = this.configRepo.create({ projectId });
+      await this.configRepo.save(config);
+    }
+    return config;
+  }
+
+  async getObservationCategories(projectId: number): Promise<string[]> {
+    const config = await this.getProjectConfig(projectId);
+    return this.sanitizeObservationCategories(config.observationCategories);
+  }
+
+  async updateObservationCategories(
+    projectId: number,
+    categories: unknown,
+  ): Promise<string[]> {
+    const config = await this.getProjectConfig(projectId);
+    config.observationCategories =
+      this.sanitizeObservationCategories(categories);
+    await this.configRepo.save(config);
+    return config.observationCategories;
+  }
 
   async getSummary(projectId: number) {
     const today = new Date();
@@ -208,25 +256,6 @@ export class EhsService {
     };
   }
 
-  // Observations
-  async getObservations(projectId: number) {
-    return this.observationRepo.find({
-      where: { projectId },
-      relations: ['reportedBy', 'assignedTo'],
-      order: { date: 'DESC' },
-    });
-  }
-
-  async createObservation(data: any) {
-    const observation = this.observationRepo.create(data);
-    return this.observationRepo.save(observation);
-  }
-
-  async updateObservation(id: number, data: any) {
-    await this.observationRepo.update(id, data);
-    return this.observationRepo.findOne({ where: { id } });
-  }
-
   // Incidents
   async getIncidents(projectId: number) {
     return this.incidentRepo.find({
@@ -270,7 +299,7 @@ export class EhsService {
     const observations = await this.observationRepo.find({
       where: {
         projectId,
-        date: MoreThanOrEqual(twelveMonthsAgo.toISOString().split('T')[0]),
+        createdAt: MoreThanOrEqual(twelveMonthsAgo),
       },
     });
 

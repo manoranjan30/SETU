@@ -15,9 +15,9 @@ import { QualityInspectionService } from './quality-inspection.service';
 import { QualityReportService } from './quality-report.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
 import type {
-  CreateInspectionDto,
   UpdateInspectionStatusDto,
 } from './quality-inspection.service';
+import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { Auditable } from '../audit/auditable.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -58,6 +58,18 @@ export class QualityInspectionController {
   ) {
     const userId = req.user?.userId || req.user?.id;
     return this.service.getMyPendingInspections(projectId, userId);
+  }
+
+  @Get('approval-dashboard')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getApprovalDashboard(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Request() req,
+  ) {
+    return this.service.getApprovalDashboard(
+      projectId,
+      req.user?.userId || req.user?.id,
+    );
   }
 
   @Get('unit-progress')
@@ -110,7 +122,7 @@ export class QualityInspectionController {
   }
 
   @Patch('stage/:stageId')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.INSPECTION.READ')
   updateStageStatus(
     @Param('stageId', ParseIntPipe) stageId: number,
     @Body() data: any,
@@ -118,7 +130,36 @@ export class QualityInspectionController {
   ) {
     return this.service.updateStageStatus(stageId, {
       ...data,
-      userId: req.user?.name || req.user?.id || 'System',
+      userId: req.user?.userId || req.user?.id,
+      isAdmin: req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+    });
+  }
+
+  @Patch(':id/stages/:stageId')
+  @Permissions('QUALITY.INSPECTION.READ')
+  updateStageStatusForInspection(
+    @Param('stageId', ParseIntPipe) stageId: number,
+    @Body() data: any,
+    @Request() req,
+  ) {
+    return this.service.updateStageStatus(stageId, {
+      ...data,
+      userId: req.user?.userId || req.user?.id,
+      isAdmin: req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+    });
+  }
+
+  @Post('stage/:stageId')
+  @Permissions('QUALITY.INSPECTION.READ')
+  postStageStatus(
+    @Param('stageId', ParseIntPipe) stageId: number,
+    @Body() data: any,
+    @Request() req,
+  ) {
+    return this.service.updateStageStatus(stageId, {
+      ...data,
+      userId: req.user?.userId || req.user?.id,
+      isAdmin: req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
     });
   }
 
@@ -130,8 +171,14 @@ export class QualityInspectionController {
     return this.workflowService.getWorkflowState(id);
   }
 
+  @Get('eligible-approvers/list')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getEligibleApprovers(@Query('projectId', ParseIntPipe) projectId: number) {
+    return this.workflowService.getEligibleApprovers(projectId);
+  }
+
   @Post(':id/workflow/advance')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.INSPECTION.READ')
   advanceWorkflow(
     @Param('id', ParseIntPipe) id: number,
     @Body()
@@ -155,7 +202,7 @@ export class QualityInspectionController {
   }
 
   @Post(':id/workflow/reject')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.INSPECTION.READ')
   rejectWorkflow(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { comments: string },
@@ -186,7 +233,7 @@ export class QualityInspectionController {
   }
 
   @Post(':id/workflow/delegate')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.INSPECTION.READ')
   delegateWorkflowStep(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { targetUserId: number; comments: string },
@@ -206,7 +253,7 @@ export class QualityInspectionController {
   // ===== STAGE-WISE APPROVAL =====
 
   @Post(':id/stages/:stageId/approve')
-  @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
+  @Permissions('QUALITY.INSPECTION.READ')
   @Auditable('QUALITY', 'STAGE_APPROVE_RFI', 'id')
   approveStage(
     @Param('id', ParseIntPipe) inspectionId: number,
@@ -220,11 +267,12 @@ export class QualityInspectionController {
       req.user?.userId || req.user?.id,
       body.signatureData,
       body.comments,
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
     );
   }
 
   @Post(':id/final-approve')
-  @Permissions('QUALITY.INSPECTION.FINAL_APPROVE')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
   @Auditable('QUALITY', 'FINAL_APPROVE_RFI', 'id')
   finalApprove(
     @Param('id', ParseIntPipe) inspectionId: number,
@@ -236,6 +284,25 @@ export class QualityInspectionController {
       req.user?.userId || req.user?.id,
       body.signatureData,
       body.comments,
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+    );
+  }
+
+  @Post(':id/stages/:stageId/reverse')
+  @Permissions('QUALITY.INSPECTION.REVERSE')
+  @Auditable('QUALITY', 'REVERSE_STAGE_APPROVAL', 'id')
+  reverseStageApproval(
+    @Param('id', ParseIntPipe) inspectionId: number,
+    @Param('stageId', ParseIntPipe) stageId: number,
+    @Body() body: { reason: string },
+    @Request() req,
+  ) {
+    return this.service.reverseStageApproval(
+      inspectionId,
+      stageId,
+      req.user?.userId || req.user?.id,
+      body.reason,
+      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
     );
   }
 

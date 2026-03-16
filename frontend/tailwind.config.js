@@ -1,11 +1,40 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-    content: [
-        "./index.html",
-        "./src/**/*.{js,ts,jsx,tsx}",
-    ],
-    theme: {
-        extend: {},
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        primary: "var(--color-primary)",
+        "primary-light": "var(--color-primary-light)",
+        "primary-dark": "var(--color-primary-dark)",
+        "primary-muted": "var(--color-primary-muted)",
+        secondary: "var(--color-secondary)",
+        "secondary-light": "var(--color-secondary-light)",
+        "secondary-dark": "var(--color-secondary-dark)",
+        "secondary-muted": "var(--color-secondary-muted)",
+        "surface-base": "var(--color-surface-base)",
+        "surface-card": "var(--color-surface-card)",
+        "surface-raised": "var(--color-surface-raised)",
+        "surface-sunken": "var(--color-surface-sunken)",
+        "surface-overlay": "var(--color-surface-overlay)",
+        "text-primary": "var(--color-text-primary)",
+        "text-secondary": "var(--color-text-secondary)",
+        "text-muted": "var(--color-text-muted)",
+        "text-disabled": "var(--color-text-disabled)",
+        "on-primary": "var(--color-text-on-primary)",
+        "border-default": "var(--color-border-default)",
+        "border-strong": "var(--color-border-strong)",
+        "border-subtle": "var(--color-border-subtle)",
+        success: "var(--color-success)",
+        "success-muted": "var(--color-success-muted)",
+        warning: "var(--color-warning)",
+        "warning-muted": "var(--color-warning-muted)",
+        error: "var(--color-error)",
+        "error-muted": "var(--color-error-muted)",
+        info: "var(--color-info)",
+        "info-muted": "var(--color-info-muted)",
+      },
     },
-    plugins: [],
-}
+  },
+  plugins: [],
+};

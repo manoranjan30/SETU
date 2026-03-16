@@ -3,14 +3,28 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/navigation/deep_link_service.dart';
 import 'package:setu_mobile/core/notifications/notification_service.dart';
 import 'package:setu_mobile/core/theme/app_theme.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/projects_list_page.dart';
+import 'package:setu_mobile/core/media/photo_cache_manager.dart';
 import 'package:setu_mobile/injection_container.dart';
 
+/// Root widget of the SETU Mobile application.
+///
+/// Responsibilities:
+/// - Wraps the widget tree in a [MultiBlocProvider] with [AuthBloc] and
+///   [ProjectBloc] — these two BLoCs are global because their state (who is
+///   logged in, which projects exist) must survive navigation stack changes.
+/// - Listens to [AuthBloc] state changes to perform side-effects: register
+///   the FCM token after login and clear the photo cache on logout.
+/// - Owns the [GlobalKey<NavigatorState>] used by [_handleNotificationTap] to
+///   manipulate the navigation stack from outside the widget tree.
+/// - Routes the initial screen: [LoginPage], loading spinner, or
+///   [ProjectsListPage] based on auth state.
 class SETUMobileApp extends StatefulWidget {
   const SETUMobileApp({super.key});
 
@@ -19,15 +33,33 @@ class SETUMobileApp extends StatefulWidget {
 }
 
 class _SETUMobileAppState extends State<SETUMobileApp> {
+  // A global navigator key is required so that [_handleNotificationTap] can
+  // push routes and show SnackBars from outside the build tree (the callback
+  // is set in initState, before any context is available).
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    // Wire notification taps to our handler.  This must happen in initState
+    // so that cold-start notification taps (delivered before the first frame)
+    // are captured.  The callback is set on the singleton NotificationService
+    // instance — there is only one, so this assignment is safe to do once.
     // Handle notification taps — navigate to the relevant screen
     sl<NotificationService>().onNotificationTap = _handleNotificationTap;
   }
 
+  /// Handles a notification tap from any of the three FCM delivery scenarios
+  /// (foreground local notification, background system tray, cold start).
+  ///
+  /// Steps:
+  /// 1. Pop all routes back to root ([ProjectsListPage]) so the user starts
+  ///    from a clean state rather than landing mid-stack.
+  /// 2. Decode the FCM data payload.
+  /// 3. Build a [PendingDeepLink] and store it in [DeepLinkService] — the
+  ///    [ProjectsListPage] listener will pick it up and navigate automatically.
+  /// 4. Show a contextual [SnackBar] that describes why navigation happened,
+  ///    giving the user immediate feedback before the project list loads.
   void _handleNotificationTap(String payload) {
     // Pop to the projects list root first so the user is in a clean state.
     _navigatorKey.currentState?.popUntil((route) => route.isFirst);
@@ -36,25 +68,51 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
     Map<String, dynamic> data = {};
     try {
       data = jsonDecode(payload) as Map<String, dynamic>;
-    } catch (_) {}
+    } catch (_) {
+      // Malformed payload — continue with an empty map so the default
+      // SnackBar message is shown rather than crashing.
+    }
 
+    // Set pending deep link so ProjectsListPage can auto-navigate.
+    // projectId and resourceId may be absent for some notification types
+    // (e.g. STRATEGY_ACTIVATED has no single resource), hence the null guards.
     final type = data['type'] as String? ?? '';
+    final projectId = data['projectId'] != null
+        ? int.tryParse(data['projectId'].toString())
+        : null;
+    // resourceId can come from several fields depending on the notification type.
+    final resourceId = data['observationId'] as String? ??
+        data['incidentId'] as String? ??
+        data['inspectionId'] as String?;
+    if (type.isNotEmpty && projectId != null) {
+      // Only set a deep link when we have enough data to navigate meaningfully.
+      DeepLinkService.instance.set(PendingDeepLink(
+        type: type,
+        projectId: projectId,
+        resourceId: resourceId,
+      ));
+    }
+
     String message;
     Color color;
     IconData icon;
 
     switch (type) {
+      // ── RFI / Workflow ──────────────────────────────────────────────────────
       case 'RFI_RAISED':
+      case 'PENDING_APPROVAL':
         message = 'New RFI pending your approval — select a project to review.';
         color = Colors.orange.shade700;
         icon = Icons.assignment_outlined;
         break;
       case 'INSPECTION_APPROVED':
+      case 'APPROVED':
         message = 'Your RFI has been approved — select a project to view.';
         color = Colors.green.shade700;
         icon = Icons.check_circle_outline;
         break;
       case 'INSPECTION_REJECTED':
+      case 'REJECTED':
         message = 'Your RFI was rejected — select a project to view details.';
         color = Colors.red.shade700;
         icon = Icons.cancel_outlined;
@@ -64,17 +122,90 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
         color = Colors.blue.shade700;
         icon = Icons.pending_actions_outlined;
         break;
+      case 'WORKFLOW_DELEGATED':
+        message = 'An RFI approval step has been delegated to you.';
+        color = Colors.indigo.shade700;
+        icon = Icons.swap_horiz_rounded;
+        break;
+      case 'WORKFLOW_REVERSED':
+        message = 'An approved RFI has been reversed by admin — please resubmit.';
+        color = Colors.deepOrange.shade700;
+        icon = Icons.undo_rounded;
+        break;
+      // ── Progress ────────────────────────────────────────────────────────────
       case 'PROGRESS_SUBMITTED':
         message = 'Progress entry submitted — select a project to review.';
         color = Colors.teal.shade700;
         icon = Icons.bar_chart_outlined;
         break;
+      // ── Quality Observations ────────────────────────────────────────────────
+      case 'QUALITY_OBS_RAISED':
+        {
+          // Include severity in the message when available so the recipient
+          // can gauge urgency without opening the app.
+          final severity = data['severity'] ?? '';
+          message = severity.isNotEmpty
+              ? '$severity quality observation raised — immediate attention required.'
+              : 'New quality observation raised — select a project to view.';
+          // CRITICAL observations get a darker red to signal higher urgency.
+          color = severity == 'CRITICAL'
+              ? Colors.red.shade900
+              : Colors.orange.shade800;
+          icon = Icons.warning_amber_rounded;
+        }
+        break;
+      case 'OBS_RECTIFIED':
+        message = 'Your quality observation has been rectified — please review and close.';
+        color = Colors.blue.shade700;
+        icon = Icons.build_circle_outlined;
+        break;
+      case 'OBS_CLOSED':
+        message = 'Your quality observation has been closed.';
+        color = Colors.green.shade700;
+        icon = Icons.check_circle_outline;
+        break;
+      // ── EHS ─────────────────────────────────────────────────────────────────
+      case 'EHS_OBS_CRITICAL':
+        {
+          // Same severity-in-message pattern as quality observations.
+          final ehsSeverity = data['severity'] ?? '';
+          message = ehsSeverity.isNotEmpty
+              ? '$ehsSeverity EHS observation raised — immediate action required.'
+              : 'Critical EHS observation raised — select a project to view.';
+          color = Colors.red.shade900;
+          icon = Icons.health_and_safety_outlined;
+        }
+        break;
+      case 'EHS_OBS_RECTIFIED':
+        message = 'Your EHS observation has been rectified — please review and close.';
+        color = Colors.blue.shade700;
+        icon = Icons.build_circle_outlined;
+        break;
+      case 'EHS_OBS_CLOSED':
+        message = 'Your EHS observation has been closed.';
+        color = Colors.green.shade700;
+        icon = Icons.check_circle_outline;
+        break;
+      // ── Release Strategy ────────────────────────────────────────────────────
+      case 'STRATEGY_ACTIVATED':
+        {
+          // Strategy name is included to disambiguate when multiple strategies exist.
+          final strategyName = data['strategyName'] ?? 'Approval strategy';
+          message = '"$strategyName" is now active — approval workflows updated.';
+          color = Colors.purple.shade700;
+          icon = Icons.account_tree_outlined;
+        }
+        break;
+      // ── Default ─────────────────────────────────────────────────────────────
       default:
+        // Catch-all for future notification types not yet handled here.
         message = 'New SETU notification — select a project to continue.';
         color = Colors.blueGrey.shade700;
         icon = Icons.notifications_outlined;
     }
 
+    // Guard against the edge case where the context is no longer mounted
+    // (e.g. the widget was disposed between the tap and this callback firing).
     final context = _navigatorKey.currentContext;
     if (context == null) return;
 
@@ -82,7 +213,7 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
       SnackBar(
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 6),
+        duration: const Duration(seconds: 6), // 6 s gives time to read before acting
         content: Row(
           children: [
             Icon(icon, color: Colors.white, size: 20),
@@ -103,9 +234,15 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
+        // AuthBloc is provided here (not in main) so that BlocConsumer below
+        // can listen to it.  CheckAuthStatus is dispatched immediately so the
+        // bloc evaluates the stored token before the first frame renders.
         BlocProvider<AuthBloc>(
           create: (_) => sl<AuthBloc>()..add(CheckAuthStatus()),
         ),
+        // ProjectBloc is provided globally so that it persists across
+        // navigation stack changes (e.g. popping back to the project list
+        // reuses the already-loaded project data).
         BlocProvider<ProjectBloc>(
           create: (_) => sl<ProjectBloc>(),
         ),
@@ -114,17 +251,22 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
         listener: (context, authState) {
           if (authState is AuthAuthenticated) {
             // Register FCM token with SETU backend after each login
+            // so push notifications are routed to this device+user pair.
             sl<NotificationService>().registerToken(sl<SetuApiClient>());
+          } else if (authState is AuthUnauthenticated) {
+            // Clear photo cache on logout — frees ~150 MB of device storage
+            // that accumulated from viewing site photos during the session.
+            SetuPhotoCacheManager().emptyCache();
           }
         },
         builder: (context, authState) {
           return MaterialApp(
-            navigatorKey: _navigatorKey,
+            navigatorKey: _navigatorKey, // Enables navigation from outside widget tree
             title: 'SETU Mobile',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
-            themeMode: ThemeMode.system,
+            themeMode: ThemeMode.system, // Respects the device's dark/light preference
             home: _buildHome(authState),
           );
         },
@@ -132,10 +274,16 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
     );
   }
 
+  /// Resolves the initial (home) screen based on the current [AuthState].
+  ///
+  /// - [AuthAuthenticated]: user has a valid token → show project list.
+  /// - [AuthLoading]: token check in progress → show a spinner to avoid flicker.
+  /// - Any other state ([AuthUnauthenticated], [AuthError]): show login page.
   Widget _buildHome(AuthState authState) {
     if (authState is AuthAuthenticated) {
       return const ProjectsListPage();
     } else if (authState is AuthLoading) {
+      // Shown briefly while CheckAuthStatus reads from SecureStorage.
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );

@@ -164,6 +164,17 @@ echo.
 call flutter pub get
 echo.
 
+:: Suspend OneDrive during build - prevents stripReleaseDebugSymbols from
+:: failing due to OneDrive intercepting Gradle's temp files.
+set "ONEDRIVE_WAS_RUNNING=0"
+tasklist /FI "IMAGENAME eq OneDrive.exe" 2>nul | findstr /i "OneDrive.exe" >nul 2>&1
+if not errorlevel 1 (
+  set "ONEDRIVE_WAS_RUNNING=1"
+  taskkill /F /IM OneDrive.exe >nul 2>&1
+  echo        OneDrive suspended for build.
+  ping -n 3 127.0.0.1 >nul 2>&1
+)
+
 call :build_apk
 if errorlevel 1 ( pause & exit /b 1 )
 
@@ -232,6 +243,16 @@ echo.
 
 set "MONITOR=%~dp0_build_monitor.ps1"
 flutter build apk --release --dart-define=SETU_BASE_URL=!BACKEND_URL! 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -File "!MONITOR!"
+
+:: Restart OneDrive after build completes
+if "!ONEDRIVE_WAS_RUNNING!"=="1" (
+  if exist "%LOCALAPPDATA%\Microsoft\OneDrive\OneDrive.exe" (
+    start "" "%LOCALAPPDATA%\Microsoft\OneDrive\OneDrive.exe"
+  ) else (
+    start "" "C:\Program Files\Microsoft OneDrive\OneDrive.exe"
+  )
+  echo        OneDrive restarted.
+)
 
 echo.
 

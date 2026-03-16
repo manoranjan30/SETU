@@ -137,7 +137,9 @@ export class DashboardBuilderService {
     }
 
     if (dto.roleName && !dto.roleId) {
-      const role = await this.roleRepo.findOne({ where: { name: dto.roleName } });
+      const role = await this.roleRepo.findOne({
+        where: { name: dto.roleName },
+      });
       if (role) dto.roleId = role.id;
     }
     if (dto.roleId && !dto.roleName) {
@@ -168,8 +170,11 @@ export class DashboardBuilderService {
     }
 
     if (dto.id) {
-      const assignment = await this.assignmentRepo.findOne({ where: { id: dto.id } });
-      if (!assignment) throw new NotFoundException(`Assignment #${dto.id} not found`);
+      const assignment = await this.assignmentRepo.findOne({
+        where: { id: dto.id },
+      });
+      if (!assignment)
+        throw new NotFoundException(`Assignment #${dto.id} not found`);
       Object.assign(assignment, dto);
       return this.assignmentRepo.save(assignment);
     }
@@ -230,11 +235,11 @@ export class DashboardBuilderService {
         .clone()
         .andWhere('a.roleId IN (:...roleIds)', { roleIds })
         .getOne();
-      
+
       if (!assignment) {
         // FALLBACK: If no assignment table entry, check the Role entity itself
         const rolesWithDashboard = await this.roleRepo.find({
-          where: { id: In(roleIds), dashboardId: Not(IsNull()) }
+          where: { id: In(roleIds), dashboardId: Not(IsNull()) },
         });
         if (rolesWithDashboard.length > 0) {
           return this.findOne(rolesWithDashboard[0].dashboardId);
@@ -285,7 +290,7 @@ export class DashboardBuilderService {
       name: `${template.name}`,
       description: template.description,
       layoutConfig: template.layoutConfig || { cols: 12, rowHeight: 80 },
-      scope: (template as any).scope || 'PROJECT',
+      scope: template.scope || 'PROJECT',
       isActive: true,
       createdBy: { id: userId } as any,
     });
@@ -326,7 +331,10 @@ export class DashboardBuilderService {
             widgetType: 'TABLE',
             title: 'Site Progress by Project',
             dataSourceKey: 'project.progress.summary',
-            queryConfig: { limit: 100, orderBy: [{ field: 'siteProgressPercent', direction: 'DESC' }] },
+            queryConfig: {
+              limit: 100,
+              orderBy: [{ field: 'siteProgressPercent', direction: 'DESC' }],
+            },
             displayConfig: {},
             gridPosition: { x: 0, y: 0, w: 12, h: 5 },
             refreshIntervalSec: 0,
@@ -345,7 +353,10 @@ export class DashboardBuilderService {
             widgetType: 'TABLE',
             title: 'Quality Rating by Project',
             dataSourceKey: 'quality.rating.summary',
-            queryConfig: { limit: 100, orderBy: [{ field: 'overallScore', direction: 'DESC' }] },
+            queryConfig: {
+              limit: 100,
+              orderBy: [{ field: 'overallScore', direction: 'DESC' }],
+            },
             displayConfig: {},
             gridPosition: { x: 0, y: 0, w: 12, h: 5 },
             refreshIntervalSec: 0,
@@ -364,7 +375,10 @@ export class DashboardBuilderService {
             widgetType: 'TABLE',
             title: 'BOQ Burn Status',
             dataSourceKey: 'boq.burn',
-            queryConfig: { limit: 100, orderBy: [{ field: 'burnPercent', direction: 'DESC' }] },
+            queryConfig: {
+              limit: 100,
+              orderBy: [{ field: 'burnPercent', direction: 'DESC' }],
+            },
             displayConfig: {},
             gridPosition: { x: 0, y: 0, w: 12, h: 5 },
             refreshIntervalSec: 0,
@@ -427,7 +441,10 @@ export class DashboardBuilderService {
             widgetType: 'KPI',
             title: 'Overall Site Progress',
             dataSourceKey: 'project.progress.summary',
-            queryConfig: { valueField: 'siteProgressPercent', aggregation: 'AVG' },
+            queryConfig: {
+              valueField: 'siteProgressPercent',
+              aggregation: 'AVG',
+            },
             displayConfig: { label: 'Avg Site Progress %' },
             gridPosition: { x: 6, y: 0, w: 3, h: 2 },
             refreshIntervalSec: 0,

@@ -7,7 +7,18 @@ import 'package:path_provider/path_provider.dart';
 
 part 'app_database.g.dart';
 
-/// Local database for offline storage using Drift (SQLite)
+/// The app's single SQLite database, managed by Drift.
+///
+/// Covers all offline storage concerns for SETU:
+/// - User-generated data (progress entries, daily logs) that must survive
+///   network outages and be synced later.
+/// - A generic [SyncQueue] for queueing any server mutation offline.
+/// - Per-project read-only caches (projects, activities, BOQ, EPS tree,
+///   quality lists/activities, quality/EHS site observations).
+///
+/// Current schema version: 5.
+/// Each incremental migration is guarded by `from < N` checks so a device
+/// that skips versions (e.g. v1 → v5) applies every missing step.
 @DriftDatabase(
   tables: [
     ProgressEntries,
@@ -19,33 +30,122 @@ part 'app_database.g.dart';
     CachedEpsNodes,
     CachedQualityActivityLists,
     CachedQualityActivities,
+    CachedQualitySiteObs,
+    CachedEhsSiteObs,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
+      // Fresh install: create all tables and indexes in one shot.
       onCreate: (Migrator m) async {
         await m.createAll();
+        // Indexes are not created by Drift's createAll() — we must add them
+        // manually via raw SQL.
+        await _createIndexes();
       },
       onUpgrade: (Migrator m, int from, int to) async {
+        // Each block is idempotent: `from < N` means "this device has not
+        // yet applied the schema changes introduced in version N".
+        // Using < instead of == allows devices that skipped versions to
+        // catch up by running every block in order.
+
         if (from < 2) {
+          // v2: Added the EPS (Engineering Project Structure) node cache so
+          // users can browse the project hierarchy offline.
           await m.createTable(cachedEpsNodes);
         }
         if (from < 3) {
+          // v3: Added quality module caches — activity lists and individual
+          // activities within each list.
           await m.createTable(cachedQualityActivityLists);
           await m.createTable(cachedQualityActivities);
+        }
+        if (from < 4) {
+          // v4: Added site observation caches for both Quality and EHS
+          // modules so inspectors can view open observations offline.
+          await m.createTable(cachedQualitySiteObs);
+          await m.createTable(cachedEhsSiteObs);
+        }
+        if (from < 5) {
+          // v5: Backfilled project-scoped indexes on all cache tables.
+          // Previously missing indexes caused full-table scans on every
+          // per-project query; this migration adds them for existing installs.
+          await _createIndexes();
         }
       },
     );
   }
 
+  /// Create projectId indexes on all cached tables for fast per-project queries.
+  ///
+  /// `CREATE INDEX IF NOT EXISTS` is used so this is safe to call during both
+  /// [onCreate] and incremental [onUpgrade] without risking a duplicate-index
+  /// error if migrations are replayed.
+  Future<void> _createIndexes() async {
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_activities_project ON cached_activities (project_id);');
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_eps_nodes_project ON cached_eps_nodes (project_id);');
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_boq_items_project ON cached_boq_items (project_id);');
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_quality_lists_project ON cached_quality_activity_lists (project_id);');
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_quality_activities_project ON cached_quality_activities (project_id);');
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_quality_obs_project ON cached_quality_site_obs (project_id);');
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_cached_ehs_obs_project ON cached_ehs_site_obs (project_id);');
+  }
+
+  /// Delete cached rows older than [daysOld] days from all cache tables.
+  ///
+  /// Called on app start (after DB init) to prevent unbounded local growth.
+  /// 30 days is chosen as a balance: long enough for a site engineer who works
+  /// intermittently, short enough to avoid the DB growing too large on devices
+  /// with limited storage. Only cache tables are evicted — user-authored data
+  /// (progress entries, daily logs, sync queue) is never automatically deleted.
+  Future<void> evictStaleCaches({int daysOld = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: daysOld));
+    // Each delete is a separate statement because Drift's typed DSL does not
+    // support multi-table deletes. The operations are sequential rather than
+    // batched so that a partial failure (rare) does not roll back successful
+    // evictions.
+    await (delete(cachedActivities)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+    await (delete(cachedEpsNodes)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+    await (delete(cachedBoqItems)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+    await (delete(cachedQualityActivityLists)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+    await (delete(cachedQualityActivities)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+    await (delete(cachedQualitySiteObs)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+    await (delete(cachedEhsSiteObs)
+          ..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
+  }
+
   // Clear all data (for logout)
+  /// Wipe every table on logout so that the next user starts from a clean
+  /// slate. The sync queue is also cleared intentionally: any unsynced data
+  /// belonged to the previous authenticated session and must not be re-sent
+  /// under a different token.
   Future<void> clearAll() async {
     await delete(progressEntries).go();
     await delete(dailyLogs).go();
@@ -56,11 +156,16 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedEpsNodes).go();
     await delete(cachedQualityActivityLists).go();
     await delete(cachedQualityActivities).go();
+    await delete(cachedQualitySiteObs).go();
+    await delete(cachedEhsSiteObs).go();
   }
 
   // ==================== EPS NODE QUERIES ====================
 
-  /// Get EPS nodes by parent ID (for hierarchical navigation)
+  /// Get EPS nodes by parent ID (for hierarchical navigation).
+  ///
+  /// Passing [parentId] as `null` retrieves root-level nodes — i.e., nodes
+  /// with no parent — which form the top of the EPS tree.
   Future<List<CachedEpsNode>> getEpsNodesByParent(int? parentId) async {
     if (parentId == null) {
       // Get root nodes (no parent)
@@ -70,13 +175,21 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
-  /// Get all EPS nodes for a project
+  /// Get all EPS nodes for a project.
+  ///
+  /// Used when the caller needs the full tree (e.g. to rebuild a hierarchy
+  /// in memory) rather than one level at a time.
   Future<List<CachedEpsNode>> getEpsNodesForProject(int projectId) async {
     return (select(cachedEpsNodes)..where((t) => t.projectId.equals(projectId)))
         .get();
   }
 
-  /// Cache EPS nodes from API response
+  /// Cache EPS nodes from API response.
+  ///
+  /// Uses [InsertMode.insertOrReplace] so subsequent calls act as a full
+  /// refresh — any stale local data for a node is overwritten atomically.
+  /// Wrapping inserts in [batch] reduces the number of SQLite transactions
+  /// from O(n) to 1, which is critical for large EPS trees (hundreds of nodes).
   Future<void> cacheEpsNodes(
       List<Map<String, dynamic>> nodes, int projectId) async {
     await batch((batch) {
@@ -89,6 +202,8 @@ class AppDatabase extends _$AppDatabase {
             name: node['name'] as String,
             code: Value(node['code'] as String?),
             type: node['type'] as String? ?? 'unknown',
+            // API may return parentId as camelCase or snake_case depending on
+            // endpoint version — try both keys before defaulting to null.
             parentId:
                 Value(node['parentId'] as int? ?? node['parent_id'] as int?),
             rawData: jsonEncode(node),
@@ -101,21 +216,36 @@ class AppDatabase extends _$AppDatabase {
 
   // ==================== ACTIVITY QUERIES ====================
 
-  /// Get activities by EPS node ID
+  /// Get activities by EPS node ID.
+  ///
+  /// This is the primary read path when the user drills into a specific floor
+  /// or phase node in the project tree.
   Future<List<CachedActivity>> getActivitiesByEpsNode(int epsNodeId) async {
     return (select(cachedActivities)
           ..where((t) => t.epsNodeId.equals(epsNodeId)))
         .get();
   }
 
-  /// Get all activities for a project
+  /// Get all activities for a project.
+  ///
+  /// Used for bulk operations such as export or full-project refresh.
   Future<List<CachedActivity>> getActivitiesForProject(int projectId) async {
     return (select(cachedActivities)
           ..where((t) => t.projectId.equals(projectId)))
         .get();
   }
 
-  /// Cache activities from API response
+  /// Cache activities from API response.
+  ///
+  /// The [readInt] helper is needed because the server returns numeric IDs
+  /// inconsistently — sometimes as `int`, sometimes as `double` (num), and
+  /// occasionally as a stringified integer. All three cases must be handled
+  /// to avoid a runtime cast exception.
+  ///
+  /// `epsNodeId` is resolved with a priority chain: explicit camelCase key →
+  /// snake_case key → `floorId` alias → `floor_id` alias → nested `epsNode`
+  /// object. This defensive lookup accommodates different API versions that
+  /// have renamed or restructured this field over time.
   Future<void> cacheActivities(
       List<Map<String, dynamic>> activities, int projectId) async {
     int? readInt(dynamic value) {
@@ -127,6 +257,8 @@ class AppDatabase extends _$AppDatabase {
 
     await batch((batch) {
       for (final activity in activities) {
+        // Resolve the EPS node this activity belongs to, trying several key
+        // names to handle API response variations across versions.
         final epsNode = activity['epsNode'] ?? activity['eps_node'];
         final epsNodeId = readInt(activity['epsNodeId']) ??
             readInt(activity['eps_node_id']) ??
@@ -142,10 +274,12 @@ class AppDatabase extends _$AppDatabase {
             name: activity['name'] as String,
             epsNodeId: Value(epsNodeId),
             status: Value(activity['status'] as String?),
+            // Accept both camelCase and snake_case date keys.
             startDate: Value(activity['startDate'] as String? ??
                 activity['start_date'] as String?),
             endDate: Value(activity['endDate'] as String? ??
                 activity['end_date'] as String?),
+            // Coerce progress to double; default to 0.0 if absent.
             progress: Value((activity['actualProgress'] as num?)?.toDouble() ??
                 (activity['actual_progress'] as num?)?.toDouble() ??
                 0.0),
@@ -159,19 +293,29 @@ class AppDatabase extends _$AppDatabase {
 
   // ==================== QUALITY CACHE QUERIES ====================
 
-  /// Get cached activity lists for a project + optional EPS node
+  /// Get cached activity lists for a project + optional EPS node.
+  ///
+  /// The EPS node filter is applied in Dart rather than SQL because the
+  /// column is nullable and matching nullable columns in Drift's query DSL
+  /// requires extra null handling. Given that the number of lists per project
+  /// is small (typically < 50), the in-memory filter is acceptable.
   Future<List<CachedQualityActivityList>> getCachedActivityLists(
       int projectId, int? epsNodeId) async {
     final all = await (select(cachedQualityActivityLists)
           ..where((t) => t.projectId.equals(projectId)))
         .get();
     if (epsNodeId != null) {
+      // Filter by EPS node in Dart; see docstring for why not in SQL.
       return all.where((r) => r.epsNodeId == epsNodeId).toList();
     }
     return all;
   }
 
-  /// Cache quality activity lists from API response
+  /// Cache quality activity lists from API response.
+  ///
+  /// `activityCount` is computed from the embedded `activities` list if the
+  /// server does not return it explicitly, so the UI can show a count without
+  /// a second query.
   Future<void> cacheActivityLists(
       List<Map<String, dynamic>> lists, int projectId) async {
     await batch((b) {
@@ -184,6 +328,8 @@ class AppDatabase extends _$AppDatabase {
             epsNodeId: Value(l['epsNodeId'] as int?),
             name: l['name'] as String,
             description: Value(l['description'] as String?),
+            // Prefer the explicit count field; fall back to the length of the
+            // embedded activities array if present; default to 0.
             activityCount: Value(
               (l['activityCount'] as int?) ??
                   (l['activities'] as List?)?.length ??
@@ -197,7 +343,11 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Get cached quality activities for a list
+  /// Get cached quality activities for a list, ordered by sequence.
+  ///
+  /// Ordering by [sequence] ensures the UI presents activities in the
+  /// inspector-defined order rather than insertion order, which can differ
+  /// after partial re-caching.
   Future<List<CachedQualityActivity>> getCachedQualityActivities(
       int listId) async {
     return (select(cachedQualityActivities)
@@ -206,7 +356,11 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
-  /// Cache quality activities from API response
+  /// Cache quality activities from API response.
+  ///
+  /// Boolean hold/witness point flags are stored as 0/1 integers because
+  /// SQLite has no native boolean type and Drift's bool column maps to
+  /// integer anyway — being explicit here avoids any ambiguity during reads.
   Future<void> cacheQualityActivities(
     List<Map<String, dynamic>> activities,
     int listId,
@@ -225,6 +379,7 @@ class AppDatabase extends _$AppDatabase {
             sequence: Value(a['sequence'] as int? ?? 0),
             activityName: a['activityName'] as String,
             status: Value(a['status'] as String? ?? 'NOT_STARTED'),
+            // Convert bool → int (1/0) explicitly; SQLite has no bool type.
             holdPoint: Value((a['holdPoint'] as bool? ?? false) ? 1 : 0),
             witnessPoint: Value((a['witnessPoint'] as bool? ?? false) ? 1 : 0),
             rawData: jsonEncode(a),
@@ -235,7 +390,12 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Optimistically update a cached activity status (after RFI queued offline)
+  /// Optimistically update a cached activity status (after RFI queued offline).
+  ///
+  /// When a user raises an RFI while offline, the UI should immediately reflect
+  /// the new status (e.g. "PENDING_INSPECTION") rather than waiting for the
+  /// next sync round-trip. This write is "optimistic" — if the server later
+  /// rejects the RFI, the cache will be corrected on the next full refresh.
   Future<void> updateCachedActivityStatus(
       int activityId, String newStatus) async {
     await (update(cachedQualityActivities)
@@ -245,12 +405,98 @@ class AppDatabase extends _$AppDatabase {
     ));
   }
 
+  // ==================== QUALITY SITE OBS CACHE QUERIES ====================
+
+  /// Get cached quality site observations for a project, optionally filtered
+  /// by status (e.g. "OPEN", "CLOSED").
+  ///
+  /// The status filter is applied at the SQL level to keep the result set small
+  /// when the project has many historical observations.
+  Future<List<CachedQualitySiteOb>> getCachedQualitySiteObs(
+      int projectId, String? statusFilter) async {
+    final query = select(cachedQualitySiteObs)
+      ..where((t) => t.projectId.equals(projectId));
+    if (statusFilter != null) {
+      // Only append the additional where clause when a filter is requested,
+      // so the unfiltered path avoids an unnecessary AND condition.
+      query.where((t) => t.status.equals(statusFilter));
+    }
+    return query.get();
+  }
+
+  /// Cache quality site observations from API response.
+  ///
+  /// Uses [InsertMode.insertOrReplace] so that updated observation state
+  /// (e.g. status transitions from OPEN → CLOSED) overwrites the stale row.
+  Future<void> cacheQualitySiteObs(
+      List<Map<String, dynamic>> items, int projectId) async {
+    await batch((b) {
+      for (final item in items) {
+        b.insert(
+          cachedQualitySiteObs,
+          CachedQualitySiteObsCompanion.insert(
+            id: item['id'] as String,
+            projectId: projectId,
+            status: item['status'] as String? ?? 'OPEN',
+            severity: Value(item['severity'] as String?),
+            rawData: jsonEncode(item),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  // ==================== EHS SITE OBS CACHE QUERIES ====================
+
+  /// Get cached EHS site observations for a project, optionally filtered by
+  /// status.
+  ///
+  /// Mirrors the quality site obs query pattern — EHS observations share the
+  /// same open/closed lifecycle.
+  Future<List<CachedEhsSiteOb>> getCachedEhsSiteObs(
+      int projectId, String? statusFilter) async {
+    final query = select(cachedEhsSiteObs)
+      ..where((t) => t.projectId.equals(projectId));
+    if (statusFilter != null) {
+      query.where((t) => t.status.equals(statusFilter));
+    }
+    return query.get();
+  }
+
+  /// Cache EHS site observations from API response.
+  Future<void> cacheEhsSiteObs(
+      List<Map<String, dynamic>> items, int projectId) async {
+    await batch((b) {
+      for (final item in items) {
+        b.insert(
+          cachedEhsSiteObs,
+          CachedEhsSiteObsCompanion.insert(
+            id: item['id'] as String,
+            projectId: projectId,
+            status: item['status'] as String? ?? 'OPEN',
+            severity: Value(item['severity'] as String?),
+            rawData: jsonEncode(item),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
   /// Return distinct projectIds that have cached activity lists.
-  /// Used by [BackgroundDownloadService] to know which projects to refresh.
+  ///
+  /// Used by [BackgroundDownloadService] to know which projects to refresh
+  /// during background downloads. Using [selectOnly] with [distinct: true]
+  /// avoids loading full rows just to extract IDs, keeping memory usage
+  /// proportional to the number of projects rather than the number of lists.
   Future<List<int>> selectOnlyDistinctProjectIds() async {
     final query = selectOnly(cachedQualityActivityLists, distinct: true)
       ..addColumns([cachedQualityActivityLists.projectId]);
     final rows = await query.get();
+    // whereType<int> silently drops any null projectId rows that should not
+    // exist but could appear if a race condition during caching left a partial
+    // row.
     return rows
         .map((r) => r.read(cachedQualityActivityLists.projectId))
         .whereType<int>()
@@ -259,7 +505,10 @@ class AppDatabase extends _$AppDatabase {
 
   // ==================== SYNC STATUS QUERIES ====================
 
-  /// Get pending progress entries count
+  /// Get pending progress entries count.
+  ///
+  /// Uses a SQL COUNT aggregate rather than loading all rows so that the
+  /// query cost is O(1) regardless of how many pending entries exist.
   Future<int> getPendingProgressCount() async {
     final query = selectOnly(progressEntries)
       ..addColumns([progressEntries.id.count()])
@@ -268,7 +517,12 @@ class AppDatabase extends _$AppDatabase {
     return result.read(progressEntries.id.count()) ?? 0;
   }
 
-  /// Get sync status summary
+  /// Get sync status summary.
+  ///
+  /// Returns a map of [SyncStatus] → count for all progress entries. Useful
+  /// for the sync status dashboard. Each status requires a separate query
+  /// because Drift's typed DSL does not support GROUP BY on an integer column
+  /// directly — iterating over enum values is the pragmatic alternative.
   Future<Map<SyncStatus, int>> getSyncStatusSummary() async {
     final result = <SyncStatus, int>{};
     for (final status in SyncStatus.values) {
@@ -282,7 +536,16 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-/// Open database connection
+/// Open (or create) the SQLite database file on the device.
+///
+/// [LazyDatabase] defers the actual file open until the first query, which
+/// avoids blocking the UI thread during app startup. The file lives in the
+/// application documents directory so it is backed up by iOS/Android cloud
+/// backup and is not cleared by the OS temp-file cleaner.
+///
+/// [NativeDatabase.createInBackground] spawns a dedicated isolate for all
+/// database I/O, keeping the main UI thread responsive even during large
+/// batch inserts.
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
@@ -293,14 +556,21 @@ LazyDatabase _openConnection() {
 
 // ==================== TABLE DEFINITIONS ====================
 
-/// Progress entries table for offline storage
+/// Progress entries table for offline storage.
+///
+/// Each row represents a single quantity measurement entered by a site engineer
+/// for a specific BOQ item + activity combination. Rows are written locally
+/// first and synced to the server later by [SyncService].
 class ProgressEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
+  /// Server-assigned ID returned after a successful sync; null until synced.
   IntColumn get serverId => integer().nullable()();
   IntColumn get projectId => integer()();
   IntColumn get activityId => integer()();
   IntColumn get epsNodeId => integer()();
   IntColumn get boqItemId => integer()();
+  /// Reused to carry the execution plan ID (planId) when submitting to the
+  /// measurements endpoint. Named microActivityId for historical reasons.
   IntColumn get microActivityId => integer().nullable()();
   RealColumn get quantity => real()();
   TextColumn get date => text()();
@@ -315,7 +585,11 @@ class ProgressEntries extends Table {
   TextColumn get idempotencyKey => text().nullable()(); // For safe retry
 }
 
-/// Daily logs table for offline storage
+/// Daily logs table for offline storage.
+///
+/// Records planned vs. actual quantities per micro-activity per day, along
+/// with optional delay reasons and labour counts. Follows the same
+/// pending → syncing → synced/error lifecycle as [ProgressEntries].
 class DailyLogs extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get serverId => integer().nullable()();
@@ -335,22 +609,39 @@ class DailyLogs extends Table {
   TextColumn get idempotencyKey => text().nullable()();
 }
 
-/// Sync queue for tracking pending uploads
+/// Generic sync queue for tracking any pending server mutation.
+///
+/// Unlike [ProgressEntries] and [DailyLogs] which have dedicated tables, the
+/// SyncQueue handles ad-hoc operations (quality RFIs, workflow steps, site
+/// observations, etc.) by serialising the full payload as JSON. This means
+/// new operation types can be added without schema migrations — only the
+/// [SyncService] switch statement needs updating.
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
+  /// Logical type of the operation, e.g. 'progress', 'daily_log',
+  /// 'quality_rfi', 'ehs_site_obs_create'. Used as the dispatch key in
+  /// [SyncService._processQualityQueue].
   TextColumn get entityType => text()(); // 'progress', 'daily_log', 'photo'
   IntColumn get entityId => integer()();
   TextColumn get operation => text()(); // 'create', 'update', 'delete'
+  /// Full JSON-encoded payload to be sent to the server. Storing the entire
+  /// payload avoids the need to re-query the source table at sync time.
   TextColumn get payload => text()(); // JSON payload
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
   TextColumn get lastError => text().nullable()();
+  /// Higher priority items are processed first. Used to ensure user-initiated
+  /// operations (e.g. RFI raises) complete before background refreshes.
   IntColumn get priority =>
       integer().withDefault(const Constant(0))(); // Higher = more important
 }
 
-/// Cached projects for offline viewing
+/// Cached projects for offline viewing.
+///
+/// The composite [rawData] column stores the full server JSON so that the app
+/// can render any project detail without needing individual column migrations
+/// when the server response schema evolves.
 class CachedProjects extends Table {
   IntColumn get id => integer()();
   TextColumn get name => text()();
@@ -365,7 +656,10 @@ class CachedProjects extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Cached activities for offline viewing
+/// Cached activities for offline viewing.
+///
+/// A project-scoped index exists on [projectId] (added in v5) to keep
+/// per-project queries fast even when the table holds data for many projects.
 class CachedActivities extends Table {
   IntColumn get id => integer()();
   IntColumn get projectId => integer()();
@@ -382,7 +676,10 @@ class CachedActivities extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Cached BOQ items for offline viewing
+/// Cached BOQ items for offline viewing.
+///
+/// Bill of Quantities items are referenced when entering progress quantities
+/// to validate that the entered amount does not exceed the planned total.
 class CachedBoqItems extends Table {
   IntColumn get id => integer()();
   IntColumn get projectId => integer()();
@@ -397,10 +694,15 @@ class CachedBoqItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Cached EPS nodes for hierarchical navigation
+/// Cached EPS nodes for hierarchical navigation.
+///
+/// The EPS (Engineering Project Structure) tree mirrors the server-side
+/// project hierarchy: project → phase → building → floor → zone.
+/// [type] stores the level label so the UI can render the appropriate icon.
 class CachedEpsNodes extends Table {
   IntColumn get id => integer()();
   IntColumn get projectId => integer()();
+  /// Null for root-level nodes; set for all child nodes.
   IntColumn get parentId => integer().nullable()();
   TextColumn get name => text()();
   TextColumn get code => text().nullable()();
@@ -414,13 +716,21 @@ class CachedEpsNodes extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Cached quality activity lists (one per list, keyed by list id + project)
+/// Cached quality activity lists (one per list, keyed by list id + project).
+///
+/// An activity list groups a set of quality inspection activities for a
+/// specific work package (e.g. "Foundation Concrete Pour"). Lists are scoped
+/// to a project and optionally to an EPS node.
 class CachedQualityActivityLists extends Table {
   IntColumn get id => integer()();
   IntColumn get projectId => integer()();
+  /// Optional — when non-null, the list is specific to this EPS node (e.g. a
+  /// floor-level inspection checklist).
   IntColumn get epsNodeId => integer().nullable()();
   TextColumn get name => text()();
   TextColumn get description => text().nullable()();
+  /// Denormalised count so the list view can show "12 activities" without
+  /// loading the activities themselves.
   IntColumn get activityCount => integer().withDefault(const Constant(0))();
   TextColumn get rawData => text()();
   DateTimeColumn get cachedAt =>
@@ -430,17 +740,26 @@ class CachedQualityActivityLists extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Cached quality activities (one per activity, keyed by activity id)
+/// Cached quality activities (one per activity, keyed by activity id).
+///
+/// Each row represents a single line item in a quality inspection checklist.
+/// [holdPoint] and [witnessPoint] flags control whether the activity requires
+/// a mandatory stop (hold) or optional observation (witness) by a third party.
 class CachedQualityActivities extends Table {
   IntColumn get id => integer()();
   IntColumn get listId => integer()();
   IntColumn get projectId => integer()();
   IntColumn get epsNodeId => integer().nullable()();
+  /// Display order within the checklist — the UI sorts ascending by this value.
   IntColumn get sequence => integer().withDefault(const Constant(0))();
   TextColumn get activityName => text()();
+  /// Lifecycle state: NOT_STARTED → IN_PROGRESS → PENDING_INSPECTION →
+  /// APPROVED / REJECTED.
   TextColumn get status =>
       text().withDefault(const Constant('NOT_STARTED'))();
+  /// 1 if this is a hold point (work must stop until approved), else 0.
   IntColumn get holdPoint => integer().withDefault(const Constant(0))();
+  /// 1 if this is a witness point (third party should observe), else 0.
   IntColumn get witnessPoint => integer().withDefault(const Constant(0))();
   TextColumn get rawData => text()();
   DateTimeColumn get cachedAt =>
@@ -450,18 +769,70 @@ class CachedQualityActivities extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Cached quality site observations.
+///
+/// Site observations are ad-hoc defects or non-conformances raised by
+/// inspectors. Unlike structured checklist activities they use a string UUID
+/// as the primary key (server-generated).
+class CachedQualitySiteObs extends Table {
+  /// UUID assigned by the server — stored as text to avoid int overflow on
+  /// 64-bit UUIDs and to match the server's string type.
+  TextColumn get id => text()();
+  IntColumn get projectId => integer()();
+  TextColumn get status => text()();
+  TextColumn get severity => text().nullable()();
+  TextColumn get rawData => text()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Cached EHS site observations.
+///
+/// Health, Safety and Environment observations follow the same open/rectify/
+/// close lifecycle as quality site observations but are managed by a separate
+/// team (the EHS department) and have their own API endpoints.
+class CachedEhsSiteObs extends Table {
+  TextColumn get id => text()();
+  IntColumn get projectId => integer()();
+  TextColumn get status => text()();
+  TextColumn get severity => text().nullable()();
+  TextColumn get rawData => text()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ==================== SYNC STATUS ENUM ====================
 
+/// Represents the lifecycle state of a locally-stored data row with respect
+/// to server synchronisation.
+///
+/// The integer [value] is persisted in the `sync_status` column so that
+/// ordering and equality checks work natively in SQL without a string lookup.
 enum SyncStatus {
+  /// Row has been written locally but not yet attempted to sync.
   pending(0),
+  /// Sync attempt is currently in progress for this row.
   syncing(1),
+  /// Successfully synced to the server.
   synced(2),
+  /// Last sync attempt failed but the row is eligible for retry (network/5xx).
   failed(3),
-  error(4); // Permanent error - requires user action
+  /// Permanent error — the server rejected the data (4xx) and user action
+  /// is required to correct or delete the row.
+  error(4);
 
   final int value;
   const SyncStatus(this.value);
 
+  /// Convert a raw integer stored in SQLite back to the enum variant.
+  ///
+  /// Defaults to [pending] if the stored value is unrecognised, which is
+  /// safer than throwing — an unrecognised status should be retried rather
+  /// than silently dropped.
   static SyncStatus fromValue(int value) {
     return SyncStatus.values.firstWhere(
       (e) => e.value == value,

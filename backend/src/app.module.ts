@@ -49,6 +49,10 @@ import { RecoveryPlan } from './planning/entities/recovery-plan.entity';
 import { QuantityProgressRecord } from './planning/entities/quantity-progress-record.entity';
 import { ScheduleVersion } from './planning/entities/schedule-version.entity';
 import { ActivityVersion } from './planning/entities/activity-version.entity';
+import { ReleaseStrategy } from './planning/entities/release-strategy.entity';
+import { ReleaseStrategyCondition } from './planning/entities/release-strategy-condition.entity';
+import { ReleaseStrategyStep } from './planning/entities/release-strategy-step.entity';
+import { ReleaseStrategyVersionAudit } from './planning/entities/release-strategy-version-audit.entity';
 
 import { ResourcesModule } from './resources/resources.module';
 import { ResourceMaster } from './resources/entities/resource-master.entity';
@@ -182,6 +186,10 @@ import { NotificationsModule } from './notifications/notifications.module';
         RecoveryPlan,
         ScheduleVersion,
         ActivityVersion,
+        ReleaseStrategy,
+        ReleaseStrategyCondition,
+        ReleaseStrategyStep,
+        ReleaseStrategyVersionAudit,
         // Resources
         ResourceMaster,
         AnalysisTemplate,

@@ -1,0 +1,50 @@
+﻿[90m(/app/backend/[39msrc/planning/planning.service.ts:727:18[90m)[39m {
+    length: [33m117[39m,
+    severity: [32m'ERROR'[39m,
+    code: [32m'42P01'[39m,
+    detail: [90mundefined[39m,
+    hint: [90mundefined[39m,
+    position: [32m'816'[39m,
+    internalPosition: [90mundefined[39m,
+    internalQuery: [90mundefined[39m,
+    where: [90mundefined[39m,
+    schema: [90mundefined[39m,
+    table: [90mundefined[39m,
+    column: [90mundefined[39m,
+    dataType: [90mundefined[39m,
+    constraint: [90mundefined[39m,
+    file: [32m'parse_relation.c'[39m,
+    line: [32m'1392'[39m,
+    routine: [32m'parserOpenTable'[39m
+  },
+  length: [33m117[39m,
+  severity: [32m'ERROR'[39m,
+  code: [32m'42P01'[39m,
+  detail: [90mundefined[39m,
+  hint: [90mundefined[39m,
+  position: [32m'816'[39m,
+  internalPosition: [90mundefined[39m,
+  internalQuery: [90mundefined[39m,
+  where: [90mundefined[39m,
+  schema: [90mundefined[39m,
+  table: [90mundefined[39m,
+  column: [90mundefined[39m,
+  dataType: [90mundefined[39m,
+  constraint: [90mundefined[39m,
+  file: [32m'parse_relation.c'[39m,
+  line: [32m'1392'[39m,
+  routine: [32m'parserOpenTable'[39m
+}
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PlanningService] getUnmappedBoqItems Debug: Found 5 BOQ Items and 1 existing Plan Links.
+[PermissionsGuard] Admin bypass for user: admin
+[PlanningService] getUnmappedBoqItems Debug: Found 5 BOQ Items and 1 existing Plan Links.
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin
+[PermissionsGuard] Admin bypass for user: admin

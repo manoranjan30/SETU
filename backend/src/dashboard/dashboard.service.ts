@@ -6,6 +6,9 @@ import { Activity } from '../wbs/entities/activity.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
+import { SiteObservation, SiteObservationSeverity, SiteObservationStatus } from '../quality/entities/site-observation.entity';
+import { EhsIncident, IncidentType } from '../ehs/entities/ehs-incident.entity';
+import { EhsManhours } from '../ehs/entities/ehs-manhours.entity';
 
 @Injectable()
 export class DashboardService {
@@ -20,6 +23,12 @@ export class DashboardService {
     private readonly laborRepo: Repository<DailyLaborPresence>,
     @InjectRepository(WoActivityPlan)
     private readonly planRepo: Repository<WoActivityPlan>,
+    @InjectRepository(SiteObservation)
+    private readonly obsRepo: Repository<SiteObservation>,
+    @InjectRepository(EhsIncident)
+    private readonly incidentRepo: Repository<EhsIncident>,
+    @InjectRepository(EhsManhours)
+    private readonly manhoursRepo: Repository<EhsManhours>,
   ) {}
 
   async getPortfolioSummary() {
@@ -218,5 +227,117 @@ export class DashboardService {
     }
 
     return alerts;
+  }
+
+  async getQualityMetrics() {
+    const today = new Date();
+    
+    const openObservations = await this.obsRepo.count({
+      where: { status: SiteObservationStatus.OPEN },
+    });
+
+    const pendingApprovals = await this.obsRepo.count({
+      where: { status: SiteObservationStatus.RECTIFIED },
+    });
+
+    const criticalNCRs = await this.obsRepo.count({
+      where: {
+        status: SiteObservationStatus.OPEN,
+        severity: SiteObservationSeverity.CRITICAL,
+      },
+    });
+
+    // Closed this week
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - 7);
+    const closedThisWeek = await this.obsRepo.count({
+      where: {
+        status: SiteObservationStatus.CLOSED,
+        closedAt: MoreThanOrEqual(weekStart),
+      },
+    });
+
+    // NCR Aging Distribution for openly active ones
+    const now = new Date();
+    const allOpen = await this.obsRepo.find({
+      where: { status: SiteObservationStatus.OPEN },
+      select: ['createdAt'],
+    });
+
+    let under7Days = 0;
+    let under14Days = 0;
+    let over14Days = 0;
+
+    allOpen.forEach((obs) => {
+      const daysDiff = Math.floor(
+        (now.getTime() - new Date(obs.createdAt).getTime()) / (1000 * 3600 * 24)
+      );
+      if (daysDiff < 7) {
+        under7Days++;
+      } else if (daysDiff <= 14) {
+        under14Days++;
+      } else {
+        over14Days++;
+      }
+    });
+
+    return {
+      openObservations,
+      closedThisWeek,
+      criticalNCRs,
+      pendingApprovals,
+      ncrAging: [
+        { name: '< 7 Days', count: under7Days },
+        { name: '7-14 Days', count: under14Days },
+        { name: '> 14 Days', count: over14Days },
+      ],
+    };
+  }
+
+  async getEhsMetrics() {
+    const totalManhoursRes = await this.manhoursRepo
+      .createQueryBuilder('m')
+      .select('SUM(m.safeManhours)', 'totalSafe')
+      .getRawOne();
+      
+    const rawSafeManhours = Number(totalManhoursRes?.totalSafe || 0);
+    // Format large numbers (like 124,500)
+    const safeManHoursStr = rawSafeManhours > 1000 
+      ? rawSafeManhours.toLocaleString('en-US') 
+      : String(rawSafeManhours);
+
+    // Incidents this quarter
+    const quarterStart = new Date();
+    quarterStart.setMonth(Math.floor(quarterStart.getMonth() / 3) * 3, 1);
+    quarterStart.setHours(0, 0, 0, 0);
+
+    const ltiCount = await this.incidentRepo.count({
+      where: { 
+        incidentType: IncidentType.LTI,
+        createdAt: MoreThanOrEqual(quarterStart)
+      },
+    });
+
+    const mtcCount = await this.incidentRepo.count({
+      where: { 
+        incidentType: IncidentType.MTC,
+        createdAt: MoreThanOrEqual(quarterStart)
+      },
+    });
+
+    const nearMissCount = await this.incidentRepo.count({
+      where: { 
+        incidentType: IncidentType.NEAR_MISS,
+        createdAt: MoreThanOrEqual(quarterStart)
+      },
+    });
+
+    return {
+      safeManHours: safeManHoursStr,
+      lti: ltiCount,
+      nearMisses: nearMissCount,
+      medicalTreated: mtcCount,
+      complianceRate: 98 // Hardcoded mapping for PTW as a placeholder till audits feature
+    };
   }
 }

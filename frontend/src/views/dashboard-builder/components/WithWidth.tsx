@@ -1,14 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 
 /**
  * Custom HOC to provide container width to components.
  * Replaces react-grid-layout's WidthProvider which has build-time resolution issues in Vite/v2.
  */
 export function withWidth<P extends { width?: number }>(
-  ComposedComponent: React.ComponentType<P>
-): React.FC<Omit<P, 'width'> & { measureBeforeMount?: boolean; className?: string; style?: React.CSSProperties; children?: React.ReactNode }> {
+  ComposedComponent: React.ComponentType<P>,
+): React.FC<
+  Omit<P, "width"> & {
+    measureBeforeMount?: boolean;
+    className?: string;
+    style?: React.CSSProperties;
+    children?: React.ReactNode;
+  }
+> {
   return function WidthProviderWrapper(props) {
-    const { measureBeforeMount = false, className, style, children, ...rest } = props;
+    const {
+      measureBeforeMount = false,
+      className,
+      style,
+      children,
+      ...rest
+    } = props;
     const [width, setWidth] = useState(1280);
     const [mounted, setMounted] = useState(false);
     const elementRef = useRef<HTMLDivElement>(null);
@@ -37,17 +50,16 @@ export function withWidth<P extends { width?: number }>(
     }, [mounted]);
 
     if (measureBeforeMount && !mounted) {
-      return (
-        <div className={className} style={style} ref={elementRef} />
-      );
+      return <div className={className} style={style} ref={elementRef} />;
     }
 
     return (
-      <div className={className} style={{ ...style, width: '100%' }} ref={elementRef}>
-        <ComposedComponent
-          {...(rest as unknown as P)}
-          width={width}
-        >
+      <div
+        className={className}
+        style={{ ...style, width: "100%" }}
+        ref={elementRef}
+      >
+        <ComposedComponent {...(rest as unknown as P)} width={width}>
           {children}
         </ComposedComponent>
       </div>

@@ -69,10 +69,16 @@ export class ExecutionController {
       return { error: 'Feature not enabled', enabled: false };
     }
 
-    return this.breakdownService.getBreakdown(
-      +activityId,
-      +epsNodeId,
-    );
+    return this.breakdownService.getBreakdown(+activityId, +epsNodeId);
+  }
+
+  @Get('vendors/:activityId')
+  @Permissions('EXECUTION.ENTRY.READ')
+  async getVendorsForActivity(@Param('activityId') activityId: string) {
+    if (!FEATURES.ENABLE_MICRO_PROGRESS) {
+      return { activityId: +activityId, vendors: [], hasVendors: false };
+    }
+    return this.breakdownService.getVendorSummary(+activityId);
   }
 
   @Get('has-micro/:activityId')
@@ -109,11 +115,7 @@ export class ExecutionController {
       notes: dto.remarks || '',
     }));
 
-    return await this.service.batchSaveMeasurements(
-      projectId,
-      entries,
-      userId,
-    );
+    return await this.service.batchSaveMeasurements(projectId, entries, userId);
   }
 
   @Get(':projectId/approvals/pending')

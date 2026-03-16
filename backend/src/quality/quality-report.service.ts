@@ -41,8 +41,10 @@ export class QualityReportService {
         'activity',
         'epsNode',
         'list',
+        'activity.checklistTemplate',
         'stages',
         'stages.stageTemplate',
+        'stages.stageTemplate.template',
         'stages.items',
         'stages.items.itemTemplate',
         'stages.signatures',
@@ -66,6 +68,22 @@ export class QualityReportService {
 
     const locationPath = await this.getEpsPath(inspection.epsNodeId);
     const projectName = locationPath.split(' / ')[0] || 'N/A';
+    const primaryTemplate =
+      inspection.stages?.find((stage) => stage.stageTemplate?.template)
+        ?.stageTemplate?.template || inspection.activity?.checklistTemplate;
+    const checklistNo =
+      primaryTemplate?.checklistNo ??
+      `CL-QA-${String(inspection.listId).padStart(3, '0')}`;
+    const revNo = primaryTemplate?.revNo ?? '01';
+    const activityTitle =
+      primaryTemplate?.activityTitle ??
+      primaryTemplate?.name ??
+      inspection.activity?.activityName ??
+      'CHECKLIST';
+    const activityType = primaryTemplate?.activityType ?? '';
+    const drawingNo = inspection.drawingNo ?? '';
+    const contractorName =
+      inspection.contractorName ?? inspection.vendorName ?? 'Internal Team / Vendor';
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -117,11 +135,7 @@ export class QualityReportService {
         .text('Checklist No:', startX + 355, currentY + 5);
       doc
         .font('Helvetica')
-        .text(
-          `CL-QA-${String(inspection.listId).padStart(3, '0')}`,
-          startX + 430,
-          currentY + 5,
-        );
+        .text(checklistNo, startX + 430, currentY + 5);
 
       currentY += headerRowHeight;
       doc
@@ -136,7 +150,7 @@ export class QualityReportService {
         .text(locationPath, startX + 60, currentY + 5, { width: 280 });
 
       doc.font('Helvetica-Bold').text('Rev No:', startX + 355, currentY + 5);
-      doc.font('Helvetica').text('02', startX + 430, currentY + 5);
+      doc.font('Helvetica').text(revNo, startX + 430, currentY + 5);
 
       currentY += headerRowHeight;
       doc
@@ -148,7 +162,7 @@ export class QualityReportService {
       doc.font('Helvetica-Bold').text('Contractor :', startX + 5, currentY + 5);
       doc
         .font('Helvetica')
-        .text('Internal Team / Vendor', startX + 60, currentY + 5);
+        .text(contractorName, startX + 60, currentY + 5);
 
       doc.font('Helvetica-Bold').text('Date:', startX + 355, currentY + 5);
       doc
@@ -162,8 +176,12 @@ export class QualityReportService {
         .stroke();
 
       // Row 4: Dwg No (Centered vertically in the remaining space of header)
+      doc.font('Helvetica-Bold').text('Title:', startX + 5, currentY + 5);
+      doc
+        .font('Helvetica')
+        .text(activityTitle, startX + 60, currentY + 5, { width: 280 });
       doc.font('Helvetica-Bold').text('Dwg No:', startX + 355, currentY + 5);
-      doc.font('Helvetica').text('GFC-DWG-001', startX + 430, currentY + 5);
+      doc.font('Helvetica').text(drawingNo, startX + 430, currentY + 5);
 
       currentY += headerRowHeight;
 
@@ -177,6 +195,14 @@ export class QualityReportService {
           currentY + 5,
         );
       currentY += 20;
+
+      if (activityType) {
+        doc
+          .fontSize(10)
+          .font('Helvetica-Bold')
+          .text(`Activity: ${activityType}`, startX, currentY + 4);
+        currentY += 18;
+      }
 
       if (isApproved) {
         doc
@@ -199,6 +225,47 @@ export class QualityReportService {
       }
       doc.fillColor('black');
       currentY += 20;
+
+      if (workflowRun?.status === 'IN_PROGRESS') {
+        const pendingStep = [...(workflowRun.steps || [])]
+          .sort((a, b) => a.stepOrder - b.stepOrder)
+          .find((step) => step.stepOrder === workflowRun.currentStepOrder);
+        if (pendingStep) {
+          doc
+            .fontSize(9)
+            .font('Helvetica-Bold')
+            .fillColor('#B45309')
+            .text(
+              `Pending Approval Level: ${pendingStep.stepName || `Level ${pendingStep.stepOrder}`}`,
+              startX,
+              currentY + 2,
+            );
+          doc.fillColor('black');
+          currentY += 18;
+        }
+      }
+
+      if (workflowRun?.strategyName || workflowRun?.processCode || workflowRun?.documentType) {
+        const strategyBits = [
+          workflowRun?.strategyName
+            ? `Strategy: ${workflowRun.strategyName}${workflowRun.releaseStrategyVersion ? ` v${workflowRun.releaseStrategyVersion}` : ''}`
+            : null,
+          workflowRun?.processCode ? `Process: ${workflowRun.processCode}` : null,
+          workflowRun?.documentType ? `Document: ${workflowRun.documentType}` : null,
+        ].filter(Boolean);
+
+        if (strategyBits.length > 0) {
+          doc
+            .fontSize(9)
+            .font('Helvetica')
+            .fillColor('#374151')
+            .text(strategyBits.join('    '), startX, currentY + 2, {
+              width: pageWidth,
+            });
+          doc.fillColor('black');
+          currentY += 18;
+        }
+      }
 
       // DRAW MAIN CHECKLIST TABLE
       const colWidths = {
@@ -274,6 +341,16 @@ export class QualityReportService {
       let siNo = 1;
       if (inspection.stages) {
         for (const stage of inspection.stages) {
+          const latestStageSignature =
+            stage.signatures && stage.signatures.length > 0
+              ? [...stage.signatures]
+                  .filter((sig) => !sig.isReversed)
+                  .sort(
+                    (a, b) =>
+                      new Date(b.createdAt).getTime() -
+                      new Date(a.createdAt).getTime(),
+                  )[0]
+              : null;
           // Stage Header (Section)
           doc
             .fillColor('#E5E7EB')
@@ -289,6 +366,27 @@ export class QualityReportService {
               currentY + 5,
               { width: pageWidth, align: 'center' },
             );
+          if (latestStageSignature) {
+            doc
+              .font('Helvetica')
+              .fontSize(7)
+              .fillColor('#065F46')
+              .text(
+                `Approved by ${latestStageSignature.signerDisplayName || latestStageSignature.signedBy}${
+                  latestStageSignature.signerCompany
+                    ? ` • ${latestStageSignature.signerCompany}`
+                    : ''
+                }${
+                  latestStageSignature.signerRoleLabel
+                    ? ` • ${latestStageSignature.signerRoleLabel}`
+                    : ''
+                }`,
+                startX + 8,
+                currentY + 4,
+                { width: pageWidth - 16, align: 'right' },
+              )
+              .fillColor('black');
+          }
           doc.rect(startX, currentY, pageWidth, 18).stroke();
           currentY += 18;
 
@@ -435,8 +533,39 @@ export class QualityReportService {
         const sortedSteps = [...workflowRun.steps].sort(
           (a, b) => a.stepOrder - b.stepOrder,
         );
+
+        const activeStageApprovals = (inspection.stages || [])
+          .map((stage) => {
+            const signatures = (stage.signatures || [])
+              .filter((sig) => !sig.isReversed)
+              .sort(
+                (a, b) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime(),
+              );
+            const stageApprovals = signatures.filter(
+              (sig) => sig.actionType === 'STAGE_APPROVE',
+            );
+            const stageApprovalLevels = sortedSteps.map((step) => {
+              const signature =
+                stageApprovals.find(
+                  (sig) => Number(sig.approvalLevelOrder) === step.stepOrder,
+                ) || null;
+              return {
+                stepOrder: step.stepOrder,
+                stepName: step.stepName || `Level ${step.stepOrder}`,
+                signature,
+              };
+            });
+            return {
+              stage,
+              stageApprovalLevels,
+            };
+          })
+          .filter((row) => row.stage);
+
         for (const step of sortedSteps) {
-          const rowHeight = 20;
+          const rowHeight = 26;
           if (currentY + rowHeight > doc.page.height - 50) {
             doc.addPage();
             currentY = 40;
@@ -445,14 +574,21 @@ export class QualityReportService {
           doc.rect(startX, currentY, pageWidth, rowHeight).stroke();
           doc.font('Helvetica').fontSize(8);
           doc.text(
-            step.workflowNode?.label || 'Step',
+            step.stepName || step.workflowNode?.label || 'Step',
             startX + 5,
-            currentY + 6,
+            currentY + 5,
           );
           doc.text(
-            step.signedBy || '-',
+            [
+              step.signerDisplayName || step.signedBy,
+              step.signerCompany,
+              step.signerRole,
+            ]
+              .filter(Boolean)
+              .join(' - ') || '-',
             startX + wfColWidths.step + 5,
-            currentY + 6,
+            currentY + 5,
+            { width: wfColWidths.roles - 10 },
           );
 
           const statusColor =
@@ -467,9 +603,19 @@ export class QualityReportService {
             .text(
               step.status,
               startX + wfColWidths.step + wfColWidths.roles + 5,
-              currentY + 6,
+              currentY + 5,
             )
             .fillColor('black');
+          if ((step.minApprovalsRequired || 1) > 1) {
+            doc
+              .font('Helvetica')
+              .fontSize(7)
+              .text(
+                `${step.currentApprovalCount || 0}/${step.minApprovalsRequired} approvals`,
+                startX + wfColWidths.step + wfColWidths.roles + 5,
+                currentY + 14,
+              );
+          }
           doc
             .font('Helvetica')
             .text(
@@ -481,12 +627,111 @@ export class QualityReportService {
                 wfColWidths.roles +
                 wfColWidths.status +
                 5,
-              currentY + 6,
+              currentY + 5,
             );
 
           currentY += rowHeight;
         }
         currentY += 20;
+
+        if (activeStageApprovals.length > 0) {
+          if (currentY + 80 > doc.page.height - 50) {
+            doc.addPage();
+            currentY = 40;
+          }
+
+          doc
+            .fontSize(10)
+            .font('Helvetica-Bold')
+            .fillColor('#0F766E')
+            .text('STAGE APPROVAL SUMMARY', startX, currentY);
+          doc.fillColor('black');
+          currentY += 18;
+
+          const stageColWidths = { stage: 150, level: 120, approver: 190, date: 60 };
+          doc.rect(startX, currentY, pageWidth, 15).stroke();
+          doc.fontSize(8).font('Helvetica-Bold');
+          doc.text('STAGE', startX + 5, currentY + 4);
+          doc.text('LEVEL', startX + stageColWidths.stage + 5, currentY + 4);
+          doc.text(
+            'SIGNED BY / ROLE',
+            startX + stageColWidths.stage + stageColWidths.level + 5,
+            currentY + 4,
+          );
+          doc.text(
+            'DATE',
+            startX +
+              stageColWidths.stage +
+              stageColWidths.level +
+              stageColWidths.approver +
+              5,
+            currentY + 4,
+          );
+          currentY += 15;
+
+          for (const row of activeStageApprovals) {
+            const levels = row.stageApprovalLevels?.length
+              ? row.stageApprovalLevels
+              : [{ stepOrder: null, stepName: 'Stage Approval', signature: null }];
+
+            for (let index = 0; index < levels.length; index += 1) {
+              const level = levels[index];
+              const rowHeight = 24;
+              if (currentY + rowHeight > doc.page.height - 50) {
+                doc.addPage();
+                currentY = 40;
+              }
+
+              doc.rect(startX, currentY, pageWidth, rowHeight).stroke();
+              doc.font('Helvetica').fontSize(8);
+              doc.text(
+                index === 0
+                  ? row.stage.stageTemplate?.name || `Stage #${row.stage.id}`
+                  : '',
+                startX + 5,
+                currentY + 6,
+                { width: stageColWidths.stage - 10 },
+              );
+              doc.text(
+                `Level ${level.stepOrder ?? '-'}: ${level.stepName || 'Approval'}`,
+                startX + stageColWidths.stage + 5,
+                currentY + 6,
+                { width: stageColWidths.level - 10 },
+              );
+              doc.text(
+                level.signature
+                  ? [
+                      level.signature.signerDisplayName ||
+                        level.signature.signedBy,
+                      level.signature.signerCompany,
+                      level.signature.signerRoleLabel,
+                      level.signature.isAutoInherited
+                        ? '(Auto-filled)'
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' - ')
+                  : 'Pending stage approval',
+                startX + stageColWidths.stage + stageColWidths.level + 5,
+                currentY + 6,
+                { width: stageColWidths.approver - 10 },
+              );
+              doc.text(
+                level.signature?.createdAt
+                  ? new Date(level.signature.createdAt).toLocaleDateString()
+                  : '-',
+                startX +
+                  stageColWidths.stage +
+                  stageColWidths.level +
+                  stageColWidths.approver +
+                  5,
+                currentY + 6,
+              );
+              currentY += rowHeight;
+            }
+          }
+          currentY += 18;
+        }
       } else {
         // Note at bottom of table
         doc.moveDown(1);
@@ -509,8 +754,25 @@ export class QualityReportService {
             if (step.status === 'COMPLETED' && step.signature) {
               sigs.push({
                 role:
-                  step.workflowNode?.label || step.signature.role || 'Approver',
-                signedBy: step.signedBy || step.signature.signedBy || 'Unknown',
+                  step.stepName ||
+                  step.workflowNode?.label ||
+                  step.signature.signerRoleLabel ||
+                  step.signature.role ||
+                  'Approver',
+                actionType: step.signature.actionType || 'FINAL_APPROVE',
+                signedBy:
+                  step.signerDisplayName ||
+                  step.signature.signerDisplayName ||
+                  step.signedBy ||
+                  step.signature.signedBy ||
+                  'Unknown',
+                company:
+                  step.signerCompany || step.signature.signerCompany || null,
+                roleLabel:
+                  step.signerRole ||
+                  step.signature.signerRoleLabel ||
+                  step.signature.role ||
+                  null,
                 signatureData: step.signature.signatureData,
                 date: step.completedAt
                   ? new Date(step.completedAt).toLocaleDateString()
@@ -525,9 +787,16 @@ export class QualityReportService {
           inspection.stages.forEach((stage) => {
             if (stage.signatures) {
               stage.signatures.forEach((sig) => {
+                if (sig.isReversed) return;
                 sigs.push({
-                  role: sig.role,
-                  signedBy: sig.signedBy,
+                  role:
+                    stage.stageTemplate?.name ||
+                    sig.signerRoleLabel ||
+                    sig.role,
+                  actionType: sig.actionType || 'SAVE_PROGRESS',
+                  signedBy: sig.signerDisplayName || sig.signedBy,
+                  company: sig.signerCompany || null,
+                  roleLabel: sig.signerRoleLabel || sig.role || null,
                   signatureData: sig.signatureData,
                   date: new Date(sig.createdAt).toLocaleDateString(),
                 });
@@ -537,7 +806,7 @@ export class QualityReportService {
         }
 
         if (sigs.length > 0) {
-          const sigBlockHeight = 85;
+          const sigBlockHeight = 95;
           const columnsPerRow = Math.min(4, Math.max(1, sigs.length));
           const sigColWidth = pageWidth / columnsPerRow;
           const numRows = Math.ceil(sigs.length / columnsPerRow);
@@ -579,10 +848,15 @@ export class QualityReportService {
                   .fill()
                   .stroke();
                 doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-                doc.text(sig.role, cx, y + 4, {
+                doc.text(
+                  `${sig.role}${sig.actionType ? ` (${String(sig.actionType).replace(/_/g, ' ')})` : ''}`,
+                  cx,
+                  y + 4,
+                  {
                   width: sigColWidth,
                   align: 'center',
-                });
+                  },
+                );
 
                 if (
                   sig.signatureData &&
@@ -608,7 +882,16 @@ export class QualityReportService {
                   align: 'center',
                 });
                 doc.font('Helvetica').fontSize(6).fillColor('#6B7280');
-                doc.text(sig.date, cx, y + 76, {
+                doc.text(
+                  [sig.company, sig.roleLabel].filter(Boolean).join(' • '),
+                  cx + 4,
+                  y + 76,
+                  {
+                    width: sigColWidth - 8,
+                    align: 'center',
+                  },
+                );
+                doc.text(sig.date, cx, y + 83, {
                   width: sigColWidth,
                   align: 'center',
                 });

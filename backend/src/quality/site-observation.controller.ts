@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -48,6 +49,21 @@ export class SiteObservationController {
   @Auditable('QUALITY', 'CREATE_SITE_OBS')
   create(@Body() dto: CreateSiteObservationDto, @Request() req) {
     return this.service.create(dto, req.user?.id || req.user?.userId);
+  }
+
+  @Get('categories/:projectId')
+  @Permissions('QUALITY.SITE_OBS.READ')
+  getCategories(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.service.getObservationCategories(projectId);
+  }
+
+  @Put('categories/:projectId')
+  @Permissions('QUALITY.SITE_OBS.CREATE')
+  updateCategories(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body('categories') categories: string[],
+  ) {
+    return this.service.updateObservationCategories(projectId, categories);
   }
 
   @Patch(':id/rectify')

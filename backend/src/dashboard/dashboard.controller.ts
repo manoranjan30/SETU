@@ -38,4 +38,16 @@ export class DashboardController {
   async getAlerts() {
     return this.dashboardService.getAlerts();
   }
+
+  @Get('quality-metrics')
+  @Permissions('DASHBOARD.SUMMARY.READ')
+  async getQualityMetrics() {
+    return this.dashboardService.getQualityMetrics();
+  }
+
+  @Get('ehs-metrics')
+  @Permissions('DASHBOARD.SUMMARY.READ')
+  async getEhsMetrics() {
+    return this.dashboardService.getEhsMetrics();
+  }
 }

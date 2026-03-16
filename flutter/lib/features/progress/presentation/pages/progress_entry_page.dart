@@ -15,9 +15,20 @@ import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_wi
 import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart';
 import 'package:setu_mobile/injection_container.dart';
 
+/// Progress Entry Page — the form a site engineer uses to record how much
+/// work was completed today against a WBS activity.
+///
+/// The form operates in one of two modes:
+///   • **Master schedule mode** — one text field per BOQ plan linked to the
+///     activity. Data is saved offline-first via [ProgressBloc].
+///   • **Micro schedule mode** — shows the execution breakdown table (vendor →
+///     BOQ item → micro-activity) and submits directly to the API.
+///
+/// The mode is determined at startup by querying [SetuApiClient.hasMicroSchedule].
 class ProgressEntryPage extends StatefulWidget {
   final Activity activity;
   final Project project;
+
   /// The EPS node the user was viewing when they tapped this activity.
   /// This is the correct node to pass to the execution breakdown endpoint
   /// (matches what the web frontend sends as selectedEpsIds[0]).
@@ -35,6 +46,7 @@ class ProgressEntryPage extends StatefulWidget {
 }
 
 class _ProgressEntryPageState extends State<ProgressEntryPage> {
+  // Form key used for validation before submitting master-schedule entries
   final _formKey = GlobalKey<FormState>();
   final _remarksController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
@@ -48,7 +60,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
   bool _microLoading = false;
   bool _microSubmitting = false;
   String? _microError;
-  // Keyed by "${boqIdx}_${type}_${id|'balance'}"
+  // Keyed by "${boqIdx}_${type}_${id|'balance'}" for each breakdown line item
   final Map<String, TextEditingController> _microControllers = {};
 
   // Local unsynced qty per boqItemId (pending/failed in Drift DB)
@@ -57,10 +69,13 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
   @override
   void initState() {
     super.initState();
+    // Initialise one text controller per BOQ plan (master schedule mode)
     for (final plan in widget.activity.plans) {
       _planControllers[plan.planId] = TextEditingController();
     }
+    // Query Drift for locally-saved unsynced quantities to warn the user
     _loadLocalPendingQty();
+    // Determine whether to show master or micro mode
     _checkMicroSchedule();
   }
 
@@ -74,6 +89,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           ..where((t) => t.activityId.equals(widget.activity.id)))
         .get();
     if (!mounted) return;
+    // Only count entries that are pending or failed (i.e. not yet synced)
     final pendingValues = {
       model.SyncStatus.pending.value,
       model.SyncStatus.failed.value,
@@ -95,14 +111,17 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           await sl<SetuApiClient>().hasMicroSchedule(widget.activity.id);
       if (!mounted) return;
       setState(() => _hasMicro = hasMicro);
+      // Immediately fetch the breakdown if micro schedule is active
       if (hasMicro) _fetchBreakdown();
     } catch (_) {
+      // Network error — fall back to master mode silently
       if (!mounted) return;
       setState(() => _hasMicro = false);
     }
   }
 
   /// Fetch the execution breakdown for this activity / EPS node.
+  /// Populates [_breakdown] and creates one controller per breakdown line item.
   Future<void> _fetchBreakdown() async {
     setState(() {
       _microLoading = true;
@@ -116,12 +135,15 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       final bd = ExecutionBreakdown.fromJson(raw);
       if (!mounted) return;
 
-      // Initialise one controller per line item
+      // Initialise one controller per line item (vendor_boq_type_id)
       final controllers = <String, TextEditingController>{};
-      for (int i = 0; i < bd.boqBreakdown.length; i++) {
-        for (final item in bd.boqBreakdown[i].items) {
-          final key = '${i}_${item.type}_${item.id ?? 'balance'}';
-          controllers[key] = TextEditingController();
+      for (int vi = 0; vi < bd.vendorBreakdown.length; vi++) {
+        final vb = bd.vendorBreakdown[vi];
+        for (int bi = 0; bi < vb.boqBreakdown.length; bi++) {
+          for (final item in vb.boqBreakdown[bi].items) {
+            final key = '${vi}_${bi}_${item.type}_${item.id ?? 'balance'}';
+            controllers[key] = TextEditingController();
+          }
         }
       }
       setState(() {
@@ -140,6 +162,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   @override
   void dispose() {
+    // Dispose all dynamically created text controllers to prevent memory leaks
     for (final c in _planControllers.values) {
       c.dispose();
     }
@@ -152,6 +175,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Master schedule submit ───────────────────────────────────────────────────
 
+  /// Validates the form and dispatches [SaveMultipleProgress] for all BOQ
+  /// plans that have a positive quantity entered.
+  /// Data is saved offline-first via the Drift database.
   void _handleSubmit() {
     if (!_formKey.currentState!.validate()) return;
 
@@ -159,6 +185,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     for (final plan in widget.activity.plans) {
       final qty =
           double.tryParse(_planControllers[plan.planId]?.text ?? '') ?? 0;
+      // Skip plans where the user left the field empty or entered 0
       if (qty <= 0) continue;
       // microActivityId column is repurposed to carry planId to the sync layer
       entries.add(model.ProgressEntry(
@@ -176,34 +203,45 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       ));
     }
 
+    // At least one entry must have a positive quantity
     if (entries.isEmpty) {
       _showEmptySnack();
       return;
     }
+    // Dispatch the offline-first save event
     context.read<ProgressBloc>().add(SaveMultipleProgress(entries));
   }
 
   // ── Micro schedule submit ────────────────────────────────────────────────────
 
+  /// Validates the form, collects non-zero micro entries, and calls the API
+  /// directly (micro progress bypasses the offline Drift queue).
   Future<void> _handleMicroSubmit() async {
     if (!_formKey.currentState!.validate()) return;
 
     final bd = _breakdown;
     if (bd == null) return;
 
+    // Build the list of entries from controller values
     final entries = <Map<String, dynamic>>[];
-    for (int i = 0; i < bd.boqBreakdown.length; i++) {
-      final boqBd = bd.boqBreakdown[i];
-      for (final item in boqBd.items) {
-        final key = '${i}_${item.type}_${item.id ?? 'balance'}';
-        final qty =
-            double.tryParse(_microControllers[key]?.text ?? '') ?? 0;
-        if (qty <= 0) continue;
-        entries.add({
-          'boqItemId': boqBd.boqItemId,
-          'microActivityId': item.isMicro ? item.id : null,
-          'quantity': qty,
-        });
+    for (int vi = 0; vi < bd.vendorBreakdown.length; vi++) {
+      final vb = bd.vendorBreakdown[vi];
+      for (int bi = 0; bi < vb.boqBreakdown.length; bi++) {
+        final boqBd = vb.boqBreakdown[bi];
+        for (final item in boqBd.items) {
+          final key = '${vi}_${bi}_${item.type}_${item.id ?? 'balance'}';
+          final qty =
+              double.tryParse(_microControllers[key]?.text ?? '') ?? 0;
+          if (qty <= 0) continue;
+          entries.add({
+            'boqItemId': boqBd.boqItemId,
+            if (boqBd.workOrderItemId != null)
+              'workOrderItemId': boqBd.workOrderItemId,
+            // null for direct-balance items (no micro activity ID)
+            'microActivityId': item.isMicro ? item.id : null,
+            'quantity': qty,
+          });
+        }
       }
     }
 
@@ -214,6 +252,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
     setState(() => _microSubmitting = true);
     try {
+      // Micro progress is sent directly to the API — no offline queueing
       await sl<SetuApiClient>().saveMicroProgress(
         projectId: widget.project.id,
         activityId: widget.activity.id,
@@ -238,6 +277,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     }
   }
 
+  /// Snack shown when the user taps Submit without entering any quantity.
   void _showEmptySnack() {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text('Enter quantity for at least one item'),
@@ -254,6 +294,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       appBar: AppBar(
         title: const Text('Progress Entry'),
         actions: [
+          // Live sync status indicator — tapping navigates to the sync log
           widgets.LiveSyncStatusIndicator(
             onTap: () => Navigator.push(
               context,
@@ -265,8 +306,10 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       ),
       body: BlocConsumer<ProgressBloc, ProgressState>(
         listener: (context, state) {
+          // Show success dialog when master-schedule data has been saved
           if (state is ProgressSaved) {
             _showSuccessDialog(state);
+          // Show error snack if the save operation failed
           } else if (state is ProgressError) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(state.message),
@@ -283,15 +326,21 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Activity info card with project name and current progress
                   _buildActivityInfoCard(),
                   const SizedBox(height: 20),
+                  // Date picker field — defaults to today
                   _buildDatePicker(),
                   const SizedBox(height: 20),
+                  // Routes to either micro breakdown or master plans UI
                   _buildContentSection(),
                   const SizedBox(height: 16),
+                  // Optional remarks input
                   _buildRemarksInput(),
                   const SizedBox(height: 24),
+                  // Primary submit button — adapts label and handler to the mode
                   _buildSubmitButton(state),
+                  // Sync progress indicator shown while offline entries sync
                   if (state is ProgressSyncing) ...[
                     const SizedBox(height: 16),
                     _buildSyncProgress(state),
@@ -307,8 +356,11 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Route master vs micro ────────────────────────────────────────────────────
 
+  /// Shows a spinner while [_hasMicro] is being determined, then delegates
+  /// to either [_buildBreakdownSection] (micro) or [_buildPlansSection] (master).
   Widget _buildContentSection() {
     if (_hasMicro == null) {
+      // Still checking — show a centred spinner
       return const Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 32),
@@ -322,6 +374,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Activity info card ───────────────────────────────────────────────────────
 
+  /// Card at the top of the form showing the activity name, project name,
+  /// completion percentage badge, and a linear progress bar.
   Widget _buildActivityInfoCard() {
     final progress = widget.activity.actualProgress ?? 0;
     final progressPercent = (progress * 100).toStringAsFixed(0);
@@ -346,6 +400,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         children: [
           Row(
             children: [
+              // Activity icon
               Container(
                 width: 44,
                 height: 44,
@@ -361,16 +416,19 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Activity name
                     Text(widget.activity.name,
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 15)),
                     const SizedBox(height: 2),
+                    // Project name as subtitle
                     Text(widget.project.name,
                         style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 12)),
                   ],
                 ),
               ),
+              // Completion percentage badge
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -386,6 +444,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               ),
             ],
           ),
+          // Progress bar — only shown when actual progress data exists
           if (widget.activity.actualProgress != null) ...[
             const SizedBox(height: 12),
             ClipRRect(
@@ -393,6 +452,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               child: LinearProgressIndicator(
                 value: progress,
                 backgroundColor: AppColors.divider,
+                // Green when complete, primary blue otherwise
                 valueColor: AlwaysStoppedAnimation<Color>(
                     progress >= 1.0 ? AppColors.success : AppColors.primary),
                 minHeight: 5,
@@ -406,6 +466,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Date picker ──────────────────────────────────────────────────────────────
 
+  /// Tappable date field using [InputDecorator] for consistent form styling.
   Widget _buildDatePicker() {
     return InkWell(
       onTap: _selectDate,
@@ -418,6 +479,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // Display the selected date in a human-readable format
             Text(DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
                 style: Theme.of(context).textTheme.bodyLarge),
             const Icon(Icons.chevron_right_rounded,
@@ -428,6 +490,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     );
   }
 
+  /// Opens the system date picker constrained to the last 30 days.
   Future<void> _selectDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -440,7 +503,10 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Micro breakdown UI ───────────────────────────────────────────────────────
 
+  /// Top-level widget for micro schedule mode.
+  /// Shows a loading indicator, error state, or the vendor breakdown list.
   Widget _buildBreakdownSection() {
+    // Show spinner while the breakdown API call is in-flight
     if (_microLoading) {
       return const Center(
         child:
@@ -448,6 +514,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       );
     }
 
+    // Show inline error with a Retry button
     if (_microError != null) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -469,7 +536,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     }
 
     final bd = _breakdown;
-    if (bd == null || bd.boqBreakdown.isEmpty) {
+    // No vendor breakdown — activity has a micro schedule but no Work Orders yet
+    if (bd == null || !bd.hasVendors) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -482,7 +550,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Micro schedule detected but no BOQ breakdown is configured yet.',
+              'Micro schedule active — no Work Order assignments found yet. '
+              'Link this activity to a Work Order to enable progress entry.',
               style: TextStyle(color: AppColors.warning, fontSize: 13),
             ),
           ),
@@ -493,7 +562,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Micro schedule banner
+        // Informational banner reminding the user they are in micro mode
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -506,28 +575,90 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Micro Schedule active — enter progress per micro task below.',
+                'Micro Schedule active — enter progress per Work Order below.',
                 style: TextStyle(color: Colors.blue, fontSize: 12),
               ),
             ),
           ]),
         ),
         const SizedBox(height: 12),
-        Text(
-          'Execution Breakdown  (${bd.boqBreakdown.length} BOQ item${bd.boqBreakdown.length == 1 ? '' : 's'})',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
+        // One section per vendor / Work Order
+        ...List.generate(
+          bd.vendorBreakdown.length,
+          (vi) => _buildVendorSection(vi, bd.vendorBreakdown[vi]),
         ),
-        const SizedBox(height: 8),
-        ...List.generate(bd.boqBreakdown.length,
-            (i) => _buildBoqBreakdownCard(i, bd.boqBreakdown[i])),
       ],
     );
   }
 
-  Widget _buildBoqBreakdownCard(int idx, BoqItemBreakdown boqBd) {
+  /// Section header + BOQ breakdown cards for a single vendor / Work Order.
+  Widget _buildVendorSection(int vendorIdx, VendorBreakdown vb) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Vendor / WO header bar
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              // Different icon for direct vs sub-contracted work
+              Icon(
+                vb.isDirect
+                    ? Icons.engineering_outlined
+                    : Icons.handshake_outlined,
+                size: 16,
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Vendor / contractor name
+                    Text(
+                      vb.vendorName,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                    // Work Order number if available
+                    if (vb.workOrderNumber != null)
+                      Text(
+                        'WO: ${vb.workOrderNumber}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSecondaryContainer
+                              .withOpacity(0.7),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // One card per BOQ item under this vendor
+        ...List.generate(
+          vb.boqBreakdown.length,
+          (bi) => _buildBoqBreakdownCard(vendorIdx, bi, vb.boqBreakdown[bi]),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// Card for a single BOQ item within a vendor breakdown.
+  /// Shows scope chips, an overall progress bar, and per-item input rows.
+  Widget _buildBoqBreakdownCard(int vendorIdx, int boqIdx, BoqItemBreakdown boqBd) {
+    // Compute how much has been executed across all items in this BOQ group
     final totalExec =
         boqBd.items.fold<double>(0, (s, item) => s + item.executedQty);
     final progressPct = boqBd.totalScope > 0
@@ -546,7 +677,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // BOQ description + unit of measure badge
             Row(children: [
               Expanded(
                 child: Text(boqBd.description,
@@ -570,7 +701,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             ]),
             const SizedBox(height: 10),
 
-            // Overall progress bar
+            // Overall progress bar for this BOQ item
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
@@ -585,7 +716,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             ),
             const SizedBox(height: 8),
 
-            // Scope chips
+            // Scope summary chips (Total / Micro / Direct / Done)
             Row(children: [
               _statChip('Total', boqBd.totalScope.toStringAsFixed(2)),
               const SizedBox(width: 5),
@@ -602,21 +733,26 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             const Divider(),
             const SizedBox(height: 4),
 
-            // Per-item rows
+            // One input row per micro-activity or direct-balance item
             ...List.generate(boqBd.items.length,
-                (j) => _buildBreakdownItemRow(idx, boqBd.items[j], boqBd)),
+                (j) => _buildBreakdownItemRow(vendorIdx, boqIdx, boqBd.items[j], boqBd)),
           ],
         ),
       ),
     );
   }
 
+  /// Row for a single micro or direct-balance breakdown item.
+  /// Shows a colour-coded dot, name, type badge, qty chips, and an input field
+  /// (or a "fully used" indicator when balance is zero).
   Widget _buildBreakdownItemRow(
-      int boqIdx, BreakdownItem item, BoqItemBreakdown boqBd) {
-    final key = '${boqIdx}_${item.type}_${item.id ?? 'balance'}';
+      int vendorIdx, int boqIdx, BreakdownItem item, BoqItemBreakdown boqBd) {
+    final key = '${vendorIdx}_${boqIdx}_${item.type}_${item.id ?? 'balance'}';
     final controller = _microControllers[key];
+    // Clamp to 0 so we never show a negative balance to the user
     final balance = item.balanceQty.clamp(0.0, double.maxFinite);
     final fullyUsed = balance <= 0;
+    // Blue dot for micro-activity items, amber dot for direct-balance items
     final dotColor =
         item.isMicro ? Colors.blue[600]! : const Color(0xFFF59E0B);
 
@@ -625,7 +761,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Name row + type badge
+          // Item name row with coloured dot and MICRO/DIRECT badge
           Row(children: [
             Container(
               width: 8,
@@ -639,6 +775,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                   style: const TextStyle(
                       fontSize: 13, fontWeight: FontWeight.w500)),
             ),
+            // Type badge distinguishes micro activities from direct balance
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -658,7 +795,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           ]),
           const SizedBox(height: 6),
 
-          // Qty chips
+          // Scope / Done / Balance chips
           Row(children: [
             _statChip('Scope', item.allocatedQty.toStringAsFixed(2)),
             const SizedBox(width: 4),
@@ -672,7 +809,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           ]),
           const SizedBox(height: 8),
 
-          // Input or fully-used indicator
+          // Either show "fully used" message or an input field
           if (fullyUsed)
             Container(
               padding:
@@ -691,6 +828,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               ]),
             )
           else if (controller != null)
+            // Quantity input field capped at the remaining balance
             TextFormField(
               controller: controller,
               decoration: InputDecoration(
@@ -709,6 +847,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 if (qty == null || qty <= 0) {
                   return 'Enter a valid positive number';
                 }
+                // Prevent over-entry beyond available balance
                 if (qty > balance) {
                   return 'Exceeds balance '
                       '(${balance.toStringAsFixed(2)} ${boqBd.uom ?? ''})';
@@ -723,9 +862,11 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Master schedule plans UI ─────────────────────────────────────────────────
 
+  /// Master-schedule mode: shows one [_buildPlanCard] per BOQ plan.
   Widget _buildPlansSection() {
     final plans = widget.activity.plans;
 
+    // Edge-case: activity has no plans configured
     if (plans.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
@@ -751,25 +892,33 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Section heading with plan count
         Text('BOQ Plans  (${plans.length})',
             style: Theme.of(context)
                 .textTheme
                 .titleSmall
                 ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
+        // One card per BOQ plan
         ...plans.map((plan) => _buildPlanCard(plan)),
       ],
     );
   }
 
+  /// Card for a single master-schedule BOQ plan.
+  /// Shows a stacked progress bar (approved in blue, pending in amber),
+  /// quantity chips, pending/offline warnings, and a quantity input field.
   Widget _buildPlanCard(ActivityPlan plan) {
     final balance = plan.balance;
+    // How much has been saved locally but not yet synced
     final localQty = _localPendingQty[plan.boqItemId] ?? 0;
     final fullyUsed = balance <= 0;
 
+    // Fraction of planned qty that has been approved
     final approvedPct = plan.plannedQuantity > 0
         ? (plan.approvedQty / plan.plannedQuantity).clamp(0.0, 1.0)
         : 0.0;
+    // Fraction including pending (approved + awaiting approval)
     final pendingPct = plan.plannedQuantity > 0
         ? ((plan.approvedQty + plan.pendingQty) / plan.plannedQuantity)
             .clamp(0.0, 1.0)
@@ -790,7 +939,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // Plan description + unit of measure badge
             Row(children: [
               Expanded(
                 child: Text(plan.description,
@@ -814,8 +963,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             ]),
             const SizedBox(height: 10),
 
-            // Stacked progress bar (approved + pending)
+            // Stacked progress bars: amber (pending) behind blue (approved)
             Stack(children: [
+              // Amber layer covers pending + approved range
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
@@ -826,6 +976,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                   minHeight: 7,
                 ),
               ),
+              // Blue (or green) layer covers only the approved range
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
@@ -841,7 +992,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             ]),
             const SizedBox(height: 8),
 
-            // 4-chip quantity row
+            // Four quantity chips: Planned / Approved / Pending / Balance
             Row(children: [
               _statChip('Planned', plan.plannedQuantity.toStringAsFixed(2)),
               const SizedBox(width: 6),
@@ -857,7 +1008,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                       : AppColors.info),
             ]),
 
-            // Pending approval notice
+            // Notice when there are entries awaiting manager approval
             if (plan.pendingQty > 0) ...[
               const SizedBox(height: 8),
               Container(
@@ -885,7 +1036,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               ),
             ],
 
-            // Local unsynced qty warning
+            // Notice when entries are saved locally but not yet synced
             if (localQty > 0) ...[
               const SizedBox(height: 6),
               Container(
@@ -916,7 +1067,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
             const SizedBox(height: 12),
 
-            // Quantity input
+            // Quantity input field (or "fully submitted" notice)
             if (fullyUsed)
               Container(
                 width: double.infinity,
@@ -940,6 +1091,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 ]),
               )
             else
+              // Quantity entry field — validates that the value does not
+              // exceed the remaining balance for this plan
               TextFormField(
                 controller: _planControllers[plan.planId],
                 decoration: InputDecoration(
@@ -958,6 +1111,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                   if (qty == null || qty <= 0) {
                     return 'Enter a valid positive number';
                   }
+                  // Prevent over-entry
                   if (qty > balance) {
                     return 'Exceeds balance '
                         '(${balance.toStringAsFixed(2)} ${plan.uom ?? ''})';
@@ -973,6 +1127,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Shared stat chip ─────────────────────────────────────────────────────────
 
+  /// Small labelled value chip used in both master and micro breakdown cards.
   Widget _statChip(String label, String value, {Color? color}) {
     return Expanded(
       child: Container(
@@ -984,9 +1139,11 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Small grey label above the value
             Text(label,
                 style: const TextStyle(
                     color: AppColors.textSecondary, fontSize: 10)),
+            // Bold coloured value
             Text(value,
                 style: TextStyle(
                     fontWeight: FontWeight.w700,
@@ -1001,6 +1158,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Remarks ──────────────────────────────────────────────────────────────────
 
+  /// Optional free-text remarks field shared between master and micro modes.
   Widget _buildRemarksInput() {
     return TextFormField(
       controller: _remarksController,
@@ -1016,10 +1174,15 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Submit button (handles both master and micro modes) ──────────────────────
 
+  /// Primary CTA button that adapts its label and tap handler based on the
+  /// current mode (_hasMicro). Disabled while [_hasMicro] is still null or
+  /// a submission is in progress.
   Widget _buildSubmitButton(ProgressState state) {
     final bool isMicro = _hasMicro == true;
+    // Loading state differs between micro (local flag) and master (bloc state)
     final bool isLoading =
         isMicro ? _microSubmitting : state is ProgressLoading;
+    // Disable the button while mode is undetermined or a request is running
     final bool isDisabled = _hasMicro == null || isLoading;
 
     return SizedBox(
@@ -1034,6 +1197,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         child: isLoading
+            // Show a spinner while the submission is in-flight
             ? const SizedBox(
                 width: 24,
                 height: 24,
@@ -1055,6 +1219,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     );
   }
 
+  /// Inline sync-progress indicator shown while offline entries are being
+  /// uploaded to the server (ProgressSyncing bloc state).
   Widget _buildSyncProgress(ProgressSyncing state) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1072,6 +1238,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           ),
         ),
         const SizedBox(width: 12),
+        // Show current/total count so the user knows how many items remain
         Text('Syncing… (${state.current}/${state.total})',
             style: const TextStyle(
                 color: AppColors.info, fontWeight: FontWeight.w500)),
@@ -1081,6 +1248,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Micro success dialog ─────────────────────────────────────────────────────
 
+  /// Non-dismissible success dialog shown after a successful micro submit.
+  /// Tapping "Done" pops both the dialog and the progress entry page.
   void _showMicroSuccessDialog() {
     showDialog(
       context: context,
@@ -1118,7 +1287,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context); // close dialog
-              Navigator.pop(context); // back to activities
+              Navigator.pop(context); // back to activity list
             },
             child: const Text('Done'),
           ),
@@ -1129,6 +1298,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   // ── Master success dialog ────────────────────────────────────────────────────
 
+  /// Non-dismissible dialog shown after master-schedule data is saved.
+  /// Differentiates between online (sync complete) and offline (queued) saves.
+  /// When offline, offers a "Sync Now" button to attempt an immediate upload.
   void _showSuccessDialog(ProgressSaved state) {
     showDialog(
       context: context,
@@ -1143,6 +1315,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
+                // Amber background for offline save, green for online
                 color: state.isOffline
                     ? AppColors.warning.withOpacity(0.15)
                     : AppColors.success.withOpacity(0.15),
@@ -1172,6 +1345,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 14),
             ),
+            // Show pending sync count when there are queued entries
             if (state.pendingSyncCount > 0) ...[
               const SizedBox(height: 12),
               Container(
@@ -1199,6 +1373,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
           ],
         ),
         actions: [
+          // Done: close dialog and return to the activity list
           TextButton(
             onPressed: () {
               Navigator.pop(context);
@@ -1206,6 +1381,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
             },
             child: const Text('Done'),
           ),
+          // Sync Now: close dialog and trigger an immediate sync attempt
           if (state.isOffline)
             ElevatedButton.icon(
               onPressed: () {
