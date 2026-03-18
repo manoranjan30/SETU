@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import {
   Building2,
   ChevronDown,
@@ -7,7 +7,9 @@ import {
   CopyPlus,
   Layers,
   MapPin,
+  Plus,
   Save,
+  Trash2,
 } from "lucide-react";
 import { buildingLineCoordinatesService, type BuildingLineNode } from "../../services/buildingLineCoordinates.service";
 import { useAuth } from "../../context/AuthContext";
@@ -16,8 +18,18 @@ import { PermissionCode } from "../../config/permissions";
 type EditableNode = Omit<BuildingLineNode, "children"> & {
   draftCoordinatesText: string;
   draftHeightMeters: string;
+  draftCustomFeatures: Array<{
+    id: string;
+    type: "FLOOR" | "ELEVATION" | "CUSTOM";
+    name: string;
+    coordinatesText: string;
+    heightMeters: string;
+    inheritFromBelow?: boolean;
+  }>;
   children: EditableNode[];
 };
+
+const EDITABLE_NODE_TYPES = new Set(["BLOCK", "TOWER", "FLOOR", "UNIT", "ROOM"]);
 
 function toEditable(node: BuildingLineNode): EditableNode {
   return {
@@ -25,6 +37,15 @@ function toEditable(node: BuildingLineNode): EditableNode {
     draftCoordinatesText: node.coordinatesText || "",
     draftHeightMeters:
       node.heightMeters != null ? String(node.heightMeters) : "",
+    draftCustomFeatures: (node.customFeatures || []).map((feature) => ({
+      id: feature.id,
+      type: feature.type,
+      name: feature.name,
+      coordinatesText: feature.coordinatesText || "",
+      heightMeters:
+        feature.heightMeters != null ? String(feature.heightMeters) : "",
+      inheritFromBelow: !!feature.inheritFromBelow,
+    })),
     children: (node.children || []).map(toEditable),
   };
 }
@@ -43,25 +64,79 @@ function updateNodeTree(
   };
 }
 
+function cloneCoordinatesFromSource(
+  target: EditableNode,
+  source?: EditableNode | null,
+): EditableNode {
+  if (!source) return target;
+  const clonedChildren = target.children.map((child, index) =>
+    cloneCoordinatesFromSource(child, source.children[index]),
+  );
+  return {
+    ...target,
+    draftCoordinatesText:
+      source.draftCoordinatesText || source.coordinatesText || target.draftCoordinatesText,
+    draftHeightMeters:
+      source.draftHeightMeters ||
+      (source.heightMeters != null ? String(source.heightMeters) : "") ||
+      target.draftHeightMeters,
+    children: clonedChildren,
+  };
+}
+
+function cloneFloorFromBelow(
+  node: EditableNode,
+  targetFloorId: number,
+): EditableNode {
+  const childIndex = node.children.findIndex((child) => child.id === targetFloorId);
+  if (childIndex > 0) {
+    const targetFloor = node.children[childIndex];
+    const sourceFloor = node.children[childIndex - 1];
+    const nextChildren = [...node.children];
+    nextChildren[childIndex] = cloneCoordinatesFromSource(targetFloor, sourceFloor);
+    return { ...node, children: nextChildren };
+  }
+
+  return {
+    ...node,
+    children: node.children.map((child) => cloneFloorFromBelow(child, targetFloorId)),
+  };
+}
+
 export default function BuildingLineCoordinatesPage() {
   const { projectId } = useParams();
-  const pId = Number(projectId);
+  const location = useLocation();
+  const pathMatch = location.pathname.match(/\/dashboard\/projects\/(\d+)/);
+  const pId = Number(projectId || pathMatch?.[1] || 0);
   const { hasPermission } = useAuth();
   const canWrite = hasPermission(PermissionCode.PLANNING_MATRIX_UPDATE);
   const [root, setRoot] = useState<EditableNode | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string>("");
   const [savingId, setSavingId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!pId) return;
+    if (!pId) {
+      setRoot(null);
+      setLoadError("No active project was found in the current route.");
+      return;
+    }
     setLoading(true);
+    setLoadError("");
     buildingLineCoordinatesService
       .getStructure(pId)
       .then((data) => {
         const editable = toEditable(data);
         setRoot(editable);
         setExpandedIds(new Set([editable.id, ...(editable.children || []).map((child) => child.id)]));
+      })
+      .catch((error: any) => {
+        setRoot(null);
+        setLoadError(
+          error?.response?.data?.message ||
+            "Failed to load EPS structure for this project.",
+        );
       })
       .finally(() => setLoading(false));
   }, [pId]);
@@ -91,6 +166,63 @@ export default function BuildingLineCoordinatesPage() {
     setRoot((prev) => (prev ? updateNodeTree(prev, nodeId, (node) => ({ ...node, [field]: value })) : prev));
   };
 
+  const updateCustomFeature = (
+    nodeId: number,
+    featureId: string,
+    field: "name" | "type" | "coordinatesText" | "heightMeters" | "inheritFromBelow",
+    value: string | boolean,
+  ) => {
+    setRoot((prev) =>
+      prev
+        ? updateNodeTree(prev, nodeId, (node) => ({
+            ...node,
+            draftCustomFeatures: node.draftCustomFeatures.map((feature) =>
+              feature.id === featureId ? { ...feature, [field]: value } : feature,
+            ),
+          }))
+        : prev,
+    );
+  };
+
+  const addCustomFeature = (nodeId: number, type: "FLOOR" | "ELEVATION" | "CUSTOM") => {
+    setRoot((prev) =>
+      prev
+        ? updateNodeTree(prev, nodeId, (node) => ({
+            ...node,
+            draftCustomFeatures: [
+              ...node.draftCustomFeatures,
+              {
+                id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                type,
+                name:
+                  type === "FLOOR"
+                    ? "Custom Floor"
+                    : type === "ELEVATION"
+                      ? "Elevation Marker"
+                      : "Custom Feature",
+                coordinatesText: "",
+                heightMeters: "",
+                inheritFromBelow: false,
+              },
+            ],
+          }))
+        : prev,
+    );
+  };
+
+  const removeCustomFeature = (nodeId: number, featureId: string) => {
+    setRoot((prev) =>
+      prev
+        ? updateNodeTree(prev, nodeId, (node) => ({
+            ...node,
+            draftCustomFeatures: node.draftCustomFeatures.filter(
+              (feature) => feature.id !== featureId,
+            ),
+          }))
+        : prev,
+    );
+  };
+
   const toggleExpand = (nodeId: number) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -108,6 +240,16 @@ export default function BuildingLineCoordinatesPage() {
         heightMeters: node.draftHeightMeters.trim()
           ? Number(node.draftHeightMeters)
           : null,
+        customFeatures: node.draftCustomFeatures.map((feature) => ({
+          id: feature.id,
+          type: feature.type,
+          name: feature.name,
+          coordinatesText: feature.coordinatesText.trim() || null,
+          heightMeters: feature.heightMeters.trim()
+            ? Number(feature.heightMeters)
+            : null,
+          inheritFromBelow: !!feature.inheritFromBelow,
+        })),
         structureSnapshot: node.structureSnapshot || null,
       });
       setRoot((prev) =>
@@ -118,6 +260,16 @@ export default function BuildingLineCoordinatesPage() {
               heightMeters: current.draftHeightMeters.trim()
                 ? Number(current.draftHeightMeters)
                 : null,
+              customFeatures: current.draftCustomFeatures.map((feature) => ({
+                id: feature.id,
+                type: feature.type,
+                name: feature.name,
+                coordinatesText: feature.coordinatesText.trim() || null,
+                heightMeters: feature.heightMeters.trim()
+                  ? Number(feature.heightMeters)
+                  : null,
+                inheritFromBelow: !!feature.inheritFromBelow,
+              })),
             }))
           : prev,
       );
@@ -129,11 +281,16 @@ export default function BuildingLineCoordinatesPage() {
     }
   };
 
+  const handleSameAsBelowFloor = (floorId: number) => {
+    setRoot((prev) => (prev ? cloneFloorFromBelow(prev, floorId) : prev));
+  };
+
   const renderNode = (node: EditableNode, depth = 0) => {
     const hasChildren = node.children.length > 0;
     const isExpanded = expandedIds.has(node.id);
     const structure = node.structureSnapshot;
-    const showEditor = node.type === "BLOCK" || node.type === "TOWER";
+    const showEditor = EDITABLE_NODE_TYPES.has(node.type);
+    const showFloorCloneAction = node.type === "FLOOR";
 
     return (
       <div key={node.id} className="space-y-3">
@@ -184,7 +341,13 @@ export default function BuildingLineCoordinatesPage() {
               <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
                 <label className="space-y-2">
                   <div className="text-sm font-medium text-text-primary">
-                    Building Line Coordinates
+                    {node.type === "UNIT"
+                      ? "Unit Coordinates"
+                      : node.type === "ROOM"
+                        ? "Room Coordinates"
+                        : node.type === "FLOOR"
+                          ? "Floor Coordinates"
+                          : "Building Line Coordinates"}
                   </div>
                   <textarea
                     rows={5}
@@ -221,10 +384,162 @@ export default function BuildingLineCoordinatesPage() {
                     <Save className="h-4 w-4" />
                     {savingId === node.id ? "Saving..." : "Save Coordinates"}
                   </button>
+                  {showFloorCloneAction ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSameAsBelowFloor(node.id)}
+                      disabled={!canWrite}
+                      className="inline-flex items-center gap-2 rounded-xl border border-border-default bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary disabled:opacity-50"
+                    >
+                      <CopyPlus className="h-4 w-4" />
+                      Same as Below Floor
+                    </button>
+                  ) : null}
                 </label>
               </div>
 
-              {structure?.floors?.length ? (
+              <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-text-primary">
+                      Custom Coordinate Features
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      Add custom floors, elevation markers, or any extra geometry
+                      features needed for 3D visualization.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => addCustomFeature(node.id, "FLOOR")}
+                      disabled={!canWrite}
+                      className="inline-flex items-center gap-2 rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm font-medium text-text-primary disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Custom Floor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addCustomFeature(node.id, "ELEVATION")}
+                      disabled={!canWrite}
+                      className="inline-flex items-center gap-2 rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm font-medium text-text-primary disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Elevation
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {node.draftCustomFeatures.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border-default px-4 py-3 text-sm text-text-muted">
+                      No custom features added for this element yet.
+                    </div>
+                  ) : (
+                    node.draftCustomFeatures.map((feature) => (
+                      <div
+                        key={feature.id}
+                        className="rounded-xl border border-border-default bg-surface-base p-4"
+                      >
+                        <div className="grid gap-3 lg:grid-cols-[160px_1fr_160px_auto]">
+                          <select
+                            value={feature.type}
+                            disabled={!canWrite}
+                            onChange={(e) =>
+                              updateCustomFeature(
+                                node.id,
+                                feature.id,
+                                "type",
+                                e.target.value,
+                              )
+                            }
+                            className="rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                          >
+                            <option value="FLOOR">Custom Floor</option>
+                            <option value="ELEVATION">Elevation</option>
+                            <option value="CUSTOM">Custom</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={feature.name}
+                            disabled={!canWrite}
+                            onChange={(e) =>
+                              updateCustomFeature(
+                                node.id,
+                                feature.id,
+                                "name",
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Feature name"
+                            className="rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                          />
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={feature.heightMeters}
+                            disabled={!canWrite}
+                            onChange={(e) =>
+                              updateCustomFeature(
+                                node.id,
+                                feature.id,
+                                "heightMeters",
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Height (m)"
+                            className="rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeCustomFeature(node.id, feature.id)}
+                            disabled={!canWrite}
+                            className="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-600 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={feature.coordinatesText}
+                          disabled={!canWrite}
+                          onChange={(e) =>
+                            updateCustomFeature(
+                              node.id,
+                              feature.id,
+                              "coordinatesText",
+                              e.target.value,
+                            )
+                          }
+                          placeholder="Enter custom coordinates"
+                          className="mt-3 w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                        />
+                        {node.type === "FLOOR" ? (
+                          <label className="mt-3 flex items-center gap-2 text-sm text-text-secondary">
+                            <input
+                              type="checkbox"
+                              checked={!!feature.inheritFromBelow}
+                              disabled={!canWrite}
+                              onChange={(e) =>
+                                updateCustomFeature(
+                                  node.id,
+                                  feature.id,
+                                  "inheritFromBelow",
+                                  e.target.checked,
+                                )
+                              }
+                            />
+                            Same as below floor for this feature
+                          </label>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {structure?.floors?.length && (node.type === "BLOCK" || node.type === "TOWER") ? (
                 <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                     <CopyPlus className="h-4 w-4 text-secondary" />
@@ -259,9 +574,11 @@ export default function BuildingLineCoordinatesPage() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-border-default px-4 py-3 text-sm text-text-muted">
-                  No QA/QC unit-room structure found for this element yet.
-                </div>
+                (node.type === "BLOCK" || node.type === "TOWER") ? (
+                  <div className="rounded-xl border border-dashed border-border-default px-4 py-3 text-sm text-text-muted">
+                    No QA/QC unit-room structure found for this element yet.
+                  </div>
+                ) : null
               )}
             </div>
           ) : null}
@@ -281,7 +598,11 @@ export default function BuildingLineCoordinatesPage() {
   }
 
   if (!root) {
-    return <div className="text-sm text-text-muted">No EPS structure available for this project.</div>;
+    return (
+      <div className="rounded-xl border border-dashed border-border-default bg-surface-card px-4 py-6 text-sm text-text-muted">
+        {loadError || "No EPS structure available for this project."}
+      </div>
+    );
   }
 
   return (

@@ -92,6 +92,11 @@ import { QualitySnagPhoto } from './quality/entities/quality-snag-photo.entity';
 import { QualityFloorStructure } from './quality/entities/quality-floor-structure.entity';
 import { QualityUnit } from './quality/entities/quality-unit.entity';
 import { QualityRoom } from './quality/entities/quality-room.entity';
+import { BuildingLineCoordinate } from './planning/entities/building-line-coordinate.entity';
+import { IssueTrackerDepartment } from './planning/entities/issue-tracker-department.entity';
+import { IssueTrackerTag } from './planning/entities/issue-tracker-tag.entity';
+import { IssueTrackerIssue } from './planning/entities/issue-tracker-issue.entity';
+import { IssueTrackerStep } from './planning/entities/issue-tracker-step.entity';
 import { QualityActivityList } from './quality/entities/quality-activity-list.entity';
 import { QualityActivity } from './quality/entities/quality-activity.entity';
 import { QualitySequenceEdge } from './quality/entities/quality-sequence-edge.entity';
@@ -150,6 +155,17 @@ import { DataSourceMeta } from './dashboard-builder/entities/data-source-meta.en
 import { DashboardShareLog } from './dashboard-builder/entities/dashboard-share-log.entity';
 import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PluginsModule } from './plugins/plugins.module';
+import { PluginPackage } from './plugins/entities/plugin-package.entity';
+import { PluginInstall } from './plugins/entities/plugin-install.entity';
+import { PluginPermission } from './plugins/entities/plugin-permission.entity';
+import { PluginMenu } from './plugins/entities/plugin-menu.entity';
+import { PluginPage } from './plugins/entities/plugin-page.entity';
+import { PluginWidget } from './plugins/entities/plugin-widget.entity';
+import { PluginReport } from './plugins/entities/plugin-report.entity';
+import { PluginWorkflow } from './plugins/entities/plugin-workflow.entity';
+import { PluginSetting } from './plugins/entities/plugin-setting.entity';
+import { PluginAuditLog } from './plugins/entities/plugin-audit-log.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -226,6 +242,11 @@ import { NotificationsModule } from './notifications/notifications.module';
         QualityFloorStructure,
         QualityUnit,
         QualityRoom,
+        BuildingLineCoordinate,
+        IssueTrackerDepartment,
+        IssueTrackerTag,
+        IssueTrackerIssue,
+        IssueTrackerStep,
         QualityActivityList,
         QualityActivity,
         QualitySequenceEdge,
@@ -279,8 +300,19 @@ import { NotificationsModule } from './notifications/notifications.module';
         ReportSchedule,
         DataSourceMeta,
         DashboardShareLog,
+        PluginPackage,
+        PluginInstall,
+        PluginPermission,
+        PluginMenu,
+        PluginPage,
+        PluginWidget,
+        PluginReport,
+        PluginWorkflow,
+        PluginSetting,
+        PluginAuditLog,
       ],
-      synchronize: true,
+      synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
+      migrationsRun: process.env.TYPEORM_MIGRATIONS_RUN === 'true',
     }),
     ServeStaticModule.forRoot(
       {
@@ -316,6 +348,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     TempUserModule,
     DashboardBuilderModule,
     NotificationsModule,
+    PluginsModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

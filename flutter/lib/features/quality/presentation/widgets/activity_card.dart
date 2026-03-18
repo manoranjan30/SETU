@@ -4,18 +4,29 @@ import 'package:setu_mobile/features/quality/presentation/widgets/activity_statu
 
 /// Card representing a single quality activity in the site-engineer flow.
 /// Shows name, sequence, status badge, hold/witness point indicators,
-/// and an expandable inline observations list with per-observation Fix buttons.
+/// multi-go / unit-wise progress chips, and observations.
 class ActivityCard extends StatefulWidget {
   final ActivityRow row;
   final VoidCallback? onRaiseRfi;
+
   /// Called when the user taps Fix on a specific pending observation.
   final void Function(ActivityObservation obs)? onFixObservation;
+
+  /// Called when the user taps "Raise Part X" in the multi-go progress section.
+  /// [partNo] is the part number to raise, [totalParts] is the total.
+  final void Function(int partNo, int totalParts)? onRaisePart;
+
+  /// Called when the user taps a unit chip or "Raise All" in unit-wise mode.
+  /// [unitId] is the qualityUnitId, [unitName] is the display label.
+  final void Function(int unitId, String unitName)? onRaiseUnit;
 
   const ActivityCard({
     super.key,
     required this.row,
     this.onRaiseRfi,
     this.onFixObservation,
+    this.onRaisePart,
+    this.onRaiseUnit,
   });
 
   @override
@@ -125,7 +136,7 @@ class _ActivityCardState extends State<ActivityCard> {
                   ),
                 ],
 
-                // Raise RFI button
+                // Raise RFI button (only for "ready" activities)
                 if (!locked && widget.onRaiseRfi != null) ...[
                   const SizedBox(height: 10),
                   Align(
@@ -142,6 +153,23 @@ class _ActivityCardState extends State<ActivityCard> {
                     ),
                   ),
                 ],
+
+                // ── Multi-Go progress ──────────────────────────────────
+                if (!locked &&
+                    activity.applicabilityLevel != 'UNIT' &&
+                    widget.row.allInspections.any((i) => i.totalParts > 1))
+                  _MultiGoProgress(
+                    allInspections: widget.row.allInspections,
+                    onRaisePart: widget.onRaisePart,
+                  ),
+
+                // ── Unit-Wise progress ─────────────────────────────────
+                if (!locked && activity.applicabilityLevel == 'UNIT')
+                  _UnitWiseProgress(
+                    allInspections: widget.row.allInspections,
+                    floorUnits: widget.row.floorUnits,
+                    onRaiseUnit: widget.onRaiseUnit,
+                  ),
               ],
             ),
           ),
@@ -349,6 +377,331 @@ class _PointChip extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Go progress section
+// ---------------------------------------------------------------------------
+
+/// Shows which parts of a multi-go RFI have been raised and buttons to raise
+/// any remaining parts. Mirrors the web app's "Multi-Go Progress (X/N)" UI.
+class _MultiGoProgress extends StatelessWidget {
+  final List<QualityInspection> allInspections;
+  final void Function(int partNo, int totalParts)? onRaisePart;
+
+  const _MultiGoProgress({
+    required this.allInspections,
+    this.onRaisePart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Determine total parts from the maximum seen across all inspections.
+    int totalParts = 1;
+    for (final i in allInspections) {
+      if (i.totalParts > totalParts) totalParts = i.totalParts;
+    }
+
+    // Collect already-raised part numbers.
+    final raisedPartNos =
+        allInspections.map((i) => i.partNo).toSet();
+    final raisedCount = raisedPartNos.length;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header label
+          Row(
+            children: [
+              Icon(Icons.layers_outlined,
+                  size: 13, color: Colors.blue.shade700),
+              const SizedBox(width: 4),
+              Text(
+                'Multi-Go Progress ($raisedCount/$totalParts)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Part chips
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: List.generate(totalParts, (i) {
+              final partNo = i + 1;
+              final isRaised = raisedPartNos.contains(partNo);
+              if (isRaised) {
+                // Already raised — show greyed label
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          size: 12, color: Colors.green.shade700),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Part $partNo Raised',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                // Not yet raised — show action button
+                return GestureDetector(
+                  onTap: onRaisePart != null
+                      ? () => onRaisePart!(partNo, totalParts)
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: onRaisePart != null
+                              ? Colors.blue.shade400
+                              : theme.dividerColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_circle_outline,
+                            size: 12,
+                            color: onRaisePart != null
+                                ? Colors.blue.shade700
+                                : theme.disabledColor),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Raise Part $partNo',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: onRaisePart != null
+                                ? Colors.blue.shade700
+                                : theme.disabledColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unit-Wise progress section
+// ---------------------------------------------------------------------------
+
+/// Shows which units have been raised and buttons to raise remaining units.
+/// Mirrors the web app's "Unit Progress (X/N)" with per-unit chips.
+class _UnitWiseProgress extends StatelessWidget {
+  final List<QualityInspection> allInspections;
+  final List<Map<String, dynamic>> floorUnits;
+  final void Function(int unitId, String unitName)? onRaiseUnit;
+
+  const _UnitWiseProgress({
+    required this.allInspections,
+    required this.floorUnits,
+    this.onRaiseUnit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Map of unitId → inspection for already-raised units.
+    final raisedMap = <int, QualityInspection>{};
+    for (final i in allInspections) {
+      if (i.qualityUnitId != null) {
+        raisedMap.putIfAbsent(i.qualityUnitId!, () => i);
+      }
+    }
+
+    final totalCount =
+        floorUnits.isNotEmpty ? floorUnits.length : raisedMap.length;
+    final raisedCount = raisedMap.length;
+
+    // Units not yet raised
+    final pendingUnits = floorUnits
+        .where((u) => !raisedMap.containsKey(u['id'] as int))
+        .toList();
+
+    // Nothing to show if no inspections and no floor units loaded
+    if (raisedCount == 0 && floorUnits.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.purple.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.purple.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(Icons.grid_view_outlined,
+                  size: 13, color: Colors.purple.shade700),
+              const SizedBox(width: 4),
+              Text(
+                'Unit Progress ($raisedCount/$totalCount)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.purple.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Unit chips
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              // Already-raised units
+              ...raisedMap.entries.map((e) {
+                final unitId = e.key;
+                final insp = e.value;
+                final label = insp.unitName?.isNotEmpty == true
+                    ? insp.unitName!
+                    : 'Unit $unitId';
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          size: 12, color: Colors.green.shade700),
+                      const SizedBox(width: 3),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              // Pending units (only when floor structure loaded)
+              ...pendingUnits.map((u) {
+                final unitId = u['id'] as int;
+                final unitName =
+                    u['name'] as String? ?? 'Unit $unitId';
+                return GestureDetector(
+                  onTap: onRaiseUnit != null
+                      ? () => onRaiseUnit!(unitId, unitName)
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: onRaiseUnit != null
+                              ? Colors.purple.shade400
+                              : theme.dividerColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_circle_outline,
+                            size: 12,
+                            color: onRaiseUnit != null
+                                ? Colors.purple.shade700
+                                : theme.disabledColor),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Raise $unitName',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: onRaiseUnit != null
+                                ? Colors.purple.shade700
+                                : theme.disabledColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+          // "Raise All Pending" shortcut when more than one unit is pending
+          if (pendingUnits.length > 1 && onRaiseUnit != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  for (final u in pendingUnits) {
+                    onRaiseUnit!(
+                      u['id'] as int,
+                      u['name'] as String? ?? 'Unit ${u['id']}',
+                    );
+                  }
+                },
+                icon: const Icon(Icons.playlist_add, size: 14),
+                label: Text('Raise All Pending (${pendingUnits.length})'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.purple.shade700,
+                  side: BorderSide(color: Colors.purple.shade300),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  textStyle: const TextStyle(fontSize: 11),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

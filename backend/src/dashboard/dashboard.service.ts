@@ -58,9 +58,10 @@ export class DashboardService {
     const weekProgress = await this.progressRepo
       .createQueryBuilder('p')
       .leftJoin('p.measurementElement', 'me')
-      .leftJoin('me.boqItem', 'boq')
+      .leftJoin('me.boqSubItem', 'sub')
       .where('p.date >= :weekStart', { weekStart })
-      .select('COALESCE(SUM(p.executedQty * boq.rate), 0)', 'total')
+      .andWhere('COALESCE(sub.rate, 0) > 0')
+      .select('COALESCE(SUM(p.executedQty * sub.rate), 0)', 'total')
       .getRawOne();
 
     // Today's manpower
@@ -95,10 +96,11 @@ export class DashboardService {
     const dailyBurn = await this.progressRepo
       .createQueryBuilder('p')
       .leftJoin('p.measurementElement', 'me')
-      .leftJoin('me.boqItem', 'boq')
+      .leftJoin('me.boqSubItem', 'sub')
       .where('p.date >= :start', { start: thirtyDaysAgo })
+      .andWhere('COALESCE(sub.rate, 0) > 0')
       .select('p.date', 'date')
-      .addSelect('SUM(p.executedQty * boq.rate)', 'value')
+      .addSelect('SUM(p.executedQty * sub.rate)', 'value')
       .groupBy('p.date')
       .orderBy('p.date', 'ASC')
       .getRawMany();

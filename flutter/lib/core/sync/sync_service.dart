@@ -41,9 +41,9 @@ class SyncService {
 
   /// Maximum retry attempts before marking as permanent error.
   ///
-  /// After 5 failures the item is considered stuck and the user must
+  /// After 10 failures the item is considered stuck and the user must
   /// intervene. This prevents the queue from growing forever on a server bug.
-  static const int maxRetryAttempts = 5;
+  static const int maxRetryAttempts = 10;
 
   /// Base delay for exponential backoff (in seconds).
   ///
@@ -149,8 +149,13 @@ class SyncService {
     for (final entry in pendingEntries) {
       // Hard stop: if this entry has already exhausted all retry attempts,
       // escalate to a permanent error instead of trying again.
+      // Preserve the existing syncError if set (e.g. a 4xx permission error)
+      // so the UI shows the real reason rather than a generic message.
       if (entry.retryCount >= maxRetryAttempts) {
-        await _markAsPermanentError(entry.id, 'Max retry attempts exceeded');
+        final msg = (entry.syncError?.isNotEmpty ?? false)
+            ? entry.syncError!
+            : 'Max retry attempts exceeded';
+        await _markAsPermanentError(entry.id, msg);
         result.failed++;
         continue;
       }
@@ -611,12 +616,22 @@ class SyncService {
         switch (item.entityType) {
           case 'quality_rfi':
             // Raise a Request for Inspection on a specific quality activity.
+            // Supports One Go (partNo=1,totalParts=1), Multi Go (partNo/totalParts),
+            // and Unit Wise (qualityUnitId) modes via documentType field.
             await _apiClient.raiseRfi(
               projectId: payload['projectId'] as int,
               epsNodeId: payload['epsNodeId'] as int,
               listId: payload['listId'] as int,
               activityId: payload['activityId'] as int,
+              drawingNo: payload['drawingNo'] as String? ?? '',
               comments: payload['comments'] as String?,
+              documentType: payload['documentType'] as String?,
+              partNo: payload['partNo'] as int?,
+              totalParts: payload['totalParts'] as int?,
+              partLabel: payload['partLabel'] as String?,
+              qualityUnitId: payload['qualityUnitId'] as int?,
+              vendorId: payload['vendorId'] as int?,
+              vendorName: payload['vendorName'] as String?,
             );
             break;
 

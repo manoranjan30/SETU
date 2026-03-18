@@ -18,6 +18,7 @@ import { QualityRoom } from './entities/quality-room.entity';
 import { QualitySnagPhoto } from './entities/quality-snag-photo.entity';
 import { QualityWorkflowService } from './quality-workflow.service';
 import { EpsNode } from '../eps/eps.entity';
+import { ProjectProfile } from '../eps/project-profile.entity';
 // NEW: Activity List module
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import { QualityActivity } from './entities/quality-activity.entity';
@@ -99,6 +100,7 @@ import { QualityRatingController } from './quality-rating.controller';
       QualityRoom,
       QualitySnagPhoto,
       EpsNode,
+      ProjectProfile,
       // NEW
       QualityActivityList,
       QualityActivity,

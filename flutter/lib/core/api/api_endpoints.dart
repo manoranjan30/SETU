@@ -350,6 +350,12 @@ class ApiEndpoints {
   static const String inspectionUnitProgress =
       '/quality/inspections/unit-progress';
 
+  /// GET /quality/:projectId/structure/floor/:floorId
+  /// Returns the unit/room structure under a specific floor EPS node.
+  /// Used to populate the unit selector when raising Unit Wise RFIs.
+  static String floorStructure(int projectId, int floorId) =>
+      '/quality/$projectId/structure/floor/$floorId';
+
   /// GET /quality/activities/:id/observations
   /// Returns the list of QC observations raised against a specific activity.
   static String activityObservations(int activityId) =>

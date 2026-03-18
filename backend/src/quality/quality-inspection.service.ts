@@ -56,7 +56,9 @@ export interface CreateInspectionDto {
   signature?: { data: string; role: string; signedBy: string };
   vendorId?: number;
   vendorName?: string;
-  drawingNo?: string;
+  drawingNo: string;
+  goNo?: number;
+  goLabel?: string;
   contractorName?: string;
   processCode?: string;
   documentType?: string;
@@ -136,6 +138,26 @@ export class QualityInspectionService {
       return 'UNIT_RFI';
     }
     return 'FLOOR_RFI';
+  }
+
+  private deriveGoFields(
+    dto: CreateInspectionDto,
+    applicability: QualityApplicabilityLevel,
+  ): { goNo: number | null; goLabel: string | null } {
+    if (applicability !== QualityApplicabilityLevel.FLOOR) {
+      return { goNo: null, goLabel: null };
+    }
+
+    const resolvedGoNo =
+      typeof dto.goNo === 'number' ? dto.goNo : dto.partNo || 1;
+    const explicitLabel = dto.goLabel?.trim();
+    return {
+      goNo: resolvedGoNo,
+      goLabel:
+        explicitLabel && explicitLabel.length > 0
+          ? explicitLabel
+          : `GO ${resolvedGoNo}`,
+    };
   }
 
   async getActiveVendors(projectId: number) {
@@ -265,7 +287,7 @@ export class QualityInspectionService {
       .where('i.projectId = :projectId', { projectId })
       .andWhere('i.requestedById = :userId', { userId })
       .andWhere('i.status NOT IN (:...closedStatuses)', {
-        closedStatuses: ['APPROVED', 'CANCELED', 'CLOSED'],
+        closedStatuses: ['APPROVED', 'CANCELED'],
       })
       .orderBy('i.createdAt', 'DESC')
       .getMany();
@@ -454,6 +476,11 @@ export class QualityInspectionService {
       where: { id: dto.activityId },
     });
     if (!activity) throw new NotFoundException('Activity not found');
+    if (!dto.drawingNo?.trim()) {
+      throw new BadRequestException(
+        'Drawing number is required while raising RFI.',
+      );
+    }
 
     const applicability =
       activity.applicabilityLevel || QualityApplicabilityLevel.FLOOR;
@@ -572,6 +599,7 @@ export class QualityInspectionService {
 
     const processCode = this.deriveInspectionProcessCode(dto);
     const documentType = this.deriveInspectionDocumentType(dto, applicability);
+    const { goNo, goLabel } = this.deriveGoFields(dto, applicability);
 
     // 7. Create Inspection
     const inspection = this.inspectionRepo.create({
@@ -586,14 +614,16 @@ export class QualityInspectionService {
       totalParts: dto.totalParts || 1,
       partLabel:
         dto.partLabel ||
-        ((dto.totalParts || 1) > 1 ? `Part ${dto.partNo || 1}` : null),
+        ((dto.totalParts || 1) > 1 ? `GO ${dto.partNo || 1}` : null),
+      goNo,
+      goLabel,
       comments: dto.comments,
       requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
       status: InspectionStatus.PENDING,
       requestedById: userId,
       vendorId: finalVendorId,
       vendorName: finalVendorName,
-      drawingNo: dto.drawingNo,
+      drawingNo: dto.drawingNo.trim(),
       contractorName: dto.contractorName ?? finalVendorName,
       processCode,
       documentType,
@@ -1094,9 +1124,6 @@ export class QualityInspectionService {
     const now = new Date();
     stage.completedAt = now;
     stage.completedBy = String(userId);
-    stage.isLocked = true;
-    stage.lockedAt = now;
-    stage.lockedByUserId = userId;
 
     const fingerprint = this.complianceService.generateFingerprint({
       stageId,
@@ -1139,6 +1166,9 @@ export class QualityInspectionService {
     stage.status = stageApprovalDetails.fullyApproved
       ? StageStatus.APPROVED
       : StageStatus.COMPLETED;
+    stage.isLocked = stageApprovalDetails.fullyApproved;
+    stage.lockedAt = stageApprovalDetails.fullyApproved ? now : null;
+    stage.lockedByUserId = stageApprovalDetails.fullyApproved ? userId : null;
     await this.stageRepo.save(stage);
 
     // Recount stages and update parent inspection status

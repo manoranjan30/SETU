@@ -1,0 +1,9 @@
+[
+  {
+    "code": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "name": "View Sample Project Insights",
+    "moduleName": "PLUGIN",
+    "scopeLevel": "PROJECT",
+    "actionType": "READ"
+  }
+]

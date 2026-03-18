@@ -8,6 +8,7 @@ import { SystemSettingsService } from './system-settings.service';
 import { SystemSettingsController } from './system-settings.controller';
 import { UploadController } from './upload.controller';
 import { ApprovalRuntimeService } from './approval-runtime.service';
+import { AdminIssueTrackerController } from './admin-issue-tracker.controller';
 import { PlanningModule } from '../planning/planning.module';
 import { User } from '../users/user.entity';
 
@@ -21,6 +22,7 @@ import { User } from '../users/user.entity';
     TableViewController,
     SystemSettingsController,
     UploadController,
+    AdminIssueTrackerController,
   ],
   exports: [TableViewService, SystemSettingsService, ApprovalRuntimeService],
 })

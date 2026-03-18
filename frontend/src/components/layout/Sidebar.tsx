@@ -28,6 +28,7 @@ import {
 } from "../../services/notification.service";
 import { useEffect } from "react";
 import { ThemePicker } from "../common/ThemePicker";
+import { usePluginRuntime } from "../../context/PluginRuntimeContext";
 
 const SidebarItem = ({
   item,
@@ -166,6 +167,7 @@ const SidebarItem = ({
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
+  const { installs } = usePluginRuntime();
   const location = useLocation();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -192,6 +194,34 @@ const Sidebar = () => {
     const interval = setInterval(fetchPending, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [activeProjectId]);
+
+  const globalPluginMenus = installs
+    .flatMap((install) =>
+      (install.menus ?? [])
+        .filter((menu: any) => menu.location === "SIDEBAR" && !menu.requiresProject)
+        .map((menu: any) => ({
+          label: menu.label,
+          path: menu.path,
+          permission: menu.permissionCode || "PLUGIN.RUNTIME.READ",
+        })),
+    )
+    .sort((left, right) => left.label.localeCompare(right.label));
+
+  const projectPluginMenus = installs
+    .flatMap((install) =>
+      (install.menus ?? [])
+        .filter(
+          (menu: any) =>
+            menu.location === "PROJECT" ||
+            (menu.location === "SIDEBAR" && menu.requiresProject),
+        )
+        .map((menu: any) => ({
+          label: menu.label,
+          path: menu.path,
+          permission: menu.permissionCode || "PLUGIN.RUNTIME.READ",
+        })),
+    )
+    .sort((left, right) => left.label.localeCompare(right.label));
 
   return (
     <aside
@@ -238,6 +268,28 @@ const Sidebar = () => {
         {MENU_CONFIG.map((item) => (
           <SidebarItem key={item.path} item={item} isCollapsed={isCollapsed} />
         ))}
+
+        {globalPluginMenus.length > 0 && (
+          <div className="mt-4">
+            {!isCollapsed ? (
+              <div className="flex items-center gap-2 px-5 py-1.5 text-xs font-bold uppercase tracking-widest text-text-disabled">
+                <Box className="w-3 h-3" />
+                Extensions
+              </div>
+            ) : (
+              <div className="border-t mx-4 my-2" />
+            )}
+            <div className="mt-1">
+              {globalPluginMenus.map((item) => (
+                <SidebarItem
+                  key={item.path}
+                  isCollapsed={isCollapsed}
+                  item={item}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Project Modules */}
         {activeProjectId && (
@@ -323,6 +375,13 @@ const Sidebar = () => {
                   permission: "DESIGN.DRAWING.READ",
                 }}
               />
+              {projectPluginMenus.map((item) => (
+                <SidebarItem
+                  key={item.path}
+                  isCollapsed={isCollapsed}
+                  item={item}
+                />
+              ))}
             </div>
           </div>
         )}

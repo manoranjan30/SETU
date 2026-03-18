@@ -561,7 +561,21 @@ export class PlanningService {
 
     for (const mapping of mappings) {
       const item = mapping.boqItem;
-      const rate = Number(item.rate || 0);
+      if (!mapping.boqSubItemId) {
+        throw new BadRequestException(
+          `Activity ${activityId} has BOQ mapping ${mapping.id} without a BOQ sub item. Assigned Value and Achieved Value must use sub item rate.`,
+        );
+      }
+      const subItem = await this.subItemRepo.findOne({
+        where: { id: mapping.boqSubItemId },
+        select: ['id', 'rate'],
+      });
+      const rate = Number(subItem?.rate || 0);
+      if (rate <= 0) {
+        throw new BadRequestException(
+          `BOQ sub item ${mapping.boqSubItemId} is not having rate.`,
+        );
+      }
 
       // FIXED: Filter by Location (EPS Node) to prevent cross-floor progress polution
       const locationIdStr = String(mapping.projectId);
@@ -2166,10 +2180,22 @@ export class PlanningService {
 
     // 1. Budgeted Value (Planned)
     // SUM(plannedQty * rate) from plans
+    const invalidPlan = await this.planRepo
+      .createQueryBuilder('p')
+      .leftJoin('boq_sub_item', 's', 'p."boqSubItemId" = s.id')
+      .where('p.activity_id = :activityId', { activityId })
+      .andWhere('(p."boqSubItemId" IS NULL OR COALESCE(s.rate, 0) <= 0)')
+      .getCount();
+    if (invalidPlan > 0) {
+      throw new BadRequestException(
+        `Activity ${activityId} has BOQ sub item mappings without valid rate.`,
+      );
+    }
+
     const budgetRes = await this.planRepo
       .createQueryBuilder('p')
-      .leftJoin('boq_item', 'b', 'p.boq_item_id = b.id')
-      .select('SUM(p.plannedQuantity * b.rate)', 'sum')
+      .leftJoin('boq_sub_item', 's', 'p."boqSubItemId" = s.id')
+      .select('SUM(p.plannedQuantity * s.rate)', 'sum')
       .where('p.activity_id = :activityId', { activityId })
       .getRawOne();
 
@@ -2177,10 +2203,23 @@ export class PlanningService {
 
     // 2. Actual Value (Executed)
     // SUM(executedQty * rate) from measurements
+    const invalidActual = await this.measurementRepo
+      .createQueryBuilder('m')
+      .leftJoin('boq_sub_item', 's', 'm."boqSubItemId" = s.id')
+      .where('m.activityId = :activityId', { activityId })
+      .andWhere('m."executedQty" > 0')
+      .andWhere('(m."boqSubItemId" IS NULL OR COALESCE(s.rate, 0) <= 0)')
+      .getCount();
+    if (invalidActual > 0) {
+      throw new BadRequestException(
+        `Activity ${activityId} has executed measurements without valid BOQ sub item rate.`,
+      );
+    }
+
     const actualRes = await this.measurementRepo
       .createQueryBuilder('m')
-      .leftJoin('boq_item', 'b', 'm.boqItemId = b.id')
-      .select('SUM(m.executedQty * b.rate)', 'sum')
+      .leftJoin('boq_sub_item', 's', 'm."boqSubItemId" = s.id')
+      .select('SUM(m.executedQty * s.rate)', 'sum')
       .where('m.activityId = :activityId', { activityId })
       .getRawOne();
 

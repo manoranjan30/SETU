@@ -18,6 +18,8 @@ export class UpdateProjectProfileDto {
 
   @IsString() @IsOptional() owningCompany?: string;
   @IsString() @IsOptional() businessUnit?: string;
+  @IsString() @IsOptional() companyLogoUrl?: string;
+  @IsString() @IsOptional() projectLogoUrl?: string;
   @IsString() @IsOptional() projectSponsorId?: string;
   @IsString() @IsOptional() projectManagerId?: string;
   @IsString() @IsOptional() planningManagerId?: string;

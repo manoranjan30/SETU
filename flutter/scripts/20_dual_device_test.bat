@@ -185,33 +185,52 @@ echo.
 echo  [3/6] Backend Configuration...
 echo.
 
+:: Write a temp PowerShell script for IP detection.
+:: Inline PowerShell in for/f causes CMD to mis-parse ( ) | characters even
+:: inside quotes, so we write the logic to a .ps1 file first and run it.
+:: Each line uses individual echo >> to avoid the paren-in-block closing issue.
+::
+:: Skipped ranges: loopback, APIPA, VirtualBox (192.168.56.x), all 172.x
+:: (WSL2/Docker/Hyper-V), Parallels (10.211.x, 10.37.x), VirtualBox guest (10.0.2.x).
+set "PS_IP=%TEMP%\setu_detect_ip.ps1"
+echo $skip = '^(127\.^|169\.254\.^|192\.168\.56\.^|10\.211\.^|10\.37\.^|10\.0\.2\.^|172\.)' > "%PS_IP%"
+echo $addrs = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue              >> "%PS_IP%"
+echo foreach ($a in ($addrs ^| Select-Object -ExpandProperty IPAddress ^| Sort-Object)) { "ALL=$a" } >> "%PS_IP%"
+echo $hs  = ($addrs ^| Where-Object { $_.IPAddress -like "192.168.137.*" } ^| Select-Object -First 1 -ExpandProperty IPAddress)  >> "%PS_IP%"
+echo if ($hs)  { "HOTSPOT=$hs" }  >> "%PS_IP%"
+echo $lan = ($addrs ^| Where-Object { $_.IPAddress -notmatch $skip -and $_.IPAddress -notlike "192.168.137.*" } ^| Sort-Object PrefixLength ^| Select-Object -First 1 -ExpandProperty IPAddress) >> "%PS_IP%"
+echo if ($lan) { "LAN=$lan" }     >> "%PS_IP%"
+
+echo         All IPv4 addresses found on this PC:
+echo         -------------------------------------------------------
 set "HOTSPOT_IP=" & set "LAN_IP="
-for /f "tokens=2 delims=:=" %%A in ('ipconfig 2^>nul ^| findstr "IPv4"') do (
-  set "RAW=%%A" & set "RAW=!RAW: =!"
-  echo !RAW! | findstr /b "192.168.137." >nul 2>&1
-  if not errorlevel 1 (
-    if not defined HOTSPOT_IP set "HOTSPOT_IP=!RAW!"
-  ) else (
-    set "SK=0"
-    echo !RAW! | findstr /b "127. 169.254. 192.168.56. 172.1 172.2 172.3" >nul 2>&1 && set "SK=1"
-    if "!SK!"=="0" if not defined LAN_IP set "LAN_IP=!RAW!"
-  )
+for /f "delims=" %%L in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_IP%"') do (
+  set "LINE=%%L"
+  if "!LINE:~0,8!"=="HOTSPOT=" set "HOTSPOT_IP=!LINE:~8!"
+  if "!LINE:~0,4!"=="LAN="     set "LAN_IP=!LINE:~4!"
+  if "!LINE:~0,4!"=="ALL="     echo           !LINE:~4!
 )
+del "%PS_IP%" >nul 2>&1
+echo         -------------------------------------------------------
+echo.
 
 if defined HOTSPOT_IP (
   set "AUTO_IP=!HOTSPOT_IP!"
-  echo         Auto-detected: Mobile Hotspot IP = !AUTO_IP!
+  echo         Auto-selected: Mobile Hotspot IP = !AUTO_IP!
 ) else if defined LAN_IP (
   set "AUTO_IP=!LAN_IP!"
-  echo         Auto-detected: LAN WiFi IP = !AUTO_IP!
+  echo         Auto-selected: LAN / WiFi IP = !AUTO_IP!
 ) else (
   set "AUTO_IP="
-  echo         Could not auto-detect PC IP.
+  echo         Could not auto-detect a suitable PC IP ^(VM adapters skipped^).
 )
 
 if defined AUTO_IP (
   set "BACKEND_URL=http://!AUTO_IP!:3000/api"
   echo         Suggested backend: !BACKEND_URL!
+  echo.
+  echo         TIP: If the app shows a connection error, re-run and press Y
+  echo              to enter the correct IP from the list above.
   echo.
   set "OVERRIDE=n"
   set /p "OVERRIDE=         Use a different backend URL? (y/N): "
@@ -272,6 +291,10 @@ if "!ONEDRIVE_WAS_RUNNING!"=="1" (
   echo         OneDrive not running - no action needed.
 )
 
+:: Remove the Windows ephemeral plugin_symlinks junction so flutter pub get
+:: can recreate it cleanly (otherwise it prints a non-fatal warning every run).
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Recurse -Force '!PROJECT_ROOT!\windows\flutter\ephemeral' -ErrorAction SilentlyContinue" >nul 2>&1
+
 call flutter pub get
 echo         Packages ready.
 
@@ -321,7 +344,7 @@ for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do (
         echo color 0A
         echo echo.
         echo echo  ============================================================
-        echo echo    SETU Mobile  ^|  Live Device Logs
+        echo echo    SETU Mobile  --  Live Device Logs
         echo echo    Device !DEV_NUM! : %%A
         echo echo  ============================================================
         echo echo.
@@ -480,6 +503,23 @@ echo         Target  : android-arm64  (release)
 echo         Backend : !BACKEND_URL!
 echo         Started : %DATE%  %TIME%
 echo         Tip     : First build 3-8 min / Rebuild 1-3 min
+echo.
+
+:: Delete build cache directly so --dart-define changes (new IP) are baked in.
+:: flutter clean fails on this machine because Windows locks the
+:: windows\flutter\ephemeral\.plugin_symlinks junction; it exits before
+:: clearing the Dart kernel cache, so the old IP stays.
+:: Deleting build\ and .dart_tool\flutter_build\ is sufficient: Flutter MUST
+:: recompile the Dart kernel and re-run Gradle from scratch.
+echo         Removing build cache (ensures new IP is baked in)...
+set "SETU_CLEAN_PS=%TEMP%\setu_clean_%RANDOM%.ps1"
+echo $b = '!PROJECT_ROOT!\build'                    > "!SETU_CLEAN_PS!"
+echo $d = '!PROJECT_ROOT!\.dart_tool\flutter_build' >> "!SETU_CLEAN_PS!"
+echo if (Test-Path $b) { Remove-Item $b -Recurse -Force -ErrorAction SilentlyContinue } >> "!SETU_CLEAN_PS!"
+echo if (Test-Path $d) { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue } >> "!SETU_CLEAN_PS!"
+powershell -NoProfile -ExecutionPolicy Bypass -File "!SETU_CLEAN_PS!" 2>nul
+del "!SETU_CLEAN_PS!" >nul 2>&1
+echo         Cache removed.
 echo.
 
 set "MONITOR=%~dp0_build_monitor.ps1"

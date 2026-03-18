@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual } from 'typeorm';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
@@ -25,7 +25,11 @@ export class ProgressService {
     // Fetch all progress with rates
     const progress = await this.progressRepo.find({
       where: { measurementElement: { projectId }, status: 'APPROVED' },
-      relations: ['measurementElement', 'measurementElement.boqItem'],
+      relations: [
+        'measurementElement',
+        'measurementElement.boqItem',
+        'measurementElement.boqSubItem',
+      ],
       order: { date: 'DESC' },
     });
 
@@ -45,8 +49,14 @@ export class ProgressService {
     const dailyTrends: Record<string, number> = {};
 
     for (const p of progress) {
-      const boqRate = Number(p.measurementElement.boqItem?.rate) || 0;
-      const value = Number(p.executedQty) * boqRate;
+      const subItem = p.measurementElement?.boqSubItem;
+      const subItemRate = Number(subItem?.rate || 0);
+      if (!subItem?.id || subItemRate <= 0) {
+        throw new BadRequestException(
+          `Progress log ${p.id} is linked to a BOQ entry without a valid sub item rate.`,
+        );
+      }
+      const value = Number(p.executedQty) * subItemRate;
       const pDate = new Date(p.date);
       pDate.setHours(0, 0, 0, 0);
 
@@ -99,15 +109,18 @@ export class ProgressService {
     // Find top burning BOQ items
     const topBurners = await this.elementRepo.find({
       where: { projectId },
-      relations: ['boqItem'],
+      relations: ['boqItem', 'boqSubItem'],
       order: { executedQty: 'DESC' },
       take: 5,
     });
 
     return {
       topBurners: topBurners.map((e) => ({
-        name: e.boqItem?.description || e.elementName,
-        value: Number(e.executedQty) * (Number(e.boqItem?.rate) || 0),
+        name:
+          e.boqSubItem?.description ||
+          e.boqItem?.description ||
+          e.elementName,
+        value: Number(e.executedQty) * (Number(e.boqSubItem?.rate) || 0),
       })),
       alerts: [],
     };

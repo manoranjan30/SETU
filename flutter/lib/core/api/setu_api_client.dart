@@ -460,13 +460,24 @@ class SetuApiClient {
   /// Creates a new inspection request (Raise RFI) against a specific
   /// activity and location.
   ///
-  /// [comments] is optional initial text from the site engineer.
+  /// [documentType] is 'FLOOR_RFI' (default), 'UNIT_RFI', or 'ROOM_RFI'.
+  /// [partNo]/[totalParts] support Multi Go (e.g. Part 1 of 3).
+  /// [qualityUnitId] is required for UNIT_RFI — links to a specific unit.
+  /// [vendorId]/[vendorName] are optional contractor context.
   Future<Map<String, dynamic>> raiseRfi({
     required int projectId,
     required int epsNodeId,
     required int listId,
     required int activityId,
+    required String drawingNo,
     String? comments,
+    int? partNo,
+    int? totalParts,
+    String? partLabel,
+    String? documentType,
+    int? qualityUnitId,
+    int? vendorId,
+    String? vendorName,
   }) async {
     final response = await _dio.post(
       ApiEndpoints.raiseRfi,
@@ -475,11 +486,33 @@ class SetuApiClient {
         'epsNodeId': epsNodeId,
         'listId': listId,
         'activityId': activityId,
-        // Only include comments if non-empty — prevents sending an empty string.
+        'processCode': 'QA_QC_APPROVAL',
+        'drawingNo': drawingNo,
         if (comments != null && comments.isNotEmpty) 'comments': comments,
+        if (documentType != null) 'documentType': documentType,
+        if (partNo != null) 'partNo': partNo,
+        if (totalParts != null) 'totalParts': totalParts,
+        if (partLabel != null) 'partLabel': partLabel,
+        if (qualityUnitId != null) 'qualityUnitId': qualityUnitId,
+        if (vendorId != null) 'vendorId': vendorId,
+        if (vendorName != null && vendorName.isNotEmpty) 'vendorName': vendorName,
       },
     );
     return response.data;
+  }
+
+  /// Returns the list of units under a floor EPS node.
+  /// Used to populate the unit selector for Unit Wise RFI raising.
+  Future<List<Map<String, dynamic>>> getFloorStructure(
+      int projectId, int floorId) async {
+    final response =
+        await _dio.get(ApiEndpoints.floorStructure(projectId, floorId));
+    final data = response.data;
+    if (data is Map) {
+      final units = data['units'] as List<dynamic>? ?? [];
+      return units.cast<Map<String, dynamic>>();
+    }
+    return [];
   }
 
   /// Updates the status of an inspection (Approve / Reject / Provisional).

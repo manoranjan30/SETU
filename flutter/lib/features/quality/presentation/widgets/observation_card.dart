@@ -134,8 +134,9 @@ class ObservationCard extends StatelessWidget {
               PhotoThumbnailStrip(photoUrls: obs.photos),
             ],
 
-            // Rectification notes (if any)
-            if (obs.closureText?.isNotEmpty ?? false) ...[
+            // Rectification notes + evidence photos (show when either exists)
+            if ((obs.closureText?.isNotEmpty ?? false) ||
+                obs.closureEvidence.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -155,12 +156,13 @@ class ObservationCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            obs.closureText!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.blue.shade800,
+                          if (obs.closureText?.isNotEmpty ?? false)
+                            Text(
+                              obs.closureText!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.blue.shade800,
+                              ),
                             ),
-                          ),
                           if (obs.closureEvidence.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             PhotoThumbnailStrip(

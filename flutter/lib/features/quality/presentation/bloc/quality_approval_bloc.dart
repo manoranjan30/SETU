@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
@@ -500,6 +501,11 @@ class QualityApprovalBloc
   /// Direct API call (not queued) — stage approval requires server-side
   /// release-strategy evaluation that cannot be performed offline.
   ///
+  /// Saves the stage items directly before calling approveStage to avoid a
+  /// race condition where the user toggles items locally but hasn't tapped
+  /// "Save Progress" yet — the backend fetches fresh from DB, so items must
+  /// be persisted first.
+  ///
   /// On success, [StageApproveSuccess] is emitted with the updated stage
   /// state. The UI should then refresh the detail view to get the latest
   /// `stageApproval` matrices. When `inspectionFullyApproved` is true,
@@ -510,6 +516,18 @@ class QualityApprovalBloc
     if (current is! InspectionDetailLoaded) return;
 
     try {
+      // Save the stage items to DB before approval to ensure backend sees the
+      // current checked state (avoids "items not checked" error from race cond).
+      final stage = current.stages.firstWhere(
+        (s) => s.id == event.stageId,
+        orElse: () => throw Exception('Stage not found in local state'),
+      );
+      await _apiClient.saveInspectionStage(
+        stageId: stage.id,
+        status: stage.status,
+        items: stage.items.map((i) => i.toApiPayload()).toList(),
+      );
+
       final result = await _apiClient.approveInspectionStage(
         inspectionId: current.inspection.id,
         stageId: event.stageId,
@@ -1042,6 +1060,18 @@ class QualityApprovalBloc
 
   /// Translates exceptions to concise user-readable strings.
   String _friendly(dynamic e) {
+    // Extract actual backend message from Dio response body first.
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map) {
+        final msg = data['message'];
+        if (msg is String && msg.isNotEmpty) return msg;
+        if (msg is List && msg.isNotEmpty) return msg.first.toString();
+      }
+      final statusCode = e.response?.statusCode ?? 0;
+      if (statusCode == 403) return 'You do not have permission for this action.';
+      if (statusCode == 404) return 'Resource not found.';
+    }
     final s = e.toString().toLowerCase();
     if (s.contains('connection') ||
         s.contains('network') ||
@@ -1050,11 +1080,6 @@ class QualityApprovalBloc
     }
     if (s.contains('403') || s.contains('forbidden')) {
       return 'You do not have permission for this action.';
-    }
-    if (s.contains('400')) {
-      // Extract the server's validation message from the JSON body if present.
-      final msg = RegExp(r'"message":"([^"]+)"').firstMatch(e.toString());
-      return msg?.group(1) ?? 'Invalid request.';
     }
     return 'Something went wrong. Please try again.';
   }

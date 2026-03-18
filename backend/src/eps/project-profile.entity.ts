@@ -56,6 +56,12 @@ export class ProjectProfile {
   @Column({ nullable: true })
   businessUnit: string;
 
+  @Column({ nullable: true })
+  companyLogoUrl: string;
+
+  @Column({ nullable: true })
+  projectLogoUrl: string;
+
   // User IDs stored as strings/numbers.
   // We can add Relations later if we need strict integrity,
   // but for a flexible property sheet, IDs are often sufficient and avoid circular deps.

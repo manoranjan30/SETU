@@ -106,6 +106,9 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
   perm('MANAGE_ROLES', 'Manage Roles', 'ADMIN', S, SYS),
   perm('MANAGE_EPS', 'Manage EPS', 'EPS', S, SYS),
   perm('AUDIT.READ', 'View Audit Logs', 'ADMIN', R, SYS),
+  perm('PLUGIN.REGISTRY.READ', 'View Plugin Registry', 'PLUGIN', R, SYS),
+  perm('PLUGIN.REGISTRY.MANAGE', 'Manage Plugin Registry', 'PLUGIN', S, SYS),
+  perm('PLUGIN.RUNTIME.READ', 'Use Plugin Runtime', 'PLUGIN', R, SYS),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════

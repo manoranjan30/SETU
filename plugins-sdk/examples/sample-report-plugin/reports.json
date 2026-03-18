@@ -1,0 +1,17 @@
+[
+  {
+    "reportKey": "sample-report",
+    "title": "Sample Report",
+    "permissionCode": "PLUGIN.SAMPLE-REPORT-PLUGIN.VIEW",
+    "exportTypes": ["VIEW"],
+    "config": {
+      "columns": [
+        { "key": "label", "label": "Label" },
+        { "key": "value", "label": "Value" }
+      ],
+      "previewRows": [
+        { "label": "Demo", "value": "Ready" }
+      ]
+    }
+  }
+]

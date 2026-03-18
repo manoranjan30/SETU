@@ -9,6 +9,7 @@ import {
   ListChecks,
   Users,
   Map,
+  MessageSquareMore,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -83,6 +84,12 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       key: "building_lines",
       icon: <Map size={18} />,
       label: "Building Lines",
+      permission: PermissionCode.PLANNING_MATRIX_READ,
+    },
+    {
+      key: "issue_tracker",
+      icon: <MessageSquareMore size={18} />,
+      label: "Issue Tracker",
       permission: PermissionCode.PLANNING_MATRIX_READ,
     },
   ];

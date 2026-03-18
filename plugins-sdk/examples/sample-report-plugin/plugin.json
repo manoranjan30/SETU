@@ -1,0 +1,16 @@
+{
+  "pluginKey": "sample-report-plugin",
+  "name": "Sample Report Plugin",
+  "version": "1.0.0",
+  "author": "SETU",
+  "description": "Minimal report-focused plugin example.",
+  "appCompatibility": "^0.0.1",
+  "capabilities": ["menus", "pages", "reports"],
+  "installPolicy": {
+    "approvalRequired": true
+  },
+  "uninstallPolicy": {
+    "mode": "ARCHIVE",
+    "requiresDisableFirst": true
+  }
+}

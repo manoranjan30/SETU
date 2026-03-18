@@ -20,6 +20,7 @@ import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dar
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_site_obs_bloc.dart';
 import 'package:setu_mobile/features/labor/presentation/bloc/labor_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
@@ -193,6 +194,7 @@ void initDependencies({
         apiClient: sl(),
         syncService: sl(),
       ));
+  sl.registerFactory(() => QualityDashboardBloc(apiClient: sl(), database: sl()));
   sl.registerFactory(() => ProfileBloc(apiClient: sl()));
   sl.registerFactory(() => QualitySiteObsBloc(
         apiClient: sl(),

@@ -1,0 +1,9 @@
+[
+  {
+    "settingKey": "highlightThreshold",
+    "label": "Highlight Threshold",
+    "fieldType": "number",
+    "required": false,
+    "defaultValue": 5
+  }
+]

@@ -115,9 +115,16 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
         .map(([key, qty]) => {
           const [bIdx, type, id] = key.split("-");
           const boqEntry = vendorBreakdown!.boqBreakdown[parseInt(bIdx)];
+          const record = boqEntry.items.find((item) =>
+            item.type === type && String(item.id || 0) === id,
+          );
           return {
             vendorId: selectedVendor?.vendorId || null,
             boqItemId: boqEntry.boqItem.id,
+            boqSubItemId:
+              record?.type === "BALANCE"
+                ? (record?.boqSubItemId ?? boqEntry.boqSubItemId ?? null)
+                : (record?.boqSubItemId ?? null),
             workOrderItemId: boqEntry.workOrderItemId,
             microActivityId: type === "MICRO" ? parseInt(id) : null,
             quantity: qty,

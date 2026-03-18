@@ -16,9 +16,12 @@ import 'package:setu_mobile/features/projects/presentation/cubit/dashboard_cubit
 import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard_bloc.dart'
+    hide DashboardLoaded, DashboardLoading, DashboardInitial, DashboardError;
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_approvals_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/pages/tower_lens_page.dart';
@@ -664,6 +667,14 @@ class _ModuleGrid extends StatelessWidget {
           color: const Color(0xFF3730A3),
           onTap: () => _goQualityApprovals(context),
         ),
+      // Checklist Progress Dashboard — drill-down Block→Floor→Activity
+      if (ps.canReadInspection || ps.canRaiseRfi)
+        _ModuleDef(
+          icon: Icons.dashboard_rounded,
+          label: 'Checklist\nProgress',
+          color: const Color(0xFF0891B2),
+          onTap: () => _goChecklistDashboard(context),
+        ),
       // Quality site observations
       if (ps.hasAnyQualityObsAccess)
         _ModuleDef(
@@ -849,6 +860,21 @@ class _ModuleGrid extends StatelessWidget {
         child: BlocProvider(
           create: (_) => sl<LaborBloc>(),
           child: LaborPresencePage(
+            projectId: project.id,
+            projectName: project.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _goChecklistDashboard(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(
+        child: BlocProvider(
+          create: (_) => sl<QualityDashboardBloc>(),
+          child: QualityDashboardPage(
             projectId: project.id,
             projectName: project.name,
           ),

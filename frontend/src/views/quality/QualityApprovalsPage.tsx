@@ -19,6 +19,9 @@ import {
   LayoutDashboard,
   MapPin,
   Building2,
+  ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Layers,
   Home,
   Siren,
@@ -55,6 +58,11 @@ interface QualityInspection {
   floorName?: string;
   unitName?: string;
   roomName?: string;
+  goNo?: number;
+  goLabel?: string;
+  drawingNo?: string;
+  partNo?: number;
+  partLabel?: string;
   locationPath?: string;
   pendingObservationCount?: number;
   workflowCurrentLevel?: number;
@@ -167,13 +175,36 @@ function getFloorLabel(insp: QualityInspection) {
   return hierarchy.find((h) => h.toLowerCase().includes("floor")) || "Unmapped";
 }
 
+function getGoLabel(insp: Partial<QualityInspection>) {
+  if (insp.goLabel?.trim()) return insp.goLabel.trim();
+  if (typeof insp.goNo === "number") return `GO ${insp.goNo}`;
+  if (insp.partLabel?.trim()) return insp.partLabel.replace(/^Part/i, "GO").trim();
+  if (typeof insp.partNo === "number") return `GO ${insp.partNo}`;
+  return null;
+}
+
+function getInspectionScopeTokens(insp: Partial<QualityInspection>) {
+  const hierarchy = parseLocationHierarchy(insp as QualityInspection);
+  return [
+    insp.blockName || hierarchy[0],
+    insp.towerName || hierarchy[1],
+    insp.floorName || hierarchy[2] || getFloorLabel(insp as QualityInspection),
+    getGoLabel(insp),
+    insp.unitName,
+    insp.roomName,
+  ].filter((value): value is string => !!value && value.trim().length > 0);
+}
+
 function isStageApproved(stage: any) {
   if (stage?.stageApproval?.fullyApproved) return true;
-  if (stage?.status === "APPROVED" || stage?.isLocked) return true;
-  return (stage?.signatures || []).some(
-    (signature: any) =>
-      signature?.actionType === "STAGE_APPROVE" && !signature?.isReversed,
-  );
+  if (stage?.status === "APPROVED") return true;
+  if (
+    stage?.isLocked &&
+    (stage?.stageApproval?.fullyApproved || stage?.status === "APPROVED")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function getCheckedStageItems(stage: any) {
@@ -233,6 +264,7 @@ export default function QualityApprovalsPage() {
 
   // Workflow State
   const [workflowState, setWorkflowState] = useState<any>(null);
+  const [workflowStripCollapsed, setWorkflowStripCollapsed] = useState(true);
 
   // Observations State
   const [observations, setObservations] = useState<any[]>([]);
@@ -254,6 +286,12 @@ export default function QualityApprovalsPage() {
   const [currentPhotos, setCurrentPhotos] = useState<string[]>([]);
   const [savingObs, setSavingObs] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (selectedInspectionId) {
+      setWorkflowStripCollapsed(true);
+    }
+  }, [selectedInspectionId]);
 
   // Reversal Modal
   const [showReversalModal, setShowReversalModal] = useState(false);
@@ -862,40 +900,65 @@ export default function QualityApprovalsPage() {
     <>
       <div className="h-full flex flex-col bg-surface-base">
         {/* Header */}
-        <header className="bg-surface-card border-b px-6 py-4 flex justify-between items-center sticky top-0 z-10 shrink-0">
+        <header
+          className={`bg-surface-card border-b flex justify-between items-center sticky top-0 z-10 shrink-0 gap-4 ${
+            selectedInspectionId ? "px-5 py-2.5" : "px-6 py-4"
+          }`}
+        >
           <div>
-            <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+            <h1
+              className={`font-bold text-text-primary flex items-center gap-2 ${
+                selectedInspectionId ? "text-lg" : "text-xl"
+              }`}
+            >
               <ShieldCheck className="w-5 h-5 text-secondary" />
               QA/QC Approvals
             </h1>
-            <p className="text-sm text-text-muted mt-1">
-              Review Requests for Inspection (RFI) and execute checklists.
-            </p>
+            {!selectedInspectionId ? (
+              <p className="text-sm text-text-muted mt-1">
+                Review Requests for Inspection (RFI) and execute checklists.
+              </p>
+            ) : (
+              <p className="text-xs text-text-muted mt-0.5">
+                Focus mode for checklist execution
+              </p>
+            )}
           </div>
+          {selectedInspectionId ? (
+            <button
+              onClick={() => setSelectedInspectionId(null)}
+              className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface-base px-4 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back To List
+            </button>
+          ) : null}
         </header>
 
-        <div className="bg-surface-card border-b px-6 py-2 shrink-0">
-          <div className="flex flex-wrap items-center gap-2">
-            {APPROVAL_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  filterStatus === tab.key
-                    ? "bg-secondary text-white shadow-sm"
-                    : "bg-surface-raised text-text-secondary hover:bg-gray-200"
-                }`}
-                onClick={() => setFilterStatus(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
+        {!selectedInspectionId ? (
+          <div className="bg-surface-card border-b px-6 py-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {APPROVAL_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    filterStatus === tab.key
+                      ? "bg-secondary text-white shadow-sm"
+                      : "bg-surface-raised text-text-secondary hover:bg-gray-200"
+                  }`}
+                  onClick={() => setFilterStatus(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {/* Left Panel: List of RFIs */}
           <aside
-            className={`${filterStatus === "DASHBOARD" ? "w-full border-r-0" : "w-[420px] border-r"} bg-surface-card flex flex-col shrink-0 flex-grow-0`}
+            className={`${selectedInspectionId && filterStatus !== "DASHBOARD" ? "hidden" : "flex"} ${filterStatus === "DASHBOARD" ? "w-full border-r-0" : "w-[420px] border-r"} bg-surface-card flex-col shrink-0 flex-grow-0`}
           >
             <div className="p-4 border-b space-y-3">
               <div className="grid grid-cols-3 gap-2 text-xs">
@@ -1196,7 +1259,7 @@ export default function QualityApprovalsPage() {
                 </div>
               ) : (
                 filteredInspections.map((insp) => {
-                  const location = parseLocationHierarchy(insp);
+                  const scopeTokens = getInspectionScopeTokens(insp);
                   const bucket = getSlaBucket(insp);
                   const priority = getPriorityScore(insp);
                   return (
@@ -1239,18 +1302,26 @@ export default function QualityApprovalsPage() {
                           `Activity #${insp.activityId}`}
                       </h4>
                       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-text-secondary">
-                        <span className="inline-flex items-center gap-1 rounded bg-surface-raised px-2 py-0.5">
-                          <Building2 className="w-3 h-3" />{" "}
-                          {location[0] || "Block N/A"}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded bg-surface-raised px-2 py-0.5">
-                          <Layers className="w-3 h-3" />{" "}
-                          {location[1] || getFloorLabel(insp)}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded bg-surface-raised px-2 py-0.5">
-                          <Home className="w-3 h-3" />{" "}
-                          {location[2] || `Node ${insp.epsNodeId}`}
-                        </span>
+                        {scopeTokens.map((token, tokenIdx) => (
+                          <span
+                            key={`${insp.id}-scope-${tokenIdx}`}
+                            className="inline-flex items-center gap-1 rounded bg-surface-raised px-2 py-0.5"
+                          >
+                            {tokenIdx === 0 ? (
+                              <Building2 className="w-3 h-3" />
+                            ) : tokenIdx <= 2 ? (
+                              <Layers className="w-3 h-3" />
+                            ) : (
+                              <Home className="w-3 h-3" />
+                            )}{" "}
+                            {token}
+                          </span>
+                        ))}
+                        {insp.drawingNo ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-info-muted px-2 py-0.5 text-blue-800">
+                            <MapPin className="w-3 h-3" /> Dwg {insp.drawingNo}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="mt-1.5 flex items-center justify-between text-[11px]">
                         <span className="text-text-muted">
@@ -1329,12 +1400,12 @@ export default function QualityApprovalsPage() {
             ) : inspectionDetail ? (
               <>
                 {/* RFI Info Header */}
-                <div className="bg-surface-card px-8 py-6 border-b shrink-0 flex items-start justify-between">
+                <div className="bg-surface-card px-6 py-4 border-b shrink-0 flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-text-primary mb-2">
+                    <h2 className="text-xl font-bold text-text-primary mb-1.5">
                       {inspectionDetail.activity?.activityName}
                     </h2>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-text-secondary">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
                       <span className="flex items-center gap-1.5">
                         <Clock className="w-4 h-4 text-text-disabled" />{" "}
                         Requested: {inspectionDetail.requestDate}
@@ -1349,7 +1420,22 @@ export default function QualityApprovalsPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                      {getInspectionScopeTokens(inspectionDetail).map(
+                        (token: string, tokenIdx: number) => (
+                          <span
+                            key={`detail-scope-${tokenIdx}`}
+                            className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary"
+                          >
+                            {token}
+                          </span>
+                        ),
+                      )}
+                      {inspectionDetail.drawingNo ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-info-muted px-3 py-1 font-semibold text-blue-800">
+                          Drawing {inspectionDetail.drawingNo}
+                        </span>
+                      ) : null}
                       {inspectionDetail.workflowSummary?.strategyName ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary">
                           {inspectionDetail.workflowSummary.strategyName}
@@ -1399,7 +1485,13 @@ export default function QualityApprovalsPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <button
+                      onClick={() => setSelectedInspectionId(null)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-surface-base border border-border-default text-text-secondary rounded-lg text-sm font-medium hover:bg-surface-raised shadow-sm"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> All RFIs
+                    </button>
                     {/* PDF Download */}
                     <button
                       onClick={async () => {
@@ -1422,7 +1514,7 @@ export default function QualityApprovalsPage() {
                           alert("Failed to download report.");
                         }
                       }}
-                      className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium shadow-sm ${inspectionDetail.status === "APPROVED" ? "bg-success-muted border-emerald-200 text-emerald-700 hover:bg-emerald-100" : "bg-surface-base border-border-default text-text-secondary hover:bg-surface-raised"}`}
+                      className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-medium shadow-sm ${inspectionDetail.status === "APPROVED" ? "bg-success-muted border-emerald-200 text-emerald-700 hover:bg-emerald-100" : "bg-surface-base border-border-default text-text-secondary hover:bg-surface-raised"}`}
                     >
                       <FileDown className="w-4 h-4" />{" "}
                       {inspectionDetail.status === "APPROVED"
@@ -1433,7 +1525,7 @@ export default function QualityApprovalsPage() {
                     {inspectionDetail.status === "APPROVED" && (
                       <button
                         onClick={() => setShowReversalModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-warning-muted border border-amber-200 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-100 shadow-sm"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-warning-muted border border-amber-200 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-100 shadow-sm"
                       >
                         <RotateCcw className="w-4 h-4" /> Reverse
                       </button>
@@ -1456,7 +1548,7 @@ export default function QualityApprovalsPage() {
                             );
                           }
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-error-muted border border-red-200 text-error rounded-lg text-sm font-medium hover:bg-red-100 shadow-sm"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-error-muted border border-red-200 text-error rounded-lg text-sm font-medium hover:bg-red-100 shadow-sm"
                       >
                         <Trash2 className="w-4 h-4" /> Delete
                       </button>
@@ -1468,93 +1560,116 @@ export default function QualityApprovalsPage() {
 
                 {/* Workflow Status Indicator */}
                 {workflowState && (
-                  <div className="shrink-0 border-y border-border-subtle bg-surface-card px-5 py-3">
+                  <div className="shrink-0 border-y border-border-subtle bg-surface-card px-4 py-2">
                     <div className="flex flex-1 items-center gap-3">
-                      <div className="text-xs font-bold text-text-muted uppercase tracking-widest whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWorkflowStripCollapsed((collapsed) => !collapsed)
+                        }
+                        className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface-base px-2.5 py-1.5 text-xs font-bold text-text-muted uppercase tracking-widest whitespace-nowrap hover:bg-surface-raised"
+                      >
                         Workflow
+                        {workflowStripCollapsed ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                      <div className="text-xs text-text-muted whitespace-nowrap">
+                        {workflowState.currentStepOrder
+                          ? `Pending at level ${workflowState.currentStepOrder}`
+                          : "Workflow ready"}
                       </div>
-                      <div className="flex flex-1 items-center gap-2 overflow-x-auto pb-1">
-                        {workflowState.steps
-                          .sort((a: any, b: any) => a.stepOrder - b.stepOrder)
-                          .map((step: any, sIdx: number) => {
-                            const isCurrent =
-                              workflowState.currentStepOrder === step.stepOrder;
-                            const isCompleted = step.status === "COMPLETED";
-                            const isRejected = step.status === "REJECTED";
-                            const isRaiserStep =
-                              step.workflowNode?.stepType === "RAISE_RFI" ||
-                              (step.stepOrder === 1 &&
-                                step.workflowNode?.label
-                                  ?.toLowerCase?.()
-                                  ?.includes?.("raise"));
-                            const isLastStepNode =
-                              step.stepOrder ===
-                              Math.max(
-                                ...workflowState.steps.map(
-                                  (s: any) => s.stepOrder,
-                                ),
-                              );
+                      {workflowStripCollapsed ? (
+                        <div className="flex flex-1 items-center justify-end">
+                          <span className="rounded-full bg-surface-raised px-2 py-1 text-[11px] font-medium text-text-muted">
+                            Workflow hidden while working on stage
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-1 items-center gap-2 overflow-x-auto pb-1">
+                          {workflowState.steps
+                            .sort((a: any, b: any) => a.stepOrder - b.stepOrder)
+                            .map((step: any, sIdx: number) => {
+                              const isCurrent =
+                                workflowState.currentStepOrder === step.stepOrder;
+                              const isCompleted = step.status === "COMPLETED";
+                              const isRejected = step.status === "REJECTED";
+                              const isRaiserStep =
+                                step.workflowNode?.stepType === "RAISE_RFI" ||
+                                (step.stepOrder === 1 &&
+                                  step.workflowNode?.label
+                                    ?.toLowerCase?.()
+                                    ?.includes?.("raise"));
+                              const isLastStepNode =
+                                step.stepOrder ===
+                                Math.max(
+                                  ...workflowState.steps.map(
+                                    (s: any) => s.stepOrder,
+                                  ),
+                                );
 
-                            let colorClass =
-                              "bg-surface-raised text-text-muted border-border-default";
-                            if (isCompleted)
-                              colorClass =
-                                "bg-green-100 text-green-700 border-green-200";
-                            if (isRejected)
-                              colorClass =
-                                "bg-red-100 text-red-700 border-red-200";
-                            if (isCurrent)
-                              colorClass =
-                                "bg-indigo-100 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200";
+                              let colorClass =
+                                "bg-surface-raised text-text-muted border-border-default";
+                              if (isCompleted)
+                                colorClass =
+                                  "bg-green-100 text-green-700 border-green-200";
+                              if (isRejected)
+                                colorClass =
+                                  "bg-red-100 text-red-700 border-red-200";
+                              if (isCurrent)
+                                colorClass =
+                                  "bg-indigo-100 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200";
 
-                            // Determine label and subtitle
-                            const stepLabel =
-                              isLastStepNode && !isRaiserStep
-                                ? "Final Approval"
-                                : step.stepName ||
-                                  step.workflowNode?.label ||
-                                  `Step ${step.stepOrder}`;
-                            const stepSubtitle = isCompleted
-                              ? isRaiserStep
-                                ? "RFI Raised"
-                                : `Signed by ${step.signerDisplayName || step.signedBy}${step.signerCompany ? ` - ${step.signerCompany}` : ""}${step.signerRole ? ` - ${step.signerRole}` : ""}`
-                              : isRejected
-                                ? "Rejected"
-                                : isCurrent
-                                  ? `Pending Approval${step.stepName ? ` - ${step.stepName}` : ""}`
-                                  : "Waiting";
+                              const stepLabel =
+                                isLastStepNode && !isRaiserStep
+                                  ? "Final Approval"
+                                  : step.stepName ||
+                                    step.workflowNode?.label ||
+                                    `Step ${step.stepOrder}`;
+                              const stepSubtitle = isCompleted
+                                ? isRaiserStep
+                                  ? "RFI Raised"
+                                  : `Signed by ${step.signerDisplayName || step.signedBy}${step.signerCompany ? ` - ${step.signerCompany}` : ""}${step.signerRole ? ` - ${step.signerRole}` : ""}`
+                                : isRejected
+                                  ? "Rejected"
+                                  : isCurrent
+                                    ? `Pending Approval${step.stepName ? ` - ${step.stepName}` : ""}`
+                                    : "Waiting";
 
-                            return (
-                              <div
-                                key={step.id}
-                                className="flex items-center gap-2 shrink-0"
-                              >
+                              return (
                                 <div
-                                  className={`flex flex-col border rounded-lg px-3 py-1.5 ${colorClass}`}
+                                  key={step.id}
+                                  className="flex items-center gap-2 shrink-0"
                                 >
-                                  <span className="text-[10px] font-bold uppercase">
-                                    {stepLabel}
-                                  </span>
-                                  <span className="text-[10px] truncate max-w-[120px]">
-                                    {stepSubtitle}
-                                  </span>
-                                </div>
-                                {sIdx < workflowState.steps.length - 1 && (
                                   <div
-                                    className={`h-0.5 w-4 ${isCompleted ? "bg-success" : "bg-gray-200"}`}
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
-                      </div>
+                                    className={`flex flex-col border rounded-lg px-2.5 py-1 ${colorClass}`}
+                                  >
+                                    <span className="text-[10px] font-bold uppercase">
+                                      {stepLabel}
+                                    </span>
+                                    <span className="text-[10px] truncate max-w-[100px]">
+                                      {stepSubtitle}
+                                    </span>
+                                  </div>
+                                  {sIdx < workflowState.steps.length - 1 && (
+                                    <div
+                                      className={`h-0.5 w-4 ${isCompleted ? "bg-success" : "bg-gray-200"}`}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {/* Checklist Area */}
-                <div className="flex-1 overflow-y-auto px-5 py-4">
-                  <div className="max-w-5xl mx-auto space-y-4">
+                <div className="flex-1 overflow-y-auto px-4 py-3 lg:px-6">
+                  <div className="mx-auto w-full max-w-[1500px] space-y-4">
                     {/* Workflow Completed Banner */}
                     {workflowState?.status === "COMPLETED" && (
                       <div className="bg-success-muted border border-emerald-300 rounded-xl px-5 py-3 flex items-center gap-3 text-emerald-800">
@@ -1702,9 +1817,9 @@ export default function QualityApprovalsPage() {
                             key={stage.id}
                             className="bg-surface-card rounded-xl shadow-sm border overflow-hidden"
                           >
-                            <div className="bg-surface-base px-4 py-2.5 border-b flex flex-wrap justify-between items-center gap-2">
+                            <div className="bg-surface-base px-3 py-2 border-b flex flex-wrap justify-between items-start gap-2">
                               <div>
-                                <h3 className="font-semibold text-text-primary">
+                                <h3 className="font-semibold text-base text-text-primary">
                                   Stage {sIdx + 1}:{" "}
                                   {stage.stageTemplate?.name || "General Checks"}
                                 </h3>
@@ -1718,32 +1833,21 @@ export default function QualityApprovalsPage() {
                                         : "Stage approval pending"}
                                 </p>
                                 {stageLevels.length > 0 ? (
-                                  <div className="mt-2 space-y-1">
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
                                     {stageLevels.map((level: any) => (
-                                      <p
+                                      <span
                                         key={`stage-level-summary-${stage.id}-${level.stepOrder}`}
-                                        className="text-xs text-text-muted"
+                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                          level.approved
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : "bg-amber-100 text-amber-700"
+                                        }`}
                                       >
-                                        <span className="font-medium text-text-secondary">
-                                          Level {level.stepOrder}: {level.stepName}
-                                        </span>
-                                        {" - "}
+                                        L{level.stepOrder}:{" "}
                                         {level.approved
-                                          ? `${level.signerDisplayName || "Approved"}${
-                                              level.signerCompany
-                                                ? ` - ${level.signerCompany}`
-                                                : ""
-                                            }${
-                                              level.signerRoleLabel
-                                                ? ` - ${level.signerRoleLabel}`
-                                                : ""
-                                            }${
-                                              level.autoInherited
-                                                ? " (auto-filled by higher level)"
-                                                : ""
-                                            }`
+                                          ? level.signerDisplayName || "Approved"
                                           : "Pending"}
-                                      </p>
+                                      </span>
                                     ))}
                                   </div>
                                 ) : latestStageApproval ? (
@@ -1801,20 +1905,20 @@ export default function QualityApprovalsPage() {
                                 )}
                               </div>
                             </div>
-                            <div className="border-b bg-surface-base/60 px-4 py-3">
+                            <div className="border-b bg-surface-base/60 px-3 py-2">
                               {stageLevels.length > 0 ? (
-                                <div className="space-y-2">
+                                <div className="flex flex-wrap gap-2">
                                   {stageLevels.map((level: any) => (
                                     <div
                                       key={`stage-matrix-${stage.id}-${level.stepOrder}`}
-                                      className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface-card px-3 py-2 text-xs"
+                                      className="min-w-[180px] flex-1 rounded-lg border border-border-subtle bg-surface-card px-2.5 py-2 text-[11px]"
                                     >
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="font-semibold text-text-primary">
-                                          Level {level.stepOrder}: {level.stepName}
+                                      <div className="flex flex-wrap items-center justify-between gap-1">
+                                        <span className="font-semibold text-text-primary leading-tight">
+                                          L{level.stepOrder}: {level.stepName}
                                         </span>
                                         <span
-                                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                             level.approved
                                               ? "bg-emerald-100 text-emerald-700"
                                               : "bg-amber-100 text-amber-700"
@@ -1823,7 +1927,7 @@ export default function QualityApprovalsPage() {
                                           {level.approved ? "Approved" : "Pending"}
                                         </span>
                                       </div>
-                                      <div className="text-text-secondary">
+                                      <div className="mt-1 text-text-secondary leading-snug">
                                         {level.approved
                                           ? [
                                               level.signerDisplayName,
@@ -1832,13 +1936,13 @@ export default function QualityApprovalsPage() {
                                             ]
                                               .filter(Boolean)
                                               .join(" - ")
-                                          : "Awaiting approval at this level"}
+                                          : "Awaiting approval"}
                                         {level.autoInherited
                                           ? " (auto-filled by higher level approval)"
                                           : ""}
                                       </div>
                                       {level.approvedAt && (
-                                        <div className="text-text-muted">
+                                        <div className="mt-1 text-text-muted">
                                           {new Date(level.approvedAt).toLocaleString()}
                                         </div>
                                       )}
@@ -2032,9 +2136,9 @@ export default function QualityApprovalsPage() {
                   inspectionDetail.status,
                 ) &&
                   (!inspectionDetail.isLocked || isAdmin) && (
-                  <div className="border-t border-border-default bg-surface-card px-5 py-4">
-                    <div className="max-w-5xl mx-auto flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="text-sm min-h-5">
+                  <div className="border-t border-border-default bg-surface-card px-4 py-2.5">
+                    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="text-xs min-h-5">
                         <span className="text-text-secondary font-medium flex items-center gap-1.5">
                           <Clock className="w-4 h-4" /> Checklist approval is stage-driven. Each stage must complete all release-strategy levels, and the checklist will auto-approve once every stage is complete.
                         </span>

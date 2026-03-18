@@ -266,6 +266,11 @@ class _ChecklistTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasWorkflow = state.workflow != null;
+    // Hide legacy timeline when the new stage-approval system is active
+    // (any stage has stageApproval data). The old workflow run is not updated
+    // by the approveStage endpoint and would show stale "Pending" state.
+    final usesStageApproval =
+        state.stages.any((s) => s.stageApproval != null);
 
     if (state.stages.isEmpty && !hasWorkflow) {
       return const Center(child: Text('No checklist stages defined'));
@@ -274,8 +279,8 @@ class _ChecklistTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        // Workflow approval timeline shown above stages when workflow is active
-        if (hasWorkflow) _WorkflowTimeline(workflow: state.workflow!),
+        // Workflow approval timeline shown only when NOT using stage-level approval
+        if (hasWorkflow && !usesStageApproval) _WorkflowTimeline(workflow: state.workflow!),
         if (state.stages.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
@@ -523,57 +528,21 @@ class _StageSectionState extends State<_StageSection> {
   // Stages are expanded by default so checklist items are immediately visible
   bool _expanded = true;
 
-  /// Shows a confirmation dialog then dispatches [ApproveStage] for this stage.
-  void _showStageApproveDialog(
-      BuildContext context, InspectionStage stage) {
-    final commentsCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Approve: ${stage.stageName ?? "Stage"}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (stage.stageApproval?.pendingDisplay != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Pending: ${stage.stageApproval!.pendingDisplay}',
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.blue.shade700),
-                ),
-              ),
-            TextField(
-              controller: commentsCtrl,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Comments (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              context.read<QualityApprovalBloc>().add(ApproveStage(
-                    stageId: stage.id,
-                    comments: commentsCtrl.text.trim().isEmpty
-                        ? null
-                        : commentsCtrl.text.trim(),
-                  ));
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.green.shade700),
-            child: const Text('Approve'),
-          ),
-        ],
-      ),
+  /// Opens the [SignatureApprovalSheet] to capture the approver's signature
+  /// then dispatches [ApproveStage] for this stage.
+  void _showStageApproveDialog(BuildContext context, InspectionStage stage) {
+    SignatureApprovalSheet.showForStage(
+      context,
+      stageName: stage.stageName ?? 'Stage',
+      pendingDisplay: stage.stageApproval?.pendingDisplay,
+      onSubmit: (signatureData, signedBy, comments) {
+        context.read<QualityApprovalBloc>().add(ApproveStage(
+              stageId: stage.id,
+              signatureData: signatureData,
+              signedBy: signedBy,
+              comments: comments,
+            ));
+      },
     );
   }
 
@@ -896,14 +865,22 @@ class _ObservationsTab extends StatelessWidget {
                 color: Colors.green.shade700,
               ),
               const Spacer(),
-              // Raise new observation — opens the RaiseObservationSheet bottom sheet
+              // Raise new observation — only available with QUALITY.OBSERVATION.CREATE
               TextButton.icon(
-                onPressed: () =>
-                    RaiseObservationSheet.show(context),
+                onPressed: ps.canCreateActivityObs
+                    ? () => RaiseObservationSheet.show(context)
+                    : () => ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'Insufficient permission to raise observations.'),
+                          ),
+                        ),
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('Raise'),
                 style: TextButton.styleFrom(
                   textStyle: const TextStyle(fontSize: 12),
+                  foregroundColor:
+                      ps.canCreateActivityObs ? null : Colors.grey,
                 ),
               ),
             ],
@@ -1220,49 +1197,6 @@ class _ActionBar extends StatelessWidget {
     );
   }
 
-  /// Opens the [SignatureApprovalSheet] to capture the approver's signature
-  /// before advancing the workflow to the next level.
-  void _showWorkflowAdvanceDialog(BuildContext context) {
-    SignatureApprovalSheet.show(context);
-  }
-
-  /// Shows a dialog requiring justification before dispatching
-  /// [ProvisionallyApproveInspection] for direct (non-workflow) inspections.
-  void _showProvisionalDialog(BuildContext context) {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Provisional Approval'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Justification *',
-            border: OutlineInputBorder(),
-            hintText: 'Explain why provisional approval is being granted…',
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (ctrl.text.trim().isEmpty) return;
-              context.read<QualityApprovalBloc>().add(
-                  ProvisionallyApproveInspection(ctrl.text.trim()));
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.teal.shade700),
-            child: const Text('Provisionally Approve'),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Shows a dialog to collect a delegate user ID and optional comments,
   /// then dispatches [DelegateWorkflowStep].

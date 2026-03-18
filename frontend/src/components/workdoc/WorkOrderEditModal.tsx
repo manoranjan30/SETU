@@ -134,15 +134,18 @@ const WorkOrderEditModal: React.FC<Props> = ({
       onClose={onClose}
       title="Amend Work Order"
       size="fullscreen"
+      headerClassName="px-4 py-3 md:px-5 md:py-3"
+      titleClassName="text-lg md:text-xl"
+      contentClassName="p-0 overflow-hidden"
     >
-      <div className="flex flex-col h-full bg-surface-base">
-        <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="flex flex-col h-full min-h-0 bg-surface-base">
+        <div className="flex-1 overflow-auto p-3 md:p-4 space-y-4">
           {/* Header Section */}
-          <div className="bg-surface-card p-6 rounded-2xl border border-border-default shadow-sm space-y-4">
+          <div className="bg-surface-card p-4 rounded-2xl border border-border-default shadow-sm space-y-3">
             <h3 className="text-sm font-black text-text-disabled uppercase tracking-widest">
               Order Header
             </h3>
-            <div className="grid grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 lg:gap-5">
               <div>
                 <label className="block text-[10px] font-black text-text-muted uppercase mb-1">
                   WO Number
@@ -213,8 +216,8 @@ const WorkOrderEditModal: React.FC<Props> = ({
           </div>
 
           {/* Items Section */}
-          <div className="bg-surface-card rounded-2xl border border-border-default shadow-sm overflow-hidden flex flex-col">
-            <div className="p-4 bg-surface-base border-b flex justify-between items-center">
+          <div className="bg-surface-card rounded-2xl border border-border-default shadow-sm overflow-hidden flex flex-col min-h-[52vh]">
+            <div className="p-3 md:p-4 bg-surface-base border-b flex justify-between items-center">
               <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">
                 Line Item Details
               </h3>
@@ -227,7 +230,7 @@ const WorkOrderEditModal: React.FC<Props> = ({
             </div>
 
             {showBoqSelector && (
-              <div className="p-4 bg-primary-muted border-b border-blue-100 max-h-60 overflow-auto">
+              <div className="p-3 md:p-4 bg-primary-muted border-b border-blue-100 max-h-60 overflow-auto">
                 <div className="flex justify-between items-center mb-3">
                   <p className="text-[10px] font-black text-blue-800 uppercase">
                     Select BOQ Item to Add
@@ -271,8 +274,9 @@ const WorkOrderEditModal: React.FC<Props> = ({
               </div>
             )}
 
-            <table className="w-full text-left border-collapse">
-              <thead>
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 z-10">
                 <tr className="bg-surface-base text-[10px] font-black uppercase text-text-disabled tracking-wider">
                   <th className="px-4 py-3 border-b">Code</th>
                   <th className="px-4 py-3 border-b">Description</th>
@@ -281,8 +285,8 @@ const WorkOrderEditModal: React.FC<Props> = ({
                   <th className="px-4 py-3 border-b text-right">Rate</th>
                   <th className="px-4 py-3 border-b text-right">Amount</th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
+                </thead>
+                <tbody className="divide-y divide-slate-100">
                 {items.map((item, idx) => (
                   <tr
                     key={item.id || `new-${idx}`}
@@ -333,13 +337,14 @@ const WorkOrderEditModal: React.FC<Props> = ({
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
         {/* Footer Section */}
-        <div className="p-4 bg-surface-card border-t flex justify-between items-center shadow-2xl">
+        <div className="p-3 md:p-4 bg-surface-card border-t flex justify-between items-center shadow-2xl">
           <div>
             <p className="text-[10px] font-black text-text-disabled uppercase leading-none">
               Total Work Order Value
@@ -361,7 +366,7 @@ const WorkOrderEditModal: React.FC<Props> = ({
             <button
               onClick={handleSave}
               disabled={loading}
-              className="px-8 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-slate-800 disabled:opacity-50 transition-all shadow-xl active:scale-95 flex items-center gap-2"
+              className="px-6 py-3 md:px-8 bg-slate-900 text-white font-black rounded-xl hover:bg-slate-800 disabled:opacity-50 transition-all shadow-xl active:scale-95 flex items-center gap-2"
             >
               {loading ? (
                 <Loader2 className="animate-spin w-5 h-5" />

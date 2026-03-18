@@ -10,20 +10,35 @@ import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 
-/// Modal bottom sheet that collects a digital signature before advancing
-/// the approval workflow step.
+/// Modal bottom sheet that collects a digital signature.
 ///
 /// Shows two tabs:
 ///   • Use Saved — displays the signature stored in the user's profile
 ///   • Draw — lets the user sign with a finger
 ///
-/// On confirm it dispatches [AdvanceWorkflowStep] with signatureData and
-/// signedBy populated, so the backend validation passes.
+/// [onSubmit] is called with (signatureData, signedBy, comments) when the user
+/// confirms. Pass [title] and [subtitle] to customise the header text.
+///
+/// Use [SignatureApprovalSheet.show] for the legacy AdvanceWorkflowStep flow.
+/// Use [SignatureApprovalSheet.showForStage] for the stage-level approval flow.
 class SignatureApprovalSheet extends StatefulWidget {
-  const SignatureApprovalSheet({super.key});
+  final String title;
+  final String? subtitle;
+  final void Function(String signatureData, String signedBy, String? comments)
+      onSubmit;
 
-  /// Show the sheet. Returns true if the step was submitted, false/null otherwise.
+  const SignatureApprovalSheet({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.onSubmit,
+  });
+
+  /// Show the sheet for advancing the legacy workflow step.
+  /// Returns true if submitted, false/null otherwise.
   static Future<bool?> show(BuildContext context) {
+    final bloc = context.read<QualityApprovalBloc>();
+    final authBloc = context.read<AuthBloc>();
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -33,10 +48,57 @@ class SignatureApprovalSheet extends StatefulWidget {
       ),
       builder: (_) => MultiBlocProvider(
         providers: [
-          BlocProvider.value(value: context.read<QualityApprovalBloc>()),
-          BlocProvider.value(value: context.read<AuthBloc>()),
+          BlocProvider.value(value: bloc),
+          BlocProvider.value(value: authBloc),
         ],
-        child: const SignatureApprovalSheet(),
+        child: Builder(
+          builder: (ctx) => SignatureApprovalSheet(
+            title: 'Approve Workflow Step',
+            subtitle:
+                'Your digital signature is required to advance the approval.',
+            onSubmit: (signatureData, signedBy, comments) {
+              ctx.read<QualityApprovalBloc>().add(AdvanceWorkflowStep(
+                    signatureData: signatureData,
+                    signedBy: signedBy,
+                    comments: comments,
+                  ));
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show the sheet for stage-level approval.
+  /// [onSubmit] receives (signatureData, signedBy, comments) to dispatch
+  /// [ApproveStage] from the caller.
+  static Future<bool?> showForStage(
+    BuildContext context, {
+    required String stageName,
+    String? pendingDisplay,
+    required void Function(
+            String signatureData, String signedBy, String? comments)
+        onSubmit,
+  }) {
+    final bloc = context.read<QualityApprovalBloc>();
+    final authBloc = context.read<AuthBloc>();
+    return showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: bloc),
+          BlocProvider.value(value: authBloc),
+        ],
+        child: SignatureApprovalSheet(
+          title: 'Approve Stage: $stageName',
+          subtitle: pendingDisplay != null ? 'Pending: $pendingDisplay' : null,
+          onSubmit: onSubmit,
+        ),
       ),
     );
   }
@@ -138,13 +200,11 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
         ? authState.user.fullName
         : 'Approver';
 
-    context.read<QualityApprovalBloc>().add(AdvanceWorkflowStep(
-          signatureData: signatureData,
-          signedBy: signedBy,
-          comments: _commentsCtrl.text.trim().isEmpty
-              ? null
-              : _commentsCtrl.text.trim(),
-        ));
+    widget.onSubmit(
+      signatureData!,
+      signedBy,
+      _commentsCtrl.text.trim().isEmpty ? null : _commentsCtrl.text.trim(),
+    );
 
     if (mounted) Navigator.of(context).pop(true);
   }
@@ -174,17 +234,19 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
           const SizedBox(height: 16),
 
           Text(
-            'Approve Workflow Step',
+            widget.title,
             style: theme.textTheme.titleMedium
                 ?.copyWith(fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Your digital signature is required to advance the approval.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          if (widget.subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              widget.subtitle!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 16),
 
           // Tabs
@@ -310,7 +372,7 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
                             strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.verified_outlined, size: 16),
-                label: Text(_submitting ? 'Approving…' : 'Approve & Advance'),
+                label: Text(_submitting ? 'Approving…' : 'Approve'),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.green.shade700,
                 ),

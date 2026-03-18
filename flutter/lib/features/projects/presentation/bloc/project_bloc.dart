@@ -388,16 +388,22 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     // GET /planning/:epsNodeId/execution-ready — same endpoint the web app uses.
     try {
       final response = await _apiClient.getExecutionReadyActivities(event.node.id);
-      final activities = response.map<Activity>((raw) {
-        final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
-        // The execution-ready endpoint doesn't embed epsNodeId in its response.
-        // Activity.fromJson notes it "may be injected by the caller" — inject it
-        // here so the EpsExplorerPage filter (a.epsNodeId == currentNode.id) works.
-        if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
-          json['epsNodeId'] = event.node.id;
-        }
-        return Activity.fromJson(json);
-      }).toList();
+      final seen = <int>{};
+      final activities = response
+          .map<Activity>((raw) {
+            final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+            // The execution-ready endpoint doesn't embed epsNodeId in its response.
+            // Activity.fromJson notes it "may be injected by the caller" — inject it
+            // here so the EpsExplorerPage filter (a.epsNodeId == currentNode.id) works.
+            if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
+              json['epsNodeId'] = event.node.id;
+            }
+            return Activity.fromJson(json);
+          })
+          // Deduplicate by activity ID — the API can return the same activity
+          // multiple times when an activity spans multiple EPS assignments.
+          .where((a) => seen.add(a.id))
+          .toList();
 
       // Cache to local DB for offline use (non-fatal — complex plans JSON may fail)
       if (activities.isNotEmpty) {

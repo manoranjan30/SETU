@@ -255,6 +255,17 @@ enum ChecklistItemStatus {
           return ChecklistItemStatus.na;
       }
     }
+    // Also check `value` field — the backend stores the inspector's selection
+    // here and returns it on every stage fetch.
+    final valueStr = json['value'] as String?;
+    if (valueStr != null) {
+      switch (valueStr.toUpperCase()) {
+        case 'YES':
+          return ChecklistItemStatus.pass;
+        case 'NA':
+          return ChecklistItemStatus.na;
+      }
+    }
     // Backward compat: old backend sends `isOk: true/false`
     final isOk = json['isOk'] as bool?;
     return isOk == true ? ChecklistItemStatus.pass : null;
@@ -330,6 +341,8 @@ class QualityActivityList extends Equatable {
 ///   (i.e. the normal predecessor gate is overridden).
 /// [incomingEdges] defines the multi-predecessor graph (takes priority over
 ///   the legacy [previousActivityId] single-chain model).
+/// [applicabilityLevel] determines the RFI mode: 'FLOOR' (One Go / Multi Go),
+///   'UNIT' (Unit Wise — one RFI per unit), or 'ROOM'. Null = default FLOOR.
 class QualityActivity extends Equatable {
   final int id;
   final int listId;
@@ -342,6 +355,7 @@ class QualityActivity extends Equatable {
   final String status; // raw string from backend
   final int? previousActivityId;
   final List<IncomingEdge> incomingEdges;
+  final String? applicabilityLevel; // 'FLOOR' | 'UNIT' | 'ROOM' | null
 
   const QualityActivity({
     required this.id,
@@ -355,6 +369,7 @@ class QualityActivity extends Equatable {
     this.status = 'NOT_STARTED',
     this.previousActivityId,
     this.incomingEdges = const [],
+    this.applicabilityLevel,
   });
 
   factory QualityActivity.fromJson(Map<String, dynamic> json) {
@@ -373,6 +388,7 @@ class QualityActivity extends Equatable {
               ?.map((e) => IncomingEdge.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      applicabilityLevel: json['applicabilityLevel'] as String?,
     );
   }
 
@@ -470,6 +486,9 @@ class QualityInspection extends Equatable {
   final int? vendorId;
   final String? vendorName;
 
+  // Unit Wise RFI — the specific unit this inspection covers
+  final int? qualityUnitId;
+
   /// Stage-driven pending approval display, e.g. "Stage Pre-Execution - Level 2 Pending: QC Engineer".
   /// Set by the backend's `attachWorkflowSummary` — null until the inspection
   /// enters the approval flow.
@@ -506,6 +525,7 @@ class QualityInspection extends Equatable {
     this.partLabel,
     this.vendorId,
     this.vendorName,
+    this.qualityUnitId,
     this.pendingApprovalDisplay,
     this.pendingApprovalLabel,
   });
@@ -603,6 +623,7 @@ class QualityInspection extends Equatable {
       partLabel: json['partLabel'] as String?,
       vendorId: json['vendorId'] as int?,
       vendorName: json['vendorName'] as String?,
+      qualityUnitId: json['qualityUnitId'] as int?,
       pendingApprovalDisplay: json['pendingApprovalDisplay'] as String?,
       pendingApprovalLabel: json['pendingApprovalLabel'] as String?,
     );
@@ -837,12 +858,19 @@ class ChecklistItem extends Equatable {
 
   /// Serialises to the format expected by the PATCH /quality/stages/:id endpoint.
   /// Sends both `isOk` (backward compat) and `status` (new format).
+  /// `value` is always derived from [itemStatus] so that NA items correctly
+  /// pass the backend's `value === 'NA'` approval check even when the item
+  /// was freshly set in the UI and was never loaded from the server.
   Map<String, dynamic> toApiPayload() => {
         'id': id,
         'isOk': isOk, // backward compat with older backend versions
         if (itemStatus != null) 'status': itemStatus!.apiValue,
         'remarks': remarks,
-        if (value != null) 'value': value,
+        'value': itemStatus == ChecklistItemStatus.pass
+            ? 'YES'
+            : itemStatus == ChecklistItemStatus.na
+                ? 'NA'
+                : value,
       };
 
   @override
@@ -1240,10 +1268,18 @@ class EpsTreeNode extends Equatable {
 /// and any current observations. Used by the activity list widget.
 class ActivityRow extends Equatable {
   final QualityActivity activity;
-  final QualityInspection? inspection;
+  final QualityInspection? inspection; // latest, used for status display
   final ActivityDisplayStatus displayStatus;
   final bool predecessorDone;
   final List<ActivityObservation> observations;
+
+  /// All inspections for this activity (across all parts / units).
+  /// Used to render Multi-Go progress chips and Unit Wise progress chips.
+  final List<QualityInspection> allInspections;
+
+  /// Units available under the floor EPS node — populated only for UNIT
+  /// activities so the card can display "Raise [unit]" chips for unraised units.
+  final List<Map<String, dynamic>> floorUnits;
 
   const ActivityRow({
     required this.activity,
@@ -1251,11 +1287,14 @@ class ActivityRow extends Equatable {
     required this.displayStatus,
     required this.predecessorDone,
     this.observations = const [],
+    this.allInspections = const [],
+    this.floorUnits = const [],
   });
 
   @override
   List<Object?> get props =>
-      [activity, inspection, displayStatus, predecessorDone, observations];
+      [activity, inspection, displayStatus, predecessorDone, observations,
+       allInspections, floorUnits];
 }
 
 // ==================== QUALITY SITE OBSERVATION ====================

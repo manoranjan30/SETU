@@ -32,6 +32,22 @@ import { ReleaseStrategyService } from './release-strategy.service';
 import { ApprovalContextDto, ReleaseStrategyDto } from './dto/release-strategy.dto';
 import { TowerProgressService } from './tower-progress.service';
 import { BuildingLineCoordinateService } from './building-line-coordinate.service';
+import { IssueTrackerService } from './issue-tracker.service';
+import {
+  AddDeptToFlowDto,
+  CloseIssueTrackerIssueDto,
+  CoordinatorCloseStepDto,
+  CreateIssueTrackerIssueDto,
+  CreateIssueTrackerTagDto,
+  ReorderDepartmentsDto,
+  ReorderFlowDto,
+  RespondIssueTrackerStepDto,
+  SetDeptProjectConfigDto,
+  UpdateCommitmentDateDto,
+  UpdateIssueDto,
+  UpdateIssuePriorityDto,
+  UpsertGlobalDepartmentDto,
+} from './dto/issue-tracker.dto';
 
 @Controller('planning')
 @UseGuards(
@@ -48,6 +64,7 @@ export class PlanningController {
     private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly towerProgressService: TowerProgressService,
     private readonly buildingLineCoordinateService: BuildingLineCoordinateService,
+    private readonly issueTrackerService: IssueTrackerService,
   ) {}
 
   // ── Tower Lens — 3D progress visualization ────────────────────────────────
@@ -188,6 +205,7 @@ export class PlanningController {
     body: {
       coordinatesText?: string | null;
       heightMeters?: number | null;
+      customFeatures?: any[] | null;
       structureSnapshot?: any;
     },
     @Request() req,
@@ -204,6 +222,249 @@ export class PlanningController {
   @Permissions('RELEASE_STRATEGY.SIMULATE')
   resolveStrategy(@Body() body: ApprovalContextDto) {
     return this.releaseStrategyService.resolveStrategy(body.projectId, body);
+  }
+
+  // ─── Issue Tracker: Users ──────────────────────────────────────────────────
+  @Get(':projectId/issue-tracker/users')
+  listIssueTrackerUsers(@Param('projectId', ParseIntPipe) _projectId: number) {
+    return this.issueTrackerService.listUsers();
+  }
+
+  // ─── Issue Tracker: Project Dept Config ───────────────────────────────────
+  @Get(':projectId/issue-tracker/dept-config')
+  listDeptConfig(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.issueTrackerService.listDeptConfig(projectId);
+  }
+
+  @Post(':projectId/issue-tracker/dept-config')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  setDeptConfig(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: SetDeptProjectConfigDto,
+  ) {
+    return this.issueTrackerService.setDeptConfig(projectId, body);
+  }
+
+  @Delete(':projectId/issue-tracker/dept-config/:configId')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  removeDeptConfig(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('configId', ParseIntPipe) configId: number,
+  ) {
+    return this.issueTrackerService.removeDeptConfig(projectId, configId);
+  }
+
+  // ─── Issue Tracker: Tags ───────────────────────────────────────────────────
+  @Get(':projectId/issue-tracker/tags')
+  listIssueTrackerTags(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.issueTrackerService.listTags(projectId);
+  }
+
+  @Post(':projectId/issue-tracker/tags')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  createIssueTrackerTag(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: CreateIssueTrackerTagDto,
+  ) {
+    return this.issueTrackerService.createTag(projectId, body);
+  }
+
+  @Put(':projectId/issue-tracker/tags/:id')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  updateIssueTrackerTag(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: CreateIssueTrackerTagDto,
+  ) {
+    return this.issueTrackerService.updateTag(projectId, id, body);
+  }
+
+  // ─── Issue Tracker: Issues ─────────────────────────────────────────────────
+  @Get(':projectId/issue-tracker/issues')
+  listIssueTrackerIssues(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('scope') scope: string,
+    @Query('status') status: string,
+    @Query('priority') priority: string,
+    @Query('departmentId') departmentId: string,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.listIssues(
+      projectId, req.user, scope, status, priority,
+      departmentId ? parseInt(departmentId) : undefined,
+    );
+  }
+
+  @Get(':projectId/issue-tracker/issues/:id')
+  getIssueTrackerIssue(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.getIssueDetail(projectId, id, req.user);
+  }
+
+  @Post(':projectId/issue-tracker/issues')
+  createIssueTrackerIssue(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: CreateIssueTrackerIssueDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.createIssue(projectId, body, req.user);
+  }
+
+  @Patch(':projectId/issue-tracker/issues/:id')
+  updateIssueTrackerIssue(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateIssueDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.updateIssue(projectId, id, body, req.user);
+  }
+
+  @Patch(':projectId/issue-tracker/issues/:id/priority')
+  updateIssueTrackerPriority(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateIssuePriorityDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.updatePriority(projectId, id, body, req.user);
+  }
+
+  @Post(':projectId/issue-tracker/issues/:id/respond')
+  respondIssueTrackerIssue(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: RespondIssueTrackerStepDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.respondToIssue(projectId, id, body, req.user);
+  }
+
+  @Post(':projectId/issue-tracker/issues/:id/coordinator-close')
+  coordinatorCloseIssueStep(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: CoordinatorCloseStepDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.coordinatorCloseStep(projectId, id, body, req.user);
+  }
+
+  @Post(':projectId/issue-tracker/issues/:id/update-commitment')
+  updateIssueCommitmentDate(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateCommitmentDateDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.updateCommitmentDate(projectId, id, body, req.user);
+  }
+
+  @Post(':projectId/issue-tracker/issues/:id/close')
+  closeIssueTrackerIssue(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: CloseIssueTrackerIssueDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.closeIssue(projectId, id, body, req.user);
+  }
+
+  // ─── Issue Tracker: Flow Editing ──────────────────────────────────────────
+  @Post(':projectId/issue-tracker/issues/:id/flow/add-dept')
+  addDeptToIssueFlow(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AddDeptToFlowDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.addDeptToFlow(projectId, id, body, req.user);
+  }
+
+  @Delete(':projectId/issue-tracker/issues/:id/flow/step/:stepId')
+  removeDeptFromIssueFlow(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('stepId', ParseIntPipe) stepId: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.removeDeptFromFlow(projectId, id, stepId, req.user);
+  }
+
+  @Patch(':projectId/issue-tracker/issues/:id/flow/reorder')
+  reorderIssueFlow(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ReorderFlowDto,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.reorderFlow(projectId, id, body, req.user);
+  }
+
+  // ─── Issue Tracker: Kanban ─────────────────────────────────────────────────
+  @Get(':projectId/issue-tracker/kanban')
+  getIssueTrackerKanban(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.getKanban(projectId, req.user);
+  }
+
+  // ─── Issue Tracker: Activity Log ──────────────────────────────────────────
+  @Get(':projectId/issue-tracker/issues/:id/activity')
+  getIssueActivity(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.issueTrackerService.getActivityLog(projectId, id);
+  }
+
+  // ─── Issue Tracker: Attachments ───────────────────────────────────────────
+  @Get(':projectId/issue-tracker/issues/:id/attachments')
+  listIssueAttachments(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.issueTrackerService.listAttachments(projectId, id);
+  }
+
+  @Delete(':projectId/issue-tracker/issues/:id/attachments/:aid')
+  deleteIssueAttachment(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('aid', ParseIntPipe) aid: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.removeAttachment(projectId, id, aid, req.user);
+  }
+
+  // ─── Issue Tracker: Notifications ─────────────────────────────────────────
+  @Get(':projectId/issue-tracker/notifications')
+  getMyIssueNotifications(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.getMyNotifications(projectId, req.user);
+  }
+
+  @Patch(':projectId/issue-tracker/notifications/read-all')
+  markAllNotificationsRead(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.markAllNotificationsRead(projectId, req.user);
+  }
+
+  @Patch(':projectId/issue-tracker/notifications/:nid/read')
+  markNotificationRead(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('nid', ParseIntPipe) nid: number,
+    @Request() req,
+  ) {
+    return this.issueTrackerService.markNotificationRead(projectId, nid, req.user);
   }
 
   @Get(':projectId/matrix')

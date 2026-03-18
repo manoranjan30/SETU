@@ -7,6 +7,14 @@ export type BuildingLineNode = {
   coordinatesId: number | null;
   coordinatesText: string;
   heightMeters: number | null;
+  customFeatures?: Array<{
+    id: string;
+    type: "FLOOR" | "ELEVATION" | "CUSTOM";
+    name: string;
+    coordinatesText?: string | null;
+    heightMeters?: number | null;
+    inheritFromBelow?: boolean;
+  }>;
   structureSnapshot?: {
     floorCount?: number;
     unitCount?: number;
@@ -40,6 +48,7 @@ export const buildingLineCoordinatesService = {
     payload: {
       coordinatesText?: string | null;
       heightMeters?: number | null;
+      customFeatures?: any[] | null;
       structureSnapshot?: any;
     },
   ) {

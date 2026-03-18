@@ -44,6 +44,11 @@ import ReportBuilderHome from "./views/dashboard-builder/ReportBuilderHome";
 import ReportDesigner from "./views/dashboard-builder/ReportDesigner";
 import ReportViewer from "./views/dashboard-builder/ReportViewer";
 import DashboardRouter from "./DashboardRouter";
+import PluginRegistryPage from "./pages/admin/PluginRegistryPage";
+import PluginHostPage from "./pages/plugins/PluginHostPage";
+import IssueTrackerDepartmentsPage from "./pages/admin/IssueTrackerDepartmentsPage";
+import IssueTrackerPage from "./pages/planning/IssueTrackerPage";
+import { PluginRuntimeProvider } from "./context/PluginRuntimeContext";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -213,6 +218,30 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute permission="ADMIN.REPORT.READ">
               <ReportViewer />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/plugins"
+          element={
+            <ProtectedRoute permission="PLUGIN.REGISTRY.READ">
+              <PluginRegistryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/issue-tracker"
+          element={
+            <ProtectedRoute permission="MANAGE_USERS">
+              <IssueTrackerDepartmentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="projects/:projectId/issue-tracker"
+          element={
+            <ProtectedRoute>
+              <IssueTrackerPage />
             </ProtectedRoute>
           }
         />
@@ -416,6 +445,38 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="plugins/:pluginKey"
+          element={
+            <ProtectedRoute permission="PLUGIN.RUNTIME.READ">
+              <PluginHostPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="plugins/:pluginKey/:pageKey"
+          element={
+            <ProtectedRoute permission="PLUGIN.RUNTIME.READ">
+              <PluginHostPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="projects/:projectId/plugins/:pluginKey"
+          element={
+            <ProtectedRoute permission="PLUGIN.RUNTIME.READ">
+              <PluginHostPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="projects/:projectId/plugins/:pluginKey/:pageKey"
+          element={
+            <ProtectedRoute permission="PLUGIN.RUNTIME.READ">
+              <PluginHostPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" />} />
     </Routes>
@@ -426,7 +487,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <PluginRuntimeProvider>
+          <AppRoutes />
+        </PluginRuntimeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

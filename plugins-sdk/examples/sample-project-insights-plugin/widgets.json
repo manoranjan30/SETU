@@ -1,0 +1,11 @@
+[
+  {
+    "widgetKey": "project-insights-kpi",
+    "title": "Project Insights KPI",
+    "widgetType": "kpi",
+    "permissionCode": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "config": {
+      "summary": "Reference KPI widget for plugin developers."
+    }
+  }
+]

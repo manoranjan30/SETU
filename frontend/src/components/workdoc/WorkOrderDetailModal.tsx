@@ -654,10 +654,13 @@ const WorkOrderDetailModal: React.FC<Props> = ({
       onClose={onClose}
       title={`Work Order: ${workOrder.woNumber}`}
       size="fullscreen"
+      headerClassName="px-4 py-3 md:px-5 md:py-3"
+      titleClassName="text-lg md:text-xl"
+      contentClassName="p-0 overflow-hidden"
     >
-      <div className="h-full flex flex-col p-0 bg-surface-base/50">
+      <div className="h-full min-h-0 flex flex-col p-0 bg-surface-base/50">
         {/* Header Summary */}
-        <div className="bg-surface-card border-b border-border-default px-6 py-3 grid grid-cols-5 gap-6 shadow-sm z-10">
+        <div className="bg-surface-card border-b border-border-default px-4 py-3 md:px-5 grid grid-cols-1 gap-4 md:grid-cols-5 md:gap-5 shadow-sm z-10">
           <div>
             <p className="text-[10px] uppercase font-black text-text-disabled tracking-wider">
               Vendor
@@ -736,7 +739,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="bg-surface-card border-b border-border-default px-6 flex items-center gap-8 shadow-sm">
+        <div className="bg-surface-card border-b border-border-default px-4 md:px-5 flex items-center gap-6 shadow-sm">
           <button
             onClick={() => setActiveTab("items")}
             className={clsx(
@@ -765,7 +768,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
         {activeTab === "items" && (
           <>
             {/* Toolbar */}
-            <div className="bg-surface-card border-b border-border-default px-4 py-2 flex items-center gap-2 z-10">
+            <div className="bg-surface-card border-b border-border-default px-3 py-2 md:px-4 flex flex-wrap items-center gap-2 z-10">
               {/* Level Controls */}
               <div className="flex items-center gap-1 border-r border-border-default pr-3 mr-2">
                 <span className="text-xs text-text-muted mr-1">Level:</span>
@@ -861,7 +864,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
             </div>
 
             {/* Table Layout */}
-            <div className="flex-1 flex flex-col min-h-0 mx-4 mb-4 mt-2 bg-surface-card rounded-xl border border-slate-300 shadow-sm overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 min-w-0 mx-2 mb-2 mt-1 md:mx-3 md:mb-3 bg-surface-card rounded-xl border border-slate-300 shadow-sm overflow-hidden">
               {/* Table Header */}
               <div
                 ref={headerRef}
@@ -903,7 +906,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
               {/* Virtual List */}
               <div
                 ref={listContainerRef}
-                className="flex-1 min-h-0 overflow-hidden"
+                className="flex-1 min-h-[52vh] overflow-auto"
                 onScroll={handleListScroll}
               >
                 <List
@@ -930,7 +933,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
         )}
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-border-default bg-surface-card flex justify-between items-center z-10">
+        <div className="px-3 py-2 md:px-4 border-t border-border-default bg-surface-card flex justify-between items-center z-10">
           <div className="text-xs text-text-muted">
             Showing{" "}
             <span className="font-bold text-text-secondary">
@@ -947,7 +950,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition-all shadow active:scale-95"
+            className="px-4 py-2 md:px-5 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition-all shadow active:scale-95"
           >
             Close
           </button>
