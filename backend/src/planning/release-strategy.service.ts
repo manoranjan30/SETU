@@ -491,17 +491,38 @@ export class ReleaseStrategyService {
   }
 
   private validateDto(dto: ReleaseStrategyDto) {
+    const moduleCode = dto.moduleCode?.trim().toUpperCase();
+    const processCode = dto.processCode?.trim().toUpperCase();
+    const documentType = dto.documentType?.trim().toUpperCase() || null;
+
     if (!dto.name?.trim()) {
       throw new BadRequestException('Strategy name is required');
     }
-    if (!dto.moduleCode?.trim()) {
+    if (!moduleCode) {
       throw new BadRequestException('moduleCode is required');
     }
-    if (!dto.processCode?.trim()) {
+    if (!processCode) {
       throw new BadRequestException('processCode is required');
     }
     if (!dto.steps?.length) {
       throw new BadRequestException('At least one approval level is required');
+    }
+    if (processCode === 'SNAG_RELEASE_APPROVAL') {
+      if (moduleCode !== 'QUALITY') {
+        throw new BadRequestException(
+          'SNAG_RELEASE_APPROVAL must be configured under the QUALITY module',
+        );
+      }
+      if (documentType && documentType !== 'SNAG_ROUND_RELEASE') {
+        throw new BadRequestException(
+          'SNAG_RELEASE_APPROVAL must use document type SNAG_ROUND_RELEASE',
+        );
+      }
+      if (dto.steps.length !== 1) {
+        throw new BadRequestException(
+          'SNAG_RELEASE_APPROVAL supports exactly one approval level',
+        );
+      }
     }
     dto.steps.forEach((step, index) => {
       if (!step.stepName?.trim()) {

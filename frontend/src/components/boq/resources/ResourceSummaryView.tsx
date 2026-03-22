@@ -96,9 +96,9 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
   return (
     <div className="flex flex-col h-full bg-surface-base overflow-hidden">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-border-default bg-surface-card flex justify-between items-center shadow-sm z-10">
+      <div className="sticky top-0 px-6 py-4 border-b border-border-default bg-surface-card flex justify-between items-center z-10">
         <div>
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
             <TrendingUp className="w-6 h-6 text-primary" />
             Project Resource Analysis
           </h2>
@@ -107,11 +107,11 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="bg-success-muted px-4 py-2 rounded-lg border border-green-100">
+          <div className="bg-success-muted px-4 py-2 rounded-lg border border-success">
             <div className="text-[10px] text-success uppercase font-bold tracking-wider">
               Project Grand Total
             </div>
-            <div className="text-xl font-black text-green-700 font-mono">
+            <div className="text-xl font-black text-success tabular-nums">
               {overallTotal.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
               })}
@@ -119,7 +119,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
           </div>
           <button
             title="Export Data"
-            className="p-2 bg-surface-raised hover:bg-gray-200 rounded-full text-text-secondary transition-colors"
+            className="p-2 bg-surface-raised hover:bg-surface-base rounded-full text-text-secondary transition-colors"
           >
             <Download className="w-5 h-5" />
           </button>
@@ -149,7 +149,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                 <h3 className="text-xs font-bold text-text-disabled uppercase tracking-widest">
                   Cost Summary by Category
                 </h3>
-                <div className="h-px flex-1 bg-gray-200"></div>
+                <div className="h-px flex-1 bg-border-subtle"></div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {Object.entries(typeTotals)
@@ -157,7 +157,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                   .map(([type, amount]) => (
                     <div
                       key={type}
-                      className="bg-surface-card p-4 rounded-xl shadow-sm border border-border-subtle hover:border-blue-200 transition-all group"
+                      className="bg-surface-card p-4 rounded-xl border border-border-subtle hover:border-border-strong transition-colors group"
                     >
                       <div className="flex items-center gap-2 mb-2 text-primary group-hover:scale-110 transition-transform origin-left">
                         {getTypeIcon(type)}
@@ -165,7 +165,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                           {type}
                         </span>
                       </div>
-                      <div className="text-lg font-bold text-gray-800 font-mono">
+                      <div className="text-lg font-bold text-text-primary tabular-nums">
                         {amount.toLocaleString("en-IN", {
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
@@ -186,12 +186,12 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                 <h3 className="text-xs font-bold text-text-disabled uppercase tracking-widest">
                   BOQ Item Hierarchical Breakdown
                 </h3>
-                <div className="h-px flex-1 bg-gray-200"></div>
+                <div className="h-px flex-1 bg-border-subtle"></div>
               </div>
-              <div className="bg-surface-card rounded-xl shadow-sm border border-border-default overflow-hidden">
+              <div className="bg-surface-card rounded-xl border border-border-default overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm border-collapse">
-                    <thead className="bg-surface-base text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-border-default">
+                  <table className="w-full text-left text-sm border-collapse [font-variant-numeric:tabular-nums]">
+                    <thead className="bg-surface-base text-[10px] font-bold text-text-muted uppercase tracking-[0.16em] border-b border-border-default sticky top-0 z-10">
                       <tr>
                         <th className="px-6 py-3 w-10"></th>
                         <th className="px-6 py-3">Code / Description</th>
@@ -200,7 +200,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                         <th className="px-6 py-3 text-right">Total Amount</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border-subtle">
                       {boqBreakdown.map((boq) => (
                         <React.Fragment key={boq.id}>
                           <tr
@@ -215,10 +215,10 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                               )}
                             </td>
                             <td className="px-6 py-4">
-                              <div className="text-xs font-mono text-text-disabled font-bold mb-0.5">
+                              <div className="text-xs text-text-disabled font-bold mb-0.5 tabular-nums">
                                 {boq.boqCode}
                               </div>
-                              <div className="font-bold text-gray-800">
+                              <div className="font-bold text-text-primary">
                                 {boq.description}
                               </div>
                             </td>
@@ -236,7 +236,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                             boq.resources.map((res) => (
                               <tr
                                 key={`${boq.id}-${res.resourceCode}`}
-                                className="bg-primary-muted/30 border-l-4 border-blue-400"
+                                className="bg-surface-card border-l-2 border-border-strong"
                               >
                                 <td className="px-6 py-2"></td>
                                 <td className="px-6 py-2 pl-12 flex items-center gap-2">
@@ -244,10 +244,10 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                                     {getTypeIcon(res.type)}
                                   </div>
                                   <div>
-                                    <div className="text-[10px] font-mono text-blue-400 leading-tight">
+                                    <div className="text-[10px] text-text-disabled leading-tight tabular-nums">
                                       {res.resourceCode}
                                     </div>
-                                    <div className="text-xs font-semibold text-blue-900">
+                                    <div className="text-xs font-semibold text-text-primary">
                                       {res.resourceName}
                                     </div>
                                   </div>
@@ -265,7 +265,7 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                                 <td className="px-6 py-2 text-right text-[10px] font-bold text-text-muted uppercase">
                                   {res.uom}
                                 </td>
-                                <td className="px-6 py-2 text-right font-bold text-blue-700">
+                                <td className="px-6 py-2 text-right font-bold text-primary tabular-nums">
                                   {res.totalAmount.toLocaleString("en-IN", {
                                     minimumFractionDigits: 2,
                                   })}
@@ -286,12 +286,12 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                 <h3 className="text-xs font-bold text-text-disabled uppercase tracking-widest">
                   Consolidated Project Requirements
                 </h3>
-                <div className="h-px flex-1 bg-gray-200"></div>
+                <div className="h-px flex-1 bg-border-subtle"></div>
               </div>
-              <div className="bg-surface-card rounded-xl shadow-sm border border-border-default overflow-hidden">
+              <div className="bg-surface-card rounded-xl border border-border-default overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-surface-base text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-border-default">
+                  <table className="w-full text-left text-sm whitespace-nowrap [font-variant-numeric:tabular-nums]">
+                    <thead className="bg-surface-base text-[10px] font-bold text-text-muted uppercase tracking-[0.16em] border-b border-border-default sticky top-0 z-10">
                       <tr>
                         <th className="px-6 py-4">Resource Info</th>
                         <th className="px-6 py-4">Category</th>
@@ -301,17 +301,17 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                         <th className="px-6 py-4 text-right">Ext. Amount</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border-subtle">
                       {aggregated.map((item) => (
                         <tr
                           key={item.resourceCode}
                           className="hover:bg-surface-base transition-colors"
                         >
                           <td className="px-6 py-3">
-                            <div className="text-xs font-mono text-text-disabled leading-tight">
+                            <div className="text-xs text-text-disabled leading-tight tabular-nums">
                               {item.resourceCode}
                             </div>
-                            <div className="font-bold text-gray-800">
+                            <div className="font-bold text-text-primary">
                               {item.resourceName}
                             </div>
                           </td>
@@ -329,12 +329,12 @@ const ResourceSummaryView: React.FC<ResourceSummaryViewProps> = ({
                               maximumFractionDigits: 2,
                             })}
                           </td>
-                          <td className="px-6 py-3 text-right text-text-disabled font-mono text-xs">
+                          <td className="px-6 py-3 text-right text-text-disabled text-xs tabular-nums">
                             {item.standardRate.toLocaleString("en-IN", {
                               minimumFractionDigits: 2,
                             })}
                           </td>
-                          <td className="px-6 py-3 text-right font-black text-green-700 bg-success-muted/30">
+                          <td className="px-6 py-3 text-right font-black text-success bg-success-muted/30 tabular-nums">
                             {item.totalAmount.toLocaleString("en-IN", {
                               minimumFractionDigits: 2,
                             })}

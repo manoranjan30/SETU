@@ -29,12 +29,16 @@ COPY --from=backend-builder /app/backend/dist ./dist
 COPY --from=backend-builder /app/backend/node_modules ./node_modules
 COPY --from=backend-builder /app/backend/package*.json ./
 COPY --from=backend-builder /app/backend/firebase-service-account.json ./firebase-service-account.json
+COPY backend/scripts ./scripts
 
 # Copy Frontend Build to 'client' directory expected by NestJS ServeStatic
 COPY --from=frontend-builder /app/frontend/dist ./client
+
+ENV RUN_DB_MIGRATIONS=true
+ENV DB_MIGRATION_SCRIPT=migration:run:dist
 
 # Expose Port
 EXPOSE 3000
 
 # Start App
-CMD ["node", "dist/main"]
+CMD ["npm", "run", "start:prod:migrated"]

@@ -383,19 +383,44 @@ class _PendingApprovalTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // Support both flat and nested API response shapes
+    // The backend returns MeasurementProgress with nested relations:
+    //   item.measurementElement.activity.activityName
+    //   item.measurementElement.boqItem.uom
+    //   item.measurementElement.epsNode.label
+    final me = item['measurementElement'] as Map<String, dynamic>?;
+    final meAct = me?['activity'] as Map<String, dynamic>?;
+    final meBoq = me?['boqItem'] as Map<String, dynamic>?;
+    final meLoc = me?['epsNode'] as Map<String, dynamic>?;
+
     final activityName =
-        item['activityName'] as String? ?? item['activity']?['name'] as String? ?? '—';
+        item['activityName'] as String? ??
+        item['activity']?['name'] as String? ??
+        meAct?['activityName'] as String? ??
+        meAct?['name'] as String? ??
+        me?['elementName'] as String? ??
+        '—';
     final activityCode =
-        item['activityCode'] as String? ?? item['activity']?['activityCode'] as String?;
-    final date = item['date'] as String? ?? '—';
-    final qty = item['quantity'];
-    final unit = item['unit'] as String? ?? '';
-    final submittedBy =
-        item['submittedBy'] as String? ?? item['user']?['username'] as String?;
+        item['activityCode'] as String? ??
+        item['activity']?['activityCode'] as String? ??
+        meAct?['activityCode'] as String?;
+    final date = item['date'] as String? ?? item['logDate'] as String? ?? '—';
+    final qtyRaw = item['quantity'] ?? item['executedQty'] ?? item['qty'];
+    final qty = qtyRaw != null ? qtyRaw.toString() : '—';
+    // UOM: try flat fields first, then nested boqItem
+    final rawUnit = item['unit'] ?? item['uom'] ?? meBoq?['uom'];
+    final unit = (rawUnit != null && rawUnit.toString() != 'null')
+        ? rawUnit.toString()
+        : '';
+    final submittedBy = item['submittedBy'] as String? ??
+        item['user']?['username'] as String? ??
+        item['submittedByName'] as String? ??
+        item['updatedBy'] as String?;
     // Location / WBS context
     final location = item['epsNodeLabel'] as String? ??
         item['locationLabel'] as String? ??
-        item['epsNode']?['label'] as String?;
+        item['epsNode']?['label'] as String? ??
+        meLoc?['label'] as String? ??
+        meLoc?['name'] as String?;
     final wbsPath = item['wbsPath'] as String? ?? item['wbsCode'] as String?;
     final remarks = item['remarks'] as String? ?? item['notes'] as String?;
     // Cumulative progress if available
@@ -490,7 +515,7 @@ class _PendingApprovalTile extends StatelessWidget {
                               .withValues(alpha: 0.5)),
                       const SizedBox(width: 4),
                       Text(
-                          '$qty $unit',
+                          unit.isNotEmpty ? '$qty $unit' : qty,
                           style: theme.textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600)),
                       // Cumulative vs target if available

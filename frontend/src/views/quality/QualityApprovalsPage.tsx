@@ -65,6 +65,7 @@ interface QualityInspection {
   partLabel?: string;
   locationPath?: string;
   pendingObservationCount?: number;
+  legacyActivityObservationCount?: number;
   workflowCurrentLevel?: number;
   workflowTotalLevels?: number;
   pendingApprovalLevel?: number;
@@ -111,6 +112,20 @@ interface QualityInspection {
   slaDueAt?: string;
   isLocked?: boolean;
   stages?: any[]; // Populated in detail view
+}
+
+interface ActivityObservation {
+  id: string;
+  inspectionId?: number | null;
+  stageId?: number | null;
+  observationText: string;
+  type?: string;
+  remarks?: string;
+  photos?: string[];
+  closureText?: string;
+  closureEvidence?: string[];
+  createdAt: string;
+  status: "OPEN" | "PENDING" | "RECTIFIED" | "RESOLVED" | "CLOSED";
 }
 
 type ApprovalTab = "PENDING" | "ALL" | "APPROVED" | "REJECTED" | "DASHBOARD";
@@ -267,7 +282,10 @@ export default function QualityApprovalsPage() {
   const [workflowStripCollapsed, setWorkflowStripCollapsed] = useState(true);
 
   // Observations State
-  const [observations, setObservations] = useState<any[]>([]);
+  const [observations, setObservations] = useState<ActivityObservation[]>([]);
+  const [legacyObservations, setLegacyObservations] = useState<
+    ActivityObservation[]
+  >([]);
   const [obsTab, setObsTab] = useState<
     "PENDING" | "RECTIFIED" | "CLOSED" | "ALL"
   >("PENDING");
@@ -350,20 +368,39 @@ export default function QualityApprovalsPage() {
           .get(`/quality/inspections/${selectedInspectionId}/workflow`)
           .catch(() => ({ data: null })),
       ])
-        .then(([detailRes, flowRes]) => {
+        .then(async ([detailRes, flowRes]) => {
           setInspectionDetail(detailRes.data);
           setWorkflowState(flowRes.data);
 
-          // Fetch observations for this activity
+          // Fetch only the observations scoped to this inspection.
           if (detailRes.data.activityId) {
-            api
-              .get(
-                `/quality/activities/${detailRes.data.activityId}/observations`,
-              )
-              .then((obsRes) => setObservations(obsRes.data))
-              .catch((err) =>
-                console.error("Failed to load observations", err),
-              );
+            try {
+              const [inspectionObsRes, legacyObsRes] = await Promise.all([
+                api.get(
+                  `/quality/activities/${detailRes.data.activityId}/observations`,
+                  {
+                    params: { inspectionId: detailRes.data.id },
+                  },
+                ),
+                api
+                  .get(
+                    `/quality/activities/${detailRes.data.activityId}/observations`,
+                    {
+                      params: { unassignedOnly: true },
+                    },
+                  )
+                  .catch(() => ({ data: [] })),
+              ]);
+              setObservations(inspectionObsRes.data || []);
+              setLegacyObservations(legacyObsRes.data || []);
+            } catch (err) {
+              console.error("Failed to load observations", err);
+              setObservations([]);
+              setLegacyObservations([]);
+            }
+          } else {
+            setObservations([]);
+            setLegacyObservations([]);
           }
         })
         .finally(() => setLoadingDetail(false));
@@ -371,6 +408,7 @@ export default function QualityApprovalsPage() {
       setInspectionDetail(null);
       setWorkflowState(null);
       setObservations([]);
+      setLegacyObservations([]);
     }
   }, [selectedInspectionId, refreshKey]);
 
@@ -495,6 +533,20 @@ export default function QualityApprovalsPage() {
       );
     return stageScopedObservations;
   }, [stageScopedObservations, obsTab]);
+
+  const filteredLegacyObservations = useMemo(() => {
+    if (obsTab === "PENDING")
+      return legacyObservations.filter(
+        (o) => o.status === "PENDING" || o.status === "OPEN",
+      );
+    if (obsTab === "RECTIFIED")
+      return legacyObservations.filter((o) => o.status === "RECTIFIED");
+    if (obsTab === "CLOSED")
+      return legacyObservations.filter(
+        (o) => o.status === "CLOSED" || o.status === "RESOLVED",
+      );
+    return legacyObservations;
+  }, [legacyObservations, obsTab]);
 
   const getDaysOpen = (createdAt: string) => {
     const days = Math.floor(
@@ -1327,12 +1379,20 @@ export default function QualityApprovalsPage() {
                         <span className="text-text-muted">
                           Risk Score: {priority}
                         </span>
-                        {(insp.pendingObservationCount || 0) > 0 && (
-                          <span className="text-red-700 inline-flex items-center gap-1">
-                            <Siren className="w-3 h-3" />{" "}
-                            {insp.pendingObservationCount} obs
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {(insp.pendingObservationCount || 0) > 0 && (
+                            <span className="text-red-700 inline-flex items-center gap-1">
+                              <Siren className="w-3 h-3" />{" "}
+                              {insp.pendingObservationCount} obs
+                            </span>
+                          )}
+                          {(insp.legacyActivityObservationCount || 0) > 0 && (
+                            <span className="text-amber-700 inline-flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              {insp.legacyActivityObservationCount} legacy
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="mt-2 space-y-1 text-[11px]">
                         {insp.pendingApprovalLevel ? (
@@ -2190,6 +2250,68 @@ export default function QualityApprovalsPage() {
               <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-surface-base">
                 {/* Observations Header / Tabs */}
                 <div className="space-y-4">
+                  {legacyObservations.length > 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                        <div className="space-y-3">
+                          <div>
+                            <h4 className="text-sm font-semibold text-amber-900">
+                              Legacy Activity Observations
+                            </h4>
+                            <p className="mt-1 text-xs text-amber-800">
+                              These observations were created without linking to
+                              a specific RFI, GO, or unit. They are shown
+                              separately so they do not appear as if they belong
+                              to this inspection.
+                            </p>
+                          </div>
+
+                          {filteredLegacyObservations.length > 0 ? (
+                            <div className="space-y-2">
+                              {filteredLegacyObservations.map((obs, idx) => (
+                                <div
+                                  key={obs.id}
+                                  className="rounded-lg border border-amber-200 bg-white/80 p-3"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+                                        Legacy Observation #{idx + 1}
+                                      </div>
+                                      <p className="mt-1 text-sm text-amber-950">
+                                        {obs.observationText}
+                                      </p>
+                                      <div className="mt-1 text-[11px] text-amber-800">
+                                        Status: {obs.status}
+                                      </div>
+                                    </div>
+                                    {hasPermission(
+                                      PermissionCode.QUALITY_OBSERVATION_DELETE,
+                                    ) && (
+                                      <button
+                                        onClick={() =>
+                                          handleDeleteObservation(obs.id)
+                                        }
+                                        className="rounded p-1 text-amber-700 transition-colors hover:bg-amber-100 hover:text-error"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs italic text-amber-700">
+                              No legacy observations match the current tab.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2 border-b border-border-default pb-2">
                     {(["PENDING", "RECTIFIED", "CLOSED", "ALL"] as const).map(
                       (tab) => (

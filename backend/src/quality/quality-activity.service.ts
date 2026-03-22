@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In, Not } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { QualityActivityList } from './entities/quality-activity-list.entity';
 import {
   QualityActivity,
@@ -18,6 +18,7 @@ import {
 } from './entities/activity-observation.entity';
 import { InspectionApproval } from './entities/inspection-approval.entity';
 import { QualityInspection } from './entities/quality-inspection.entity';
+import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import * as crypto from 'crypto';
 
@@ -107,6 +108,8 @@ export class QualityActivityService {
     private readonly approvalRepo: Repository<InspectionApproval>,
     @InjectRepository(QualityInspection)
     private readonly inspectionRepo: Repository<QualityInspection>,
+    @InjectRepository(QualityInspectionStage)
+    private readonly inspectionStageRepo: Repository<QualityInspectionStage>,
     private readonly pushService: PushNotificationService,
     private readonly dataSource: DataSource,
   ) {}
@@ -231,12 +234,24 @@ export class QualityActivityService {
 
   // ── Observations ───────────────────────────────────────────────────────
 
-  async getObservations(id: number): Promise<ActivityObservation[]> {
-    return this.obsRepo.find({
-      where: { activityId: id },
-      relations: ['stage'],
-      order: { createdAt: 'DESC' },
-    });
+  async getObservations(
+    id: number,
+    options?: { inspectionId?: number; unassignedOnly?: boolean },
+  ): Promise<ActivityObservation[]> {
+    const query = this.obsRepo
+      .createQueryBuilder('observation')
+      .leftJoinAndSelect('observation.stage', 'stage')
+      .where('observation.activityId = :activityId', { activityId: id });
+
+    if (typeof options?.inspectionId === 'number') {
+      query.andWhere('observation.inspectionId = :inspectionId', {
+        inspectionId: options.inspectionId,
+      });
+    } else if (options?.unassignedOnly) {
+      query.andWhere('observation.inspectionId IS NULL');
+    }
+
+    return query.orderBy('observation.createdAt', 'DESC').getMany();
   }
 
   async createObservation(
@@ -251,6 +266,33 @@ export class QualityActivityService {
       throw new BadRequestException(
         'Cannot add observation to an already approved activity.',
       );
+    }
+
+    if (typeof dto.inspectionId !== 'number') {
+      throw new BadRequestException(
+        'Observations must be linked to a specific RFI.',
+      );
+    }
+
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id: dto.inspectionId },
+      select: ['id', 'activityId', 'requestedById'],
+    });
+    if (!inspection || inspection.activityId !== id) {
+      throw new BadRequestException(
+        'Observation must belong to the selected inspection for this activity.',
+      );
+    }
+
+    if (typeof dto.stageId === 'number') {
+      const stage = await this.inspectionStageRepo.findOne({
+        where: { id: dto.stageId, inspectionId: dto.inspectionId },
+      });
+      if (!stage) {
+        throw new BadRequestException(
+          'Observation stage must belong to the selected inspection.',
+        );
+      }
     }
 
     const obs = this.obsRepo.create({
@@ -271,39 +313,29 @@ export class QualityActivityService {
     activity.status = QualityActivityStatus.PENDING_OBSERVATION;
     await this.activityRepo.save(activity);
 
-    // Notify the RFI raiser(s) associated with this activity
-    this.notifyRfiRaisersOfObservation(id, saved.id).catch(() => {
+    // Notify only the raiser of the selected inspection.
+    this.notifyInspectionRaiserOfObservation(inspection, saved.id).catch(() => {
       // Fire-and-forget; do not fail the request if notification errors
     });
 
     return saved;
   }
 
-  private async notifyRfiRaisersOfObservation(
-    activityId: number,
+  private async notifyInspectionRaiserOfObservation(
+    inspection: Pick<QualityInspection, 'id' | 'requestedById'>,
     observationId: string,
   ): Promise<void> {
-    // Find all active inspections linked to this activity
-    const inspections = await this.inspectionRepo.find({
-      where: { activityId },
-      select: ['id', 'requestedById'],
-    });
-
-    const raisers = [
-      ...new Set(
-        inspections
-          .map((i) => i.requestedById)
-          .filter((id): id is number => !!id),
-      ),
-    ];
-
-    if (raisers.length === 0) return;
+    if (!inspection.requestedById) return;
 
     await this.pushService.sendToUsers(
-      raisers,
+      [inspection.requestedById],
       'New Observation Raised 📝',
       `A QC observation has been raised against your RFI. Please review and rectify.`,
-      { type: 'quality_observation', observationId },
+      {
+        type: 'quality_observation',
+        observationId,
+        inspectionId: String(inspection.id),
+      },
     );
   }
 
@@ -335,15 +367,10 @@ export class QualityActivityService {
     obs.resolvedAt = new Date();
     const saved = await this.obsRepo.save(obs);
 
-    // Activity remains in PENDING_OBSERVATION because QC needs to close it
-    // Or we could transition it back to UNDER_INSPECTION if ALL pending obs are at least RECTIFIED.
-    // For now, let's transition it back if no more purely PENDING obs exist.
-    const pendingCount = await this.obsRepo.count({
-      where: { activityId: id, status: ActivityObservationStatus.PENDING },
-    });
+    const pendingCount =
+      await this.countUnresolvedObservationCountForActivity(id);
 
     if (pendingCount === 0) {
-      // All observations are at least RECTIFIED, push back to QC
       await this.activityRepo.update(id, {
         status: QualityActivityStatus.UNDER_INSPECTION,
       });
@@ -374,13 +401,8 @@ export class QualityActivityService {
     obs.status = ActivityObservationStatus.CLOSED;
     const saved = await this.obsRepo.save(obs);
 
-    // Check if any more non-closed observations exist for this activity
-    const remainingCount = await this.obsRepo.count({
-      where: {
-        activityId: id,
-        status: Not(ActivityObservationStatus.CLOSED),
-      } as any,
-    });
+    const remainingCount =
+      await this.countUnresolvedObservationCountForActivity(id);
 
     if (remainingCount === 0) {
       await this.activityRepo.update(id, {
@@ -399,10 +421,8 @@ export class QualityActivityService {
 
     await this.obsRepo.remove(obs);
 
-    // Re-check status: if no more pending obs, move back to UNDER_INSPECTION
-    const pendingCount = await this.obsRepo.count({
-      where: { activityId, status: ActivityObservationStatus.PENDING },
-    });
+    const pendingCount =
+      await this.countUnresolvedObservationCountForActivity(activityId);
 
     if (pendingCount === 0) {
       const activity = await this.activityRepo.findOne({
@@ -435,10 +455,8 @@ export class QualityActivityService {
       );
     }
 
-    // Validation: Check pending observations
-    const pendingCount = await this.obsRepo.count({
-      where: { activityId: id, status: ActivityObservationStatus.PENDING },
-    });
+    // Validation: Check unresolved observations
+    const pendingCount = await this.countUnresolvedObservationCountForActivity(id);
 
     if (pendingCount > 0) {
       throw new BadRequestException(
@@ -665,6 +683,23 @@ export class QualityActivityService {
   }
 
   // ── Private Helpers ────────────────────────────────────────────────────
+
+  private async countUnresolvedObservationCountForActivity(activityId: number) {
+    return this.obsRepo.count({
+      where: {
+        activityId,
+        status: In(this.getUnresolvedObservationStatuses()),
+      } as any,
+    });
+  }
+
+  private getUnresolvedObservationStatuses() {
+    return [
+      ActivityObservationStatus.PENDING,
+      ActivityObservationStatus.RECTIFIED,
+      ActivityObservationStatus.RESOLVED,
+    ];
+  }
 
   private async compactSequence(
     listId: number,

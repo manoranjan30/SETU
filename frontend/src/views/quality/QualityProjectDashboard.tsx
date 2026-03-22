@@ -17,7 +17,7 @@ import QualityInspection from "./subviews/QualityInspection";
 import QualityMaterialTest from "./subviews/QualityMaterialTest";
 import SiteObservationPanel from "./subviews/SiteObservationPanel";
 import QualityChecklist from "./subviews/QualityChecklist";
-import QualitySnagList from "./subviews/QualitySnagList";
+import SnagManagementPage from "./SnagManagementPage";
 import QualityAudit from "./subviews/QualityAudit";
 import QualityDocuments from "./subviews/QualityDocuments";
 import QualityStructureManager from "./subviews/QualityStructureManager";
@@ -93,7 +93,7 @@ const QualityProjectDashboard = () => {
       case "checklists":
         return <QualityChecklist projectId={numericProjectId} />;
       case "snags":
-        return <QualitySnagList projectId={numericProjectId} />;
+        return <SnagManagementPage />;
       case "structure":
         return <QualityStructureManager projectId={numericProjectId} />;
       case "audits":

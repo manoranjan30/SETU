@@ -4,6 +4,8 @@ import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:setu_mobile/features/projects/presentation/pages/projects_list_page.dart';
+import 'package:setu_mobile/features/server_setup/presentation/pages/server_setup_page.dart';
 
 /// The app's entry screen.
 /// Divided into two sections: a cream-coloured brand panel (42% of screen
@@ -96,10 +98,38 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      // Server settings icon — top-right, visible above the brand section.
+      // Lets testers switch backend URL without rebuilding the APK.
+      floatingActionButton: FloatingActionButton.small(
+        heroTag: 'server_settings',
+        tooltip: 'Server Settings',
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.textSecondary,
+        elevation: 1,
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const ServerSetupPage(canPop: true),
+            ),
+          );
+          // Rebuild so _buildServerInfo() reflects any URL change
+          if (mounted) setState(() {});
+        },
+        child: const Icon(Icons.settings_ethernet, size: 18),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
       body: BlocConsumer<AuthBloc, AuthState>(
-        // Listener reacts to side-effects: show error dialog on failure
+        // Listener reacts to side-effects: navigate on success, show error on failure
         listener: (context, state) {
-          if (state is AuthError) _showErrorDialog(context, state.message);
+          if (state is AuthAuthenticated) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const ProjectsListPage()),
+              (route) => false,
+            );
+          } else if (state is AuthError) {
+            _showErrorDialog(context, state.message);
+          }
         },
         builder: (context, state) {
           // Keep _isLoading in sync so the form / button disable correctly

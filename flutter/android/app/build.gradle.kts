@@ -45,6 +45,19 @@ flutter {
     source = "../.."
 }
 
+// Skip tasks that fail on this Windows/OneDrive machine:
+//  - extractReleaseNativeSymbolTables: AccessDeniedException on long OneDrive path
+//  - cleanMergeReleaseAssets: Windows Defender locks mlkit model files during scan
+// Neither task is required for the APK binary itself.
+afterEvaluate {
+    tasks.configureEach {
+        if ((name.startsWith("extractRelease") && name.contains("NativeSymbolTable")) ||
+             name == "cleanMergeReleaseAssets") {
+            enabled = false
+        }
+    }
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

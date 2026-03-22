@@ -14,6 +14,8 @@ import { VendorUserManagementPage } from "./planning/VendorUserManagementPage";
 import ReleaseStrategyPage from "./planning/ReleaseStrategyPage";
 import BuildingLineCoordinatesPage from "./planning/BuildingLineCoordinatesPage";
 import IssueTrackerPage from "./planning/IssueTrackerPage";
+import CustomerMilestonesPage from "./planning/CustomerMilestonesPage";
+import CostPage from "./planning/CostPage";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -54,6 +56,10 @@ const PlanningPage = () => {
         return <BuildingLineCoordinatesPage />;
       case "issue_tracker":
         return <IssueTrackerPage />;
+      case "customer_milestones":
+        return <CustomerMilestonesPage />;
+      case "cost":
+        return <CostPage />;
       case "recovery":
         return (
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">

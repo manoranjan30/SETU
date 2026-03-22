@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/core/navigation/deep_link_service.dart';
 import 'package:setu_mobile/core/notifications/notification_service.dart';
 import 'package:setu_mobile/core/theme/app_theme.dart';
@@ -10,6 +11,7 @@ import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/projects_list_page.dart';
+import 'package:setu_mobile/features/server_setup/presentation/pages/server_setup_page.dart';
 import 'package:setu_mobile/core/media/photo_cache_manager.dart';
 import 'package:setu_mobile/injection_container.dart';
 
@@ -278,17 +280,35 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
   ///
   /// - [AuthAuthenticated]: user has a valid token → show project list.
   /// - [AuthLoading]: token check in progress → show a spinner to avoid flicker.
-  /// - Any other state ([AuthUnauthenticated], [AuthError]): show login page.
+  /// - [AuthUnauthenticated] on first launch (no server configured) →
+  ///     show [ServerSetupPage] so the user picks a backend before logging in.
+  /// - Any other state: show login page.
   Widget _buildHome(AuthState authState) {
     if (authState is AuthAuthenticated) {
       return const ProjectsListPage();
     } else if (authState is AuthLoading) {
-      // Shown briefly while CheckAuthStatus reads from SecureStorage.
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     } else {
-      return const LoginPage();
+      // On very first launch (no server saved) show server setup page first.
+      // FutureBuilder avoids blocking the build — shows a short spinner then
+      // routes to either ServerSetupPage or LoginPage.
+      return FutureBuilder<bool>(
+        future: ServerConfigService.instance.isConfigured(),
+        builder: (context, snap) {
+          if (!snap.hasData) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          // Not configured yet → mandatory server setup (canPop=false)
+          if (!snap.data!) {
+            return const ServerSetupPage(canPop: false);
+          }
+          return const LoginPage();
+        },
+      );
     }
   }
 }

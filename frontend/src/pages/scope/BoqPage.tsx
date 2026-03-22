@@ -219,16 +219,17 @@ const BoqPage = () => {
   return (
     <div className="p-6 h-full flex flex-col bg-surface-base">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="sticky top-0 z-20 mb-4 border-b border-border-subtle bg-surface-base/95 py-4 backdrop-blur-sm">
+        <div className="flex justify-between items-center gap-4">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 hover:bg-gray-200 rounded-full text-text-secondary"
+            className="p-2 hover:bg-surface-raised rounded-full text-text-secondary"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
               <FileSpreadsheet className="w-6 h-6 text-primary" />
               Bill of Quantities (BOQ)
             </h1>
@@ -239,27 +240,27 @@ const BoqPage = () => {
         </div>
 
         {/* Tabs & Actions */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <div className="bg-surface-card border border-border-default rounded-lg p-1 flex">
             <button
               onClick={() => setActiveTab("BOQ")}
-              className={`px-4 py-2 text-sm font-medium rounded-md ${activeTab === "BOQ" ? "bg-indigo-100 text-indigo-700" : "text-text-secondary hover:bg-surface-base"}`}
+              className={`px-4 py-2 text-sm font-semibold rounded-md ${activeTab === "BOQ" ? "bg-secondary-muted text-secondary" : "text-text-secondary hover:bg-surface-base"}`}
             >
               BOQ Items
             </button>
             <button
               onClick={() => setActiveTab("RESOURCES")}
-              className={`px-4 py-2 text-sm font-medium rounded-md ${activeTab === "RESOURCES" ? "bg-indigo-100 text-indigo-700" : "text-text-secondary hover:bg-surface-base"}`}
+              className={`px-4 py-2 text-sm font-semibold rounded-md ${activeTab === "RESOURCES" ? "bg-secondary-muted text-secondary" : "text-text-secondary hover:bg-surface-base"}`}
             >
               Define Resources
             </button>
           </div>
 
           {activeTab === "BOQ" && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleDownloadTemplate}
-                className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base shadow-sm"
+                className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base"
               >
                 <Download className="w-4 h-4" /> Template
               </button>
@@ -267,19 +268,19 @@ const BoqPage = () => {
                 onClick={() =>
                   projectId && boqService.exportBoqCsv(Number(projectId))
                 }
-                className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base shadow-sm"
+                className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base"
               >
                 <FileSpreadsheet className="w-4 h-4 text-success" /> Export CSV
               </button>
               <button
                 onClick={() => setIsImportWizardOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm"
+                className="flex items-center gap-2 px-3 py-2 bg-success text-white rounded hover:opacity-90"
               >
                 <Upload className="w-4 h-4" /> Import CSV
               </button>
               <button
                 onClick={() => setIsCreateModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded hover:bg-primary-dark shadow-sm"
+                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded hover:bg-primary-dark"
               >
                 <Plus className="w-4 h-4" /> Add Item
               </button>
@@ -287,16 +288,17 @@ const BoqPage = () => {
           )}
         </div>
       </div>
+      </div>
 
       {/* Content Switcher */}
       {activeTab === "RESOURCES" && (
-        <div className="flex-1 bg-surface-card rounded-lg shadow overflow-hidden">
+        <div className="flex-1 bg-surface-card rounded-lg border border-border-default overflow-hidden">
           <ResourcesView />
         </div>
       )}
 
       {activeTab === "BOQ" && (
-        <div className="flex-1 bg-surface-card rounded-lg shadow flex flex-col overflow-hidden">
+        <div className="flex-1 bg-surface-card rounded-lg border border-border-default flex flex-col overflow-hidden">
           {/* Toolbar */}
           <div className="p-4 border-b border-border-subtle flex justify-between items-center bg-surface-card">
             <div className="relative w-72">
@@ -320,32 +322,32 @@ const BoqPage = () => {
           {/* Table */}
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse">
-              <thead className="bg-surface-base sticky top-0 z-10">
+              <thead className="bg-surface-base sticky top-0 z-10 border-b border-border-default">
                 <tr>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em]">
                     Code
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider w-1/3">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] w-1/3">
                     Description
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider text-right">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] text-right">
                     Qty
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider text-center">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] text-center">
                     UOM
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider text-right">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] text-right">
                     Rate
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider text-right">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] text-right">
                     Amount
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-text-muted uppercase tracking-wider text-center">
+                  <th className="px-6 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] text-center">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border-subtle">
                 {loading ? (
                   <tr>
                     <td
@@ -359,7 +361,7 @@ const BoqPage = () => {
                   filteredItems.map((item) => (
                     <React.Fragment key={item.id}>
                       <tr
-                        className={`hover:bg-surface-base ${expandedItems.includes(item.id) ? "bg-primary-muted font-bold" : ""}`}
+                        className={`hover:bg-surface-base ${expandedItems.includes(item.id) ? "bg-surface-raised font-semibold" : ""}`}
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary">
                           <button
@@ -390,16 +392,16 @@ const BoqPage = () => {
                             item.description
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right tabular-nums">
                           {formatIndianNumber(item.qty || 0)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-center">
                           {item.uom}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary text-right tabular-nums">
                           {formatIndianNumber(item.rate)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary text-right">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary text-right tabular-nums">
                           {formatIndianNumber(item.amount)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted text-center">
@@ -451,9 +453,9 @@ const BoqPage = () => {
                         <tr>
                           <td
                             colSpan={7}
-                            className="px-12 py-4 bg-surface-base border-b border-border-default"
+                            className="px-8 py-4 bg-surface-card border-b border-border-default"
                           >
-                            <div className="space-y-4">
+                            <div className="space-y-4 border-l-2 border-border-subtle pl-4">
                               <div className="flex justify-between items-center px-4">
                                 <h4 className="text-sm font-bold text-text-secondary flex items-center gap-2">
                                   <Ruler className="w-4 h-4 text-primary" />
@@ -481,12 +483,12 @@ const BoqPage = () => {
                                     </th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100 bg-surface-card shadow-sm rounded-lg overflow-hidden border border-border-subtle">
+                                <tbody className="divide-y divide-border-subtle bg-surface-card rounded-lg overflow-hidden border border-border-subtle">
                                   {item.subItems && item.subItems.length > 0 ? (
                                     item.subItems.map((si) => (
                                       <tr
                                         key={si.id}
-                                        className="hover:bg-primary-muted/20"
+                                        className="hover:bg-surface-base"
                                       >
                                         {editingSubItemId === si.id ? (
                                           <>
@@ -753,8 +755,8 @@ const BoqPage = () => {
       )}
 
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-surface-card rounded-lg p-6 w-96 shadow-xl">
+        <div className="fixed inset-0 bg-surface-base/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-surface-card rounded-xl p-6 w-96 border border-border-default shadow-xl">
             <h2 className="text-lg font-bold mb-4">Add BOQ Item</h2>
             <div className="space-y-4">
               <input

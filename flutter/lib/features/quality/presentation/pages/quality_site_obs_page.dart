@@ -102,6 +102,7 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
     await RaiseSiteObsSheet.show(
       context,
       title: 'Raise Quality Observation',
+      projectId: widget.projectId,
       categories: const [
         'Workmanship',
         'Material',
@@ -110,11 +111,11 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
         'Finishing',
         'Other',
       ],
-      showLocationField: true,
       onSubmit: ({
         required description,
         required severity,
         category,
+        epsNodeId,
         locationLabel,
         photoUrls = const [],
       }) async {
@@ -123,6 +124,7 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
               description: description,
               severity: severity,
               category: category,
+              epsNodeId: epsNodeId,
               locationLabel: locationLabel,
               photoUrls: photoUrls,
             ));

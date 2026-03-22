@@ -61,6 +61,7 @@ import { QualityReportService } from './quality-report.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PlanningModule } from '../planning/planning.module';
 import { CommonModule } from '../common/common.module';
+import { MilestoneModule } from '../milestone/milestone.module';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
@@ -86,6 +87,7 @@ import { QualityRatingController } from './quality-rating.controller';
     AuditModule,
     PlanningModule,
     CommonModule,
+    MilestoneModule,
     TypeOrmModule.forFeature([
       QualityInspection,
       QualityMaterialTest,

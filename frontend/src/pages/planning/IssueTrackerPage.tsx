@@ -1,23 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import {
   AlertCircle,
-  Bell,
   ChevronDown,
   ChevronRight,
   ClipboardList,
   Clock,
   Flag,
-  GripVertical,
   Kanban,
   LayoutList,
-  Pencil,
   Plus,
   RefreshCw,
   Settings,
   Tag,
-  Trash2,
-  Users,
   X,
 } from "lucide-react";
 import {
@@ -126,13 +122,11 @@ function IssueCard({
 function IssueDetailModal({
   issue,
   projectId,
-  globalDepts,
   onClose,
   onRefresh,
 }: {
   issue: IssueTrackerIssue;
   projectId: number;
-  globalDepts: GlobalDepartment[];
   onClose: () => void;
   onRefresh: () => void;
 }) {
@@ -142,7 +136,6 @@ function IssueDetailModal({
 
   const [responseForm, setResponseForm] = useState({ responseText: "", committedCompletionDate: "", reason: "" });
   const [coordRemarks, setCoordRemarks] = useState("");
-  const [commitForm, setCommitForm] = useState({ newDate: "", reason: "" });
   const [closeRemarks, setCloseRemarks] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -202,7 +195,7 @@ function IssueDetailModal({
     onRefresh();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-surface-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -469,13 +462,11 @@ function StepRow({ step }: { step: IssueTrackerStep }) {
 function CreateIssueModal({
   projectId,
   tags,
-  globalDepts,
   onClose,
   onCreated,
 }: {
   projectId: number;
   tags: IssueTrackerTag[];
-  globalDepts: GlobalDepartment[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -524,7 +515,7 @@ function CreateIssueModal({
     return map;
   }, [tags]);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-surface-card rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between mb-4 shrink-0">
@@ -617,7 +608,8 @@ function CreateIssueModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -693,7 +685,7 @@ function DeptConfigModal({
     }));
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-surface-card rounded-2xl p-6 w-full max-w-xl shadow-2xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between mb-4 shrink-0">
@@ -786,7 +778,8 @@ function DeptConfigModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1076,7 +1069,6 @@ export default function IssueTrackerPage() {
         <IssueDetailModal
           issue={selectedIssue}
           projectId={pId}
-          globalDepts={globalDepts}
           onClose={() => setSelectedIssue(null)}
           onRefresh={() => refreshIssue(selectedIssue)}
         />
@@ -1087,7 +1079,6 @@ export default function IssueTrackerPage() {
         <CreateIssueModal
           projectId={pId}
           tags={tags}
-          globalDepts={globalDepts}
           onClose={() => setShowCreateIssue(false)}
           onCreated={loadAll}
         />

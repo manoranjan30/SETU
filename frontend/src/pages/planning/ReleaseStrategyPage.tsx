@@ -26,10 +26,53 @@ import {
 import { PermissionCode } from "../../config/permissions";
 
 const MODULE_OPTIONS = ["QUALITY", "PLANNING", "BOQ", "WORKORDER", "MICRO", "EXECUTION", "EHS", "DESIGN"];
-const PROCESS_OPTIONS = ["RFI_APPROVAL", "INSPECTION_APPROVAL", "QA_QC_APPROVAL", "OBSERVATION_RECTIFICATION_APPROVAL", "MICRO_SCHEDULE_APPROVAL", "WORK_ORDER_RELEASE", "BOQ_CHANGE_APPROVAL", "LOOKAHEAD_RELEASE", "DOCUMENT_RELEASE"];
-const DOCUMENT_TYPES = ["FLOOR_RFI", "UNIT_RFI", "ROOM_RFI", "INSPECTION", "QA_QC_CHECKLIST", "OBSERVATION_RECTIFICATION", "MICRO_SCHEDULE", "WORK_ORDER", "BOQ_CHANGE", "LOOKAHEAD", "DRAWING"];
+const PROCESS_OPTIONS = ["RFI_APPROVAL", "INSPECTION_APPROVAL", "QA_QC_APPROVAL", "OBSERVATION_RECTIFICATION_APPROVAL", "SNAG_RELEASE_APPROVAL", "MICRO_SCHEDULE_APPROVAL", "WORK_ORDER_RELEASE", "BOQ_CHANGE_APPROVAL", "LOOKAHEAD_RELEASE", "DOCUMENT_RELEASE"];
+const DOCUMENT_TYPES = ["FLOOR_RFI", "UNIT_RFI", "ROOM_RFI", "INSPECTION", "QA_QC_CHECKLIST", "OBSERVATION_RECTIFICATION", "SNAG_ROUND_RELEASE", "MICRO_SCHEDULE", "WORK_ORDER", "BOQ_CHANGE", "LOOKAHEAD", "DRAWING"];
 const OPERATOR_OPTIONS: ConditionOperator[] = ["EQ", "NE", "IN", "NOT_IN", "GT", "GTE", "LT", "LTE", "BETWEEN", "EXISTS", "NOT_EXISTS"];
 const APPROVER_MODES: ApproverMode[] = ["USER", "PROJECT_ROLE"];
+const SNAG_RELEASE_PROCESS_CODE = "SNAG_RELEASE_APPROVAL";
+const SNAG_RELEASE_DOCUMENT_TYPE = "SNAG_ROUND_RELEASE";
+
+const createDefaultApprovalStep = (index = 0): ReleaseStrategyStepDto => ({
+  levelNo: index + 1,
+  stepName: `Level ${index + 1} Approval`,
+  approverMode: "PROJECT_ROLE",
+  roleId: null,
+  userId: null,
+  userIds: [],
+  minApprovalsRequired: 1,
+  canDelegate: false,
+  escalationDays: null,
+  sequence: index + 1,
+});
+
+const normalizeStrategyForProcess = (
+  strategy: ReleaseStrategyDto,
+): ReleaseStrategyDto => {
+  if (strategy.processCode !== SNAG_RELEASE_PROCESS_CODE) {
+    return strategy;
+  }
+
+  const firstStep = strategy.steps?.[0] || createDefaultApprovalStep(0);
+  const normalizedStepName = firstStep.stepName?.trim();
+
+  return {
+    ...strategy,
+    moduleCode: "QUALITY",
+    documentType: SNAG_RELEASE_DOCUMENT_TYPE,
+    steps: [
+      {
+        ...firstStep,
+        stepName:
+          !normalizedStepName || /^Level\s+\d+\s+Approval$/i.test(normalizedStepName)
+            ? "De-snag Release Approval"
+            : normalizedStepName,
+        levelNo: 1,
+        sequence: 1,
+      },
+    ],
+  };
+};
 
 const blankStrategy = (): ReleaseStrategyDto => ({
   name: "",
@@ -43,20 +86,7 @@ const blankStrategy = (): ReleaseStrategyDto => ({
   restartPolicy: "RESTART_FROM_LEVEL_1",
   description: "",
   conditions: [],
-  steps: [
-    {
-      levelNo: 1,
-      stepName: "Level 1 Approval",
-      approverMode: "PROJECT_ROLE",
-      roleId: null,
-      userId: null,
-      userIds: [],
-      minApprovalsRequired: 1,
-      canDelegate: false,
-      escalationDays: null,
-      sequence: 1,
-    },
-  ],
+  steps: [createDefaultApprovalStep(0)],
 });
 
 const statusBadge: Record<string, string> = {
@@ -97,6 +127,7 @@ export default function ReleaseStrategyPage() {
   });
   const [simulationResult, setSimulationResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const isSnagReleaseProcess = form.processCode === SNAG_RELEASE_PROCESS_CODE;
 
   const loadAll = async () => {
     if (!pId) return;
@@ -128,7 +159,7 @@ export default function ReleaseStrategyPage() {
     if (!strategy.id) return;
     const detail = await releaseStrategyService.get(pId, strategy.id);
     setSelectedId(detail.id || null);
-    setForm({
+    setForm(normalizeStrategyForProcess({
       ...detail,
       conditions: (detail.conditions || []).map((condition, index) => ({
         ...condition,
@@ -140,13 +171,19 @@ export default function ReleaseStrategyPage() {
         levelNo: step.levelNo ?? index + 1,
         sequence: step.sequence ?? index + 1,
       })),
-    });
+    }));
     setSimulation((prev) => ({
       ...prev,
       projectId: pId,
-      moduleCode: detail.moduleCode,
+      moduleCode:
+        detail.processCode === SNAG_RELEASE_PROCESS_CODE
+          ? "QUALITY"
+          : detail.moduleCode,
       processCode: detail.processCode,
-      documentType: detail.documentType || "",
+      documentType:
+        detail.processCode === SNAG_RELEASE_PROCESS_CODE
+          ? SNAG_RELEASE_DOCUMENT_TYPE
+          : detail.documentType || "",
     }));
   };
 
@@ -183,6 +220,12 @@ export default function ReleaseStrategyPage() {
     return [
       { label: "Strategy name entered", ok: !!form.name.trim() },
       { label: "At least one approval level", ok: !!form.steps?.length },
+      {
+        label: "Snag release uses exactly one approval level",
+        ok:
+          form.processCode !== SNAG_RELEASE_PROCESS_CODE ||
+          (form.steps || []).length === 1,
+      },
       {
         label: "All steps have assignee definitions",
         ok: (form.steps || []).every((step) =>
@@ -232,16 +275,26 @@ export default function ReleaseStrategyPage() {
     }));
   };
 
+  const updateProcess = (processCode: string) => {
+    setForm((prev) =>
+      normalizeStrategyForProcess({
+        ...prev,
+        processCode,
+      }),
+    );
+  };
+
   const saveStrategy = async () => {
     try {
+      const normalizedForm = normalizeStrategyForProcess(form);
       const payload: ReleaseStrategyDto = {
-        ...form,
+        ...normalizedForm,
         priority: Number(form.priority || 0),
-        conditions: (form.conditions || []).map((condition, index) => ({
+        conditions: (normalizedForm.conditions || []).map((condition, index) => ({
           ...condition,
           sequence: index + 1,
         })),
-        steps: (form.steps || []).map((step, index) => ({
+        steps: (normalizedForm.steps || []).map((step, index) => ({
           ...step,
           userIds:
             step.approverMode === "USER"
@@ -447,28 +500,53 @@ export default function ReleaseStrategyPage() {
             </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium text-text-secondary">Module</span>
-              <select value={form.moduleCode} onChange={(e) => setForm((prev) => ({ ...prev, moduleCode: e.target.value }))} className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2">
+              <select
+                value={form.moduleCode}
+                onChange={(e) => setForm((prev) => ({ ...prev, moduleCode: e.target.value }))}
+                disabled={isSnagReleaseProcess}
+                className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-text-muted"
+              >
                 {MODULE_OPTIONS.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
+              {isSnagReleaseProcess && (
+                <span className="mt-1 block text-xs text-text-muted">
+                  Snag release always resolves inside the Quality module.
+                </span>
+              )}
             </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium text-text-secondary">Process</span>
-              <select value={form.processCode} onChange={(e) => setForm((prev) => ({ ...prev, processCode: e.target.value }))} className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2">
+              <select value={form.processCode} onChange={(e) => updateProcess(e.target.value)} className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2">
                 {PROCESS_OPTIONS.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
+              {isSnagReleaseProcess && (
+                <span className="mt-1 block text-xs text-text-muted">
+                  This one strategy governs release from De-snag 1, 2, and 3 into the next snag stage or final handover.
+                </span>
+              )}
             </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium text-text-secondary">Document Type</span>
-              <select value={form.documentType || ""} onChange={(e) => setForm((prev) => ({ ...prev, documentType: e.target.value }))} className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2">
+              <select
+                value={form.documentType || ""}
+                onChange={(e) => setForm((prev) => ({ ...prev, documentType: e.target.value }))}
+                disabled={isSnagReleaseProcess}
+                className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-text-muted"
+              >
                 <option value="">Any</option>
                 {DOCUMENT_TYPES.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
+              {isSnagReleaseProcess && (
+                <span className="mt-1 block text-xs text-text-muted">
+                  Snag release uses the fixed document type {SNAG_RELEASE_DOCUMENT_TYPE}.
+                </span>
+              )}
             </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium text-text-secondary">Restart Policy</span>
@@ -586,25 +664,14 @@ export default function ReleaseStrategyPage() {
         <div className="rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-base font-bold text-text-primary">Approval Levels</h3>
-            {canWrite && (
+            {canWrite && !isSnagReleaseProcess && (
               <button
                 onClick={() =>
                   setForm((prev) => ({
                     ...prev,
                     steps: [
                       ...(prev.steps || []),
-                      {
-                        levelNo: (prev.steps?.length || 0) + 1,
-                        stepName: `Level ${(prev.steps?.length || 0) + 1} Approval`,
-                        approverMode: "PROJECT_ROLE",
-                        roleId: null,
-                        userId: null,
-                        userIds: [],
-                        minApprovalsRequired: 1,
-                        canDelegate: false,
-                        escalationDays: null,
-                        sequence: (prev.steps?.length || 0) + 1,
-                      },
+                      createDefaultApprovalStep(prev.steps?.length || 0),
                     ],
                   }))
                 }
@@ -614,6 +681,11 @@ export default function ReleaseStrategyPage() {
               </button>
             )}
           </div>
+          {isSnagReleaseProcess && (
+            <div className="mb-3 rounded-xl border border-secondary/20 bg-secondary-muted px-3 py-2 text-sm text-text-secondary">
+              De-snag release is intentionally single-level only. Once that one approval is completed, the unit moves to the next snag cycle or the final handover release.
+            </div>
+          )}
           <div className="space-y-3">
             {(form.steps || []).map((step, index) => {
               const selectedUserIds = step.userIds || (step.userId ? [step.userId] : []);
@@ -642,6 +714,7 @@ export default function ReleaseStrategyPage() {
                           ),
                         }))
                       }
+                      disabled={isSnagReleaseProcess && (form.steps || []).length <= 1}
                       className="text-sm text-error"
                     >
                       Remove

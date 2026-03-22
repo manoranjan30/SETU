@@ -246,8 +246,8 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
           <span
             className={clsx("mr-1", {
               "text-primary": node.type === "PROJECT",
-              "text-purple-600": node.type === "BLOCK",
-              "text-orange-600": node.type === "TOWER",
+              "text-text-secondary": node.type === "BLOCK",
+              "text-secondary": node.type === "TOWER",
               "text-success": node.type === "FLOOR",
             })}
           >
@@ -268,10 +268,10 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-surface-base flex items-center justify-center z-[200] p-4 isolate">
-      <div className="bg-surface-card border border-border-default rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-surface-base/80 backdrop-blur-sm flex items-center justify-center z-[999] p-4 isolate">
+      <div className="bg-surface-card border border-border-default rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-border-default flex justify-between items-center bg-surface-base">
+        <div className="px-6 py-4 border-b border-border-default flex justify-between items-center bg-surface-card">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-primary" />
             <div>
@@ -283,16 +283,16 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-text-disabled hover:text-text-primary hover:bg-surface-raised"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border-subtle text-text-disabled hover:text-text-primary hover:bg-surface-raised"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 flex gap-6">
+        <div className="flex-1 overflow-y-auto p-6 grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
           {/* LEFT: Add Member Form */}
-          <div className="flex-1">
-            <div className="bg-primary-muted border border-border-default p-4 rounded-xl mb-6 shadow-sm">
+          <div className="min-w-0">
+            <div className="bg-surface-base border border-border-default p-4 rounded-xl mb-6">
               <h3 className="text-sm font-bold text-primary mb-3 flex items-center">
                 <Plus className="w-4 h-4 mr-1" /> Add Assignment
               </h3>
@@ -426,7 +426,7 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
           </div>
 
           {/* RIGHT: Team List */}
-          <div className="flex-[1.5] border-l border-border-subtle pl-6">
+          <div className="min-w-0 border-t border-border-subtle pt-6 lg:border-t-0 lg:border-l lg:pl-6 lg:pt-0">
             <h3 className="text-sm font-semibold text-text-secondary mb-4 border-b pb-2">
               Current Team ({members.length})
             </h3>
@@ -440,12 +440,12 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
                 No team members assigned yet.
               </div>
             ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                 {members.map((m) => (
                   <div
                     key={m.id}
                     className={clsx(
-                      "flex items-center justify-between bg-surface-card p-3 rounded border transition-all shadow-sm",
+                      "flex items-center justify-between bg-surface-card p-3 rounded-xl border transition-colors",
                       {
                         "opacity-60 grayscale-[0.5]": m.status === "INACTIVE",
                         "border-border-default": m.status === "ACTIVE",
@@ -459,9 +459,9 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
                         className={clsx(
                           "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ring-2 ring-white",
                           {
-                            "bg-indigo-100 text-indigo-700":
+                            "bg-secondary-muted text-secondary":
                               m.status === "ACTIVE",
-                            "bg-gray-200 text-text-muted":
+                            "bg-surface-raised text-text-muted":
                               m.status === "INACTIVE",
                           },
                         )}
@@ -472,7 +472,7 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
                         <div className="font-medium text-text-primary text-sm flex items-center gap-2">
                           {m.user.username}
                           {m.status === "INACTIVE" && (
-                            <span className="bg-gray-200 text-text-secondary text-[9px] px-1 rounded uppercase tracking-tighter">
+                            <span className="bg-surface-raised text-text-secondary text-[9px] px-1.5 py-0.5 rounded uppercase tracking-tighter">
                               Paused
                             </span>
                           )}
@@ -486,13 +486,13 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
                               {r.name}
                             </span>
                           ))}
-                          <div className="w-1 h-1 bg-gray-300 rounded-full mx-0.5" />
+                          <div className="w-1 h-1 bg-border-strong rounded-full mx-0.5" />
                           {m.scopeType === "FULL" ? (
                             <span className="text-success font-medium">
                               Full Access
                             </span>
                           ) : (
-                            <span className="text-orange-600 font-medium whitespace-nowrap">
+                            <span className="text-secondary font-medium whitespace-nowrap">
                               Limited
                             </span>
                           )}
@@ -511,7 +511,7 @@ const ProjectTeamModal: React.FC<ProjectTeamModalProps> = ({
                         className={clsx("p-1.5 rounded transition-colors", {
                           "text-text-disabled hover:text-success hover:bg-success-muted":
                             m.status === "INACTIVE",
-                          "text-text-disabled hover:text-orange-600 hover:bg-orange-50":
+                          "text-text-disabled hover:text-secondary hover:bg-secondary-muted":
                             m.status === "ACTIVE",
                         })}
                         title={

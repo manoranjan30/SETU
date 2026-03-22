@@ -25,30 +25,42 @@ class ApiEndpoints {
   static const String _baseUrlOverride =
       String.fromEnvironment('SETU_BASE_URL', defaultValue: '');
 
+  // ---------------------------------------------------------------------------
+  // Runtime URL override (set by ServerConfigService from SharedPreferences).
+  // Takes highest priority — allows testers to change the server without
+  // rebuilding the APK. Survives hot-reload; cleared on cold restart unless
+  // ServerConfigService re-loads it from SharedPreferences in main().
+  // ---------------------------------------------------------------------------
+  static String? _runtimeUrl;
+
+  /// Sets the runtime base URL (called by [ServerConfigService] after the user
+  /// selects a server in [ServerSetupPage] or on app startup from saved prefs).
+  static void setRuntimeUrl(String url) => _runtimeUrl = url.trim();
+
+  /// Clears the runtime override — falls back to compile-time resolution.
+  static void clearRuntimeUrl() => _runtimeUrl = null;
+
+  /// The compile-time resolved URL (dart-define chain, no runtime override).
+  /// Exposed so [ServerSetupPage] can show it as the "Dev Default" preset.
+  static String get compileTimeUrl {
+    if (_baseUrlOverride.isNotEmpty) return _baseUrlOverride;
+    switch (_environment) {
+      case 'prod':    return productionUrl;
+      case 'staging': return stagingUrl;
+      default:        return devUrl;
+    }
+  }
+
   /// The effective base URL used by [SetuApiClient].
   ///
   /// Resolution order (highest priority first):
-  /// 1. `SETU_BASE_URL` dart-define (explicit override — wins always)
-  /// 2. Environment-specific constant (`SETU_ENV` dart-define)
-  /// 3. Falls back to [devUrl] for any unrecognised environment string.
-  ///
-  /// For physical devices in development use:
-  /// `--dart-define=SETU_BASE_URL=http://<your-machine-ip>:3000/api`
+  /// 1. Runtime override set by [ServerConfigService] (user-selected in UI)
+  /// 2. `SETU_BASE_URL` dart-define (build-time explicit override)
+  /// 3. Environment-specific constant (`SETU_ENV` dart-define)
+  /// 4. Falls back to [devUrl] for any unrecognised environment string.
   static String get baseUrl {
-    // An explicit URL override always takes precedence — useful for CI or
-    // when pointing the app at a specific staging server without changing code.
-    if (_baseUrlOverride.isNotEmpty) return _baseUrlOverride;
-
-    switch (_environment) {
-      case 'prod':
-        return productionUrl;
-      case 'staging':
-        return stagingUrl;
-      case 'dev':
-      default:
-        // Unknown env strings also fall through to dev for safety.
-        return devUrl;
-    }
+    if (_runtimeUrl != null && _runtimeUrl!.isNotEmpty) return _runtimeUrl!;
+    return compileTimeUrl;
   }
 
   // Production URL (update when deploying)

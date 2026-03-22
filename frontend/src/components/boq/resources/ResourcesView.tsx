@@ -74,13 +74,13 @@ const ResourcesView: React.FC = () => {
             <div className="flex space-x-2">
               <button
                 onClick={() => setActiveTab("TEMPLATES")}
-                className={`px-3 py-1 text-sm font-medium rounded-md ${activeTab === "TEMPLATES" ? "bg-indigo-100 text-indigo-700" : "text-text-secondary hover:bg-surface-raised"}`}
+                className={`px-3 py-1 text-sm font-semibold rounded-md ${activeTab === "TEMPLATES" ? "bg-secondary-muted text-secondary" : "text-text-secondary hover:bg-surface-raised"}`}
               >
                 Templates
               </button>
               <button
                 onClick={() => setActiveTab("RESOURCES")}
-                className={`px-3 py-1 text-sm font-medium rounded-md ${activeTab === "RESOURCES" ? "bg-indigo-100 text-indigo-700" : "text-text-secondary hover:bg-surface-raised"}`}
+                className={`px-3 py-1 text-sm font-semibold rounded-md ${activeTab === "RESOURCES" ? "bg-secondary-muted text-secondary" : "text-text-secondary hover:bg-surface-raised"}`}
               >
                 Resources
               </button>
@@ -93,7 +93,7 @@ const ResourcesView: React.FC = () => {
               </button>
               <button
                 onClick={() => setActiveTab("ANALYSIS")}
-                className={`px-3 py-1 text-sm font-medium rounded-md ${(activeTab as string) === "ANALYSIS" ? "bg-indigo-100 text-indigo-700" : "text-text-secondary hover:bg-surface-raised"}`}
+                className={`px-3 py-1 text-sm font-semibold rounded-md ${(activeTab as string) === "ANALYSIS" ? "bg-secondary-muted text-secondary" : "text-text-secondary hover:bg-surface-raised"}`}
               >
                 Report
               </button>
@@ -119,10 +119,10 @@ const ResourcesView: React.FC = () => {
                     <div
                       key={t.id}
                       onClick={() => setSelectedTemplateId(t.id)}
-                      className={`p-3 rounded-md cursor-pointer text-sm border flex justify-between items-start group relative ${selectedTemplateId === t.id ? "bg-secondary-muted border-indigo-200 shadow-sm" : "bg-surface-card border-transparent hover:bg-surface-base"}`}
+                      className={`p-3 rounded-md cursor-pointer text-sm border flex justify-between items-start group relative ${selectedTemplateId === t.id ? "bg-secondary-muted border-secondary" : "bg-surface-card border-transparent hover:bg-surface-base"}`}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-800">
+                        <div className="font-medium text-text-primary">
                           {t.templateCode}
                         </div>
                         <div className="text-text-muted truncate">

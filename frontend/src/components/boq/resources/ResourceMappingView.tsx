@@ -248,9 +248,9 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
   }, [items, searchTerm, filter]);
 
   return (
-    <div className="flex flex-col h-full bg-surface-base font-sans text-slate-900">
+    <div className="flex flex-col h-full bg-surface-base text-text-primary">
       {/* Toolbar */}
-      <div className="p-4 bg-surface-card border-b border-border-default flex flex-wrap gap-4 justify-between items-center shadow-sm sticky top-0 z-30">
+      <div className="p-4 bg-surface-card border-b border-border-default flex flex-wrap gap-4 justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-6">
           <div className="relative group">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-disabled w-4 h-4 group-focus-within:text-secondary transition-all" />
@@ -263,12 +263,12 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
             />
           </div>
 
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-border-default">
+          <div className="flex bg-surface-raised p-1 rounded-xl border border-border-default">
             {["ALL", "UNMAPPED", "MAPPED"].map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f as any)}
-                className={`px-4 py-1.5 text-xs font-black rounded-lg transition-all ${filter === f ? "bg-surface-card text-indigo-700 shadow-sm" : "text-text-muted hover:text-slate-900"}`}
+                className={`px-4 py-1.5 text-xs font-black rounded-lg transition-colors ${filter === f ? "bg-surface-card text-secondary" : "text-text-muted hover:text-text-primary"}`}
               >
                 {f}
               </button>
@@ -318,7 +318,7 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
           <button
             onClick={handleAutoSuggest}
             disabled={analyzing}
-            className={`flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-black text-xs rounded-xl hover:bg-slate-800 shadow-lg hover:shadow-xl transition-all active:scale-95 ${analyzing ? "opacity-70 cursor-wait" : ""}`}
+            className={`flex items-center gap-2 px-5 py-2.5 bg-text-primary text-white font-black text-xs rounded-xl hover:opacity-90 transition-all active:scale-95 ${analyzing ? "opacity-70 cursor-wait" : ""}`}
           >
             {analyzing ? (
               <Loader className="w-4 h-4 animate-spin" />
@@ -373,23 +373,23 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
               return (
                 <div
                   key={item.id}
-                  className={`group bg-surface-card rounded-2xl border transition-all duration-300 ${isMainExpanded ? "border-indigo-200 shadow-xl ring-4 ring-indigo-50/50" : "border-border-default shadow-sm hover:border-slate-300"}`}
+                  className={`group bg-surface-card rounded-2xl border transition-colors duration-200 ${isMainExpanded ? "border-secondary" : "border-border-default hover:border-border-strong"}`}
                 >
                   {/* Main Item Row */}
                   <div className="p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 flex-1">
                       <div
                         onClick={() => toggleMain(item.id)}
-                        className={`p-2 rounded-xl cursor-pointer transition-all ${isMainExpanded ? "bg-secondary text-white rotate-90 shadow-lg" : "bg-surface-base text-text-disabled group-hover:bg-slate-100"}`}
+                        className={`p-2 rounded-xl cursor-pointer transition-all ${isMainExpanded ? "bg-secondary text-white rotate-90" : "bg-surface-base text-text-disabled group-hover:bg-surface-raised"}`}
                       >
                         <ChevronRight className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-black tracking-tighter text-secondary bg-secondary-muted px-2 py-0.5 rounded-full border border-indigo-100">
+                          <span className="text-[10px] font-black tracking-tighter text-secondary bg-secondary-muted px-2 py-0.5 rounded-full border border-secondary">
                             {item.boqCode}
                           </span>
-                          <h3 className="text-base font-black text-slate-800 tracking-tight">
+                          <h3 className="text-base font-black text-text-primary tracking-tight">
                             {item.description}
                           </h3>
                         </div>
@@ -402,7 +402,7 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
                             <span className="text-slate-900">{item.qty}</span>
                           </span>
                           <div className="flex items-center gap-2 ml-2">
-                            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="w-24 h-1.5 bg-surface-raised rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-secondary transition-all duration-700"
                                 style={{
@@ -438,14 +438,14 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
                         return (
                           <div
                             key={sub.id}
-                            className={`rounded-xl border transition-all ${isSubExpanded ? "bg-surface-card border-indigo-100 shadow-md" : "bg-surface-card/50 border-border-default hover:bg-surface-card"}`}
+                            className={`rounded-xl border transition-colors ${isSubExpanded ? "bg-surface-card border-border-strong" : "bg-surface-card border-border-default hover:bg-surface-base"}`}
                           >
                             {/* Sub-Item Header */}
                             <div className="p-3 flex items-center justify-between gap-3">
                               <div className="flex items-center gap-3 flex-1">
                                 <button
                                   onClick={() => handleSelectSub(sub)}
-                                  className="p-1 hover:bg-slate-100 rounded transition-colors"
+                                  className="p-1 hover:bg-surface-raised rounded transition-colors"
                                 >
                                   {allSubSelected ? (
                                     <CheckSquare className="w-4 h-4 text-secondary" />
@@ -637,7 +637,7 @@ const ResourceMappingView: React.FC<ResourceMappingViewProps> = ({
 
       {/* Selection Stats (Floating) */}
       {selectedMeasIds.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-6 z-50 border border-slate-700 animate-in fade-in slide-in-from-bottom-6 duration-300">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-text-primary text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-6 z-50 border border-border-strong animate-in fade-in slide-in-from-bottom-6 duration-300">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-secondary rounded-lg shadow-inner">
               <CheckSquare className="w-5 h-5 text-white" />
