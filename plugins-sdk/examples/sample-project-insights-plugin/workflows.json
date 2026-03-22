@@ -1,0 +1,12 @@
+[
+  {
+    "workflowKey": "sample-project-insights-approval",
+    "moduleCode": "PLANNING",
+    "processCode": "PLUGIN_SAMPLE_PROJECT_INSIGHTS_APPROVAL",
+    "permissionCode": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "isActive": true,
+    "config": {
+      "description": "Reference plugin workflow metadata."
+    }
+  }
+]

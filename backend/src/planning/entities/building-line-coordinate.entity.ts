@@ -33,6 +33,18 @@ export class BuildingLineCoordinate {
   heightMeters: number | null;
 
   @Column({ type: 'jsonb', nullable: true })
+  customFeatures:
+    | Array<{
+        id: string;
+        type: 'FLOOR' | 'ELEVATION' | 'CUSTOM';
+        name: string;
+        coordinatesText?: string | null;
+        heightMeters?: number | null;
+        inheritFromBelow?: boolean;
+      }>
+    | null;
+
+  @Column({ type: 'jsonb', nullable: true })
   structureSnapshot:
     | {
         floorCount?: number;

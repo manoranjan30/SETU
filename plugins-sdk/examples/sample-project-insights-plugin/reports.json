@@ -1,0 +1,19 @@
+[
+  {
+    "reportKey": "project-insights-summary",
+    "title": "Project Insights Summary",
+    "permissionCode": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "exportTypes": ["VIEW", "CSV"],
+    "config": {
+      "columns": [
+        { "key": "category", "label": "Category" },
+        { "key": "count", "label": "Count" }
+      ],
+      "previewRows": [
+        { "category": "RFIs", "count": 12 },
+        { "category": "Stage Approvals", "count": 4 },
+        { "category": "Issues", "count": 3 }
+      ]
+    }
+  }
+]

@@ -1,0 +1,9 @@
+[
+  {
+    "code": "PLUGIN.SAMPLE-REPORT-PLUGIN.VIEW",
+    "name": "View Sample Report Plugin",
+    "moduleName": "PLUGIN",
+    "scopeLevel": "SYSTEM",
+    "actionType": "READ"
+  }
+]

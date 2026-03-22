@@ -7,6 +7,9 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   size?: "medium" | "large" | "xl" | "fullscreen";
+  headerClassName?: string;
+  contentClassName?: string;
+  titleClassName?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -15,6 +18,9 @@ const Modal: React.FC<ModalProps> = ({
   title,
   children,
   size = "medium",
+  headerClassName = "",
+  contentClassName = "",
+  titleClassName = "",
 }) => {
   if (!isOpen) return null;
 
@@ -27,7 +33,7 @@ const Modal: React.FC<ModalProps> = ({
 
   // For "fullscreen within layout", we use padding to simulate margins from the screen edge
   // creating a "card" effect that fills most of the space but shows the background app
-  const containerClass = size === "fullscreen" ? "p-4 md:p-6 lg:p-8" : "p-4";
+  const containerClass = size === "fullscreen" ? "p-1 md:p-2 lg:p-3" : "p-4";
 
   return (
     <div
@@ -36,8 +42,12 @@ const Modal: React.FC<ModalProps> = ({
       <div
         className={`bg-surface-card shadow-2xl w-full ui-animate-card ${sizeClass[size]} ${size === "fullscreen" ? "h-full" : "max-h-[90vh] rounded-3xl"} flex flex-col border border-border-default`}
       >
-        <div className="flex justify-between items-center p-6 border-b border-border-default flex-shrink-0 bg-surface-base">
-          <h3 className="text-xl font-extrabold tracking-tight text-text-primary">
+        <div
+          className={`flex justify-between items-center p-6 border-b border-border-default flex-shrink-0 bg-surface-base ${headerClassName}`}
+        >
+          <h3
+            className={`text-xl font-extrabold tracking-tight text-text-primary ${titleClassName}`}
+          >
             {title}
           </h3>
           <button
@@ -47,7 +57,9 @@ const Modal: React.FC<ModalProps> = ({
             <X size={20} />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        <div className={`p-6 overflow-y-auto flex-1 ${contentClassName}`}>
+          {children}
+        </div>
       </div>
     </div>
   );

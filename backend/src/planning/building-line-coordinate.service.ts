@@ -17,10 +17,6 @@ export class BuildingLineCoordinateService {
   ) {}
 
   async getStructure(projectId: number) {
-    const tree = await this.epsRepo.find({
-      where: [{ id: projectId }, { parentId: projectId }] as any,
-      order: { order: 'ASC', name: 'ASC' },
-    });
     const allNodes = await this.epsRepo.find({
       order: { order: 'ASC', name: 'ASC' },
     });
@@ -111,14 +107,54 @@ export class BuildingLineCoordinateService {
           coordinate?.heightMeters != null
             ? Number(coordinate.heightMeters)
             : null,
+        customFeatures: coordinate?.customFeatures || [],
         structureSnapshot,
         children,
       };
     };
 
-    const root = nodeById.get(projectId);
+    const findProjectAncestor = (startNodeId?: number | null): EpsNode | null => {
+      if (!startNodeId) return null;
+      let current = nodeById.get(startNodeId) || null;
+      while (current) {
+        if (current.type === EpsNodeType.PROJECT) {
+          return current;
+        }
+        current =
+          current.parentId != null ? nodeById.get(current.parentId) || null : null;
+      }
+      return null;
+    };
+
+    let root = nodeById.get(projectId) || null;
+    if (root?.type !== EpsNodeType.PROJECT) {
+      root = null;
+    }
+
     if (!root) {
-      throw new NotFoundException('Project EPS root not found');
+      for (const structure of structures) {
+        const projectRoot = findProjectAncestor(structure.towerId);
+        if (projectRoot) {
+          root = projectRoot;
+          break;
+        }
+      }
+    }
+
+    if (!root) {
+      for (const coordinate of coordinates) {
+        const projectRoot = findProjectAncestor(coordinate.epsNodeId);
+        if (projectRoot) {
+          root = projectRoot;
+          break;
+        }
+      }
+    }
+
+    if (!root) {
+      throw new NotFoundException(
+        'No EPS structure is linked to this project yet. Create or map the project EPS hierarchy first.',
+      );
     }
 
     return buildNode(root);
@@ -130,6 +166,7 @@ export class BuildingLineCoordinateService {
     payload: {
       coordinatesText?: string | null;
       heightMeters?: number | null;
+      customFeatures?: any[] | null;
       structureSnapshot?: any;
     },
     userId?: number,
@@ -153,6 +190,10 @@ export class BuildingLineCoordinateService {
       payload.coordinatesText != null ? payload.coordinatesText : entity.coordinatesText;
     entity.heightMeters =
       payload.heightMeters != null ? payload.heightMeters : entity.heightMeters;
+    entity.customFeatures =
+      payload.customFeatures != null
+        ? payload.customFeatures
+        : entity.customFeatures;
     entity.structureSnapshot =
       payload.structureSnapshot != null
         ? payload.structureSnapshot

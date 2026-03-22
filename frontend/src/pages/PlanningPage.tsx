@@ -13,6 +13,7 @@ import MicroSchedulePage from "./micro-schedule/MicroSchedulePage";
 import { VendorUserManagementPage } from "./planning/VendorUserManagementPage";
 import ReleaseStrategyPage from "./planning/ReleaseStrategyPage";
 import BuildingLineCoordinatesPage from "./planning/BuildingLineCoordinatesPage";
+import IssueTrackerPage from "./planning/IssueTrackerPage";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -51,6 +52,8 @@ const PlanningPage = () => {
         return <ReleaseStrategyPage />;
       case "building_lines":
         return <BuildingLineCoordinatesPage />;
+      case "issue_tracker":
+        return <IssueTrackerPage />;
       case "recovery":
         return (
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">

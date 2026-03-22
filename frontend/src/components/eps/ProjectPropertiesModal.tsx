@@ -9,6 +9,8 @@ import {
   DollarSign,
   PenTool,
   Activity,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import api from "../../api/axios";
 
@@ -201,6 +203,7 @@ const ProjectPropertiesModal: React.FC<Props> = ({
   const [calendars, setCalendars] = useState<any[]>([]); // For Calendar dropdown
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
 
   // Fetch Data on Open
   useEffect(() => {
@@ -240,6 +243,26 @@ const ProjectPropertiesModal: React.FC<Props> = ({
 
   const handleChange = (key: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [key]: value }));
+  };
+
+  const handleLogoUpload = async (
+    field: "companyLogoUrl" | "projectLogoUrl",
+    file?: File | null,
+  ) => {
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    setUploadingField(field);
+    try {
+      const res = await api.post("/files/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      handleChange(field, res.data?.url || "");
+    } catch (err) {
+      alert("Failed to upload logo");
+    } finally {
+      setUploadingField(null);
+    }
   };
 
   const handleSave = async () => {
@@ -303,116 +326,195 @@ const ProjectPropertiesModal: React.FC<Props> = ({
                 Loading...
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-                {propertyGroups
-                  .find((g) => g.group === activeGroup)
-                  ?.fields.map((field) => (
-                    <div
-                      key={field.key}
-                      className={field.type === "text" ? "col-span-2" : ""}
-                    >
-                      <label className="block text-sm font-semibold text-text-secondary mb-1">
-                        {field.label}{" "}
-                        {field.required && (
-                          <span className="text-error">*</span>
+              <>
+                {activeGroup === "Core Identity" && (
+                  <div className="grid grid-cols-2 gap-6 mb-8">
+                    {[
+                      {
+                        key: "companyLogoUrl",
+                        label: "Company Logo",
+                        description: "Used in company-branded reports and headers.",
+                      },
+                      {
+                        key: "projectLogoUrl",
+                        label: "Project Logo",
+                        description: "Used in project-specific reports and exported documents.",
+                      },
+                    ].map((logoField) => (
+                      <div
+                        key={logoField.key}
+                        className="rounded-xl border border-border-default bg-surface-base p-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="text-sm font-semibold text-text-primary">
+                              {logoField.label}
+                            </div>
+                            <div className="mt-1 text-xs text-text-muted">
+                              {logoField.description}
+                            </div>
+                          </div>
+                          <div className="h-16 w-16 overflow-hidden rounded-lg border border-border-default bg-white flex items-center justify-center">
+                            {formData[logoField.key] ? (
+                              <img
+                                src={formData[logoField.key]}
+                                alt={logoField.label}
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <ImageIcon className="h-6 w-6 text-text-disabled" />
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-center gap-3">
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border-strong px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised">
+                            <Upload className="h-4 w-4" />
+                            {uploadingField === logoField.key
+                              ? "Uploading..."
+                              : "Upload Logo"}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/jpg,image/gif"
+                              className="hidden"
+                              onChange={(e) =>
+                                handleLogoUpload(
+                                  logoField.key as
+                                    | "companyLogoUrl"
+                                    | "projectLogoUrl",
+                                  e.target.files?.[0] || null,
+                                )
+                              }
+                            />
+                          </label>
+                          {formData[logoField.key] && (
+                            <button
+                              type="button"
+                              onClick={() => handleChange(logoField.key, "")}
+                              className="text-sm text-text-muted hover:text-text-primary"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        {formData[logoField.key] && (
+                          <div className="mt-2 text-xs text-text-muted break-all">
+                            {formData[logoField.key]}
+                          </div>
                         )}
-                      </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                  {propertyGroups
+                    .find((g) => g.group === activeGroup)
+                    ?.fields.map((field) => (
+                      <div
+                        key={field.key}
+                        className={field.type === "text" ? "col-span-2" : ""}
+                      >
+                        <label className="block text-sm font-semibold text-text-secondary mb-1">
+                          {field.label}{" "}
+                          {field.required && (
+                            <span className="text-error">*</span>
+                          )}
+                        </label>
 
-                      {/* Render Input based on Type */}
-                      {field.type === "string" || field.type === "number" ? (
-                        <input
-                          type={field.type === "number" ? "number" : "text"}
-                          className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                          value={formData[field.key] || ""}
-                          onChange={(e) =>
-                            handleChange(field.key, e.target.value)
-                          }
-                        />
-                      ) : field.type === "date" ? (
-                        <input
-                          type="date"
-                          className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
-                          value={
-                            formData[field.key]
-                              ? formData[field.key].split("T")[0]
-                              : ""
-                          }
-                          onChange={(e) =>
-                            handleChange(field.key, e.target.value)
-                          }
-                        />
-                      ) : field.type === "enum" ? (
-                        <select
-                          className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none cursor-pointer bg-surface-card"
-                          value={formData[field.key] || ""}
-                          onChange={(e) =>
-                            handleChange(field.key, e.target.value)
-                          }
-                        >
-                          <option value="">Select...</option>
-                          {field.options?.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      ) : field.type === "boolean" ? (
-                        <div className="flex items-center mt-2">
+                        {field.type === "string" || field.type === "number" ? (
                           <input
-                            type="checkbox"
-                            className="w-4 h-4 text-primary rounded focus:ring-primary"
-                            checked={!!formData[field.key]}
+                            type={field.type === "number" ? "number" : "text"}
+                            className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
+                            value={formData[field.key] || ""}
                             onChange={(e) =>
-                              handleChange(field.key, e.target.checked)
+                              handleChange(field.key, e.target.value)
                             }
                           />
-                          <span className="ml-2 text-sm text-text-secondary">
-                            Yes
-                          </span>
-                        </div>
-                      ) : field.type === "text" ? (
-                        <textarea
-                          className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none h-24 resize-none"
-                          value={formData[field.key] || ""}
-                          onChange={(e) =>
-                            handleChange(field.key, e.target.value)
-                          }
-                        />
-                      ) : field.type === "user" ? (
-                        <select
-                          className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none cursor-pointer bg-surface-card"
-                          value={formData[field.key] || ""}
-                          onChange={(e) =>
-                            handleChange(field.key, e.target.value)
-                          }
-                        >
-                          <option value="">Select User...</option>
-                          {users.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.username} (
-                              {u.roles?.map((r: any) => r.name).join(", ")})
-                            </option>
-                          ))}
-                        </select>
-                      ) : field.type === "calendar" ? (
-                        <select
-                          className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none cursor-pointer bg-surface-card"
-                          value={formData[field.key] || ""}
-                          onChange={(e) =>
-                            handleChange(field.key, e.target.value)
-                          }
-                        >
-                          <option value="">Select Calendar...</option>
-                          {calendars.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} {c.isDefault ? "(Default)" : ""}
-                            </option>
-                          ))}
-                        </select>
-                      ) : null}
-                    </div>
-                  ))}
-              </div>
+                        ) : field.type === "date" ? (
+                          <input
+                            type="date"
+                            className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                            value={
+                              formData[field.key]
+                                ? formData[field.key].split("T")[0]
+                                : ""
+                            }
+                            onChange={(e) =>
+                              handleChange(field.key, e.target.value)
+                            }
+                          />
+                        ) : field.type === "enum" ? (
+                          <select
+                            className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none cursor-pointer bg-surface-card"
+                            value={formData[field.key] || ""}
+                            onChange={(e) =>
+                              handleChange(field.key, e.target.value)
+                            }
+                          >
+                            <option value="">Select...</option>
+                            {field.options?.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.type === "boolean" ? (
+                          <div className="flex items-center mt-2">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 text-primary rounded focus:ring-primary"
+                              checked={!!formData[field.key]}
+                              onChange={(e) =>
+                                handleChange(field.key, e.target.checked)
+                              }
+                            />
+                            <span className="ml-2 text-sm text-text-secondary">
+                              Yes
+                            </span>
+                          </div>
+                        ) : field.type === "text" ? (
+                          <textarea
+                            className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none h-24 resize-none"
+                            value={formData[field.key] || ""}
+                            onChange={(e) =>
+                              handleChange(field.key, e.target.value)
+                            }
+                          />
+                        ) : field.type === "user" ? (
+                          <select
+                            className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none cursor-pointer bg-surface-card"
+                            value={formData[field.key] || ""}
+                            onChange={(e) =>
+                              handleChange(field.key, e.target.value)
+                            }
+                          >
+                            <option value="">Select User...</option>
+                            {users.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.username} (
+                                {u.roles?.map((r: any) => r.name).join(", ")})
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.type === "calendar" ? (
+                          <select
+                            className="w-full border border-border-strong rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none cursor-pointer bg-surface-card"
+                            value={formData[field.key] || ""}
+                            onChange={(e) =>
+                              handleChange(field.key, e.target.value)
+                            }
+                          >
+                            <option value="">Select Calendar...</option>
+                            {calendars.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} {c.isDefault ? "(Default)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                      </div>
+                    ))}
+                </div>
+              </>
             )}
           </div>
         </div>

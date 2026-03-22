@@ -76,6 +76,16 @@ export const MENU_CONFIG: MenuItem[] = [
         path: "/dashboard/admin/reports",
         permission: PermissionCode.ADMIN_REPORT_READ,
       },
+      {
+        label: "Plugins",
+        path: "/dashboard/admin/plugins",
+        permission: PermissionCode.PLUGIN_REGISTRY_READ,
+      },
+      {
+        label: "Issue Tracker Departments",
+        path: "/dashboard/admin/issue-tracker",
+        permission: PermissionCode.MANAGE_USERS,
+      },
     ],
   },
   {

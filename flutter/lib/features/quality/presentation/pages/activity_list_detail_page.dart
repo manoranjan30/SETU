@@ -230,6 +230,12 @@ class _ActivityListBody extends StatelessWidget {
                       final hasPendingObs =
                           status == ActivityDisplayStatus.pendingObservation;
 
+                      // Allow raising additional parts / units when the
+                      // activity isn't locked or fully approved.
+                      final canRaiseMore =
+                          status != ActivityDisplayStatus.locked &&
+                              status != ActivityDisplayStatus.approved;
+
                       return ActivityCard(
                         row: row,
                         // "Raise RFI" callback only available for ready activities
@@ -240,6 +246,16 @@ class _ActivityListBody extends StatelessWidget {
                         onFixObservation: hasPendingObs
                             ? (obs) =>
                                 _showRectificationSheet(context, row.activity, obs)
+                            : null,
+                        // Multi-Go: raise a specific part number
+                        onRaisePart: canRaiseMore
+                            ? (partNo, totalParts) => _raiseRfiPart(
+                                context, row, partNo, totalParts)
+                            : null,
+                        // Unit Wise: raise RFI for a specific unit
+                        onRaiseUnit: canRaiseMore
+                            ? (unitId, unitName) =>
+                                _raiseUnitRfi(context, row, unitId)
                             : null,
                       );
                     },
@@ -253,8 +269,6 @@ class _ActivityListBody extends StatelessWidget {
   /// Opens the Raise RFI dialog, passing the activity and the required context
   /// (project, EPS node, list) for the [RaiseRfi] event.
   void _showRfiDialog(BuildContext context, QualityActivity activity) {
-    final commentsCtrl = TextEditingController();
-
     showDialog(
       context: context,
       builder: (ctx) {
@@ -263,12 +277,115 @@ class _ActivityListBody extends StatelessWidget {
           projectId: projectId,
           epsNodeId: epsNodeId,
           listId: listId,
-          commentsCtrl: commentsCtrl,
           // Pass the parent bloc by reference so the dialog can dispatch events
           bloc: context.read<QualityRequestBloc>(),
         );
       },
     );
+  }
+
+  /// Shows a compact drawing-number prompt then raises a specific part of
+  /// a multi-go RFI. Reuses the vendor from the existing inspection.
+  void _raiseRfiPart(
+      BuildContext context, ActivityRow row, int partNo, int totalParts) {
+    _showDrawingNoPrompt(
+      context,
+      title: 'Raise Part $partNo of $totalParts',
+      onConfirm: (drawingNo) {
+        context.read<QualityRequestBloc>().add(RaiseRfi(
+              projectId: projectId,
+              epsNodeId: epsNodeId,
+              listId: listId,
+              activity: row.activity,
+              drawingNo: drawingNo,
+              partNo: partNo,
+              totalParts: totalParts,
+              partLabel: 'Part $partNo',
+              documentType: 'FLOOR_RFI',
+              vendorId: row.inspection?.vendorId,
+              vendorName: row.inspection?.vendorName,
+            ));
+      },
+    );
+  }
+
+  /// Shows a compact drawing-number prompt then raises a Unit Wise RFI for
+  /// a single unit. Reuses the vendor from the existing inspection.
+  void _raiseUnitRfi(BuildContext context, ActivityRow row, int unitId) {
+    _showDrawingNoPrompt(
+      context,
+      title: 'Raise Unit RFI',
+      onConfirm: (drawingNo) {
+        context.read<QualityRequestBloc>().add(RaiseRfi(
+              projectId: projectId,
+              epsNodeId: epsNodeId,
+              listId: listId,
+              activity: row.activity,
+              drawingNo: drawingNo,
+              documentType: 'UNIT_RFI',
+              qualityUnitId: unitId,
+              vendorId: row.inspection?.vendorId,
+              vendorName: row.inspection?.vendorName,
+            ));
+      },
+    );
+  }
+
+  /// Shows a minimal dialog that collects a drawing number, then calls
+  /// [onConfirm] with the trimmed value. Used for quick-raises from
+  /// progress chips where the full RFI dialog is not needed again.
+  void _showDrawingNoPrompt(
+    BuildContext context, {
+    required String title,
+    required void Function(String drawingNo) onConfirm,
+  }) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text(title, style: const TextStyle(fontSize: 15)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Drawing Number *',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'e.g. DWG-STR-001',
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                onChanged: (_) => setS(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: ctrl.text.trim().isEmpty
+                  ? null
+                  : () {
+                      final drawingNo = ctrl.text.trim();
+                      Navigator.pop(ctx);
+                      onConfirm(drawingNo);
+                    },
+              child: const Text('Raise RFI'),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) => ctrl.dispose());
   }
 
   /// Opens the rectification bottom sheet for the given observation.
@@ -566,17 +683,22 @@ class _RectificationSheetState extends State<_RectificationSheet> {
 }
 
 // ---------------------------------------------------------------------------
-// Raise RFI Dialog — loads active vendors, requires vendor selection
+// Raise RFI Dialog — One Go / Multi Go / Unit Wise
 // ---------------------------------------------------------------------------
 
-/// Dialog that collects vendor selection + optional comments before raising
-/// an RFI (Request for Inspection) for a single activity.
+/// Dialog that collects inspection mode + vendor + optional comments before
+/// raising an RFI (Request for Inspection) for a single activity.
+///
+/// Three modes are available based on [activity.applicabilityLevel]:
+///   • FLOOR (or null) → One Go (single inspection) or Multi Go (N parts,
+///     raises Part 1 now — remaining parts raised after approval).
+///   • UNIT → Unit Wise: load units from floor structure, user picks which
+///     units to inspect. One RFI is queued per selected unit.
 class _RaiseRfiDialog extends StatefulWidget {
   final QualityActivity activity;
   final int projectId;
   final int epsNodeId;
   final int listId;
-  final TextEditingController commentsCtrl;
   final QualityRequestBloc bloc;
 
   const _RaiseRfiDialog({
@@ -584,7 +706,6 @@ class _RaiseRfiDialog extends StatefulWidget {
     required this.projectId,
     required this.epsNodeId,
     required this.listId,
-    required this.commentsCtrl,
     required this.bloc,
   });
 
@@ -593,20 +714,40 @@ class _RaiseRfiDialog extends StatefulWidget {
 }
 
 class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
+  final _drawingNoCtrl = TextEditingController();
+  final _commentsCtrl = TextEditingController();
+
+  // Vendor loading
   List<Map<String, dynamic>> _vendors = [];
   Map<String, dynamic>? _selectedVendor;
-  bool _loading = true;
-  String? _loadError;
+  bool _vendorLoading = true;
+  String? _vendorError;
+
+  // FLOOR mode: 'ONE_GO' or 'MULTI_GO'
+  String _rfiMode = 'ONE_GO';
+  int _rfiParts = 2;
+
+  // UNIT mode — units fetched from floor structure API
+  List<Map<String, dynamic>> _units = [];
+  final Set<int> _selectedUnitIds = {};
+  bool _unitsLoading = false;
+
+  bool get _isUnit => widget.activity.applicabilityLevel == 'UNIT';
 
   @override
   void initState() {
     super.initState();
-    // Fetch active vendors for this project when the dialog opens
     _loadVendors();
+    if (_isUnit) _loadUnits();
   }
 
-  /// Fetches active vendors from the API to populate the dropdown.
-  /// Auto-selects when only one vendor is returned.
+  @override
+  void dispose() {
+    _drawingNoCtrl.dispose();
+    _commentsCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadVendors() async {
     try {
       final vendors =
@@ -614,24 +755,99 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
       if (!mounted) return;
       setState(() {
         _vendors = vendors;
-        _loading = false;
-        // Auto-select the sole vendor to save a tap
+        _vendorLoading = false;
         if (vendors.length == 1) _selectedVendor = vendors.first;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _loading = false;
-        _loadError = 'Could not load vendors';
+        _vendorLoading = false;
+        _vendorError = 'Could not load vendors';
       });
     }
   }
 
+  /// Fetches the unit list for the selected floor EPS node.
+  Future<void> _loadUnits() async {
+    setState(() => _unitsLoading = true);
+    try {
+      final units = await sl<SetuApiClient>()
+          .getFloorStructure(widget.projectId, widget.epsNodeId);
+      if (!mounted) return;
+      setState(() {
+        _units = units;
+        _unitsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _unitsLoading = false);
+    }
+  }
+
+  bool get _canSubmit {
+    if (_vendorLoading) return false;
+    // Drawing number is required
+    if (_drawingNoCtrl.text.trim().isEmpty) return false;
+    // Vendor required unless none exist or load failed
+    if (_vendors.isNotEmpty &&
+        _selectedVendor == null &&
+        _vendorError == null) {
+      return false;
+    }
+    // Unit Wise mode requires at least one unit selected
+    if (_isUnit) return _selectedUnitIds.isNotEmpty;
+    return true;
+  }
+
+  void _submit() {
+    final drawingNo = _drawingNoCtrl.text.trim();
+    final comments = _commentsCtrl.text.trim().isEmpty
+        ? null
+        : _commentsCtrl.text.trim();
+    final vendorId = _selectedVendor?['id'] as int?;
+    final vendorName = _selectedVendor?['name'] as String?;
+
+    if (_isUnit) {
+      // Queue one RFI per selected unit (Unit Wise mode)
+      for (final unitId in _selectedUnitIds) {
+        widget.bloc.add(RaiseRfi(
+          projectId: widget.projectId,
+          epsNodeId: widget.epsNodeId,
+          listId: widget.listId,
+          activity: widget.activity,
+          drawingNo: drawingNo,
+          comments: comments,
+          documentType: 'UNIT_RFI',
+          qualityUnitId: unitId,
+          vendorId: vendorId,
+          vendorName: vendorName,
+        ));
+      }
+    } else {
+      // FLOOR / null applicabilityLevel — One Go or Multi Go
+      final isMultiGo = _rfiMode == 'MULTI_GO';
+      final totalParts = isMultiGo ? _rfiParts.clamp(2, 20) : 1;
+      widget.bloc.add(RaiseRfi(
+        projectId: widget.projectId,
+        epsNodeId: widget.epsNodeId,
+        listId: widget.listId,
+        activity: widget.activity,
+        drawingNo: drawingNo,
+        comments: comments,
+        partNo: 1,
+        totalParts: totalParts,
+        partLabel: isMultiGo ? 'Part 1' : 'Single',
+        documentType: 'FLOOR_RFI',
+        vendorId: vendorId,
+        vendorName: vendorName,
+      ));
+    }
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Allow submission when vendors are loaded and one is selected (or load failed)
-    final canSubmit = !_loading &&
-        (_selectedVendor != null || _vendors.isEmpty || _loadError != null);
+    final theme = Theme.of(context);
 
     return AlertDialog(
       title: const Text('Raise RFI'),
@@ -645,9 +861,25 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                 style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
 
+            // ── Drawing Number (required) ─────────────────────────────────
+            const Text('Drawing Number *',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _drawingNoCtrl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'e.g. DWG-STR-001',
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+
             // ── Vendor / contractor selector ─────────────────────────────
-            if (_loading)
-              // Inline spinner while vendors are loading
+            if (_vendorLoading)
               const Row(children: [
                 SizedBox(
                   width: 16,
@@ -657,19 +889,16 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                 SizedBox(width: 8),
                 Text('Loading vendors…', style: TextStyle(fontSize: 13)),
               ])
-            else if (_loadError != null)
-              // Error fallback — allow submission without vendor
-              Text('$_loadError — will submit without vendor.',
+            else if (_vendorError != null)
+              Text('$_vendorError — will submit without vendor.',
                   style: const TextStyle(fontSize: 12, color: Colors.orange))
             else if (_vendors.isEmpty)
-              // No vendors configured for this project
               const Text('No active vendors found for this project.',
                   style: TextStyle(fontSize: 12, color: Colors.grey))
             else ...[
               const Text('Vendor / Contractor *',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 6),
-              // Dropdown populated with active vendors
               DropdownButtonFormField<Map<String, dynamic>>(
                 value: _selectedVendor,
                 isExpanded: true,
@@ -691,11 +920,108 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                 onChanged: (v) => setState(() => _selectedVendor = v),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-            // Optional free-text comments for the inspector
+            // ── Inspection mode selector (FLOOR activities) ──────────────
+            if (!_isUnit) ...[
+              const Text('Inspection Type',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: _ModeChip(
+                    label: 'One Go',
+                    selected: _rfiMode == 'ONE_GO',
+                    onTap: () => setState(() => _rfiMode = 'ONE_GO'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ModeChip(
+                    label: 'Multi Go',
+                    selected: _rfiMode == 'MULTI_GO',
+                    onTap: () => setState(() => _rfiMode = 'MULTI_GO'),
+                  ),
+                ),
+              ]),
+              if (_rfiMode == 'MULTI_GO') ...[
+                const SizedBox(height: 10),
+                Row(children: [
+                  const Text('Number of parts:',
+                      style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 64,
+                    child: TextFormField(
+                      initialValue: _rfiParts.toString(),
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      ),
+                      onChanged: (v) {
+                        final n = int.tryParse(v) ?? 2;
+                        setState(() => _rfiParts = n.clamp(2, 20));
+                      },
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                  'Part 1 is raised now. Raise Parts 2–$_rfiParts after Part 1 is approved.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+              const SizedBox(height: 16),
+            ],
+
+            // ── Unit selector (UNIT activities) ──────────────────────────
+            if (_isUnit) ...[
+              const Text('Select Units *',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              if (_unitsLoading)
+                const Row(children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text('Loading units…', style: TextStyle(fontSize: 13)),
+                ])
+              else if (_units.isEmpty)
+                const Text('No units found for this floor.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey))
+              else
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: _units.map((u) {
+                    final id = u['id'] as int;
+                    final name = u['name'] as String? ?? 'Unit $id';
+                    final selected = _selectedUnitIds.contains(id);
+                    return FilterChip(
+                      label: Text(name,
+                          style: const TextStyle(fontSize: 12)),
+                      selected: selected,
+                      onSelected: (v) => setState(() {
+                        if (v) {
+                          _selectedUnitIds.add(id);
+                        } else {
+                          _selectedUnitIds.remove(id);
+                        }
+                      }),
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 16),
+            ],
+
+            // ── Comments ─────────────────────────────────────────────────
             TextField(
-              controller: widget.commentsCtrl,
+              controller: _commentsCtrl,
               maxLines: 3,
               decoration: const InputDecoration(
                 labelText: 'Comments (optional)',
@@ -712,27 +1038,60 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          // Disabled while loading or no vendor selected
-          onPressed: canSubmit
-              ? () {
-                  // Dispatch the RaiseRfi event on the parent bloc
-                  widget.bloc.add(RaiseRfi(
-                    projectId: widget.projectId,
-                    epsNodeId: widget.epsNodeId,
-                    listId: widget.listId,
-                    activity: widget.activity,
-                    comments: widget.commentsCtrl.text.trim().isEmpty
-                        ? null
-                        : widget.commentsCtrl.text.trim(),
-                    vendorId: _selectedVendor?['id'] as int?,
-                    vendorName: _selectedVendor?['name'] as String?,
-                  ));
-                  Navigator.pop(context);
-                }
-              : null,
-          child: const Text('Raise RFI'),
+          onPressed: _canSubmit ? _submit : null,
+          child: Text(_isUnit && _selectedUnitIds.length > 1
+              ? 'Raise ${_selectedUnitIds.length} RFIs'
+              : 'Raise RFI'),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mode chip — toggle button for One Go / Multi Go selection
+// ---------------------------------------------------------------------------
+
+class _ModeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? theme.colorScheme.primary : Colors.transparent,
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight:
+                selected ? FontWeight.w600 : FontWeight.normal,
+            color: selected
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
+          ),
+        ),
+      ),
     );
   }
 }

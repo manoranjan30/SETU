@@ -38,6 +38,7 @@ export interface ExecutionBreakdownItem {
   type: "MICRO" | "BALANCE";
   id: number | null;
   name: string;
+  boqSubItemId?: number | null;
   allocatedQty: number;
   executedQty: number;
   balanceQty: number;
@@ -50,6 +51,7 @@ export interface VendorBreakdownItem {
   workOrderNumber: string | null;
   boqBreakdown: {
     boqItem: any;
+    boqSubItemId?: number | null;
     workOrderItemId: number | null;
     scope: {
       total: number;

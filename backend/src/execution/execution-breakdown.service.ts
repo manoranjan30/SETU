@@ -10,11 +10,13 @@ import { BoqItem } from '../boq/entities/boq-item.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { MicroLedgerService } from '../micro-schedule/micro-ledger.service';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
 
 export interface ExecutionBreakdownItem {
   type: 'MICRO' | 'BALANCE';
   id: number | null;
   name: string;
+  boqSubItemId?: number | null;
   allocatedQty: number;
   executedQty: number;
   balanceQty: number;
@@ -31,6 +33,7 @@ export interface ExecutionBreakdown {
     workOrderNumber: string | null;
     boqBreakdown: {
       boqItem: BoqItem;
+      boqSubItemId?: number | null;
       workOrderItemId: number | null;
       scope: {
         total: number;
@@ -63,6 +66,8 @@ export class ExecutionBreakdownService {
     private readonly boqRepo: Repository<BoqItem>,
     @InjectRepository(EpsNode)
     private readonly epsNodeRepo: Repository<EpsNode>,
+    @InjectRepository(WorkOrderItem)
+    private readonly workOrderItemRepo: Repository<WorkOrderItem>,
     private readonly ledgerService: MicroLedgerService,
   ) {}
 
@@ -131,6 +136,12 @@ export class ExecutionBreakdownService {
     const vendorMap = new Map<number | string, any>();
 
     for (const ledger of ledgers) {
+      const workOrderItem = ledger.workOrderItemId
+        ? await this.workOrderItemRepo.findOne({
+            where: { id: ledger.workOrderItemId },
+          })
+        : null;
+      const boqSubItemId = workOrderItem?.boqSubItemId || null;
       const vId = ledger.vendorId || 'DIRECT';
       const vName = ledger.vendor?.name || 'Direct Execution (No Vendor)';
       const vCode = ledger.vendor?.vendorCode || null;
@@ -190,6 +201,7 @@ export class ExecutionBreakdownService {
           type: 'MICRO',
           id: ma.id,
           name: ma.name,
+          boqSubItemId,
           allocatedQty: Number(ma.allocatedQty),
           executedQty: Number(executedQty),
           balanceQty: Number(ma.allocatedQty) - Number(executedQty),
@@ -210,6 +222,7 @@ export class ExecutionBreakdownService {
           type: 'BALANCE',
           id: null,
           name: 'Unallocated Quantity',
+          boqSubItemId,
           allocatedQty: balanceQty,
           executedQty: Number(directExecutedQty),
           balanceQty: balanceQty - Number(directExecutedQty),
@@ -218,6 +231,7 @@ export class ExecutionBreakdownService {
 
       vendorNode.boqBreakdown.push({
         boqItem: ledger.boqItem,
+        boqSubItemId,
         workOrderItemId: ledger.workOrderItemId,
         scope: {
           total: Number(ledger.totalParentQty),

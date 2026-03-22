@@ -1,0 +1,16 @@
+{
+  "pluginKey": "sample-project-insights",
+  "name": "Sample Project Insights",
+  "version": "1.0.0",
+  "author": "SETU",
+  "description": "Reference plugin that adds a project insights workspace.",
+  "appCompatibility": "^0.0.1",
+  "capabilities": ["menus", "pages", "widgets", "reports", "workflows", "settings"],
+  "installPolicy": {
+    "approvalRequired": true
+  },
+  "uninstallPolicy": {
+    "mode": "ARCHIVE",
+    "requiresDisableFirst": true
+  }
+}

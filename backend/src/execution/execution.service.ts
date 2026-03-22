@@ -1,12 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, In } from 'typeorm';
 import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
+import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { Activity, ActivityStatus } from '../wbs/entities/activity.entity';
 import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
 import { BoqService } from '../boq/boq.service';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
 
 @Injectable()
 export class ExecutionService {
@@ -21,10 +23,14 @@ export class ExecutionService {
     private planRepo: Repository<BoqActivityPlan>,
     @InjectRepository(BoqItem)
     private boqRepo: Repository<BoqItem>,
+    @InjectRepository(BoqSubItem)
+    private boqSubItemRepo: Repository<BoqSubItem>,
     @InjectRepository(MeasurementProgress)
     private progressRepo: Repository<MeasurementProgress>,
     @InjectRepository(MeasurementElement)
     private measurementRepo: Repository<MeasurementElement>,
+    @InjectRepository(WorkOrderItem)
+    private workOrderItemRepo: Repository<WorkOrderItem>,
   ) {}
 
   async batchSaveMeasurements(
@@ -37,6 +43,18 @@ export class ExecutionService {
       const results: MeasurementProgress[] = [];
 
       for (const entry of entries) {
+        const resolvedSubItem = await this.resolveSubItemForEntry(entry);
+        if (!resolvedSubItem) {
+          throw new BadRequestException(
+            `Progress entry for BOQ item ${entry.boqItemId} is not linked to a BOQ sub item. All activity measurements must use a BOQ sub item rate.`,
+          );
+        }
+        if (Number(resolvedSubItem.rate || 0) <= 0) {
+          throw new BadRequestException(
+            `BOQ sub item "${resolvedSubItem.description}" is not having rate.`,
+          );
+        }
+
         // 1. Fetch BOQ Item to get context (EPS Node)
         const boqItem = await manager.findOne(BoqItem, {
           where: { id: entry.boqItemId },
@@ -63,6 +81,7 @@ export class ExecutionService {
         let siteMeas = await manager.findOne(MeasurementElement, {
           where: {
             boqItemId: entry.boqItemId,
+            boqSubItemId: resolvedSubItem.id,
             activityId: entry.activityId || null,
             microActivityId: entry.microActivityId || null,
             workOrderItemId: entry.workOrderItemId || null,
@@ -75,6 +94,7 @@ export class ExecutionService {
           siteMeas = manager.create(MeasurementElement, {
             projectId,
             boqItemId: entry.boqItemId,
+            boqSubItemId: resolvedSubItem.id,
             epsNodeId: epsNodeId,
             activityId: entry.activityId || null,
             microActivityId: entry.microActivityId || null,
@@ -115,6 +135,43 @@ export class ExecutionService {
 
       return results;
     });
+  }
+
+  private async resolveSubItemForEntry(entry: any): Promise<BoqSubItem | null> {
+    if (entry.boqSubItemId) {
+      return this.boqSubItemRepo.findOne({
+        where: { id: Number(entry.boqSubItemId) },
+      });
+    }
+
+    if (entry.workOrderItemId) {
+      const woItem = await this.workOrderItemRepo.findOne({
+        where: { id: Number(entry.workOrderItemId) },
+      });
+      if (woItem?.boqSubItemId) {
+        return this.boqSubItemRepo.findOne({
+          where: { id: Number(woItem.boqSubItemId) },
+        });
+      }
+    }
+
+    if (entry.activityId && entry.boqItemId) {
+      const plans = await this.planRepo.find({
+        where: {
+          activityId: Number(entry.activityId),
+          boqItemId: Number(entry.boqItemId),
+        },
+        order: { id: 'ASC' },
+      });
+      const planWithSubItem = plans.find((plan) => Number(plan.boqSubItemId) > 0);
+      if (planWithSubItem?.boqSubItemId) {
+        return this.boqSubItemRepo.findOne({
+          where: { id: Number(planWithSubItem.boqSubItemId) },
+        });
+      }
+    }
+
+    return null;
   }
 
   private async syncSchedule(
@@ -214,7 +271,19 @@ export class ExecutionService {
 
     for (const link of allLinks) {
       const item = link.boqItem;
-      const rate = Number(item.rate || 0);
+      const subItemRate =
+        link.boqSubItemId != null
+          ? await this.boqSubItemRepo.findOne({
+              where: { id: link.boqSubItemId },
+              select: ['id', 'rate'],
+            })
+          : null;
+      const rate = Number(subItemRate?.rate || 0);
+      if (link.boqSubItemId && rate <= 0) {
+        throw new BadRequestException(
+          `BOQ sub item ${link.boqSubItemId} is not having rate.`,
+        );
+      }
 
       // Planned Portion for this specific Activity
       const plannedQty = Number(link.plannedQuantity);

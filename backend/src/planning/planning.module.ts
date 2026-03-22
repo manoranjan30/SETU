@@ -35,9 +35,18 @@ import { ReleaseStrategyService } from './release-strategy.service';
 import { TowerProgressService } from './tower-progress.service';
 import { BuildingLineCoordinate } from './entities/building-line-coordinate.entity';
 import { BuildingLineCoordinateService } from './building-line-coordinate.service';
+import { IssueTrackerDepartment } from './entities/issue-tracker-department.entity';
+import { IssueTrackerDeptProjectConfig } from './entities/issue-tracker-dept-project-config.entity';
+import { IssueTrackerTag } from './entities/issue-tracker-tag.entity';
+import { IssueTrackerIssue } from './entities/issue-tracker-issue.entity';
+import { IssueTrackerStep } from './entities/issue-tracker-step.entity';
+import { IssueTrackerActivityLog } from './entities/issue-tracker-activity-log.entity';
+import { IssueTrackerAttachment } from './entities/issue-tracker-attachment.entity';
+import { IssueTrackerNotification } from './entities/issue-tracker-notification.entity';
 import { QualityFloorStructure } from '../quality/entities/quality-floor-structure.entity';
 import { QualityUnit } from '../quality/entities/quality-unit.entity';
 import { QualityRoom } from '../quality/entities/quality-room.entity';
+import { IssueTrackerService } from './issue-tracker.service';
 
 @Module({
   imports: [
@@ -67,6 +76,14 @@ import { QualityRoom } from '../quality/entities/quality-room.entity';
       User,
       Role,
       BuildingLineCoordinate,
+      IssueTrackerDepartment,
+      IssueTrackerDeptProjectConfig,
+      IssueTrackerTag,
+      IssueTrackerIssue,
+      IssueTrackerStep,
+      IssueTrackerActivityLog,
+      IssueTrackerAttachment,
+      IssueTrackerNotification,
       QualityFloorStructure,
       QualityUnit,
       QualityRoom,
@@ -83,7 +100,8 @@ import { QualityRoom } from '../quality/entities/quality-room.entity';
     ReleaseStrategyService,
     TowerProgressService,
     BuildingLineCoordinateService,
+    IssueTrackerService,
   ],
-  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService],
+  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService, IssueTrackerService],
 })
 export class PlanningModule {}

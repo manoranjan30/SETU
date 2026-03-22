@@ -9,6 +9,7 @@ import { MicroScheduleModule } from '../micro-schedule/micro-schedule.module';
 import { Activity } from '../wbs/entities/activity.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
+import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { MicroScheduleActivity } from '../micro-schedule/entities/micro-schedule-activity.entity';
@@ -25,6 +26,7 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
       Activity,
       WoActivityPlan,
       BoqItem,
+      BoqSubItem,
       MeasurementProgress,
       MeasurementElement,
       MicroScheduleActivity,

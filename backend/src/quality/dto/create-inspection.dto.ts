@@ -62,10 +62,18 @@ export class CreateInspectionDto {
   @IsString()
   vendorName?: string;
 
+  @IsString()
+  @MaxLength(100)
+  drawingNo: string;
+
+  @IsOptional()
+  @IsInt()
+  goNo?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  drawingNo?: string;
+  goLabel?: string;
 
   @IsOptional()
   @IsString()

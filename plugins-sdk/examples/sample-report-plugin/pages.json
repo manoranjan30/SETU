@@ -1,0 +1,11 @@
+[
+  {
+    "pageKey": "sample-report-page",
+    "title": "Sample Report Page",
+    "rendererType": "hostReportAction",
+    "permissionCode": "PLUGIN.SAMPLE-REPORT-PLUGIN.VIEW",
+    "config": {
+      "reportKey": "sample-report"
+    }
+  }
+]

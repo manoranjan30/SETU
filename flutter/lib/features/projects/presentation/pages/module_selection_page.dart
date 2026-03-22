@@ -7,9 +7,11 @@ import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_approvals_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
 import 'package:setu_mobile/features/progress/presentation/pages/progress_approvals_page.dart';
@@ -97,6 +99,18 @@ class ModuleSelectionPage extends StatelessWidget {
               color: const Color(0xFF3730A3),
               onTap: () => _navigateToQualityApprovals(context),
             ),
+            const Divider(height: 1),
+          ],
+          // ── Checklist Progress Dashboard ───────────────────────────────────
+          // Permission gate: same as reading inspections
+          if (ps.canReadInspection) ...[
+            _ModuleRow(
+              icon: Icons.dashboard_rounded,
+              title: 'Checklist Progress',
+              subtitle: 'Drill-down progress: Block → Floor → Activity',
+              color: const Color(0xFF0891B2),
+              onTap: () => _navigateToChecklistDashboard(context),
+            ),
           ],
           // ── Quality Site Observations ─────────────────────────────────────
           // Permission gate: user must be able to read or create obs
@@ -181,6 +195,23 @@ class ModuleSelectionPage extends StatelessWidget {
         builder: (context) => BlocProvider(
           create: (_) => sl<QualityApprovalBloc>(),
           child: QualityApprovalsPage(
+            projectId: project.id,
+            projectName: project.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Navigates to the Checklist Approval Progress Dashboard.
+  /// Provides [QualityDashboardBloc] scoped to this route.
+  void _navigateToChecklistDashboard(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BlocProvider(
+          create: (_) => sl<QualityDashboardBloc>(),
+          child: QualityDashboardPage(
             projectId: project.id,
             projectName: project.name,
           ),

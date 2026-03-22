@@ -51,9 +51,13 @@ class SelectActivityList extends QualityRequestEvent {
 
 /// Raise an RFI (Request for Inspection) for a specific quality activity.
 ///
-/// Supports multi-part RFIs (e.g. "Part 1 of 3" when splitting a large floor
-/// into sections). The optional [vendorId] links the RFI to a vendor so the
-/// inspector knows which contractor's work is being checked.
+/// Supports three modes driven by [activity.applicabilityLevel]:
+///   • FLOOR + [totalParts]=1  → One Go (single inspection for whole floor)
+///   • FLOOR + [totalParts]>1  → Multi Go (Part [partNo] of [totalParts])
+///   • UNIT                    → Unit Wise ([qualityUnitId] identifies the unit)
+///
+/// [documentType] mirrors the web app: 'FLOOR_RFI', 'UNIT_RFI', or 'ROOM_RFI'.
+/// [vendorId] links the RFI to the contractor whose work is being inspected.
 class RaiseRfi extends QualityRequestEvent {
   final int projectId;
   final int epsNodeId;
@@ -70,17 +74,29 @@ class RaiseRfi extends QualityRequestEvent {
   final int? vendorId;
   final String? vendorName;
 
+  // Unit Wise RFI support
+  final int? qualityUnitId;
+
+  // Document type sent to backend: FLOOR_RFI | UNIT_RFI | ROOM_RFI
+  final String? documentType;
+
+  // Required by backend — reference drawing for the inspection
+  final String drawingNo;
+
   const RaiseRfi({
     required this.projectId,
     required this.epsNodeId,
     required this.listId,
     required this.activity,
+    required this.drawingNo,
     this.comments,
     this.partNo = 1,
     this.totalParts = 1,
     this.partLabel,
     this.vendorId,
     this.vendorName,
+    this.qualityUnitId,
+    this.documentType,
   });
   @override
   List<Object?> get props => [
@@ -91,6 +107,7 @@ class RaiseRfi extends QualityRequestEvent {
         partNo,
         totalParts,
         vendorId,
+        qualityUnitId,
       ];
 }
 
@@ -413,12 +430,14 @@ class QualityRequestBloc
           projectId,
           epsNodeId);
 
-      // Build inspection map keyed by activityId — only the LATEST inspection
-      // matters for status computation. We insert in order and skip if a key
-      // already exists, so the first (most recent) inspection wins.
+      // Build inspection maps keyed by activityId.
+      // inspMap: latest inspection per activity (for status computation).
+      // inspListMap: ALL inspections per activity (for multi-go / unit progress).
       final inspMap = <int, QualityInspection>{};
+      final inspListMap = <int, List<QualityInspection>>{};
       for (final i in inspections) {
         if (!inspMap.containsKey(i.activityId)) inspMap[i.activityId] = i;
+        inspListMap.putIfAbsent(i.activityId, () => []).add(i);
       }
 
       // Only fetch observations for activities that are PENDING_OBSERVATION
@@ -444,7 +463,22 @@ class QualityRequestBloc
         }
       }
 
-      final rows = _buildRows(activities, inspMap, obsMap);
+      // For UNIT activities, fetch the floor structure so the card can show
+      // individual unit chips ("Raise 101", "Raise 102" etc.). Failure is
+      // swallowed — the card degrades gracefully without unit names.
+      List<Map<String, dynamic>> floorUnits = [];
+      final hasUnitActivities =
+          activities.any((a) => a.applicabilityLevel == 'UNIT');
+      if (hasUnitActivities) {
+        try {
+          floorUnits =
+              await _apiClient.getFloorStructure(projectId, epsNodeId);
+        } catch (_) {
+          // Non-critical — unit chips will not show unraised units without this.
+        }
+      }
+
+      final rows = _buildRows(activities, inspMap, inspListMap, obsMap, floorUnits);
       emit(ActivitiesLoaded(
         list: list,
         rows: rows,
@@ -465,7 +499,7 @@ class QualityRequestBloc
                 jsonDecode(c.rawData) as Map<String, dynamic>))
             .toList();
         // No inspection or observation data available offline — show as empty.
-        final rows = _buildRows(activities, {}, {});
+        final rows = _buildRows(activities, {}, {}, {}, []);
         emit(ActivitiesLoaded(
           list: list,
           rows: rows,
@@ -496,7 +530,9 @@ class QualityRequestBloc
   List<ActivityRow> _buildRows(
     List<QualityActivity> activities,
     Map<int, QualityInspection> inspMap,
+    Map<int, List<QualityInspection>> inspListMap,
     Map<int, List<ActivityObservation>> obsMap,
+    List<Map<String, dynamic>> floorUnits,
   ) {
     return activities.map((act) {
       final inspection = inspMap[act.id];
@@ -562,6 +598,9 @@ class QualityRequestBloc
         displayStatus: displayStatus,
         predecessorDone: predecessorDone,
         observations: obsMap[act.id] ?? [],
+        allInspections: inspListMap[act.id] ?? [],
+        floorUnits:
+            act.applicabilityLevel == 'UNIT' ? floorUnits : const [],
       );
     }).toList();
   }
@@ -589,14 +628,17 @@ class QualityRequestBloc
           'epsNodeId': event.epsNodeId,
           'listId': event.listId,
           'activityId': event.activity.id,
+          'drawingNo': event.drawingNo,
           if (event.comments != null && event.comments!.isNotEmpty)
             'comments': event.comments,
-          // Only include part info if this is actually a multi-part RFI.
+          if (event.documentType != null) 'documentType': event.documentType,
+          // Include part info when it is meaningful (multi-part or explicit single).
           if (event.partNo != 1 || event.totalParts != 1) ...{
             'partNo': event.partNo,
             'totalParts': event.totalParts,
             if (event.partLabel != null) 'partLabel': event.partLabel,
           },
+          if (event.qualityUnitId != null) 'qualityUnitId': event.qualityUnitId,
           if (event.vendorId != null) 'vendorId': event.vendorId,
           if (event.vendorName != null && event.vendorName!.isNotEmpty)
             'vendorName': event.vendorName,

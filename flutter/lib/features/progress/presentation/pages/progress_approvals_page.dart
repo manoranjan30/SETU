@@ -385,22 +385,32 @@ class _PendingApprovalTile extends StatelessWidget {
     // Support both flat and nested API response shapes
     final activityName =
         item['activityName'] as String? ?? item['activity']?['name'] as String? ?? '—';
+    final activityCode =
+        item['activityCode'] as String? ?? item['activity']?['activityCode'] as String?;
     final date = item['date'] as String? ?? '—';
     final qty = item['quantity'];
     final unit = item['unit'] as String? ?? '';
     final submittedBy =
         item['submittedBy'] as String? ?? item['user']?['username'] as String?;
+    // Location / WBS context
+    final location = item['epsNodeLabel'] as String? ??
+        item['locationLabel'] as String? ??
+        item['epsNode']?['label'] as String?;
+    final wbsPath = item['wbsPath'] as String? ?? item['wbsCode'] as String?;
+    final remarks = item['remarks'] as String? ?? item['notes'] as String?;
+    // Cumulative progress if available
+    final cumulative = item['cumulativeQuantity'] ?? item['cumulative'];
+    final targetQty = item['targetQuantity'] ?? item['plannedQuantity'];
 
     return InkWell(
-      // Tapping the whole row toggles selection
       onTap: onToggle,
       child: Container(
-        // Tinted highlight when this row is selected
         color: isSelected
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
             : null,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Individual selection checkbox
             Checkbox(value: isSelected, onChanged: (_) => onToggle()),
@@ -409,14 +419,61 @@ class _PendingApprovalTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Activity name in bold
-                  Text(activityName,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
+                  // Activity name + optional code
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(activityName,
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                      ),
+                      if (activityCode != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(activityCode,
+                              style: const TextStyle(
+                                  fontSize: 10, fontWeight: FontWeight.w500)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Location / WBS path
+                  if (location != null || wbsPath != null) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.location_on_outlined,
+                            size: 12,
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.7)),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            [if (wbsPath != null) wbsPath,
+                             if (location != null) location]
+                                .join(' · '),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 11,
+                                color: theme.colorScheme.primary
+                                    .withValues(alpha: 0.8)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                  ],
+                  // Date + quantity row
                   Row(
                     children: [
-                      // Date chip
                       Icon(Icons.calendar_today_outlined,
                           size: 12,
                           color: theme.colorScheme.onSurface
@@ -427,7 +484,6 @@ class _PendingApprovalTile extends StatelessWidget {
                               color: theme.colorScheme.onSurface
                                   .withValues(alpha: 0.6))),
                       const SizedBox(width: 12),
-                      // Quantity chip
                       Icon(Icons.straighten_outlined,
                           size: 12,
                           color: theme.colorScheme.onSurface
@@ -437,9 +493,20 @@ class _PendingApprovalTile extends StatelessWidget {
                           '$qty $unit',
                           style: theme.textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600)),
+                      // Cumulative vs target if available
+                      if (cumulative != null && targetQty != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '(cum: $cumulative / $targetQty $unit)',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 10,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.5)),
+                        ),
+                      ],
                     ],
                   ),
-                  // Submitted-by line shown when user info is available
+                  // Submitted-by line
                   if (submittedBy != null) ...[
                     const SizedBox(height: 2),
                     Text(
@@ -448,6 +515,39 @@ class _PendingApprovalTile extends StatelessWidget {
                           fontSize: 11,
                           color: theme.colorScheme.onSurface
                               .withValues(alpha: 0.5)),
+                    ),
+                  ],
+                  // Remarks if present
+                  if (remarks != null && remarks.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.notes_outlined,
+                              size: 12,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.5)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              remarks,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.7)),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ],

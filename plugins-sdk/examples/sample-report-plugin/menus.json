@@ -1,0 +1,11 @@
+[
+  {
+    "menuKey": "sample-report-plugin",
+    "label": "Sample Report",
+    "location": "SIDEBAR",
+    "pageKey": "sample-report-page",
+    "permissionCode": "PLUGIN.SAMPLE-REPORT-PLUGIN.VIEW",
+    "requiresProject": false,
+    "sortOrder": 20
+  }
+]

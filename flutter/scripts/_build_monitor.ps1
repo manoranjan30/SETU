@@ -27,7 +27,7 @@ $script:pct      = 0
 $script:label    = 'Starting...'
 $script:barRow   = 0
 $script:errorRow = 0      # row where live errors are printed (below bar area)
-$errors = [System.Collections.Generic.List[string]]::new()
+$buildErrors = [System.Collections.Generic.List[string]]::new()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtTime([int]$sec) {
@@ -75,7 +75,7 @@ function drawActivity([string]$text) {
 function printError([string]$msg) {
     $cw = [Math]::Max([Console]::WindowWidth - 1, 79)
     # Move cursor below the separator row (barRow + 3) and print
-    $targetRow = safeRow ($script:barRow + 3 + $errors.Count)
+    $targetRow = safeRow ($script:barRow + 3 + $buildErrors.Count)
     # Expand buffer if needed
     $needed = $targetRow + 5
     if ([Console]::BufferHeight -lt $needed) {
@@ -156,8 +156,8 @@ try {
         # Capture + immediately display errors
         if ($trimmed -match '(^error:|^Error:|cannot find symbol|FAIL(ED|URE)|Exception|Cannot access|does not exist|What went wrong|Execution failed|symbol:\s+class)' -and
             $trimmed -notmatch '(Gradle [0-9]\.|file://|\.java:\d+: note|^\s*at |^> Run |^> Check |^> Get more|^> See the)') {
-            if (-not $errors.Contains($trimmed)) {
-                $errors.Add($trimmed)
+            if (-not $buildErrors.Contains($trimmed)) {
+                $buildErrors.Add($trimmed)
                 printError $trimmed
             }
         }
@@ -178,7 +178,7 @@ try {
     [Console]::Write((' ' * $cw))
 
     # Move cursor below error rows (if any)
-    $belowRow = $script:barRow + 4 + [Math]::Max($errors.Count, 0)
+    $belowRow = $script:barRow + 4 + [Math]::Max($buildErrors.Count, 0)
     $belowRow = safeRow $belowRow
     [Console]::SetCursorPosition(0, $belowRow)
 
@@ -191,12 +191,12 @@ $total = [int]((Get-Date) - $start).TotalSeconds
 Write-Host ''
 Write-Host ("  Build time: $(fmtTime $total)") -ForegroundColor White
 
-if ($errors.Count -gt 0) {
+if ($buildErrors.Count -gt 0) {
     Write-Host ''
-    Write-Host "  $($errors.Count) error(s) — full list:" -ForegroundColor Red
+    Write-Host "  $($buildErrors.Count) error(s) -- full list:" -ForegroundColor Red
     $i = 1
-    foreach ($e in $errors) {
-        Write-Host ("  " + $i + ". " + $e) -ForegroundColor Red
+    foreach ($be in $buildErrors) {
+        Write-Host "  $i. $be" -ForegroundColor Red
         $i++
     }
     Write-Host ''

@@ -1,0 +1,11 @@
+[
+  {
+    "menuKey": "sample-project-insights",
+    "label": "Project Insights",
+    "location": "PROJECT",
+    "pageKey": "insights-table",
+    "permissionCode": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "requiresProject": true,
+    "sortOrder": 10
+  }
+]

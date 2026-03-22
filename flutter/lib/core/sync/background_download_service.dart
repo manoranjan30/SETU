@@ -95,6 +95,9 @@ class DownloadProgress {
 /// offline for field engineers. Data is downloaded in priority order:
 ///   1. Projects list (~2 MB) — needed for any feature.
 ///   2. Quality activity lists for all known projects.
+///   3. Quality activities (checklist items) within each activity list.
+///   4. Quality site observations for all known projects.
+///   5. EHS site observations for all known projects.
 ///
 /// Storage cap: 500 MB total. The cap is evaluated against the byte count
 /// from the **previous** completed run (stored in SharedPreferences) to
@@ -331,6 +334,35 @@ class BackgroundDownloadService {
         bytesUsed += await _downloadActivityLists(prefs, bytesUsed);
       }
 
+      if (bytesUsed < maxStorageBytes) {
+        // P3: Checklist activities within each activity list.
+        // Downloads the individual activity items so the quality request
+        // workflow (raise RFI) works fully offline.
+        _emit(DownloadProgress(
+            status: DownloadStatus.downloading,
+            stepLabel: 'Checklist items…',
+            bytesUsed: bytesUsed));
+        bytesUsed += await _downloadChecklistActivities(bytesUsed);
+      }
+
+      if (bytesUsed < maxStorageBytes) {
+        // P4: Quality site observations for all known projects.
+        _emit(DownloadProgress(
+            status: DownloadStatus.downloading,
+            stepLabel: 'Quality observations…',
+            bytesUsed: bytesUsed));
+        bytesUsed += await _downloadQualitySiteObs(bytesUsed);
+      }
+
+      if (bytesUsed < maxStorageBytes) {
+        // P5: EHS site observations for all known projects.
+        _emit(DownloadProgress(
+            status: DownloadStatus.downloading,
+            stepLabel: 'EHS observations…',
+            bytesUsed: bytesUsed));
+        bytesUsed += await _downloadEhsSiteObs(bytesUsed);
+      }
+
       // Persist the final byte count so the cap guard works on the next run,
       // and record the completion timestamp for the 6-hour cooldown checks.
       await prefs.setInt(prefTotalBytes, bytesUsed);
@@ -396,6 +428,74 @@ class BackgroundDownloadService {
         // to avoid exceeding [maxStorageBytes]. Already-cached projects are
         // not evicted — the cap only limits further writes.
         if (alreadyUsedBytes + totalBytes >= maxStorageBytes) break;
+      }
+      return totalBytes;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Download the activities (checklist items) for every cached activity list.
+  ///
+  /// [_downloadActivityLists] only caches the list *metadata*. This step
+  /// fetches the individual activity rows within each list so the quality
+  /// request flow (raise RFI, view checklist) works fully offline.
+  Future<int> _downloadChecklistActivities(int alreadyUsedBytes) async {
+    try {
+      final projectIds = await _database.selectOnlyDistinctProjectIds();
+      int totalBytes = 0;
+      for (final projectId in projectIds) {
+        final lists = await _database.getCachedActivityLists(projectId, null);
+        for (final list in lists) {
+          final raw = await _apiClient.getQualityListActivities(list.id);
+          await _database.cacheQualityActivities(
+            raw.cast<Map<String, dynamic>>(),
+            list.id,
+            projectId,
+            list.epsNodeId,
+          );
+          totalBytes += jsonEncode(raw).length;
+          if (alreadyUsedBytes + totalBytes >= maxStorageBytes) return totalBytes;
+        }
+      }
+      return totalBytes;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Download quality site observations for all known projects.
+  Future<int> _downloadQualitySiteObs(int alreadyUsedBytes) async {
+    try {
+      final projectIds = await _database.selectOnlyDistinctProjectIds();
+      int totalBytes = 0;
+      for (final projectId in projectIds) {
+        // Fetch with a high limit to get all records in one call.
+        final raw = await _apiClient.getQualitySiteObs(
+            projectId: projectId, limit: 200);
+        await _database.cacheQualitySiteObs(
+            raw.cast<Map<String, dynamic>>(), projectId);
+        totalBytes += jsonEncode(raw).length;
+        if (alreadyUsedBytes + totalBytes >= maxStorageBytes) return totalBytes;
+      }
+      return totalBytes;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Download EHS site observations for all known projects.
+  Future<int> _downloadEhsSiteObs(int alreadyUsedBytes) async {
+    try {
+      final projectIds = await _database.selectOnlyDistinctProjectIds();
+      int totalBytes = 0;
+      for (final projectId in projectIds) {
+        final raw = await _apiClient.getEhsSiteObs(
+            projectId: projectId, limit: 200);
+        await _database.cacheEhsSiteObs(
+            raw.cast<Map<String, dynamic>>(), projectId);
+        totalBytes += jsonEncode(raw).length;
+        if (alreadyUsedBytes + totalBytes >= maxStorageBytes) return totalBytes;
       }
       return totalBytes;
     } catch (_) {

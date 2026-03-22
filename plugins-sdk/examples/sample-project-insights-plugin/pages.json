@@ -1,0 +1,28 @@
+[
+  {
+    "pageKey": "insights-table",
+    "title": "Insights Table",
+    "rendererType": "hostTablePage",
+    "permissionCode": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "config": {
+      "columns": [
+        { "key": "metric", "label": "Metric" },
+        { "key": "value", "label": "Value" }
+      ],
+      "staticRows": [
+        { "metric": "Open RFIs", "value": 12 },
+        { "metric": "Pending Stage Approvals", "value": 4 },
+        { "metric": "Delayed Issues", "value": 3 }
+      ]
+    }
+  },
+  {
+    "pageKey": "insights-report",
+    "title": "Insights Report",
+    "rendererType": "hostReportAction",
+    "permissionCode": "PLUGIN.SAMPLE-PROJECT-INSIGHTS.VIEW",
+    "config": {
+      "reportKey": "project-insights-summary"
+    }
+  }
+]

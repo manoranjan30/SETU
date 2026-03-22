@@ -63,6 +63,9 @@ interface QualityInspection {
   partNo?: number;
   totalParts?: number;
   partLabel?: string;
+  goNo?: number;
+  goLabel?: string;
+  drawingNo?: string;
   processCode?: string;
   documentType?: string;
 }
@@ -126,9 +129,16 @@ export default function InspectionRequestPage() {
     useState<QualityActivity | null>(null);
   const [rfiMode, setRfiMode] = useState<"SINGLE" | "MULTIPLE">("SINGLE");
   const [rfiParts, setRfiParts] = useState(2);
+  const [drawingNo, setDrawingNo] = useState("");
   const [qualityUnits, setQualityUnits] = useState<QualityUnitNode[]>([]);
   const [selectedUnitIds, setSelectedUnitIds] = useState<number[]>([]);
   const [raisingBatch, setRaisingBatch] = useState(false);
+  const [quickRaiseConfig, setQuickRaiseConfig] = useState<{
+    mode: "NONE" | "GO_SINGLE" | "UNIT_SINGLE" | "UNIT_BATCH";
+    partNo?: number;
+    totalParts?: number;
+    unitId?: number;
+  }>({ mode: "NONE" });
   const [unitProgressByActivity, setUnitProgressByActivity] = useState<
     Record<number, UnitProgress>
   >({});
@@ -335,6 +345,7 @@ export default function InspectionRequestPage() {
     listId: selectedListId,
     activityId: activity.id,
     processCode: "QA_QC_APPROVAL",
+    drawingNo: drawingNo.trim(),
     documentType:
       activity.applicabilityLevel === "ROOM"
         ? "ROOM_RFI"
@@ -421,10 +432,12 @@ export default function InspectionRequestPage() {
         buildInspectionRequestPayload(activity, {
           partNo,
           totalParts,
-          partLabel: totalParts > 1 ? `Part ${partNo}` : "Single",
+          partLabel: totalParts > 1 ? `GO ${partNo}` : "GO 1",
+          goNo: partNo,
+          goLabel: `GO ${partNo}`,
           comments:
             totalParts > 1
-              ? `Requested via Web (Part ${partNo}/${totalParts})`
+              ? `Requested via Web (GO ${partNo}/${totalParts})`
               : "Requested via Web",
           vendorId: selectedVendorId,
         }),
@@ -488,7 +501,15 @@ export default function InspectionRequestPage() {
     }
   };
 
-  const openRaiseRfiFlow = async (activity: QualityActivity) => {
+  const openRaiseRfiFlow = async (
+    activity: QualityActivity,
+    quickConfig?: {
+      mode: "GO_SINGLE" | "UNIT_SINGLE" | "UNIT_BATCH";
+      partNo?: number;
+      totalParts?: number;
+      unitId?: number;
+    },
+  ) => {
     if (!selectedNodeId) return;
     const node = findNodeById(epsNodes, selectedNodeId);
     const nodeType = getNodeType(node);
@@ -505,22 +526,42 @@ export default function InspectionRequestPage() {
           selectedNodeId,
         );
         setQualityUnits(floorStructure.units || []);
-        setSelectedUnitIds([]);
+        if (quickConfig?.mode === "UNIT_SINGLE" && quickConfig.unitId) {
+          setSelectedUnitIds([quickConfig.unitId]);
+        } else if (quickConfig?.mode === "UNIT_BATCH") {
+          setSelectedUnitIds(
+            unitProgressByActivity[activity.id]?.pendingUnitIds || [],
+          );
+        } else {
+          setSelectedUnitIds([]);
+        }
       } catch {
         setQualityUnits([]);
+        setSelectedUnitIds([]);
       }
     } else {
       setQualityUnits([]);
       setSelectedUnitIds([]);
     }
 
-    setRfiMode("SINGLE");
-    setRfiParts(2);
+    if (quickConfig?.mode === "GO_SINGLE") {
+      setRfiMode("MULTIPLE");
+      setRfiParts(Math.max(quickConfig.totalParts || 2, 2));
+    } else {
+      setRfiMode("SINGLE");
+      setRfiParts(2);
+    }
+    setDrawingNo("");
+    setQuickRaiseConfig(quickConfig || { mode: "NONE" });
     setRfiModalActivity(activity);
   };
 
   const submitRfiFlow = async () => {
     if (!rfiModalActivity || !selectedNodeId) return;
+    if (!drawingNo.trim()) {
+      alert("Please enter the drawing number before raising the RFI.");
+      return;
+    }
 
     if (!user?.isTempUser && !selectedVendorId) {
       alert("Please select a vendor before raising an RFI.");
@@ -533,7 +574,20 @@ export default function InspectionRequestPage() {
 
     setRaisingBatch(true);
     try {
-      if (rfiModalActivity.applicabilityLevel === "FLOOR") {
+      if (quickRaiseConfig.mode === "GO_SINGLE" && quickRaiseConfig.partNo) {
+        await raiseRfiPart(
+          rfiModalActivity,
+          quickRaiseConfig.partNo,
+          quickRaiseConfig.totalParts || Math.max(2, Number(rfiParts) || 2),
+        );
+      } else if (
+        quickRaiseConfig.mode === "UNIT_SINGLE" &&
+        quickRaiseConfig.unitId
+      ) {
+        await raiseUnitRfiFromProgress(rfiModalActivity, quickRaiseConfig.unitId);
+      } else if (quickRaiseConfig.mode === "UNIT_BATCH") {
+        await raiseAllPendingUnitRfis(rfiModalActivity);
+      } else if (rfiModalActivity.applicabilityLevel === "FLOOR") {
         const totalParts =
           rfiMode === "MULTIPLE" ? Math.max(2, Number(rfiParts) || 2) : 1;
         const firstPartNo = 1;
@@ -542,10 +596,12 @@ export default function InspectionRequestPage() {
           buildInspectionRequestPayload(rfiModalActivity, {
             partNo: firstPartNo,
             totalParts,
-            partLabel: totalParts > 1 ? `Part ${firstPartNo}` : "Single",
+            partLabel: totalParts > 1 ? `GO ${firstPartNo}` : "GO 1",
+            goNo: firstPartNo,
+            goLabel: `GO ${firstPartNo}`,
             comments:
               totalParts > 1
-                ? `Requested via Web (Part ${firstPartNo}/${totalParts})`
+                ? `Requested via Web (GO ${firstPartNo}/${totalParts})`
                 : "Requested via Web",
             vendorId: selectedVendorId,
           }),
@@ -570,6 +626,7 @@ export default function InspectionRequestPage() {
       }
 
       setRfiModalActivity(null);
+      setQuickRaiseConfig({ mode: "NONE" });
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to raise RFI");
@@ -960,11 +1017,16 @@ export default function InspectionRequestPage() {
                                   </span>
                                 </div>
                               )}
-                              {item.inspection.partLabel && (
+                              {(item.inspection.goLabel ||
+                                item.inspection.partLabel) && (
                                 <div className="text-text-muted">
-                                  Part:{" "}
+                                  GO:{" "}
                                   <span className="text-text-primary font-medium">
-                                    {item.inspection.partLabel}
+                                    {item.inspection.goLabel ||
+                                      item.inspection.partLabel?.replace(
+                                        /^Part/i,
+                                        "GO",
+                                      )}
                                   </span>
                                 </div>
                               )}
@@ -1008,22 +1070,23 @@ export default function InspectionRequestPage() {
                                       key={p}
                                       className="px-2 py-1 rounded border bg-success-muted border-green-200 text-green-700 font-medium"
                                     >
-                                      Part {p} Raised
+                                      GO {p} Raised
                                     </span>
                                   ) : (
                                     <button
                                       key={p}
                                       onClick={() =>
-                                        raiseRfiPart(
-                                          item,
-                                          p,
-                                          partProgressByActivity[item.id]
-                                            .totalParts,
-                                        )
+                                        openRaiseRfiFlow(item, {
+                                          mode: "GO_SINGLE",
+                                          partNo: p,
+                                          totalParts:
+                                            partProgressByActivity[item.id]
+                                              .totalParts,
+                                        })
                                       }
                                       className="px-2 py-1 rounded border bg-surface-card border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-medium"
                                     >
-                                      Raise Part {p}
+                                      Raise GO {p}
                                     </button>
                                   );
                                 })}
@@ -1058,7 +1121,10 @@ export default function InspectionRequestPage() {
                                       <button
                                         key={u.id}
                                         onClick={() =>
-                                          raiseUnitRfiFromProgress(item, u.id)
+                                          openRaiseRfiFlow(item, {
+                                            mode: "UNIT_SINGLE",
+                                            unitId: u.id,
+                                          })
                                         }
                                         className="px-2 py-1 rounded border bg-surface-card border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-medium"
                                       >
@@ -1071,7 +1137,11 @@ export default function InspectionRequestPage() {
                               {unitProgressByActivity[item.id].pendingUnitIds
                                 .length > 0 && (
                                 <button
-                                  onClick={() => raiseAllPendingUnitRfis(item)}
+                                  onClick={() =>
+                                    openRaiseRfiFlow(item, {
+                                      mode: "UNIT_BATCH",
+                                    })
+                                  }
                                   disabled={raisingBatch}
                                   className="px-2 py-1 rounded border bg-secondary border-indigo-700 text-white hover:bg-secondary-dark font-medium disabled:opacity-50"
                                 >
@@ -1270,12 +1340,14 @@ export default function InspectionRequestPage() {
                   </div>
                   <div className="flex gap-2">
                     <button
+                      disabled={quickRaiseConfig.mode === "GO_SINGLE"}
                       onClick={() => setRfiMode("SINGLE")}
                       className={`px-3 py-2 rounded-lg text-sm border ${rfiMode === "SINGLE" ? "bg-secondary-muted border-indigo-300 text-indigo-700" : "border-border-default text-text-secondary"}`}
                     >
                       One Go
                     </button>
                     <button
+                      disabled={quickRaiseConfig.mode === "GO_SINGLE"}
                       onClick={() => setRfiMode("MULTIPLE")}
                       className={`px-3 py-2 rounded-lg text-sm border ${rfiMode === "MULTIPLE" ? "bg-secondary-muted border-indigo-300 text-indigo-700" : "border-border-default text-text-secondary"}`}
                     >
@@ -1285,25 +1357,54 @@ export default function InspectionRequestPage() {
                   {rfiMode === "MULTIPLE" && (
                     <div>
                       <label className="text-xs font-semibold text-text-secondary">
-                        How many parts?
+                        How many GOs?
                       </label>
                       <input
                         type="number"
                         min={2}
                         value={rfiParts}
+                        disabled={quickRaiseConfig.mode === "GO_SINGLE"}
                         onChange={(e) => setRfiParts(Number(e.target.value))}
                         className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
                       />
                     </div>
                   )}
+                  {quickRaiseConfig.mode === "GO_SINGLE" &&
+                    quickRaiseConfig.partNo && (
+                      <div className="rounded-lg border border-indigo-200 bg-secondary-muted px-3 py-2 text-sm text-indigo-800">
+                        Raising checklist for{" "}
+                        <span className="font-semibold">
+                          GO {quickRaiseConfig.partNo}
+                        </span>
+                      </div>
+                    )}
                 </>
               )}
+
+              <div>
+                <label className="text-xs font-semibold text-text-secondary">
+                  Drawing Number
+                </label>
+                <input
+                  type="text"
+                  value={drawingNo}
+                  onChange={(e) => setDrawingNo(e.target.value)}
+                  placeholder="Enter drawing number"
+                  className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
 
               {rfiModalActivity.applicabilityLevel === "UNIT" && (
                 <div>
                   <label className="text-sm font-medium text-text-secondary">
                     Select Unit(s)
                   </label>
+                  {quickRaiseConfig.mode === "UNIT_SINGLE" &&
+                    quickRaiseConfig.unitId && (
+                      <div className="mt-2 rounded-lg border border-indigo-200 bg-secondary-muted px-3 py-2 text-sm text-indigo-800">
+                        Raising checklist for the selected unit only.
+                      </div>
+                    )}
                   <div className="mt-2 max-h-56 overflow-auto border border-border-default rounded-lg p-2 space-y-1">
                     {qualityUnits.length === 0 && (
                       <div className="text-xs text-text-disabled p-2">
@@ -1318,6 +1419,7 @@ export default function InspectionRequestPage() {
                         <input
                           type="checkbox"
                           checked={selectedUnitIds.includes(u.id)}
+                          disabled={quickRaiseConfig.mode !== "NONE"}
                           onChange={(e) => {
                             setSelectedUnitIds((prev) =>
                               e.target.checked
@@ -1335,7 +1437,10 @@ export default function InspectionRequestPage() {
             </div>
             <div className="p-5 border-t flex justify-end gap-2">
               <button
-                onClick={() => setRfiModalActivity(null)}
+                onClick={() => {
+                  setRfiModalActivity(null);
+                  setQuickRaiseConfig({ mode: "NONE" });
+                }}
                 className="px-4 py-2 text-sm rounded-lg hover:bg-surface-raised"
               >
                 Cancel
