@@ -22,7 +22,7 @@ export const TEMP_USER_ASSIGNABLE_PERMISSIONS = {
     { key: "PROGRESS.DASHBOARD.READ", label: "View Progress Dashboard" },
   ],
   SNAG: [
-    { key: "QUALITY.SNAG.READ", label: "View Snag List" },
-    { key: "QUALITY.SNAG.UPDATE", label: "Respond to Snag Items" },
+    { key: "QUALITY.SNAG.READ", label: "View Snag and De-snag Queue" },
+    { key: "QUALITY.SNAG.UPDATE", label: "Rectify, Update De-snag, and Close Snags" },
   ],
 };

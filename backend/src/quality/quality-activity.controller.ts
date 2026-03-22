@@ -131,8 +131,16 @@ export class QualityActivityController {
 
   @Get('activities/:id/observations')
   @Permissions('QUALITY.ACTIVITY.READ')
-  getObservations(@Param('id', ParseIntPipe) id: number) {
-    return this.service.getObservations(id);
+  getObservations(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('inspectionId', new ParseIntPipe({ optional: true }))
+    inspectionId?: number,
+    @Query('unassignedOnly') unassignedOnly?: string,
+  ) {
+    return this.service.getObservations(id, {
+      inspectionId,
+      unassignedOnly: unassignedOnly === 'true',
+    });
   }
 
   @Post('activities/:id/observation')

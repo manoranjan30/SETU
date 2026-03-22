@@ -47,6 +47,9 @@ import { QualityFloorStructure } from '../quality/entities/quality-floor-structu
 import { QualityUnit } from '../quality/entities/quality-unit.entity';
 import { QualityRoom } from '../quality/entities/quality-room.entity';
 import { IssueTrackerService } from './issue-tracker.service';
+import { MilestoneModule } from '../milestone/milestone.module';
+import { CostService } from './cost.service';
+import { CostController } from './cost.controller';
 
 @Module({
   imports: [
@@ -90,10 +93,12 @@ import { IssueTrackerService } from './issue-tracker.service';
     ]),
     WbsModule,
     NotificationsModule,
+    MilestoneModule,
   ],
-  controllers: [PlanningController],
+  controllers: [PlanningController, CostController],
   providers: [
     PlanningService,
+    CostService,
     ScheduleVersionService,
     ImportExportService,
     SchedulingEngineService,
@@ -102,6 +107,6 @@ import { IssueTrackerService } from './issue-tracker.service';
     BuildingLineCoordinateService,
     IssueTrackerService,
   ],
-  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService, IssueTrackerService],
+  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService, IssueTrackerService, CostService],
 })
 export class PlanningModule {}

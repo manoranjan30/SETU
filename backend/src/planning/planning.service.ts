@@ -28,6 +28,7 @@ import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { CpmService } from '../wbs/cpm.service';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
 
 @Injectable()
 export class PlanningService {
@@ -59,6 +60,7 @@ export class PlanningService {
     private cpmService: CpmService,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
+    private readonly customerMilestoneService: CustomerMilestoneService,
   ) {}
 
   async unlinkBoq(
@@ -526,6 +528,7 @@ export class PlanningService {
 
     // 3. Trigger Schedule Recalculation for affected activities
     await this.recalculateScheduleFromBoq(savedRecord.boqItemId);
+    await this.customerMilestoneService.handleProgressRefresh(savedRecord.projectId);
 
     return savedRecord;
   }
@@ -1332,6 +1335,7 @@ export class PlanningService {
         'plan.plannedQuantity',
         'plan.boqItemId',
         'boqItem.id',
+        'boqItem.epsNodeId',
         'boqItem.description',
         'boqItem.uom',
         'boqItem.qty',
@@ -1501,6 +1505,12 @@ export class PlanningService {
           Boolean,
         );
 
+        // epsNodeId: the EPS node the activity is directly assigned to via BOQ.
+        // Used by the mobile client to filter activities at the correct EPS level
+        // (prevents the same activity appearing at both floor and unit levels).
+        const epsNodeId =
+          r.boqItem_epsNodeId ?? r.boqitem_epsnodeid ?? null;
+
         groupedMap.set(activityId, {
           id: activityId,
           activityName: r.activity_activityName,
@@ -1511,6 +1521,7 @@ export class PlanningService {
           finishDateActual: r.activity_finishDateActual,
           wbsPath: pathParts.join(' > '),
           parentWbs: wbsInfo, // Explicit field for UI
+          epsNodeId,          // EPS node the BOQ item belongs to
           plans: [],
         });
       }

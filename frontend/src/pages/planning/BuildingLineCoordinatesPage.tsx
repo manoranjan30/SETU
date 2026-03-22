@@ -1,51 +1,182 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import {
+  BedDouble,
   Building2,
   ChevronDown,
   ChevronRight,
   CopyPlus,
+  DoorOpen,
   Layers,
   MapPin,
   Plus,
   Save,
   Trash2,
 } from "lucide-react";
-import { buildingLineCoordinatesService, type BuildingLineNode } from "../../services/buildingLineCoordinates.service";
+import {
+  buildingLineCoordinatesService,
+  type BuildingLineNode,
+} from "../../services/buildingLineCoordinates.service";
 import { useAuth } from "../../context/AuthContext";
 import { PermissionCode } from "../../config/permissions";
 
-type EditableNode = Omit<BuildingLineNode, "children"> & {
+type EditableFeature = {
+  id: string;
+  type: "FLOOR" | "ELEVATION" | "CUSTOM";
+  name: string;
+  coordinatesText: string;
+  heightMeters: string;
+  inheritFromBelow?: boolean;
+};
+
+type EditableRoom = {
+  roomId: number;
+  roomName: string;
+  roomType?: string | null;
+  code?: string | null;
+  coordinatesText: string;
+};
+
+type EditableUnit = {
+  unitId: number;
+  unitName: string;
+  code?: string | null;
+  coordinatesText: string;
+  rooms: EditableRoom[];
+};
+
+type EditableStructureSnapshot = {
+  floorId?: number;
+  floorName?: string;
+  towerId?: number;
+  towerName?: string;
+  floorCount?: number;
+  unitCount?: number;
+  roomCount?: number;
+  units?: EditableUnit[];
+  floors?: Array<{
+    floorId: number;
+    floorName: string;
+    coordinatesText?: string | null;
+    heightMeters?: number | null;
+    unitCount?: number;
+    roomCount?: number;
+    units: EditableUnit[];
+  }>;
+};
+
+type EditableNode = Omit<BuildingLineNode, "children" | "customFeatures" | "structureSnapshot"> & {
   draftCoordinatesText: string;
   draftHeightMeters: string;
-  draftCustomFeatures: Array<{
-    id: string;
-    type: "FLOOR" | "ELEVATION" | "CUSTOM";
-    name: string;
-    coordinatesText: string;
-    heightMeters: string;
-    inheritFromBelow?: boolean;
-  }>;
+  draftCustomFeatures: EditableFeature[];
+  draftStructureSnapshot: EditableStructureSnapshot | null;
   children: EditableNode[];
 };
 
 const EDITABLE_NODE_TYPES = new Set(["BLOCK", "TOWER", "FLOOR", "UNIT", "ROOM"]);
 
+function toEditableStructure(
+  snapshot?: BuildingLineNode["structureSnapshot"] | null,
+): EditableStructureSnapshot | null {
+  if (!snapshot) return null;
+
+  return {
+    floorId: snapshot.floorId,
+    floorName: snapshot.floorName,
+    towerId: snapshot.towerId,
+    towerName: snapshot.towerName,
+    floorCount: snapshot.floorCount,
+    unitCount: snapshot.unitCount,
+    roomCount: snapshot.roomCount,
+    units: (snapshot.units || []).map((unit) => ({
+      unitId: unit.unitId,
+      unitName: unit.unitName,
+      code: unit.code,
+      coordinatesText: unit.coordinatesText || "",
+      rooms: (unit.rooms || []).map((room) => ({
+        roomId: room.roomId,
+        roomName: room.roomName,
+        roomType: room.roomType,
+        code: room.code,
+        coordinatesText: room.coordinatesText || "",
+      })),
+    })),
+    floors: (snapshot.floors || []).map((floor) => ({
+      floorId: floor.floorId,
+      floorName: floor.floorName,
+      coordinatesText: floor.coordinatesText || "",
+      heightMeters: floor.heightMeters,
+      unitCount: floor.unitCount,
+      roomCount: floor.roomCount,
+      units: (floor.units || []).map((unit) => ({
+        unitId: unit.unitId,
+        unitName: unit.unitName,
+        code: unit.code,
+        coordinatesText: unit.coordinatesText || "",
+        rooms: (unit.rooms || []).map((room) => ({
+          roomId: room.roomId,
+          roomName: room.roomName,
+          roomType: room.roomType,
+          code: room.code,
+          coordinatesText: room.coordinatesText || "",
+        })),
+      })),
+    })),
+  };
+}
+
+function serializeStructure(snapshot: EditableStructureSnapshot | null) {
+  if (!snapshot) return null;
+
+  return {
+    ...snapshot,
+    units: snapshot.units?.map((unit) => ({
+      unitId: unit.unitId,
+      unitName: unit.unitName,
+      code: unit.code || null,
+      coordinatesText: unit.coordinatesText.trim() || null,
+      rooms: unit.rooms.map((room) => ({
+        roomId: room.roomId,
+        roomName: room.roomName,
+        roomType: room.roomType || null,
+        code: room.code || null,
+        coordinatesText: room.coordinatesText.trim() || null,
+      })),
+    })),
+    floors: snapshot.floors?.map((floor) => ({
+      ...floor,
+      coordinatesText: floor.coordinatesText?.trim() || null,
+      units: floor.units.map((unit) => ({
+        unitId: unit.unitId,
+        unitName: unit.unitName,
+        code: unit.code || null,
+        coordinatesText: unit.coordinatesText.trim() || null,
+        rooms: unit.rooms.map((room) => ({
+          roomId: room.roomId,
+          roomName: room.roomName,
+          roomType: room.roomType || null,
+          code: room.code || null,
+          coordinatesText: room.coordinatesText.trim() || null,
+        })),
+      })),
+    })),
+  };
+}
+
 function toEditable(node: BuildingLineNode): EditableNode {
   return {
     ...node,
     draftCoordinatesText: node.coordinatesText || "",
-    draftHeightMeters:
-      node.heightMeters != null ? String(node.heightMeters) : "",
+    draftHeightMeters: node.heightMeters != null ? String(node.heightMeters) : "",
     draftCustomFeatures: (node.customFeatures || []).map((feature) => ({
       id: feature.id,
       type: feature.type,
       name: feature.name,
       coordinatesText: feature.coordinatesText || "",
-      heightMeters:
-        feature.heightMeters != null ? String(feature.heightMeters) : "",
+      heightMeters: feature.heightMeters != null ? String(feature.heightMeters) : "",
       inheritFromBelow: !!feature.inheritFromBelow,
     })),
+    draftStructureSnapshot: toEditableStructure(node.structureSnapshot),
     children: (node.children || []).map(toEditable),
   };
 }
@@ -55,45 +186,66 @@ function updateNodeTree(
   targetId: number,
   updater: (current: EditableNode) => EditableNode,
 ): EditableNode {
-  if (node.id === targetId) {
-    return updater(node);
-  }
+  if (node.id === targetId) return updater(node);
   return {
     ...node,
     children: node.children.map((child) => updateNodeTree(child, targetId, updater)),
   };
 }
 
-function cloneCoordinatesFromSource(
-  target: EditableNode,
-  source?: EditableNode | null,
-): EditableNode {
-  if (!source) return target;
-  const clonedChildren = target.children.map((child, index) =>
-    cloneCoordinatesFromSource(child, source.children[index]),
-  );
+function copyFloorStructure(
+  target: EditableStructureSnapshot | null,
+  source: EditableStructureSnapshot | null,
+): EditableStructureSnapshot | null {
+  if (!target || !source) return target;
+  const sourceUnits = source.units || [];
   return {
     ...target,
-    draftCoordinatesText:
-      source.draftCoordinatesText || source.coordinatesText || target.draftCoordinatesText,
-    draftHeightMeters:
-      source.draftHeightMeters ||
-      (source.heightMeters != null ? String(source.heightMeters) : "") ||
-      target.draftHeightMeters,
-    children: clonedChildren,
+    units: (target.units || []).map((targetUnit, unitIndex) => {
+      const sourceUnit =
+        sourceUnits.find((candidate) => candidate.unitName === targetUnit.unitName) ||
+        sourceUnits[unitIndex];
+      const sourceRooms = sourceUnit?.rooms || [];
+      return {
+        ...targetUnit,
+        coordinatesText: sourceUnit?.coordinatesText || "",
+        rooms: targetUnit.rooms.map((targetRoom, roomIndex) => {
+          const sourceRoom =
+            sourceRooms.find((candidate) => candidate.roomName === targetRoom.roomName) ||
+            sourceRooms[roomIndex];
+          return { ...targetRoom, coordinatesText: sourceRoom?.coordinatesText || "" };
+        }),
+      };
+    }),
   };
 }
 
-function cloneFloorFromBelow(
-  node: EditableNode,
-  targetFloorId: number,
-): EditableNode {
+function cloneCoordinatesFromSource(target: EditableNode, source?: EditableNode | null): EditableNode {
+  if (!source) return target;
+  return {
+    ...target,
+    draftCoordinatesText: source.draftCoordinatesText || source.coordinatesText || "",
+    draftCustomFeatures: source.draftCustomFeatures.map((feature) => ({ ...feature })),
+    draftStructureSnapshot: copyFloorStructure(
+      target.draftStructureSnapshot,
+      source.draftStructureSnapshot,
+    ),
+    children: target.children.map((child, index) =>
+      cloneCoordinatesFromSource(child, source.children[index]),
+    ),
+  };
+}
+
+function cloneFloorFromBelow(node: EditableNode, targetFloorId: number): EditableNode {
   const childIndex = node.children.findIndex((child) => child.id === targetFloorId);
   if (childIndex > 0) {
     const targetFloor = node.children[childIndex];
     const sourceFloor = node.children[childIndex - 1];
     const nextChildren = [...node.children];
-    nextChildren[childIndex] = cloneCoordinatesFromSource(targetFloor, sourceFloor);
+    nextChildren[childIndex] = {
+      ...cloneCoordinatesFromSource(targetFloor, sourceFloor),
+      draftHeightMeters: targetFloor.draftHeightMeters,
+    };
     return { ...node, children: nextChildren };
   }
 
@@ -112,9 +264,11 @@ export default function BuildingLineCoordinatesPage() {
   const canWrite = hasPermission(PermissionCode.PLANNING_MATRIX_UPDATE);
   const [root, setRoot] = useState<EditableNode | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string>("");
+  const [loadError, setLoadError] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [expandedUnitKeys, setExpandedUnitKeys] = useState<Set<string>>(new Set());
+  const [expandedRoomKeys, setExpandedRoomKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!pId) {
@@ -142,16 +296,19 @@ export default function BuildingLineCoordinatesPage() {
   }, [pId]);
 
   const stats = useMemo(() => {
-    const counters = {
-      blocks: 0,
-      towers: 0,
-      configured: 0,
-    };
+    const counters = { blocks: 0, towers: 0, floors: 0, configured: 0 };
     const walk = (node?: EditableNode | null) => {
       if (!node) return;
       if (node.type === "BLOCK") counters.blocks += 1;
       if (node.type === "TOWER") counters.towers += 1;
-      if ((node.coordinatesText || "").trim()) counters.configured += 1;
+      if (node.type === "FLOOR") counters.floors += 1;
+      if (node.draftCoordinatesText.trim()) counters.configured += 1;
+      node.draftStructureSnapshot?.units?.forEach((unit) => {
+        if (unit.coordinatesText.trim()) counters.configured += 1;
+        unit.rooms.forEach((room) => {
+          if (room.coordinatesText.trim()) counters.configured += 1;
+        });
+      });
       node.children.forEach(walk);
     };
     walk(root);
@@ -163,7 +320,59 @@ export default function BuildingLineCoordinatesPage() {
     field: "draftCoordinatesText" | "draftHeightMeters",
     value: string,
   ) => {
-    setRoot((prev) => (prev ? updateNodeTree(prev, nodeId, (node) => ({ ...node, [field]: value })) : prev));
+    setRoot((prev) =>
+      prev ? updateNodeTree(prev, nodeId, (node) => ({ ...node, [field]: value })) : prev,
+    );
+  };
+
+  const updateNodeStructure = (
+    nodeId: number,
+    updater: (snapshot: EditableStructureSnapshot | null) => EditableStructureSnapshot | null,
+  ) => {
+    setRoot((prev) =>
+      prev
+        ? updateNodeTree(prev, nodeId, (node) => ({
+            ...node,
+            draftStructureSnapshot: updater(node.draftStructureSnapshot),
+          }))
+        : prev,
+    );
+  };
+
+  const updateUnitCoordinates = (nodeId: number, unitId: number, value: string) => {
+    updateNodeStructure(nodeId, (snapshot) => {
+      if (!snapshot?.units) return snapshot;
+      return {
+        ...snapshot,
+        units: snapshot.units.map((unit) =>
+          unit.unitId === unitId ? { ...unit, coordinatesText: value } : unit,
+        ),
+      };
+    });
+  };
+
+  const updateRoomCoordinates = (
+    nodeId: number,
+    unitId: number,
+    roomId: number,
+    value: string,
+  ) => {
+    updateNodeStructure(nodeId, (snapshot) => {
+      if (!snapshot?.units) return snapshot;
+      return {
+        ...snapshot,
+        units: snapshot.units.map((unit) =>
+          unit.unitId === unitId
+            ? {
+                ...unit,
+                rooms: unit.rooms.map((room) =>
+                  room.roomId === roomId ? { ...room, coordinatesText: value } : room,
+                ),
+              }
+            : unit,
+        ),
+      };
+    });
   };
 
   const updateCustomFeature = (
@@ -232,6 +441,18 @@ export default function BuildingLineCoordinatesPage() {
     });
   };
 
+  const toggleSetItem = (
+    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    key: string,
+  ) => {
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const handleSave = async (node: EditableNode) => {
     setSavingId(node.id);
     try {
@@ -250,29 +471,8 @@ export default function BuildingLineCoordinatesPage() {
             : null,
           inheritFromBelow: !!feature.inheritFromBelow,
         })),
-        structureSnapshot: node.structureSnapshot || null,
+        structureSnapshot: serializeStructure(node.draftStructureSnapshot),
       });
-      setRoot((prev) =>
-        prev
-          ? updateNodeTree(prev, node.id, (current) => ({
-              ...current,
-              coordinatesText: current.draftCoordinatesText,
-              heightMeters: current.draftHeightMeters.trim()
-                ? Number(current.draftHeightMeters)
-                : null,
-              customFeatures: current.draftCustomFeatures.map((feature) => ({
-                id: feature.id,
-                type: feature.type,
-                name: feature.name,
-                coordinatesText: feature.coordinatesText.trim() || null,
-                heightMeters: feature.heightMeters.trim()
-                  ? Number(feature.heightMeters)
-                  : null,
-                inheritFromBelow: !!feature.inheritFromBelow,
-              })),
-            }))
-          : prev,
-      );
       alert(`${node.name} coordinates saved.`);
     } catch (error: any) {
       alert(error?.response?.data?.message || "Failed to save coordinates.");
@@ -285,12 +485,203 @@ export default function BuildingLineCoordinatesPage() {
     setRoot((prev) => (prev ? cloneFloorFromBelow(prev, floorId) : prev));
   };
 
-  const renderNode = (node: EditableNode, depth = 0) => {
+  const renderFloorStructureEditor = (node: EditableNode) => {
+    const units = node.draftStructureSnapshot?.units || [];
+    if (units.length === 0) {
+      return (
+        <div className="rounded-xl border border-dashed border-border-default px-4 py-3 text-sm text-text-muted">
+          No units and rooms are mapped to this floor yet. Create the QA/QC floor structure first,
+          then the coordinate editor will appear here.
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-text-primary">
+              Floor Unit and Room Coordinates
+            </div>
+            <div className="text-xs text-text-muted">
+              Click a unit to enter its outline. Under each unit, click a room to save room-level
+              geometry for 3D progress.
+            </div>
+          </div>
+          <div className="text-xs text-text-secondary">
+            {units.length} units • {units.reduce((sum, unit) => sum + unit.rooms.length, 0)} rooms
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {units.map((unit) => {
+            const unitKey = `${node.id}-${unit.unitId}`;
+            const unitExpanded = expandedUnitKeys.has(unitKey);
+            return (
+              <div
+                key={unit.unitId}
+                className="rounded-xl border border-border-default bg-surface-base"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleSetItem(setExpandedUnitKeys, unitKey)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-surface-card p-2 text-text-secondary">
+                      <BedDouble className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary">{unit.unitName}</div>
+                      <div className="text-xs text-text-muted">
+                        {unit.rooms.length} rooms{unit.code ? ` • ${unit.code}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  {unitExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-text-muted" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-text-muted" />
+                  )}
+                </button>
+
+                {unitExpanded ? (
+                  <div className="border-t border-border-subtle px-4 py-4 space-y-4">
+                    <label className="space-y-2">
+                      <div className="text-sm font-medium text-text-primary">
+                        Unit Coordinates
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={unit.coordinatesText}
+                        onChange={(e) =>
+                          updateUnitCoordinates(node.id, unit.unitId, e.target.value)
+                        }
+                        disabled={!canWrite}
+                        placeholder="Paste unit coordinates"
+                        className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                      />
+                    </label>
+
+                    <div className="space-y-2">
+                      {unit.rooms.map((room) => {
+                        const roomKey = `${node.id}-${unit.unitId}-${room.roomId}`;
+                        const roomExpanded = expandedRoomKeys.has(roomKey);
+                        return (
+                          <div
+                            key={room.roomId}
+                            className="rounded-xl border border-border-default bg-white"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleSetItem(setExpandedRoomKeys, roomKey)}
+                              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="rounded-xl bg-surface-base p-2 text-text-secondary">
+                                  <DoorOpen className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-text-primary">
+                                    {room.roomName}
+                                  </div>
+                                  <div className="text-xs text-text-muted">
+                                    {room.roomType || "Room"}
+                                    {room.code ? ` • ${room.code}` : ""}
+                                  </div>
+                                </div>
+                              </div>
+                              {roomExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-text-muted" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-text-muted" />
+                              )}
+                            </button>
+
+                            {roomExpanded ? (
+                              <div className="border-t border-border-subtle px-4 py-4">
+                                <textarea
+                                  rows={3}
+                                  value={room.coordinatesText}
+                                  onChange={(e) =>
+                                    updateRoomCoordinates(
+                                      node.id,
+                                      unit.unitId,
+                                      room.roomId,
+                                      e.target.value,
+                                    )
+                                  }
+                                  disabled={!canWrite}
+                                  placeholder="Paste room coordinates"
+                                  className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSnapshotPreview = (node: EditableNode) => {
+    const floors = node.draftStructureSnapshot?.floors || [];
+    if ((node.type !== "BLOCK" && node.type !== "TOWER") || floors.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+          <CopyPlus className="h-4 w-4 text-secondary" />
+          Floor Snapshot
+        </div>
+        <div className="mt-3 space-y-3">
+          {floors.map((floor) => (
+            <div
+              key={floor.floorId}
+              className="rounded-xl border border-border-subtle bg-surface-base px-3 py-3"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium text-text-primary">{floor.floorName}</div>
+                <div className="text-xs text-text-secondary">
+                  {floor.unitCount || 0} units • {floor.roomCount || 0} rooms
+                </div>
+              </div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {floor.units.map((unit) => (
+                  <div
+                    key={unit.unitId}
+                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs text-text-secondary"
+                  >
+                    <div className="font-semibold text-text-primary">{unit.unitName}</div>
+                    <div className="mt-1">
+                      {(unit.rooms || []).map((room) => room.roomName).join(", ") || "No rooms defined"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderNode = (node: EditableNode, depth = 0): React.ReactNode => {
     const hasChildren = node.children.length > 0;
     const isExpanded = expandedIds.has(node.id);
-    const structure = node.structureSnapshot;
+    const structure = node.draftStructureSnapshot;
     const showEditor = EDITABLE_NODE_TYPES.has(node.type);
     const showFloorCloneAction = node.type === "FLOOR";
+    const saveLabel = node.type === "FLOOR" ? "Save Floor Layout" : "Save Coordinates";
 
     return (
       <div key={node.id} className="space-y-3">
@@ -306,7 +697,11 @@ export default function BuildingLineCoordinatesPage() {
                   onClick={() => toggleExpand(node.id)}
                   className="rounded-lg border border-border-default p-1 text-text-muted hover:bg-surface-raised"
                 >
-                  {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
                 </button>
               ) : (
                 <span className="w-8" />
@@ -321,9 +716,7 @@ export default function BuildingLineCoordinatesPage() {
                 )}
               </div>
               <div>
-                <div className="text-sm font-semibold text-text-primary">
-                  {node.name}
-                </div>
+                <div className="text-sm font-semibold text-text-primary">{node.name}</div>
                 <div className="text-xs uppercase tracking-[0.18em] text-text-muted">
                   {node.type}
                 </div>
@@ -331,49 +724,38 @@ export default function BuildingLineCoordinatesPage() {
             </div>
             {structure ? (
               <div className="text-xs text-text-secondary">
-                {structure.floorCount || 0} floors • {structure.unitCount || 0} units • {structure.roomCount || 0} rooms
+                {structure.floorCount || (structure.floorId ? 1 : 0)} floors •{" "}
+                {structure.unitCount || 0} units • {structure.roomCount || 0} rooms
               </div>
             ) : null}
           </div>
 
           {showEditor ? (
-            <div className="border-t border-border-subtle px-4 py-4 space-y-4 bg-surface-base">
+            <div className="space-y-4 border-t border-border-subtle bg-surface-base px-4 py-4">
               <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
                 <label className="space-y-2">
                   <div className="text-sm font-medium text-text-primary">
-                    {node.type === "UNIT"
-                      ? "Unit Coordinates"
-                      : node.type === "ROOM"
-                        ? "Room Coordinates"
-                        : node.type === "FLOOR"
-                          ? "Floor Coordinates"
-                          : "Building Line Coordinates"}
+                    {node.type === "FLOOR" ? "Floor Coordinates" : "Building Line Coordinates"}
                   </div>
                   <textarea
                     rows={5}
                     value={node.draftCoordinatesText}
-                    onChange={(e) =>
-                      setNodeDraft(node.id, "draftCoordinatesText", e.target.value)
-                    }
+                    onChange={(e) => setNodeDraft(node.id, "draftCoordinatesText", e.target.value)}
                     disabled={!canWrite}
                     placeholder="Paste coordinates here. Example: [[x1,y1],[x2,y2],[x3,y3]]"
-                    className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
                   />
                 </label>
                 <label className="space-y-2">
-                  <div className="text-sm font-medium text-text-primary">
-                    Height (m)
-                  </div>
+                  <div className="text-sm font-medium text-text-primary">Height (m)</div>
                   <input
                     type="number"
                     step="0.001"
                     value={node.draftHeightMeters}
-                    onChange={(e) =>
-                      setNodeDraft(node.id, "draftHeightMeters", e.target.value)
-                    }
+                    onChange={(e) => setNodeDraft(node.id, "draftHeightMeters", e.target.value)}
                     disabled={!canWrite}
                     placeholder="Enter height"
-                    className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
                   />
                   <button
                     type="button"
@@ -382,7 +764,7 @@ export default function BuildingLineCoordinatesPage() {
                     className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     <Save className="h-4 w-4" />
-                    {savingId === node.id ? "Saving..." : "Save Coordinates"}
+                    {savingId === node.id ? "Saving..." : saveLabel}
                   </button>
                   {showFloorCloneAction ? (
                     <button
@@ -392,11 +774,13 @@ export default function BuildingLineCoordinatesPage() {
                       className="inline-flex items-center gap-2 rounded-xl border border-border-default bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary disabled:opacity-50"
                     >
                       <CopyPlus className="h-4 w-4" />
-                      Same as Below Floor
+                      Copy Below Floor Geometry
                     </button>
                   ) : null}
                 </label>
               </div>
+
+              {node.type === "FLOOR" ? renderFloorStructureEditor(node) : null}
 
               <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
@@ -405,8 +789,8 @@ export default function BuildingLineCoordinatesPage() {
                       Custom Coordinate Features
                     </div>
                     <div className="text-xs text-text-muted">
-                      Add custom floors, elevation markers, or any extra geometry
-                      features needed for 3D visualization.
+                      Use this only for extra geometry beyond the standard block-floor-unit-room
+                      structure.
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -447,12 +831,7 @@ export default function BuildingLineCoordinatesPage() {
                             value={feature.type}
                             disabled={!canWrite}
                             onChange={(e) =>
-                              updateCustomFeature(
-                                node.id,
-                                feature.id,
-                                "type",
-                                e.target.value,
-                              )
+                              updateCustomFeature(node.id, feature.id, "type", e.target.value)
                             }
                             className="rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
                           >
@@ -465,12 +844,7 @@ export default function BuildingLineCoordinatesPage() {
                             value={feature.name}
                             disabled={!canWrite}
                             onChange={(e) =>
-                              updateCustomFeature(
-                                node.id,
-                                feature.id,
-                                "name",
-                                e.target.value,
-                              )
+                              updateCustomFeature(node.id, feature.id, "name", e.target.value)
                             }
                             placeholder="Feature name"
                             className="rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
@@ -515,79 +889,19 @@ export default function BuildingLineCoordinatesPage() {
                           placeholder="Enter custom coordinates"
                           className="mt-3 w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
                         />
-                        {node.type === "FLOOR" ? (
-                          <label className="mt-3 flex items-center gap-2 text-sm text-text-secondary">
-                            <input
-                              type="checkbox"
-                              checked={!!feature.inheritFromBelow}
-                              disabled={!canWrite}
-                              onChange={(e) =>
-                                updateCustomFeature(
-                                  node.id,
-                                  feature.id,
-                                  "inheritFromBelow",
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                            Same as below floor for this feature
-                          </label>
-                        ) : null}
                       </div>
                     ))
                   )}
                 </div>
               </div>
 
-              {structure?.floors?.length && (node.type === "BLOCK" || node.type === "TOWER") ? (
-                <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                    <CopyPlus className="h-4 w-4 text-secondary" />
-                    QA/QC Structure Snapshot
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    {structure.floors.map((floor) => (
-                      <div key={floor.floorId} className="rounded-xl border border-border-subtle bg-surface-base px-3 py-3">
-                        <div className="text-sm font-medium text-text-primary">
-                          {floor.floorName}
-                        </div>
-                        <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                          {floor.units.map((unit) => (
-                            <div key={unit.unitId} className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs text-text-secondary">
-                              <div className="font-semibold text-text-primary">{unit.unitName}</div>
-                              <div className="mt-1">
-                                {(unit.rooms || []).length > 0
-                                  ? unit.rooms
-                                      .map((room) =>
-                                        room.roomType
-                                          ? `${room.roomName} (${room.roomType})`
-                                          : room.roomName,
-                                      )
-                                      .join(", ")
-                                  : "No rooms defined"}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                (node.type === "BLOCK" || node.type === "TOWER") ? (
-                  <div className="rounded-xl border border-dashed border-border-default px-4 py-3 text-sm text-text-muted">
-                    No QA/QC unit-room structure found for this element yet.
-                  </div>
-                ) : null
-              )}
+              {renderSnapshotPreview(node)}
             </div>
           ) : null}
         </div>
 
         {hasChildren && isExpanded ? (
-          <div className="space-y-3">
-            {node.children.map((child) => renderNode(child, depth + 1))}
-          </div>
+          <div className="space-y-3">{node.children.map((child) => renderNode(child, depth + 1))}</div>
         ) : null}
       </div>
     );
@@ -614,12 +928,12 @@ export default function BuildingLineCoordinatesPage() {
         <div className="mt-2 text-2xl font-bold text-text-primary">
           Building Line Coordinates
         </div>
-        <div className="mt-2 max-w-3xl text-sm text-text-secondary">
-          Capture block and tower line coordinates, element heights, and the
-          QA/QC unit-room structure snapshot that will later drive 3D progress
-          visualization.
+        <div className="mt-2 max-w-4xl text-sm text-text-secondary">
+          Configure geometry at block, tower, floor, unit, and room level so the 3D progress
+          viewer can stop exactly at the depth the user wants to present. Repeated floors can be
+          copied from the floor below and then adjusted only for height.
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
           <div className="rounded-2xl bg-surface-base px-4 py-4">
             <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Blocks</div>
             <div className="mt-2 text-3xl font-bold text-text-primary">{stats.blocks}</div>
@@ -629,7 +943,13 @@ export default function BuildingLineCoordinatesPage() {
             <div className="mt-2 text-3xl font-bold text-text-primary">{stats.towers}</div>
           </div>
           <div className="rounded-2xl bg-surface-base px-4 py-4">
-            <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Configured Elements</div>
+            <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Floors</div>
+            <div className="mt-2 text-3xl font-bold text-text-primary">{stats.floors}</div>
+          </div>
+          <div className="rounded-2xl bg-surface-base px-4 py-4">
+            <div className="text-xs uppercase tracking-[0.16em] text-text-muted">
+              Configured Elements
+            </div>
             <div className="mt-2 text-3xl font-bold text-text-primary">{stats.configured}</div>
           </div>
         </div>

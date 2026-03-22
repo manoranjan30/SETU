@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
 import { QualityStageTemplate } from './entities/quality-stage-template.entity';
 import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-template.entity';
 import { QualityChecklist } from './entities/quality-checklist.entity';
+import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
 import { CreateChecklistTemplateDto } from './dto/create-checklist-template.dto';
 import { ChecklistImportPreviewResponseDto } from './dto/checklist-template.types';
 
@@ -19,6 +20,8 @@ export class ChecklistTemplateService {
     private readonly itemRepo: Repository<QualityChecklistItemTemplate>,
     @InjectRepository(QualityChecklist)
     private readonly legacyRepo: Repository<QualityChecklist>,
+    @InjectRepository(QualityInspectionStage)
+    private readonly inspectionStageRepo: Repository<QualityInspectionStage>,
   ) {}
 
   async findAll(projectId: number) {
@@ -86,6 +89,10 @@ export class ChecklistTemplateService {
     });
 
     const savedTemplate = await this.templateRepo.save(existing);
+    await this.assertTemplateStagesNotInUse(
+      savedTemplate.id,
+      'update checklist stages',
+    );
     await this.stageRepo.delete({ templateId: savedTemplate.id });
     await this.saveStages(savedTemplate.id, data.stages);
 
@@ -140,6 +147,10 @@ export class ChecklistTemplateService {
 
   async delete(id: number) {
     const template = await this.findOne(id);
+    await this.assertTemplateStagesNotInUse(
+      id,
+      'delete this checklist template',
+    );
     return this.templateRepo.remove(template);
   }
 
@@ -188,6 +199,26 @@ export class ChecklistTemplateService {
     return previews;
   }
 
+  private async assertTemplateStagesNotInUse(
+    templateId: number,
+    action: string,
+  ): Promise<void> {
+    const usageCount = await this.inspectionStageRepo.count({
+      where: {
+        stageTemplate: {
+          templateId,
+        },
+      },
+      relations: ['stageTemplate'],
+    });
+
+    if (usageCount > 0) {
+      throw new BadRequestException(
+        `Cannot ${action} because this checklist template is already used in ${usageCount} inspection stage(s). Create a new template revision instead.`,
+      );
+    }
+  }
+
   async saveImportedTemplates(
     projectId: number,
     templates: CreateChecklistTemplateDto[],
@@ -202,6 +233,10 @@ export class ChecklistTemplateService {
           where: { projectId, checklistNo },
         });
         if (existing) {
+          await this.assertTemplateStagesNotInUse(
+            existing.id,
+            `overwrite checklist template ${checklistNo}`,
+          );
           await this.templateRepo.delete(existing.id);
         }
       }

@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:setu_mobile/core/api/setu_api_client.dart';
-import 'package:setu_mobile/core/media/photo_compressor.dart';
-import 'package:setu_mobile/injection_container.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/media/image_annotation_page.dart';
+import 'package:setu_mobile/core/media/photo_compressor.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
+import 'package:setu_mobile/injection_container.dart';
 
 /// Bottom sheet for rectifying a site observation (Quality or EHS).
 /// Photos are compressed + uploaded directly to avoid bloc state pollution.
@@ -62,25 +65,79 @@ class _RectifySheetState extends State<RectifySheet> {
 
   Future<void> _pickPhoto() async {
     if (_photoUrls.length >= 5) return;
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.camera,
+
+    // Ask user: camera or gallery
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final xfile = await ImagePicker().pickImage(
+      source: source,
       imageQuality: 85,
     );
-    if (file == null) return;
+    if (xfile == null || !mounted) return;
 
+    // Guard: reject files > 15 MB
+    final fileSizeBytes = await File(xfile.path).length();
+    if (fileSizeBytes > 15 * 1024 * 1024) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Image too large. Please choose another.');
+      }
+      return;
+    }
+
+    // Open annotation/markup editor
+    if (!mounted) return;
+    final annotatedPath = await ImageAnnotationPage.show(context, xfile.path);
+    final uploadPath = annotatedPath ?? xfile.path;
+
+    if (!mounted) return;
     setState(() => _uploading = true);
+    String? compressed;
     try {
-      final compressed = await PhotoCompressor.compress(file.path);
+      compressed = await PhotoCompressor.compress(uploadPath);
       final result = await sl<SetuApiClient>().uploadFile(filePath: compressed);
       final url = result['url'] as String? ?? result['path'] as String? ?? '';
       if (url.isNotEmpty) setState(() => _photoUrls.add(url));
-      PhotoCompressor.deleteTempFile(compressed);
     } catch (_) {
       if (mounted) {
         setState(() => _errorMessage = 'Photo upload failed. Please retry.');
       }
     } finally {
+      if (compressed != null) PhotoCompressor.deleteTempFile(compressed);
+      if (annotatedPath != null) PhotoCompressor.deleteTempFile(annotatedPath);
+      PhotoCompressor.deleteTempFile(xfile.path);
       if (mounted) setState(() => _uploading = false);
     }
   }
@@ -208,45 +265,11 @@ class _RectifySheetState extends State<RectifySheet> {
                     ),
                     if (_photoUrls.isNotEmpty) ...[
                       const SizedBox(height: 6),
-                      SizedBox(
-                        height: 60,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _photoUrls.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 6),
-                          itemBuilder: (_, i) => Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Image.network(
-                                  _photoUrls[i],
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _photoUrls.removeAt(i)),
-                                  child: Container(
-                                    width: 18,
-                                    height: 18,
-                                    decoration: BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius: BorderRadius.circular(9),
-                                    ),
-                                    child: const Icon(Icons.close,
-                                        size: 12, color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      PhotoThumbnailStrip(
+                        photoUrls: _photoUrls,
+                        canDelete: true,
+                        onDelete: (url) =>
+                            setState(() => _photoUrls.remove(url)),
                       ),
                     ],
 

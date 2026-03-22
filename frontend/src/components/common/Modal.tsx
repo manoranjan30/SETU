@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -35,7 +36,7 @@ const Modal: React.FC<ModalProps> = ({
   // creating a "card" effect that fills most of the space but shows the background app
   const containerClass = size === "fullscreen" ? "p-1 md:p-2 lg:p-3" : "p-4";
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay overflow-hidden ${containerClass}`}
     >
@@ -61,7 +62,8 @@ const Modal: React.FC<ModalProps> = ({
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

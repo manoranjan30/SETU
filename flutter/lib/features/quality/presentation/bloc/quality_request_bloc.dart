@@ -565,24 +565,62 @@ class QualityRequestBloc
         // QC inspector raised a defect — the site engineer must rectify it.
         displayStatus = ActivityDisplayStatus.pendingObservation;
       } else if (inspection != null) {
-        // Map the inspection's backend status to the UI display status.
-        switch (inspection.status) {
-          case InspectionStatus.pending:
-          case InspectionStatus.partiallyApproved:
-            // RFI is with the inspector — still waiting.
-            displayStatus = ActivityDisplayStatus.pending;
-            break;
-          case InspectionStatus.approved:
+        // For multi-go (totalParts > 1) or unit-wise activities, check ALL
+        // parts/units before declaring the whole activity as approved.
+        // This prevents one approved unit from blocking the others from being raised.
+        final allInsp = inspListMap[act.id] ?? [];
+        final isMultiGoOrUnit =
+            inspection.totalParts > 1 || act.applicabilityLevel == 'UNIT';
+
+        if (isMultiGoOrUnit) {
+          final expectedCount = act.applicabilityLevel == 'UNIT'
+              ? (floorUnits.isNotEmpty ? floorUnits.length : null)
+              : inspection.totalParts;
+          final allPartsRaised =
+              expectedCount == null || allInsp.length >= expectedCount;
+          final allApproved = allInsp.isNotEmpty &&
+              allInsp.every((i) =>
+                  i.status == InspectionStatus.approved ||
+                  i.status == InspectionStatus.provisionallyApproved);
+          final anyRejected =
+              allInsp.any((i) => i.status == InspectionStatus.rejected);
+          final anyPending = allInsp.any((i) =>
+              i.status == InspectionStatus.pending ||
+              i.status == InspectionStatus.partiallyApproved);
+
+          if (allApproved && allPartsRaised) {
             displayStatus = ActivityDisplayStatus.approved;
-            break;
-          case InspectionStatus.provisionallyApproved:
-            displayStatus = ActivityDisplayStatus.provisionallyApproved;
-            break;
-          case InspectionStatus.rejected:
+          } else if (anyRejected) {
             displayStatus = ActivityDisplayStatus.rejected;
-            break;
-          default:
-            displayStatus = ActivityDisplayStatus.locked;
+          } else if (anyPending) {
+            // Some parts awaiting approval, others may still be raiseable.
+            displayStatus = ActivityDisplayStatus.pending;
+          } else {
+            // Some parts approved but not all raised yet — keep ready so user
+            // can raise remaining parts/units.
+            displayStatus = (predecessorDone || act.allowBreak)
+                ? ActivityDisplayStatus.ready
+                : ActivityDisplayStatus.locked;
+          }
+        } else {
+          // Single inspection — standard status mapping.
+          switch (inspection.status) {
+            case InspectionStatus.pending:
+            case InspectionStatus.partiallyApproved:
+              displayStatus = ActivityDisplayStatus.pending;
+              break;
+            case InspectionStatus.approved:
+              displayStatus = ActivityDisplayStatus.approved;
+              break;
+            case InspectionStatus.provisionallyApproved:
+              displayStatus = ActivityDisplayStatus.provisionallyApproved;
+              break;
+            case InspectionStatus.rejected:
+              displayStatus = ActivityDisplayStatus.rejected;
+              break;
+            default:
+              displayStatus = ActivityDisplayStatus.locked;
+          }
         }
       } else {
         // No inspection raised yet — unlock if predecessor chain is satisfied

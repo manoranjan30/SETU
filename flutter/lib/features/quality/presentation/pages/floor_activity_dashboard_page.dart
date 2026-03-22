@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/dashboard_models.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/inspection_detail_page.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/activity_status_badge.dart';
+import 'package:setu_mobile/injection_container.dart';
 
 /// Sectioned floor activity list screen.
 /// Groups activities into: Needs Action / Awaiting Approval / Completed / Blocked.
@@ -117,7 +119,10 @@ class _FloorActivityDashboardPageState
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => InspectionDetailPage(inspection: insp),
+        builder: (_) => BlocProvider(
+          create: (_) => sl<QualityApprovalBloc>(),
+          child: InspectionDetailPage(inspection: insp),
+        ),
       ),
     );
   }

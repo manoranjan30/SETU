@@ -30,6 +30,8 @@ services:
       JWT_SECRET: supersecretkey
       PDF_TOOL_URL: http://pdf-tool:8002
       FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
+      RUN_DB_MIGRATIONS: "true"
+      DB_MIGRATION_SCRIPT: migration:run:dist
 
   pdf-tool:
     build:

@@ -32,7 +32,8 @@ class SetuApiClient {
   SetuApiClient(this._tokenManager) {
     _dio = Dio(
       BaseOptions(
-        // Base URL is resolved at compile time from dart-define environment vars.
+        // Base URL resolved from ApiEndpoints (compile-time dart-define or
+        // runtime override set by ServerConfigService before this constructor runs).
         baseUrl: ApiEndpoints.baseUrl,
         // 30 s timeouts cover slow mobile connections without hanging the UI forever.
         connectTimeout: const Duration(seconds: 30),
@@ -801,7 +802,8 @@ class SetuApiClient {
         'severity': severity,
         if (category != null) 'category': category,
         if (locationLabel != null) 'locationLabel': locationLabel,
-        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+        // Backend DTO uses 'photos' — not 'photoUrls'
+        if (photoUrls != null && photoUrls.isNotEmpty) 'photos': photoUrls,
       },
     );
     return response.data as Map<String, dynamic>;
@@ -823,7 +825,9 @@ class SetuApiClient {
       ApiEndpoints.rectifyQualitySiteObs(id),
       data: {
         'notes': notes,
-        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+        // Backend DTO uses 'rectificationPhotos' — not 'photoUrls'
+        if (photoUrls != null && photoUrls.isNotEmpty)
+          'rectificationPhotos': photoUrls,
       },
     );
   }
@@ -889,7 +893,8 @@ class SetuApiClient {
         'severity': severity,
         if (category != null) 'category': category,
         if (locationLabel != null) 'locationLabel': locationLabel,
-        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+        // Backend DTO uses 'photos' — not 'photoUrls'
+        if (photoUrls != null && photoUrls.isNotEmpty) 'photos': photoUrls,
       },
     );
     return response.data as Map<String, dynamic>;
@@ -910,7 +915,9 @@ class SetuApiClient {
       ApiEndpoints.rectifyEhsSiteObs(id),
       data: {
         'notes': notes,
-        if (photoUrls != null && photoUrls.isNotEmpty) 'photoUrls': photoUrls,
+        // Backend DTO uses 'rectificationPhotos' — not 'photoUrls'
+        if (photoUrls != null && photoUrls.isNotEmpty)
+          'rectificationPhotos': photoUrls,
       },
     );
   }

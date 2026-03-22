@@ -416,17 +416,17 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50 overflow-hidden">
+    <div className="fixed inset-0 bg-surface-base/80 backdrop-blur-sm flex items-center justify-center z-50 overflow-hidden">
       {/* Full Screen Layout Container */}
       <div className="bg-surface-card w-full h-full md:m-4 md:w-[98%] md:h-[95%] md:rounded-lg shadow-2xl flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-border-default flex justify-between items-center bg-surface-base rounded-t-lg">
           <div>
             <div className="flex items-center gap-2">
-              <span className="bg-info-muted text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">
+              <span className="bg-info-muted text-info px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">
                 Measurement Sheet
               </span>
-              <h2 className="text-xl font-bold text-gray-800">
+              <h2 className="text-xl font-bold text-text-primary">
                 {boqItem.boqCode} -{" "}
                 {subItem?.description || boqItem.description}
               </h2>
@@ -438,13 +438,13 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onUpdate}
-              className="text-primary hover:text-blue-800 text-sm font-medium px-3"
+              className="text-primary hover:text-primary-dark text-sm font-medium px-3"
             >
               Refresh
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-200 rounded-full text-text-muted transition-colors"
+              className="p-2 hover:bg-surface-raised rounded-full text-text-muted transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -461,11 +461,11 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setIsViewMenuOpen(!isViewMenuOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base text-sm shadow-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base text-sm"
                   title="Table Settings"
                 >
                   <Layout className="w-4 h-4 text-primary" />
-                  <span className="font-medium text-blue-900">
+                  <span className="font-medium text-text-primary">
                     {currentViewName}
                   </span>
                   <ChevronDown className="w-3 h-3 text-text-disabled" />
@@ -558,24 +558,24 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                 )}
               </div>
 
-              <div className="w-px h-6 bg-gray-300 mx-1"></div>
+              <div className="w-px h-6 bg-border-strong mx-1"></div>
 
               <button
                 onClick={handleDownloadTemplate}
-                className="flex items-center gap-2 px-3 py-1.5 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base text-sm shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base text-sm"
               >
                 <Download className="w-4 h-4" /> Template
               </button>
               <button
                 onClick={() => setShowImportWizard(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-sm shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 bg-success text-white rounded hover:opacity-90 text-sm"
               >
                 <Upload className="w-4 h-4" /> Import Excel
               </button>
               {selectedIds.size > 0 && (
                 <button
                   onClick={handleBulkDelete}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm shadow-sm animate-in fade-in"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-error text-white rounded hover:opacity-90 text-sm animate-in fade-in"
                 >
                   <Trash2 className="w-4 h-4" /> Delete ({selectedIds.size})
                 </button>
@@ -583,7 +583,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
             </div>
             <div className="text-right">
               <div className="text-sm text-text-muted">Total Quantity</div>
-              <div className="text-2xl font-bold text-blue-700 font-mono">
+              <div className="text-2xl font-bold text-primary tabular-nums">
                 {formatIndianNumber(subItem?.qty)}{" "}
                 <span className="text-sm text-text-disabled font-normal">
                   {subItem?.uom}
@@ -607,8 +607,8 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
           )}
 
           {/* Manual Entry Form - Expanded to Horizontal Strip or Grid */}
-          <div className="bg-primary-muted/50 p-4 rounded-lg border border-blue-100 shadow-sm">
-            <h3 className="font-semibold text-sm text-blue-800 mb-3 flex items-center gap-2">
+          <div className="bg-surface-base p-4 rounded-lg border border-border-default">
+            <h3 className="font-semibold text-sm text-text-primary mb-3 flex items-center gap-2">
               <Plus className="w-4 h-4" /> Add Manual Entry
             </h3>
 
@@ -827,7 +827,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                 </label>
                 <input
                   type="text"
-                  className="w-full p-2 border border-border-strong rounded text-sm font-mono text-xs"
+                  className="w-full p-2 border border-border-strong rounded text-xs tabular-nums"
                   placeholder="[[0,0],[10,0]...]"
                   value={newM.baseCoordinates}
                   onChange={(e) =>
@@ -851,14 +851,14 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                   />
                   <button
                     onClick={handleCalculate}
-                    className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300 text-text-secondary"
+                    className="px-2 py-1 bg-surface-raised rounded hover:bg-surface-base text-text-secondary"
                     title="Calculate L*B*D"
                   >
                     <Calculator className="w-4 h-4" />
                   </button>
                   <button
                     onClick={handleAddManual}
-                    className="px-4 py-1 bg-primary text-white rounded font-medium hover:bg-primary-dark shadow-sm ml-1"
+                    className="px-4 py-1 bg-primary text-white rounded font-medium hover:bg-primary-dark ml-1"
                   >
                     Add
                   </button>
@@ -868,9 +868,9 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
           </div>
 
           {/* Table View */}
-          <div className="flex-1 bg-surface-card border border-border-default rounded-lg shadow-sm flex flex-col overflow-hidden">
+          <div className="flex-1 bg-surface-card border border-border-default rounded-lg flex flex-col overflow-hidden">
             <div className="flex-1 overflow-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap table-fixed">
+              <table className="w-full text-left text-sm whitespace-nowrap table-fixed [font-variant-numeric:tabular-nums]">
                 {/* Colgroup for Consistent Widths */}
                 <colgroup>
                   {columns
@@ -879,7 +879,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                       <col key={col.id} style={{ width: col.width }} />
                     ))}
                 </colgroup>
-                <thead className="bg-surface-raised text-text-secondary font-semibold sticky top-0 z-10 shadow-sm">
+                <thead className="bg-surface-raised text-text-secondary font-semibold sticky top-0 z-10 border-b border-border-default">
                   <tr>
                     {columns
                       .filter((c) => c.visible)

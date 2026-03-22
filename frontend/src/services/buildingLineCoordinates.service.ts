@@ -16,19 +16,44 @@ export type BuildingLineNode = {
     inheritFromBelow?: boolean;
   }>;
   structureSnapshot?: {
+    floorId?: number;
+    floorName?: string;
+    towerId?: number;
+    towerName?: string;
     floorCount?: number;
     unitCount?: number;
     roomCount?: number;
+    units?: Array<{
+      unitId: number;
+      unitName: string;
+      code?: string | null;
+      coordinatesText?: string | null;
+      rooms: Array<{
+        roomId: number;
+        roomName: string;
+        roomType?: string | null;
+        code?: string | null;
+        coordinatesText?: string | null;
+      }>;
+    }>;
     floors?: Array<{
       floorId: number;
       floorName: string;
+      coordinatesText?: string | null;
+      heightMeters?: number | null;
+      unitCount?: number;
+      roomCount?: number;
       units: Array<{
         unitId: number;
         unitName: string;
+        code?: string | null;
+        coordinatesText?: string | null;
         rooms: Array<{
           roomId: number;
           roomName: string;
           roomType?: string | null;
+          code?: string | null;
+          coordinatesText?: string | null;
         }>;
       }>;
     }>;

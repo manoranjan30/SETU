@@ -188,6 +188,28 @@ export const PLANNING_PERMISSIONS: PermissionDef[] = [
   perm('RELEASE_STRATEGY.SIMULATE', 'Simulate Release Strategies', 'PLANNING', S),
 ];
 
+export const MILESTONE_PERMISSIONS: PermissionDef[] = [
+  perm('MILESTONE.READ', 'View Customer Milestones', 'MILESTONE', R),
+  perm(
+    'MILESTONE.TEMPLATE.CREATE',
+    'Create Customer Milestone Template',
+    'MILESTONE',
+    C,
+  ),
+  perm(
+    'MILESTONE.TEMPLATE.DELETE',
+    'Delete Customer Milestone Template',
+    'MILESTONE',
+    D,
+  ),
+  perm('MILESTONE.FLATINFO.EDIT', 'Edit Flat Sale Info', 'MILESTONE', U),
+  perm('MILESTONE.FLATINFO.IMPORT', 'Import Flat Sale Info', 'MILESTONE', C),
+  perm('MILESTONE.TRIGGER.MANUAL', 'Manually Trigger Milestone', 'MILESTONE', S),
+  perm('MILESTONE.INVOICE.RAISE', 'Raise Milestone Invoice', 'MILESTONE', S),
+  perm('MILESTONE.COLLECT', 'Collect Milestone Amount', 'MILESTONE', S),
+  perm('MILESTONE.WAIVE', 'Waive or Close Milestone', 'MILESTONE', S),
+];
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 7: EXECUTION (Site Progress)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -281,6 +303,7 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
   ...crud('QUALITY', 'TEST', 'Material Test'),
   ...crud('QUALITY', 'NCR', 'NCR / Observation'),
   ...crud('QUALITY', 'SNAG', 'Snag'),
+  perm('QUALITY.SNAG.APPROVE', 'Approve Snag Round Release', 'QUALITY', S),
   ...crud('QUALITY', 'AUDIT', 'Quality Audit'),
   perm('QUALITY.DOCUMENT.READ', 'View Quality Documents', 'QUALITY', R),
   perm('QUALITY.DOCUMENT.MANAGE', 'Manage Quality Documents', 'QUALITY', S),
@@ -485,6 +508,7 @@ export const ALL_MODULE_PERMISSIONS: PermissionDef[][] = [
   SCHEDULE_PERMISSIONS,
   BOQ_PERMISSIONS,
   PLANNING_PERMISSIONS,
+  MILESTONE_PERMISSIONS,
   EXECUTION_PERMISSIONS,
   MICRO_PERMISSIONS,
   PROGRESS_PERMISSIONS,

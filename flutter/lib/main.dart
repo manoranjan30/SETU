@@ -24,6 +24,7 @@ import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
+import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/app.dart';
 
@@ -57,6 +58,12 @@ void main() async {
   // Initialize Firebase (reads google-services.json locally — fast)
   // Must complete before any FCM or Firestore call is made.
   await Firebase.initializeApp();
+
+  // Load saved server URL before ApiClient is constructed so that
+  // ApiEndpoints.baseUrl already returns the user-selected URL when Dio
+  // builds its BaseOptions. ServerConfigService.init() reads SharedPreferences
+  // and calls ApiEndpoints.setRuntimeUrl() if a saved URL exists.
+  await ServerConfigService.init();
 
   // Initialize secure storage
   // A single shared instance is passed down so that TokenManager and any

@@ -223,30 +223,62 @@ class _Legend extends StatelessWidget {
 // Floor Tile
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _FloorTile extends StatelessWidget {
+/// Stateful so we can run a looping pulse animation on NeedsAction floors.
+class _FloorTile extends StatefulWidget {
   final FloorSummary floor;
   final VoidCallback onTap;
 
   const _FloorTile({required this.floor, required this.onTap});
 
   @override
+  State<_FloorTile> createState() => _FloorTileState();
+}
+
+class _FloorTileState extends State<_FloorTile>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _pulse;
+  Animation<double>? _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.floor.status == FloorStatus.needsAction) {
+      _pulse = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      )..repeat(reverse: true);
+      _opacity = Tween<double>(begin: 0.55, end: 1.0).animate(
+        CurvedAnimation(parent: _pulse!, curve: Curves.easeInOut),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final s = floor.status;
+    final s = widget.floor.status;
     final color = s.color;
     final bg = s.bgColor;
     final icon = s.icon;
-    final badgeCount = floor.pendingCount;
+    final badgeCount = widget.floor.pendingCount;
 
-    return Material(
+    Widget tile = Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
+            border: Border.all(
+                color: color.withValues(alpha: 0.35),
+                width: s == FloorStatus.needsAction ? 2.0 : 1.5),
             boxShadow: [
               BoxShadow(
                   color: color.withValues(alpha: 0.08),
@@ -274,7 +306,7 @@ class _FloorTile extends StatelessWidget {
                     Icon(icon, color: color, size: 22),
                     const SizedBox(height: 5),
                     Text(
-                      floor.label,
+                      widget.floor.label,
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
@@ -313,6 +345,17 @@ class _FloorTile extends StatelessWidget {
         ),
       ),
     );
+
+    // Wrap needsAction tiles in a pulsing opacity to grab attention.
+    if (_opacity != null) {
+      tile = AnimatedBuilder(
+        animation: _opacity!,
+        builder: (_, child) => Opacity(opacity: _opacity!.value, child: child),
+        child: tile,
+      );
+    }
+
+    return tile;
   }
 }
 

@@ -10,6 +10,8 @@ import {
   Users,
   Map,
   MessageSquareMore,
+  Landmark,
+  TrendingUp,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -92,6 +94,17 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       label: "Issue Tracker",
       permission: PermissionCode.PLANNING_MATRIX_READ,
     },
+    {
+      key: "customer_milestones",
+      icon: <Landmark size={18} />,
+      label: "Customer Milestones",
+      permission: PermissionCode.MILESTONE_READ,
+    },
+    {
+      key: "cost",
+      icon: <TrendingUp size={18} />,
+      label: "Cost & Cashflow",
+    },
   ];
 
   const visibleMenuItems = menuItems.filter(
@@ -140,6 +153,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "schedules",
           "gantt_version",
           "lookahead",
+          "cost",
         ].includes(currentView) ? (
           children
         ) : (

@@ -392,16 +392,17 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       final activities = response
           .map<Activity>((raw) {
             final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
-            // The execution-ready endpoint doesn't embed epsNodeId in its response.
-            // Activity.fromJson notes it "may be injected by the caller" — inject it
-            // here so the EpsExplorerPage filter (a.epsNodeId == currentNode.id) works.
+            // The backend now returns epsNodeId for activities that have a BOQ
+            // item assigned to a specific EPS node.  Only fall back to injecting
+            // the current node's ID when the backend didn't provide one (e.g.
+            // project-level BOQ items not tied to a specific floor/unit).
             if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
               json['epsNodeId'] = event.node.id;
             }
             return Activity.fromJson(json);
           })
-          // Deduplicate by activity ID — the API can return the same activity
-          // multiple times when an activity spans multiple EPS assignments.
+          // Deduplicate by activity ID — safety net in case the API ever returns
+          // the same activity more than once.
           .where((a) => seen.add(a.id))
           .toList();
 
@@ -526,13 +527,17 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       // (The old code wrongly called getProjectActivities which is deprecated.)
       final activitiesResponse = await _apiClient
           .getExecutionReadyActivities(currentState.currentNode.id);
-      final activities = activitiesResponse.map<Activity>((raw) {
-        final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
-        if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
-          json['epsNodeId'] = currentState.currentNode.id;
-        }
-        return Activity.fromJson(json);
-      }).toList();
+      final seen = <int>{};
+      final activities = activitiesResponse
+          .map<Activity>((raw) {
+            final json = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+            if (json['epsNodeId'] == null && json['eps_node_id'] == null) {
+              json['epsNodeId'] = currentState.currentNode.id;
+            }
+            return Activity.fromJson(json);
+          })
+          .where((a) => seen.add(a.id))
+          .toList();
 
       // Update only this node's slice in the in-memory index
       final updatedIndex = Map<int, List<Activity>>.from(

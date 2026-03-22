@@ -125,13 +125,14 @@ class _EhsSiteObsPageState extends State<EhsSiteObsPage>
     await RaiseSiteObsSheet.show(
       context,
       title: 'Raise EHS Observation',
+      projectId: widget.projectId,
       // Populate the category dropdown with EHS-specific category labels
       categories: EhsCategory.allLabels,
-      showLocationField: true,
       onSubmit: ({
         required description,
         required severity,
         category,
+        epsNodeId,
         locationLabel,
         photoUrls = const [],
       }) async {
@@ -141,6 +142,7 @@ class _EhsSiteObsPageState extends State<EhsSiteObsPage>
               description: description,
               severity: severity,
               category: category,
+              epsNodeId: epsNodeId,
               locationLabel: locationLabel,
               photoUrls: photoUrls,
             ));

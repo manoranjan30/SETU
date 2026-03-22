@@ -40,13 +40,15 @@ interface QualityActivity {
 
 interface ActivityObservation {
   id: string;
+  inspectionId?: number | null;
+  stageId?: number | null;
   observationText: string;
   type?: string;
   remarks?: string;
   photos?: string[];
   closureText?: string;
   closureEvidence?: string[];
-  status: "PENDING" | "RECTIFIED" | "CLOSED";
+  status: "OPEN" | "PENDING" | "RECTIFIED" | "RESOLVED" | "CLOSED";
   createdAt: string;
 }
 
@@ -65,9 +67,21 @@ interface QualityInspection {
   partLabel?: string;
   goNo?: number;
   goLabel?: string;
+  unitName?: string | null;
+  roomName?: string | null;
   drawingNo?: string;
   processCode?: string;
   documentType?: string;
+  pendingObservationCount?: number | null;
+  legacyActivityObservationCount?: number | null;
+}
+
+interface ObservationGroup {
+  key: string;
+  label: string;
+  inspection?: QualityInspection;
+  observations: ActivityObservation[];
+  isLegacy?: boolean;
 }
 
 interface ActivityList {
@@ -199,12 +213,22 @@ export default function InspectionRequestPage() {
       ])
         .then(async ([actRes, inspRes]) => {
           const acts = actRes.data as QualityActivity[];
+          const inspectionRows = inspRes.data as QualityInspection[];
           setActivities(acts);
-          setInspections(inspRes.data);
+          setInspections(inspectionRows);
 
-          // Fetch observations for activities in PENDING_OBSERVATION
+          // Fetch observation streams only for activities that actually have
+          // unresolved inspection-scoped or legacy observations.
           const obsPromises = acts
-            .filter((a) => a.status === "PENDING_OBSERVATION")
+            .filter((a) => {
+              if (a.status === "PENDING_OBSERVATION") return true;
+              return inspectionRows.some(
+                (inspection) =>
+                  inspection.activityId === a.id &&
+                  ((inspection.pendingObservationCount || 0) > 0 ||
+                    (inspection.legacyActivityObservationCount || 0) > 0),
+              );
+            })
             .map((a) =>
               api
                 .get(`/quality/activities/${a.id}/observations`)
@@ -273,6 +297,14 @@ export default function InspectionRequestPage() {
     // Compute status
     return activities.map((act) => {
       const insp = inspMap.get(act.id);
+      const hasUnresolvedObservations =
+        (observationsMap[act.id] || []).some((obs) => obs.status !== "CLOSED") ||
+        inspections.some(
+          (inspection) =>
+            inspection.activityId === act.id &&
+            ((inspection.pendingObservationCount || 0) > 0 ||
+              (inspection.legacyActivityObservationCount || 0) > 0),
+        );
       let state:
         | "LOCKED"
         | "READY"
@@ -302,7 +334,7 @@ export default function InspectionRequestPage() {
         }
       }
 
-      if (act.status === "PENDING_OBSERVATION") {
+      if (act.status === "PENDING_OBSERVATION" || hasUnresolvedObservations) {
         state = "PENDING_OBSERVATION" as any;
       } else if (insp) {
         state = insp.status as any;
@@ -313,7 +345,81 @@ export default function InspectionRequestPage() {
 
       return { ...act, inspection: insp, statusState: state, predecessorDone };
     });
-  }, [activities, inspections]);
+  }, [activities, inspections, observationsMap]);
+
+  const inspectionsById = useMemo(
+    () => new Map(inspections.map((inspection) => [inspection.id, inspection])),
+    [inspections],
+  );
+
+  const getObservationScopeLabel = (inspection?: QualityInspection) => {
+    if (!inspection) {
+      return "Legacy activity observation";
+    }
+
+    const bits = [
+      inspection.goLabel || inspection.partLabel,
+      inspection.unitName,
+      inspection.roomName,
+    ].filter(Boolean);
+
+    if (bits.length > 0) {
+      return bits.join(" • ");
+    }
+
+    return `RFI #${inspection.id}`;
+  };
+
+  const observationGroupsByActivity = useMemo(() => {
+    const groups: Record<number, ObservationGroup[]> = {};
+
+    Object.entries(observationsMap).forEach(([activityIdKey, list]) => {
+      const activityId = Number(activityIdKey);
+      const grouped = new Map<string, ObservationGroup>();
+
+      list.forEach((observation) => {
+        if (typeof observation.inspectionId === "number") {
+          const inspection = inspectionsById.get(observation.inspectionId);
+          const groupKey = `inspection-${observation.inspectionId}`;
+          if (!grouped.has(groupKey)) {
+            grouped.set(groupKey, {
+              key: groupKey,
+              label: getObservationScopeLabel(inspection),
+              inspection,
+              observations: [],
+            });
+          }
+          grouped.get(groupKey)!.observations.push(observation);
+          return;
+        }
+
+        const legacyKey = "legacy-unassigned";
+        if (!grouped.has(legacyKey)) {
+          grouped.set(legacyKey, {
+            key: legacyKey,
+            label: "Legacy unassigned observation",
+            observations: [],
+            isLegacy: true,
+          });
+        }
+        grouped.get(legacyKey)!.observations.push(observation);
+      });
+
+      groups[activityId] = Array.from(grouped.values()).sort((a, b) => {
+        if (a.isLegacy) return 1;
+        if (b.isLegacy) return -1;
+        const aTime = a.observations[0]?.createdAt
+          ? new Date(a.observations[0].createdAt).getTime()
+          : 0;
+        const bTime = b.observations[0]?.createdAt
+          ? new Date(b.observations[0].createdAt).getTime()
+          : 0;
+        return bTime - aTime;
+      });
+    });
+
+    return groups;
+  }, [observationsMap, inspectionsById]);
 
   const partProgressByActivity = useMemo(() => {
     const map: Record<
@@ -1154,149 +1260,283 @@ export default function InspectionRequestPage() {
                           )}
                         {/* Observations Area */}
                         {item.statusState === "PENDING_OBSERVATION" &&
-                          observationsMap[item.id] && (
+                          observationGroupsByActivity[item.id]?.length > 0 && (
                             <div className="mt-3 space-y-4">
-                              {observationsMap[item.id]
-                                .filter((o) => o.status === "PENDING")
-                                .map((obs) => (
-                                  <div
-                                    key={obs.id}
-                                    className="bg-rose-50 border border-rose-200 rounded-lg p-4 shadow-sm"
-                                  >
-                                    <div className="flex items-start gap-3">
-                                      <MessageSquareWarning className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                                      <div className="flex-1">
-                                        <div className="flex justify-between items-start mb-1">
-                                          <h4 className="text-sm font-bold text-rose-900">
-                                            QC Observation Logged:{" "}
-                                            {obs.type ? `[${obs.type}]` : ""}
-                                          </h4>
-                                          <span className="text-xs text-rose-500 font-medium">
-                                            {new Date(
-                                              obs.createdAt,
-                                            ).toLocaleDateString()}
-                                          </span>
-                                        </div>
-                                        <p className="text-sm text-rose-800 bg-surface-card p-2 rounded border border-rose-100 italic">
-                                          "{obs.observationText}"
-                                        </p>
+                              {observationGroupsByActivity[item.id].map(
+                                (group) => {
+                                  const unresolvedObservations =
+                                    group.observations.filter(
+                                      (obs) => obs.status !== "CLOSED",
+                                    );
+                                  if (unresolvedObservations.length === 0) {
+                                    return null;
+                                  }
 
-                                        {obs.photos &&
-                                          obs.photos.length > 0 && (
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                              {obs.photos.map((url, pIdx) => (
-                                                <a
-                                                  key={pIdx}
-                                                  href={getFileUrl(url)}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  className="w-16 h-16 rounded-md border border-rose-200 overflow-hidden hover:opacity-80 transition-opacity"
-                                                >
-                                                  <img
-                                                    src={getFileUrl(url)}
-                                                    alt="Observation"
-                                                    className="w-full h-full object-cover"
-                                                  />
-                                                </a>
-                                              ))}
+                                  return (
+                                    <div
+                                      key={group.key}
+                                      className={`space-y-3 rounded-xl border p-4 ${
+                                        group.isLegacy
+                                          ? "border-amber-200 bg-amber-50"
+                                          : "border-rose-200 bg-rose-50"
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <div
+                                            className={`text-xs font-bold uppercase tracking-[0.2em] ${
+                                              group.isLegacy
+                                                ? "text-amber-800"
+                                                : "text-rose-800"
+                                            }`}
+                                          >
+                                            {group.isLegacy
+                                              ? "Legacy Activity Scope"
+                                              : "Inspection Scope"}
+                                          </div>
+                                          <h4
+                                            className={`mt-1 text-sm font-semibold ${
+                                              group.isLegacy
+                                                ? "text-amber-950"
+                                                : "text-rose-950"
+                                            }`}
+                                          >
+                                            {group.label}
+                                          </h4>
+                                          {group.inspection && (
+                                            <div className="mt-1 text-xs text-text-muted">
+                                              RFI #{group.inspection.id}
+                                              {group.inspection.requestDate
+                                                ? ` • Raised ${new Date(
+                                                    group.inspection.requestDate,
+                                                  ).toLocaleDateString()}`
+                                                : ""}
                                             </div>
                                           )}
+                                          {group.isLegacy && (
+                                            <div className="mt-1 text-xs text-amber-800">
+                                              This older observation was not
+                                              linked to a specific unit or GO.
+                                            </div>
+                                          )}
+                                        </div>
+                                        <span
+                                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                            group.isLegacy
+                                              ? "bg-amber-100 text-amber-800"
+                                              : "bg-rose-100 text-rose-800"
+                                          }`}
+                                        >
+                                          {unresolvedObservations.length} open
+                                        </span>
+                                      </div>
 
-                                        <div className="mt-4 pt-3 border-t border-rose-200/60">
-                                          <label className="block text-xs font-bold text-rose-900 mb-1.5 uppercase tracking-wider">
-                                            Rectification Evidence
-                                          </label>
+                                      {unresolvedObservations.map((obs) => (
+                                        <div
+                                          key={obs.id}
+                                          className="rounded-lg border border-white/70 bg-white/90 p-4 shadow-sm"
+                                        >
+                                          <div className="flex items-start gap-3">
+                                            <MessageSquareWarning className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                                            <div className="flex-1">
+                                              <div className="mb-1 flex items-start justify-between gap-3">
+                                                <div>
+                                                  <h5 className="text-sm font-bold text-rose-900">
+                                                    QC Observation Logged{" "}
+                                                    {obs.type
+                                                      ? `[${obs.type}]`
+                                                      : ""}
+                                                  </h5>
+                                                  <div className="mt-1 text-[11px] uppercase tracking-wide text-rose-600">
+                                                    {obs.status}
+                                                  </div>
+                                                </div>
+                                                <span className="text-xs font-medium text-rose-500">
+                                                  {new Date(
+                                                    obs.createdAt,
+                                                  ).toLocaleDateString()}
+                                                </span>
+                                              </div>
+                                              <p className="rounded border border-rose-100 bg-surface-card p-2 text-sm italic text-rose-800">
+                                                "{obs.observationText}"
+                                              </p>
 
-                                          <div className="flex flex-wrap gap-2 mb-3">
-                                            {(closurePhotos[obs.id] || []).map(
-                                              (url, pIdx) => (
-                                                <div
-                                                  key={pIdx}
-                                                  className="relative w-16 h-16 group"
-                                                >
-                                                  <img
-                                                    src={getFileUrl(url)}
-                                                    alt="Rectification"
-                                                    className="w-full h-full object-cover rounded border border-rose-200"
-                                                  />
-                                                  <button
-                                                    onClick={() =>
-                                                      setClosurePhotos(
+                                              {obs.photos &&
+                                                obs.photos.length > 0 && (
+                                                  <div className="mt-3 flex flex-wrap gap-2">
+                                                    {obs.photos.map(
+                                                      (url, pIdx) => (
+                                                        <a
+                                                          key={pIdx}
+                                                          href={getFileUrl(url)}
+                                                          target="_blank"
+                                                          rel="noreferrer"
+                                                          className="h-16 w-16 overflow-hidden rounded-md border border-rose-200 transition-opacity hover:opacity-80"
+                                                        >
+                                                          <img
+                                                            src={getFileUrl(
+                                                              url,
+                                                            )}
+                                                            alt="Observation"
+                                                            className="h-full w-full object-cover"
+                                                          />
+                                                        </a>
+                                                      ),
+                                                    )}
+                                                  </div>
+                                                )}
+
+                                              {obs.status === "PENDING" ||
+                                              obs.status === "OPEN" ? (
+                                                <div className="mt-4 border-t border-rose-200/60 pt-3">
+                                                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-rose-900">
+                                                    Rectification Evidence
+                                                  </label>
+
+                                                  <div className="mb-3 flex flex-wrap gap-2">
+                                                    {(
+                                                      closurePhotos[obs.id] ||
+                                                      []
+                                                    ).map((url, pIdx) => (
+                                                      <div
+                                                        key={pIdx}
+                                                        className="group relative h-16 w-16"
+                                                      >
+                                                        <img
+                                                          src={getFileUrl(url)}
+                                                          alt="Rectification"
+                                                          className="h-full w-full rounded border border-rose-200 object-cover"
+                                                        />
+                                                        <button
+                                                          onClick={() =>
+                                                            setClosurePhotos(
+                                                              (prev) => ({
+                                                                ...prev,
+                                                                [obs.id]: prev[
+                                                                  obs.id
+                                                                ].filter(
+                                                                  (_, i) =>
+                                                                    i !== pIdx,
+                                                                ),
+                                                              }),
+                                                            )
+                                                          }
+                                                          className="absolute -right-1.5 -top-1.5 rounded-full bg-rose-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                                        >
+                                                          <X className="h-3 w-3" />
+                                                        </button>
+                                                      </div>
+                                                    ))}
+                                                    <label
+                                                      className={`flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-rose-300 bg-surface-card transition-all hover:bg-rose-100 ${uploading === obs.id ? "pointer-events-none opacity-50" : ""}`}
+                                                    >
+                                                      <Camera className="h-5 w-5 text-rose-400" />
+                                                      <span className="mt-0.5 text-[8px] font-bold uppercase text-rose-500">
+                                                        {uploading === obs.id
+                                                          ? "..."
+                                                          : "Photo"}
+                                                      </span>
+                                                      <input
+                                                        type="file"
+                                                        className="hidden"
+                                                        accept="image/*"
+                                                        onChange={(e) =>
+                                                          handleFileUpload(
+                                                            obs.id,
+                                                            e,
+                                                          )
+                                                        }
+                                                      />
+                                                    </label>
+                                                  </div>
+
+                                                  <textarea
+                                                    className="min-h-[80px] w-full rounded-md border-rose-200 bg-surface-card p-2.5 text-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                                                    placeholder="Describe how this issue was fixed..."
+                                                    value={
+                                                      closureTexts[obs.id] || ""
+                                                    }
+                                                    onChange={(e) =>
+                                                      setClosureTexts(
                                                         (prev) => ({
                                                           ...prev,
-                                                          [obs.id]: prev[
-                                                            obs.id
-                                                          ].filter(
-                                                            (_, i) =>
-                                                              i !== pIdx,
-                                                          ),
+                                                          [obs.id]:
+                                                            e.target.value,
                                                         }),
                                                       )
                                                     }
-                                                    className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                                  >
-                                                    <X className="w-3 h-3" />
-                                                  </button>
+                                                  />
+                                                  <div className="mt-3 flex justify-end gap-2">
+                                                    <button
+                                                      onClick={() =>
+                                                        handleResolveObservation(
+                                                          item.id,
+                                                          obs.id,
+                                                        )
+                                                      }
+                                                      disabled={
+                                                        resolvingId ===
+                                                          obs.id ||
+                                                        !closureTexts[
+                                                          obs.id
+                                                        ]?.trim() ||
+                                                        uploading === obs.id
+                                                      }
+                                                      className="flex items-center gap-1.5 rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-rose-700 disabled:opacity-50"
+                                                    >
+                                                      <CheckCircle2 className="h-4 w-4" />
+                                                      {resolvingId === obs.id
+                                                        ? "Submitting..."
+                                                        : "Submit Rectification"}
+                                                    </button>
+                                                  </div>
                                                 </div>
-                                              ),
-                                            )}
-                                            <label
-                                              className={`w-16 h-16 flex flex-col items-center justify-center border border-dashed border-rose-300 rounded bg-surface-card hover:bg-rose-100 transition-all cursor-pointer ${uploading === obs.id ? "opacity-50 pointer-events-none" : ""}`}
-                                            >
-                                              <Camera className="w-5 h-5 text-rose-400" />
-                                              <span className="text-[8px] text-rose-500 mt-0.5 font-bold uppercase">
-                                                {uploading === obs.id
-                                                  ? "..."
-                                                  : "Photo"}
-                                              </span>
-                                              <input
-                                                type="file"
-                                                className="hidden"
-                                                accept="image/*"
-                                                onChange={(e) =>
-                                                  handleFileUpload(obs.id, e)
-                                                }
-                                              />
-                                            </label>
-                                          </div>
-
-                                          <textarea
-                                            className="w-full border-rose-200 rounded-md p-2.5 text-sm bg-surface-card focus:ring-2 focus:ring-rose-500 focus:border-rose-500 min-h-[80px]"
-                                            placeholder="Describe how this issue was fixed..."
-                                            value={closureTexts[obs.id] || ""}
-                                            onChange={(e) =>
-                                              setClosureTexts((prev) => ({
-                                                ...prev,
-                                                [obs.id]: e.target.value,
-                                              }))
-                                            }
-                                          />
-                                          <div className="mt-3 flex justify-end gap-2">
-                                            <button
-                                              onClick={() =>
-                                                handleResolveObservation(
-                                                  item.id,
-                                                  obs.id,
-                                                )
-                                              }
-                                              disabled={
-                                                resolvingId === obs.id ||
-                                                !closureTexts[obs.id]?.trim() ||
-                                                uploading === obs.id
-                                              }
-                                              className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
-                                            >
-                                              <CheckCircle2 className="w-4 h-4" />
-                                              {resolvingId === obs.id
-                                                ? "Submitting..."
-                                                : "Submit Rectification"}
-                                            </button>
+                                              ) : (
+                                                <div className="mt-4 rounded-lg border border-blue-100 bg-primary-muted p-3">
+                                                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+                                                    Awaiting QC Closure
+                                                  </div>
+                                                  <p className="mt-1 text-sm text-blue-800">
+                                                    {obs.closureText ||
+                                                      "Rectification has been submitted. QC needs to verify and close this observation."}
+                                                  </p>
+                                                  {obs.closureEvidence &&
+                                                    obs.closureEvidence.length >
+                                                      0 && (
+                                                      <div className="mt-2 flex flex-wrap gap-2">
+                                                        {obs.closureEvidence.map(
+                                                          (url, pIdx) => (
+                                                            <a
+                                                              key={pIdx}
+                                                              href={getFileUrl(
+                                                                url,
+                                                              )}
+                                                              target="_blank"
+                                                              rel="noreferrer"
+                                                              className="h-12 w-12 overflow-hidden rounded border border-blue-200"
+                                                            >
+                                                              <img
+                                                                src={getFileUrl(
+                                                                  url,
+                                                                )}
+                                                                alt="Rectification"
+                                                                className="h-full w-full object-cover"
+                                                              />
+                                                            </a>
+                                                          ),
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                },
+                              )}
                             </div>
                           )}
                       </div>

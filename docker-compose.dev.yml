@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
       target: backend-builder
     container_name: setu_backend_dev
-    command: npm run start:dev
+    command: npm run start:prod:migrated
     ports:
       - "3000:3000"
     environment:
@@ -18,9 +18,8 @@ services:
       JWT_SECRET: supersecretkey
       PDF_TOOL_URL: http://pdf-tool:8002
       FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
-    volumes:
-      - ./backend:/app/backend
-      - /app/backend/node_modules
+      RUN_DB_MIGRATIONS: "true"
+      DB_MIGRATION_SCRIPT: migration:run:dist
     depends_on:
       - db
 
@@ -29,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: frontend-builder
+      target: frontend-dev
     container_name: setu_frontend_dev
     command: npm run dev -- --host
     ports:

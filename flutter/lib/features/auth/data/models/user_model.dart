@@ -49,8 +49,8 @@ class User extends Equatable {
       id: json['id'] as int? ?? 0,
       username: json['username'] as String? ?? '',
       email: json['email'] as String? ?? '',
-      // Prefer camelCase but fall back to snake_case for backward compatibility.
-      fullName: json['fullName'] as String? ?? json['full_name'] as String? ?? '',
+      // Login response uses displayName; /profile uses fullName / full_name.
+      fullName: json['fullName'] as String? ?? json['displayName'] as String? ?? json['full_name'] as String? ?? '',
       // Cast each element to String — the backend may send role objects or plain strings.
       roles: (json['roles'] as List<dynamic>?)
               ?.map((e) => e.toString())
@@ -60,8 +60,9 @@ class User extends Equatable {
               ?.map((e) => e.toString())
               .toList() ??
           [],
-      // Project IDs are always integers from the backend.
-      projectIds: (json['projectIds'] as List<dynamic>?)
+      // Project IDs — backend sends snake_case (project_ids) from login,
+      // camelCase (projectIds) from /profile. Accept both.
+      projectIds: ((json['projectIds'] ?? json['project_ids']) as List<dynamic>?)
               ?.map((e) => e as int)
               .toList() ??
           [],

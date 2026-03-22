@@ -33,9 +33,6 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
   /// Types at which RFIs can be raised (floor and below).
   static const _rfiLevelTypes = {'FLOOR', 'UNIT', 'ROOM'};
 
-  bool get _isRfiLevel =>
-      _rfiLevelTypes.contains(_selectedNode?.type?.toUpperCase());
-
   @override
   void initState() {
     super.initState();
@@ -89,22 +86,25 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
           if (state is EpsTreeLoaded) {
             return Column(
               children: [
-                if (_selectedNode != null && !_isRfiLevel)
-                  _buildFloorHint(),
                 Expanded(
                   child: _EpsTreePanel(
                     nodes: state.nodes,
                     selectedNode: _selectedNode,
                     onNodeSelected: (node) {
-                      setState(() => _selectedNode = node);
                       final isFloor = _rfiLevelTypes
                           .contains(node.type?.toUpperCase());
+                      // Only mark non-floor nodes as selected to show the hint.
+                      // Only load activity lists for floor-level nodes.
                       if (isFloor) {
+                        setState(() => _selectedNode = node);
                         context.read<QualityRequestBloc>().add(SelectEpsNode(
                               projectId: widget.projectId,
                               epsNodeId: node.id,
                             ));
                       }
+                      // Non-floor nodes: _EpsNodeTile handles expand/collapse
+                      // internally; do not update _selectedNode so they remain
+                      // un-highlighted and the hint is not shown.
                     },
                   ),
                 ),
@@ -176,26 +176,6 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildFloorHint() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: Colors.orange.shade50,
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Navigate to Floor level or below to view activity lists and raise RFIs.',
-              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
-            ),
-          ),
-        ],
       ),
     );
   }

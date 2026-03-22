@@ -2,27 +2,32 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
+import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Generic bottom sheet for raising a new site observation.
 /// Used by both Quality and EHS modules. Photos are compressed + uploaded
 /// directly (not via bloc) to avoid shared bloc state pollution.
+///
+/// Location is selected from the project EPS tree (Block → Tower → Floor)
+/// and stored as both [epsNodeId] and a human-readable [locationLabel].
 class RaiseSiteObsSheet extends StatefulWidget {
   final String title;
+  final int projectId;
 
   /// Category options shown in a chip group.
   final List<String> categories;
 
-  /// Whether to show an optional free-text location field.
-  final bool showLocationField;
-
   /// Callback when the user submits — receives description, severity,
-  /// optional category, optional location label, and uploaded photo URLs.
+  /// optional category, optional EPS node id + label, and uploaded photo URLs.
   final Future<void> Function({
     required String description,
     required String severity,
     String? category,
+    int? epsNodeId,
     String? locationLabel,
     List<String> photoUrls,
   }) onSubmit;
@@ -30,24 +35,25 @@ class RaiseSiteObsSheet extends StatefulWidget {
   const RaiseSiteObsSheet({
     super.key,
     required this.title,
+    required this.projectId,
     required this.categories,
     required this.onSubmit,
-    this.showLocationField = false,
   });
 
   /// Convenience launcher
   static Future<void> show(
     BuildContext context, {
     required String title,
+    required int projectId,
     required List<String> categories,
     required Future<void> Function({
       required String description,
       required String severity,
       String? category,
+      int? epsNodeId,
       String? locationLabel,
       List<String> photoUrls,
     }) onSubmit,
-    bool showLocationField = false,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -59,9 +65,9 @@ class RaiseSiteObsSheet extends StatefulWidget {
       ),
       builder: (_) => RaiseSiteObsSheet(
         title: title,
+        projectId: projectId,
         categories: categories,
         onSubmit: onSubmit,
-        showLocationField: showLocationField,
       ),
     );
   }
@@ -73,11 +79,11 @@ class RaiseSiteObsSheet extends StatefulWidget {
 class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
   final _formKey = GlobalKey<FormState>();
   final _descCtrl = TextEditingController();
-  final _locationCtrl = TextEditingController();
 
-  // DB enum values: INFO | MINOR | MAJOR | CRITICAL  (uppercase, must match exactly)
   String _severity = 'MINOR';
   String? _category;
+  int? _epsNodeId;
+  String? _locationLabel;
   final List<String> _photoUrls = [];
   bool _uploading = false;
   bool _submitting = false;
@@ -100,46 +106,105 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
   @override
   void dispose() {
     _descCtrl.dispose();
-    _locationCtrl.dispose();
     super.dispose();
   }
 
+  /// Shows camera/gallery picker → markup editor → compresses → uploads.
   Future<void> _pickPhoto() async {
     if (_photoUrls.length >= 5) return;
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 70, // pre-shrink at picker level before compressor runs
-    );
-    if (file == null) return;
 
-    // Guard: reject files >15 MB before attempting compression
-    final fileSizeBytes = await File(file.path).length();
+    // Ask user: camera or gallery
+    final source = await _choosePhotoSource();
+    if (source == null) return;
+
+    final xfile = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 70,
+    );
+    if (xfile == null || !mounted) return;
+
+    // Guard: reject files > 15 MB before attempting compression
+    final fileSizeBytes = await File(xfile.path).length();
     if (fileSizeBytes > 15 * 1024 * 1024) {
       if (mounted) {
         setState(() =>
-            _errorMessage = 'Image too large. Please retake with lower resolution.');
+            _errorMessage = 'Image too large. Please retake or choose another.');
       }
       return;
     }
 
+    // Open annotation/markup editor
+    if (!mounted) return;
+    final annotatedPath = await ImageAnnotationPage.show(context, xfile.path);
+    final uploadPath = annotatedPath ?? xfile.path;
+
+    if (!mounted) return;
     setState(() => _uploading = true);
     String? compressed;
     try {
-      compressed = await PhotoCompressor.compress(file.path);
+      compressed = await PhotoCompressor.compress(uploadPath);
       final result = await sl<SetuApiClient>().uploadFile(filePath: compressed);
       final url = result['url'] as String? ?? result['path'] as String? ?? '';
-      if (url.isNotEmpty) {
-        setState(() => _photoUrls.add(url));
-      }
-    } catch (e) {
+      if (url.isNotEmpty) setState(() => _photoUrls.add(url));
+    } catch (_) {
       if (mounted) {
         setState(() => _errorMessage = 'Photo upload failed. Please retry.');
       }
     } finally {
-      // Always delete temp file — success or failure
       if (compressed != null) PhotoCompressor.deleteTempFile(compressed);
+      if (annotatedPath != null) PhotoCompressor.deleteTempFile(annotatedPath);
+      PhotoCompressor.deleteTempFile(xfile.path);
       if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<ImageSource?> _choosePhotoSource() async {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Opens the EPS tree picker to select a location node.
+  Future<void> _pickLocation() async {
+    final result = await showDialog<({int id, String label})>(
+      context: context,
+      builder: (_) => _EpsPickerDialog(projectId: widget.projectId),
+    );
+    if (result != null) {
+      setState(() {
+        _epsNodeId = result.id;
+        _locationLabel = result.label;
+      });
     }
   }
 
@@ -154,14 +219,12 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
         description: _descCtrl.text.trim(),
         severity: _severity,
         category: _category,
-        locationLabel: widget.showLocationField &&
-                _locationCtrl.text.trim().isNotEmpty
-            ? _locationCtrl.text.trim()
-            : null,
+        epsNodeId: _epsNodeId,
+        locationLabel: _locationLabel,
         photoUrls: List.unmodifiable(_photoUrls),
       );
       if (mounted) Navigator.of(context).pop();
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           _submitting = false;
@@ -245,9 +308,7 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                           selectedColor: color.withValues(alpha: 0.15),
                           checkmarkColor: color,
                           side: BorderSide(
-                              color: selected
-                                  ? color
-                                  : theme.dividerColor,
+                              color: selected ? color : theme.dividerColor,
                               width: selected ? 1.5 : 1.0),
                           labelStyle: TextStyle(
                             color: selected
@@ -288,22 +349,54 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                       const SizedBox(height: 12),
                     ],
 
-                    // Optional location field
-                    if (widget.showLocationField) ...[
-                      TextFormField(
-                        controller: _locationCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Location (optional)',
-                          hintText: 'e.g. Tower A, Floor 3',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.location_on_outlined),
-                          isDense: true,
+                    // Location picker — from EPS tree
+                    Text('Location',
+                        style: theme.textTheme.labelLarge
+                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: _pickLocation,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: theme.dividerColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: theme.colorScheme.surfaceContainerLowest,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.location_on_outlined,
+                                size: 16,
+                                color: _locationLabel != null
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.4)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _locationLabel ?? 'Select location from EPS…',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _locationLabel != null
+                                      ? theme.colorScheme.onSurface
+                                      : theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.4),
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.arrow_drop_down,
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.4)),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
+                    ),
+                    const SizedBox(height: 12),
 
-                    // Photos strip
+                    // Photos
                     Row(
                       children: [
                         Text('Photos (${_photoUrls.length}/5)',
@@ -330,46 +423,11 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                     ),
                     if (_photoUrls.isNotEmpty) ...[
                       const SizedBox(height: 6),
-                      SizedBox(
-                        height: 60,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _photoUrls.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 6),
-                          itemBuilder: (_, i) => Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Image.network(
-                                  _photoUrls[i],
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: GestureDetector(
-                                  onTap: () => setState(
-                                      () => _photoUrls.removeAt(i)),
-                                  child: Container(
-                                    width: 18,
-                                    height: 18,
-                                    decoration: BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius:
-                                          BorderRadius.circular(9),
-                                    ),
-                                    child: const Icon(Icons.close,
-                                        size: 12, color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      PhotoThumbnailStrip(
+                        photoUrls: _photoUrls,
+                        canDelete: true,
+                        onDelete: (url) =>
+                            setState(() => _photoUrls.remove(url)),
                       ),
                     ],
 
@@ -423,5 +481,181 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
         ],
       ),
     );
+  }
+}
+
+// ─── EPS Picker Dialog ────────────────────────────────────────────────────────
+
+class _EpsPickerDialog extends StatefulWidget {
+  final int projectId;
+  const _EpsPickerDialog({required this.projectId});
+
+  @override
+  State<_EpsPickerDialog> createState() => _EpsPickerDialogState();
+}
+
+class _EpsPickerDialogState extends State<_EpsPickerDialog> {
+  List<EpsTreeNode>? _nodes;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await sl<SetuApiClient>().getEpsTreeForProject(widget.projectId);
+      if (mounted) {
+        setState(() {
+          _nodes = raw
+              .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
+              .toList();
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Failed to load locations.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.account_tree_outlined, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Select Location',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _error != null
+                ? Center(child: Text(_error!))
+                : _nodes == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : _nodes!.isEmpty
+                        ? const Center(
+                            child: Text('No locations found.'))
+                        : ListView(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            children: _nodes!
+                                .map((n) => _EpsNodeTile(
+                                      node: n,
+                                      depth: 0,
+                                      onSelected: (node) =>
+                                          Navigator.of(context).pop(
+                                        (id: node.id, label: node.label),
+                                      ),
+                                    ))
+                                .toList(),
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EpsNodeTile extends StatefulWidget {
+  final EpsTreeNode node;
+  final int depth;
+  final ValueChanged<EpsTreeNode> onSelected;
+
+  const _EpsNodeTile({
+    required this.node,
+    required this.depth,
+    required this.onSelected,
+  });
+
+  @override
+  State<_EpsNodeTile> createState() => _EpsNodeTileState();
+}
+
+class _EpsNodeTileState extends State<_EpsNodeTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final node = widget.node;
+    final hasChildren = node.children.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () {
+            if (hasChildren) setState(() => _expanded = !_expanded);
+            widget.onSelected(node);
+          },
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 8.0 + widget.depth * 16.0,
+              right: 8,
+              top: 8,
+              bottom: 8,
+            ),
+            child: Row(
+              children: [
+                Icon(_nodeIcon(node.type), size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(node.label,
+                      style: theme.textTheme.bodyMedium),
+                ),
+                if (hasChildren)
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (_expanded && hasChildren)
+          ...node.children.map((child) => _EpsNodeTile(
+                node: child,
+                depth: widget.depth + 1,
+                onSelected: widget.onSelected,
+              )),
+      ],
+    );
+  }
+
+  IconData _nodeIcon(String? type) {
+    switch (type?.toLowerCase()) {
+      case 'floor':
+        return Icons.layers_outlined;
+      case 'building':
+      case 'tower':
+        return Icons.apartment_outlined;
+      case 'unit':
+      case 'room':
+        return Icons.meeting_room_outlined;
+      case 'block':
+        return Icons.grid_view_outlined;
+      default:
+        return Icons.folder_outlined;
+    }
   }
 }

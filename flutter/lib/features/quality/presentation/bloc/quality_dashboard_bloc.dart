@@ -162,16 +162,21 @@ class QualityDashboardBloc
     try {
       final projectId = event.projectId;
 
-      // Fetch EPS tree and inspections in parallel
+      // Fetch EPS tree, inspections, and activity lists in parallel.
+      // Activity lists give us the expected activity count per floor so we can
+      // correctly detect "all done" even when some activities haven't been
+      // raised as inspections yet.
       final results = await Future.wait([
         _apiClient.getEpsTreeForProject(projectId),
         _apiClient.getQualityInspections(projectId: projectId),
         _apiClient.getMyPendingInspections(projectId),
+        _apiClient.getQualityActivityLists(projectId: projectId),
       ]);
 
       final rawTree = results[0];
       final rawInspections = results[1];
       final rawMyPending = results[2];
+      final rawLists = results[3];
 
       // Parse EPS tree
       final treeNodes = rawTree
@@ -188,6 +193,19 @@ class QualityDashboardBloc
       for (final insp in inspections) {
         if (insp.epsNodeId != null) {
           inspByFloor.putIfAbsent(insp.epsNodeId!, () => []).add(insp);
+        }
+      }
+
+      // Build expected activity count per floor from activity lists.
+      // This lets _collectFloors use total activities (not just raised RFIs)
+      // as the denominator, so "all done" is only green when ALL activities
+      // are approved — not just the ones that happen to have been raised.
+      final actCountByFloor = <int, int>{};
+      for (final raw in rawLists) {
+        final list = QualityActivityList.fromJson(raw as Map<String, dynamic>);
+        if (list.epsNodeId != null) {
+          actCountByFloor[list.epsNodeId!] =
+              (actCountByFloor[list.epsNodeId!] ?? 0) + list.activityCount;
         }
       }
 
@@ -212,7 +230,7 @@ class QualityDashboardBloc
       }
 
       // Build BlockSummary list from EPS tree
-      final blocks = _buildBlockSummaries(treeNodes, inspByFloor);
+      final blocks = _buildBlockSummaries(treeNodes, inspByFloor, actCountByFloor);
 
       emit(DashboardLoaded(
         projectId: projectId,
@@ -231,8 +249,8 @@ class QualityDashboardBloc
         if (cachedNodes.isNotEmpty) {
           // Rebuild EpsTreeNode hierarchy from flat cached list.
           final treeNodes = _buildCachedTree(cachedNodes);
-          // No inspection data available offline — empty map gives 0 counts.
-          final blocks = _buildBlockSummaries(treeNodes, {});
+          // No inspection data available offline — empty maps give 0 counts.
+          final blocks = _buildBlockSummaries(treeNodes, {}, {});
           emit(DashboardLoaded(
             projectId: event.projectId,
             blocks: blocks,
@@ -290,15 +308,16 @@ class QualityDashboardBloc
     return roots.map(withChildren).toList();
   }
 
-  /// Walks the EPS tree recursively to collect all BLOCK/TOWER nodes,
+  /// Walks the EPS tree recursively to collect BLOCK nodes,
   /// deriving [BlockSummary] with their child FLOOR summaries.
   List<BlockSummary> _buildBlockSummaries(
     List<EpsTreeNode> nodes,
     Map<int, List<QualityInspection>> inspByFloor,
+    Map<int, int> actCountByFloor,
   ) {
     final blocks = <BlockSummary>[];
     for (final node in nodes) {
-      _collectBlocks(node, inspByFloor, blocks, null);
+      _collectBlocks(node, inspByFloor, actCountByFloor, blocks);
     }
     return blocks;
   }
@@ -306,24 +325,23 @@ class QualityDashboardBloc
   void _collectBlocks(
     EpsTreeNode node,
     Map<int, List<QualityInspection>> inspByFloor,
+    Map<int, int> actCountByFloor,
     List<BlockSummary> blocks,
-    String? parentName,
   ) {
     final type = node.type?.toUpperCase() ?? '';
-    final isFloorLevel = type == 'FLOOR' || type == 'UNIT' || type == 'ROOM';
-    final isBlockOrTower = type == 'BLOCK' || type == 'TOWER' || type == 'PROJECT';
 
-    if (isBlockOrTower) {
-      // Collect all FLOOR-type descendants
+    if (type == 'BLOCK' || type == 'TOWER') {
+      // Only BLOCK (and standalone TOWER) nodes become top-level block entries.
+      // Do NOT recurse deeper for more blocks — any towers/floors inside are
+      // captured by _collectFloors, preventing double-entries like "H3 Tower".
       final floors = <FloorSummary>[];
-      _collectFloors(node.children, inspByFloor, floors);
+      _collectFloors(node.children, inspByFloor, floors, actCountByFloor);
 
       if (floors.isNotEmpty) {
         int total = 0, appCount = 0, inRev = 0, needsAct = 0, withObs = 0;
         for (final f in floors) {
           total += f.totalActivities;
           appCount += f.approvedCount;
-          // Derive inReview/needsAction from floor status
           if (f.status == FloorStatus.awaitingApproval ||
               f.status == FloorStatus.inProgress) {
             inRev += f.pendingCount;
@@ -331,14 +349,12 @@ class QualityDashboardBloc
             needsAct += f.pendingCount;
           }
           final floorInsps = inspByFloor[f.floorId] ?? [];
-          withObs += floorInsps
-              .where((i) => i.pendingObservationCount > 0)
-              .length;
+          withObs +=
+              floorInsps.where((i) => i.pendingObservationCount > 0).length;
         }
         blocks.add(BlockSummary(
           epsNodeId: node.id,
           name: node.label,
-          towerName: parentName,
           total: total,
           approved: appCount,
           inReview: inRev,
@@ -347,14 +363,12 @@ class QualityDashboardBloc
           floors: floors,
         ));
       }
-      // Also recurse into children for nested structures
+    } else if (type == 'FLOOR' || type == 'UNIT' || type == 'ROOM') {
+      // Floor-level leaf nodes — not block containers, skip.
+    } else {
+      // PROJECT, COMPANY, or unknown container — recurse to find BLOCK nodes.
       for (final child in node.children) {
-        _collectBlocks(child, inspByFloor, blocks, node.label);
-      }
-    } else if (!isFloorLevel) {
-      // Unknown type — recurse to find blocks inside
-      for (final child in node.children) {
-        _collectBlocks(child, inspByFloor, blocks, parentName ?? node.label);
+        _collectBlocks(child, inspByFloor, actCountByFloor, blocks);
       }
     }
   }
@@ -363,7 +377,9 @@ class QualityDashboardBloc
     List<EpsTreeNode> nodes,
     Map<int, List<QualityInspection>> inspByFloor,
     List<FloorSummary> floors,
+    Map<int, int> actCountByFloor,
   ) {
+    final now = DateTime.now();
     for (final node in nodes) {
       final type = node.type?.toUpperCase() ?? '';
       if (type == 'FLOOR') {
@@ -378,34 +394,77 @@ class QualityDashboardBloc
                 i.status == InspectionStatus.pending ||
                 i.status == InspectionStatus.partiallyApproved)
             .length;
-        final rejectedCount = insps
-            .where((i) => i.status == InspectionStatus.rejected)
-            .length;
+        final rejectedCount =
+            insps.where((i) => i.status == InspectionStatus.rejected).length;
         final obsCount =
             insps.where((i) => i.pendingObservationCount > 0).length;
-        final total = insps.length;
 
-        final needsActionCount = rejectedCount + obsCount;
-        final status = deriveFloorStatus(
-          total: total,
-          approved: approvedCount,
-          inReview: inReviewCount,
-          needsActionCount: needsActionCount,
-        );
+        // Long-pending: any in-review inspection raised > 3 days ago.
+        final longPendingCount = insps.where((i) {
+          if (i.status != InspectionStatus.pending &&
+              i.status != InspectionStatus.partiallyApproved) {
+            return false;
+          }
+          final d = i.requestDateTime;
+          return d != null && now.difference(d).inDays >= 3;
+        }).length;
+
+        // needsAction only for active problems: rejected, open observations,
+        // or approvals that have been waiting > 3 days.
+        // Floors with zero inspections are simply notStarted (grey / no blink).
+        final needsActionCount = rejectedCount + obsCount + longPendingCount;
+
+        // Use expected activity count from checklists as the denominator so
+        // "all done" requires ALL activities approved, not just raised ones.
+        final expectedTotal = actCountByFloor[node.id] ?? insps.length;
+
+        final FloorStatus status;
+        if (insps.isEmpty) {
+          status = FloorStatus.notStarted;
+        } else {
+          status = deriveFloorStatus(
+            total: expectedTotal > 0 ? expectedTotal : insps.length,
+            approved: approvedCount,
+            inReview: inReviewCount,
+            needsActionCount: needsActionCount,
+          );
+        }
 
         floors.add(FloorSummary(
           floorId: node.id,
           label: node.label,
           status: status,
-          totalActivities: total,
+          totalActivities: expectedTotal > 0 ? expectedTotal : insps.length,
           approvedCount: approvedCount,
-          pendingCount: total - approvedCount,
+          pendingCount: ((expectedTotal > 0 ? expectedTotal : insps.length) -
+                  approvedCount)
+              .clamp(0, 9999),
         ));
       } else if (type != 'UNIT' && type != 'ROOM') {
-        // Could be a TOWER containing floors — recurse
-        _collectFloors(node.children, inspByFloor, floors);
+        // Could be a TOWER containing floors — recurse.
+        _collectFloors(node.children, inspByFloor, floors, actCountByFloor);
       }
     }
+    // Sort floors by natural building order: basements → GF → 1F → 2F … 12F
+    floors.sort((a, b) => _floorSortKey(a.label).compareTo(_floorSortKey(b.label)));
+  }
+
+  /// Returns a sort key for floor labels so they appear in natural building order:
+  /// basements (negative), GF (0), then upper floors ascending.
+  static int _floorSortKey(String label) {
+    final l = label.trim().toUpperCase();
+    // Basement: B, BF, B1, B2, BASEMENT, BASEMENT 1 …
+    final bMatch = RegExp(r'^B(?:ASEMENT\s*)?(\d*)').firstMatch(l);
+    if (bMatch != null) {
+      final n = int.tryParse(bMatch.group(1) ?? '') ?? 1;
+      return -(n == 0 ? 1 : n);
+    }
+    // Ground floor
+    if (l == 'GF' || l == 'G' || l.contains('GROUND')) return 0;
+    // Numeric: "1F", "1ST", "FLOOR 1", "F1", "1", "LEVEL 1" …
+    final nMatch = RegExp(r'(\d+)').firstMatch(l);
+    if (nMatch != null) return int.parse(nMatch.group(1)!);
+    return 999; // Unknown — push to end
   }
 
   // ---------------------------------------------------------------------------
@@ -514,22 +573,58 @@ class QualityDashboardBloc
       if (act.status == 'PENDING_OBSERVATION') {
         displayStatus = ActivityDisplayStatus.pendingObservation;
       } else if (inspection != null) {
-        switch (inspection.status) {
-          case InspectionStatus.pending:
-          case InspectionStatus.partiallyApproved:
-            displayStatus = ActivityDisplayStatus.pending;
-            break;
-          case InspectionStatus.approved:
+        // For multi-go (totalParts > 1) or unit-wise, check ALL parts/units
+        // before declaring the whole activity approved. Prevents one approved
+        // unit/part from blocking the others from being raised.
+        final allInsp = inspListMap[act.id] ?? [];
+        final isMultiGoOrUnit =
+            inspection.totalParts > 1 || act.applicabilityLevel == 'UNIT';
+
+        if (isMultiGoOrUnit) {
+          final expectedCount = act.applicabilityLevel == 'UNIT'
+              ? (floorUnits.isNotEmpty ? floorUnits.length : null)
+              : inspection.totalParts;
+          final allPartsRaised =
+              expectedCount == null || allInsp.length >= expectedCount;
+          final allApproved = allInsp.isNotEmpty &&
+              allInsp.every((i) =>
+                  i.status == InspectionStatus.approved ||
+                  i.status == InspectionStatus.provisionallyApproved);
+          final anyRejected =
+              allInsp.any((i) => i.status == InspectionStatus.rejected);
+          final anyPending = allInsp.any((i) =>
+              i.status == InspectionStatus.pending ||
+              i.status == InspectionStatus.partiallyApproved);
+
+          if (allApproved && allPartsRaised) {
             displayStatus = ActivityDisplayStatus.approved;
-            break;
-          case InspectionStatus.provisionallyApproved:
-            displayStatus = ActivityDisplayStatus.provisionallyApproved;
-            break;
-          case InspectionStatus.rejected:
+          } else if (anyRejected) {
             displayStatus = ActivityDisplayStatus.rejected;
-            break;
-          default:
-            displayStatus = ActivityDisplayStatus.locked;
+          } else if (anyPending) {
+            displayStatus = ActivityDisplayStatus.pending;
+          } else {
+            displayStatus = (predecessorDone || act.allowBreak)
+                ? ActivityDisplayStatus.ready
+                : ActivityDisplayStatus.locked;
+          }
+        } else {
+          switch (inspection.status) {
+            case InspectionStatus.pending:
+            case InspectionStatus.partiallyApproved:
+              displayStatus = ActivityDisplayStatus.pending;
+              break;
+            case InspectionStatus.approved:
+              displayStatus = ActivityDisplayStatus.approved;
+              break;
+            case InspectionStatus.provisionallyApproved:
+              displayStatus = ActivityDisplayStatus.provisionallyApproved;
+              break;
+            case InspectionStatus.rejected:
+              displayStatus = ActivityDisplayStatus.rejected;
+              break;
+            default:
+              displayStatus = ActivityDisplayStatus.locked;
+          }
         }
       } else {
         displayStatus = (predecessorDone || act.allowBreak)

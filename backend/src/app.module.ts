@@ -94,9 +94,13 @@ import { QualityUnit } from './quality/entities/quality-unit.entity';
 import { QualityRoom } from './quality/entities/quality-room.entity';
 import { BuildingLineCoordinate } from './planning/entities/building-line-coordinate.entity';
 import { IssueTrackerDepartment } from './planning/entities/issue-tracker-department.entity';
+import { IssueTrackerDeptProjectConfig } from './planning/entities/issue-tracker-dept-project-config.entity';
 import { IssueTrackerTag } from './planning/entities/issue-tracker-tag.entity';
 import { IssueTrackerIssue } from './planning/entities/issue-tracker-issue.entity';
 import { IssueTrackerStep } from './planning/entities/issue-tracker-step.entity';
+import { IssueTrackerActivityLog } from './planning/entities/issue-tracker-activity-log.entity';
+import { IssueTrackerAttachment } from './planning/entities/issue-tracker-attachment.entity';
+import { IssueTrackerNotification } from './planning/entities/issue-tracker-notification.entity';
 import { QualityActivityList } from './quality/entities/quality-activity-list.entity';
 import { QualityActivity } from './quality/entities/quality-activity.entity';
 import { QualitySequenceEdge } from './quality/entities/quality-sequence-edge.entity';
@@ -156,6 +160,8 @@ import { DashboardShareLog } from './dashboard-builder/entities/dashboard-share-
 import { DashboardBuilderModule } from './dashboard-builder/dashboard-builder.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PluginsModule } from './plugins/plugins.module';
+import { MilestoneModule } from './milestone/milestone.module';
+import { SnagModule } from './snag/snag.module';
 import { PluginPackage } from './plugins/entities/plugin-package.entity';
 import { PluginInstall } from './plugins/entities/plugin-install.entity';
 import { PluginPermission } from './plugins/entities/plugin-permission.entity';
@@ -166,6 +172,17 @@ import { PluginReport } from './plugins/entities/plugin-report.entity';
 import { PluginWorkflow } from './plugins/entities/plugin-workflow.entity';
 import { PluginSetting } from './plugins/entities/plugin-setting.entity';
 import { PluginAuditLog } from './plugins/entities/plugin-audit-log.entity';
+import { CustomerMilestoneTemplate } from './milestone/entities/customer-milestone-template.entity';
+import { CustomerMilestoneTemplateActivityLink } from './milestone/entities/customer-milestone-template-activity-link.entity';
+import { CustomerMilestoneAchievement } from './milestone/entities/customer-milestone-achievement.entity';
+import { FlatSaleInfo } from './milestone/entities/flat-sale-info.entity';
+import { MilestoneCollectionTranche } from './milestone/entities/milestone-collection-tranche.entity';
+import { SnagList } from './snag/entities/snag-list.entity';
+import { SnagRound } from './snag/entities/snag-round.entity';
+import { SnagItem } from './snag/entities/snag-item.entity';
+import { SnagPhoto } from './snag/entities/snag-photo.entity';
+import { SnagReleaseApproval } from './snag/entities/snag-release-approval.entity';
+import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-step.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -244,9 +261,13 @@ import { PluginAuditLog } from './plugins/entities/plugin-audit-log.entity';
         QualityRoom,
         BuildingLineCoordinate,
         IssueTrackerDepartment,
+        IssueTrackerDeptProjectConfig,
         IssueTrackerTag,
         IssueTrackerIssue,
         IssueTrackerStep,
+        IssueTrackerActivityLog,
+        IssueTrackerAttachment,
+        IssueTrackerNotification,
         QualityActivityList,
         QualityActivity,
         QualitySequenceEdge,
@@ -310,6 +331,17 @@ import { PluginAuditLog } from './plugins/entities/plugin-audit-log.entity';
         PluginWorkflow,
         PluginSetting,
         PluginAuditLog,
+        CustomerMilestoneTemplate,
+        CustomerMilestoneTemplateActivityLink,
+        CustomerMilestoneAchievement,
+        FlatSaleInfo,
+        MilestoneCollectionTranche,
+        SnagList,
+        SnagRound,
+        SnagItem,
+        SnagPhoto,
+        SnagReleaseApproval,
+        SnagReleaseApprovalStep,
       ],
       synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
       migrationsRun: process.env.TYPEORM_MIGRATIONS_RUN === 'true',
@@ -349,6 +381,8 @@ import { PluginAuditLog } from './plugins/entities/plugin-audit-log.entity';
     DashboardBuilderModule,
     NotificationsModule,
     PluginsModule,
+    MilestoneModule,
+    SnagModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

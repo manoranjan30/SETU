@@ -7,7 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
-import { ActivityObservation } from './entities/activity-observation.entity';
+import {
+  ActivityObservation,
+  ActivityObservationStatus,
+} from './entities/activity-observation.entity';
 import {
   QualityInspection,
   InspectionStatus,
@@ -40,6 +43,7 @@ import {
   WorkflowRunStatus,
 } from './entities/inspection-workflow-run.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
+import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
 
 export interface CreateInspectionDto {
   projectId: number;
@@ -117,6 +121,7 @@ export class QualityInspectionService {
     private readonly inspectionWorkflowService: InspectionWorkflowService,
     private readonly pushService: PushNotificationService,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
+    private readonly customerMilestoneService: CustomerMilestoneService,
   ) {}
 
   private deriveInspectionProcessCode(dto: CreateInspectionDto): string {
@@ -955,6 +960,11 @@ export class QualityInspectionService {
           `Cannot approve RFI. All checklist items must be verified and checked. (Failed: ${failingItems.length} items)`,
         );
       }
+
+      await this.ensureNoUnresolvedInspectionObservations(
+        inspection.id,
+        'Close all observations linked to this RFI before approving it.',
+      );
     }
 
     inspection.status = dto.status;
@@ -1050,26 +1060,12 @@ export class QualityInspectionService {
       );
     }
 
-    const openStageObservations = await this.observationRepo.count({
-      where: {
-        inspectionId,
-        stageId,
-      } as any,
-    });
-    if (openStageObservations > 0) {
-      const unresolvedStageObservations = await this.observationRepo.count({
-        where: {
-          inspectionId,
-          stageId,
-          status: In(['PENDING', 'RECTIFIED', 'RESOLVED']),
-        } as any,
-      });
-      if (unresolvedStageObservations > 0) {
-        throw new BadRequestException(
-          'Close all observations linked to this stage before approving it.',
-        );
-      }
-    }
+    await this.ensureNoUnresolvedInspectionObservations(
+      inspectionId,
+      'Close all observations linked to this RFI before approving further.',
+      stageId,
+      'Close all observations linked to this stage before approving it.',
+    );
 
     const run = await this.inspectionWorkflowService.getOrStartWorkflowState(
       inspectionId,
@@ -1201,6 +1197,10 @@ export class QualityInspectionService {
     if (approvedStages === totalStages && totalStages > 0 && run) {
       run.status = WorkflowRunStatus.COMPLETED as any;
       await this.workflowRunRepo.save(run);
+    }
+
+    if (inspection.status === InspectionStatus.APPROVED) {
+      await this.customerMilestoneService.handleQualityApproval(inspection);
     }
 
     // Audit
@@ -1349,6 +1349,11 @@ export class QualityInspectionService {
         'A digital signature is required for final approval',
       );
     }
+
+    await this.ensureNoUnresolvedInspectionObservations(
+      inspectionId,
+      'Close all observations linked to this RFI before giving final approval.',
+    );
 
     const signer = await this.getApproverSnapshot(inspection.projectId, userId);
 
@@ -1616,13 +1621,66 @@ export class QualityInspectionService {
     return null;
   }
 
+  private getUnresolvedObservationStatuses() {
+    return [
+      ActivityObservationStatus.PENDING,
+      ActivityObservationStatus.RECTIFIED,
+      ActivityObservationStatus.RESOLVED,
+    ];
+  }
+
+  private async ensureNoUnresolvedInspectionObservations(
+    inspectionId: number,
+    inspectionMessage: string,
+    stageId?: number,
+    stageMessage?: string,
+  ) {
+    const unresolvedInspectionObservations = await this.observationRepo.count({
+      where: {
+        inspectionId,
+        status: In(this.getUnresolvedObservationStatuses()),
+      } as any,
+    });
+
+    if (unresolvedInspectionObservations === 0) {
+      return;
+    }
+
+    if (typeof stageId === 'number') {
+      const unresolvedStageObservations = await this.observationRepo.count({
+        where: {
+          inspectionId,
+          stageId,
+          status: In(this.getUnresolvedObservationStatuses()),
+        } as any,
+      });
+
+      if (unresolvedStageObservations > 0) {
+        throw new BadRequestException(
+          stageMessage || inspectionMessage,
+        );
+      }
+    }
+
+    throw new BadRequestException(inspectionMessage);
+  }
+
   private async attachWorkflowSummary<T extends { id: number; stages?: any[] }>(
     inspections: T[],
   ): Promise<(T & Record<string, any>)[]> {
     if (inspections.length === 0) return [];
 
+    const inspectionIds = inspections.map((inspection) => inspection.id);
+    const activityIds = Array.from(
+      new Set(
+        inspections
+          .map((inspection: any) => inspection.activityId)
+          .filter((activityId): activityId is number => typeof activityId === 'number'),
+      ),
+    );
+
     const stageRecords = await this.stageRepo.find({
-      where: { inspectionId: In(inspections.map((inspection) => inspection.id)) } as any,
+      where: { inspectionId: In(inspectionIds) } as any,
       relations: ['signatures'],
     });
     const stageMap = new Map<number, any[]>();
@@ -1633,12 +1691,45 @@ export class QualityInspectionService {
     }
 
     const runs = await this.workflowRunRepo.find({
-      where: { inspectionId: In(inspections.map((inspection) => inspection.id)) },
+      where: { inspectionId: In(inspectionIds) },
       relations: ['steps', 'steps.signature'],
     });
 
     const runMap = new Map<number, InspectionWorkflowRun>(
       runs.map((run) => [run.inspectionId, run]),
+    );
+
+    const [observationCountRows, legacyObservationCountRows] = await Promise.all([
+      this.observationRepo
+        .createQueryBuilder('observation')
+        .select('observation.inspectionId', 'inspectionId')
+        .addSelect('COUNT(*)', 'count')
+        .where('observation.inspectionId IN (:...inspectionIds)', { inspectionIds })
+        .andWhere('observation.status IN (:...statuses)', {
+          statuses: this.getUnresolvedObservationStatuses(),
+        })
+        .groupBy('observation.inspectionId')
+        .getRawMany<{ inspectionId: string; count: string }>(),
+      activityIds.length
+        ? this.observationRepo
+            .createQueryBuilder('observation')
+            .select('observation.activityId', 'activityId')
+            .addSelect('COUNT(*)', 'count')
+            .where('observation.activityId IN (:...activityIds)', { activityIds })
+            .andWhere('observation.inspectionId IS NULL')
+            .andWhere('observation.status IN (:...statuses)', {
+              statuses: this.getUnresolvedObservationStatuses(),
+            })
+            .groupBy('observation.activityId')
+            .getRawMany<{ activityId: string; count: string }>()
+        : Promise.resolve([] as Array<{ activityId: string; count: string }>),
+    ]);
+
+    const observationCountByInspectionId = new Map<number, number>(
+      observationCountRows.map((row) => [Number(row.inspectionId), Number(row.count)]),
+    );
+    const legacyObservationCountByActivityId = new Map<number, number>(
+      legacyObservationCountRows.map((row) => [Number(row.activityId), Number(row.count)]),
     );
 
     const actorMapByProject = new Map<number, Map<number, any>>();
@@ -1751,6 +1842,10 @@ export class QualityInspectionService {
 
       return {
         ...inspection,
+        pendingObservationCount:
+          observationCountByInspectionId.get(inspection.id) || 0,
+        legacyActivityObservationCount:
+          legacyObservationCountByActivityId.get((inspection as any).activityId) || 0,
         stages,
         workflowCurrentLevel: run?.currentStepOrder || null,
         workflowTotalLevels: sortedSteps.length,
