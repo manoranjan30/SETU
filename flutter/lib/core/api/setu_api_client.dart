@@ -677,10 +677,22 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  /// Returns all QC observations raised against a specific activity.
-  Future<List<dynamic>> getActivityObservations(int activityId) async {
-    final response =
-        await _dio.get(ApiEndpoints.activityObservations(activityId));
+  /// Returns QC observations raised against a specific activity.
+  ///
+  /// Pass [inspectionId] to scope results to a single inspection
+  /// (e.g. a specific floor/unit RFI). Without it, the backend returns
+  /// all observations for the activity across every floor and unit.
+  Future<List<dynamic>> getActivityObservations(
+    int activityId, {
+    int? inspectionId,
+  }) async {
+    final queryParams = inspectionId != null
+        ? <String, dynamic>{'inspectionId': inspectionId}
+        : null;
+    final response = await _dio.get(
+      ApiEndpoints.activityObservations(activityId),
+      queryParameters: queryParams,
+    );
     return response.data;
   }
 
@@ -691,6 +703,8 @@ class SetuApiClient {
   Future<Map<String, dynamic>> raiseObservation({
     required int activityId,
     required String observationText,
+    required int inspectionId,
+    int? stageId,
     String? type,
     List<String>? photos,
   }) async {
@@ -698,6 +712,8 @@ class SetuApiClient {
       ApiEndpoints.raiseObservation(activityId),
       data: {
         'observationText': observationText,
+        'inspectionId': inspectionId,
+        if (stageId != null) 'stageId': stageId,
         if (type != null) 'type': type,
         // Only send photos array if it is non-empty to avoid unnecessary payload.
         if (photos != null && photos.isNotEmpty) 'photos': photos,

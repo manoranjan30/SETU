@@ -337,6 +337,15 @@ export class IssueTrackerService {
       departments = globalDepts
         .filter((d) => tagDeptIds.has(d.id) && configuredDeptIds.has(d.id))
         .map((d) => ({ id: d.id, name: d.name, slaDays: d.defaultSlaDays }));
+
+      // If project-specific default flow is not configured yet, fall back to
+      // the selected tags' departments in the global sequence order so issue
+      // creation still works out of the box.
+      if (!departments.length) {
+        departments = globalDepts
+          .filter((d) => tagDeptIds.has(d.id))
+          .map((d) => ({ id: d.id, name: d.name, slaDays: d.defaultSlaDays }));
+      }
     }
 
     if (!departments.length) {

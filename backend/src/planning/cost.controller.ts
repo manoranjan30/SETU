@@ -21,28 +21,45 @@ export class CostController {
     return this.costService.getSummary(projectId);
   }
 
+  /** GET /planning/projects/:projectId/cost/schedule-versions */
+  @Get('schedule-versions')
+  getScheduleVersions(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.costService.getScheduleVersions(projectId);
+  }
+
   /**
    * GET /planning/projects/:projectId/cost/cashflow
-   * Query params: fromMonth=2026-04, toMonth=2027-03
+   * Query params: fromMonth=2026-04, toMonth=2027-03, versionId=5
    */
   @Get('cashflow')
   getCashflow(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Query('fromMonth') fromMonth?: string,
     @Query('toMonth') toMonth?: string,
+    @Query('versionId') versionId?: string,
   ) {
-    return this.costService.getCashflow(projectId, fromMonth, toMonth);
+    return this.costService.getCashflow(
+      projectId,
+      fromMonth,
+      toMonth,
+      versionId ? parseInt(versionId) : undefined,
+    );
   }
 
   /**
    * GET /planning/projects/:projectId/cost/aop
-   * Query param: fy=2025 (financial year start, Apr 2025 – Mar 2026)
+   * Query params: fy=2025, versionId=5
    */
   @Get('aop')
   getAop(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Query('fy') fy?: string,
+    @Query('versionId') versionId?: string,
   ) {
-    return this.costService.getAop(projectId, fy ? parseInt(fy) : undefined);
+    return this.costService.getAop(
+      projectId,
+      fy ? parseInt(fy) : undefined,
+      versionId ? parseInt(versionId) : undefined,
+    );
   }
 }

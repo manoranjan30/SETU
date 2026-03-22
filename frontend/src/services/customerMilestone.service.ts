@@ -26,17 +26,27 @@ export interface FlatSaleInfoDto {
   remarks?: string;
 }
 
+export interface MilestoneScopeUnit {
+  unitId: number;
+  unitName: string;
+}
+
+export interface MilestoneScopeFloor {
+  floorId: number;
+  floorName: string;
+  units: MilestoneScopeUnit[];
+}
+
 export interface MilestoneScopeTower {
   towerId: number;
   towerName: string;
-  floors: Array<{
-    floorId: number;
-    floorName: string;
-    units: Array<{
-      unitId: number;
-      unitName: string;
-    }>;
-  }>;
+  floors: MilestoneScopeFloor[];
+}
+
+export interface MilestoneScopeBlock {
+  blockId: number;
+  blockName: string;
+  towers: MilestoneScopeTower[];
 }
 
 export interface ScheduleActivityOption {
@@ -46,6 +56,23 @@ export interface ScheduleActivityOption {
   plannedFinish?: string | null;
   actualFinish?: string | null;
   status?: string | null;
+  wbsNodeId?: number | null;
+  wbsNode?: {
+    id: number;
+    wbsCode: string;
+    wbsName: string;
+    parentId?: number | null;
+  } | null;
+  locations?: Array<{
+    epsNodeId: number;
+    blockId?: number | null;
+    blockName?: string | null;
+    towerId?: number | null;
+    towerName?: string | null;
+    floorId?: number | null;
+    floorName?: string | null;
+    pathLabel: string;
+  }>;
 }
 
 export const customerMilestoneService = {
@@ -57,7 +84,7 @@ export const customerMilestoneService = {
     (await api.put(`/milestones/${projectId}/templates/${id}`, body)).data,
   deleteTemplate: async (projectId: number, id: number) =>
     (await api.delete(`/milestones/${projectId}/templates/${id}`)).data,
-  listScopeOptions: async (projectId: number): Promise<MilestoneScopeTower[]> =>
+  listScopeOptions: async (projectId: number): Promise<MilestoneScopeBlock[]> =>
     (await api.get(`/milestones/${projectId}/scope-options`)).data,
   listScheduleActivities: async (projectId: number): Promise<ScheduleActivityOption[]> =>
     (await api.get(`/milestones/${projectId}/schedule-activities`)).data,

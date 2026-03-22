@@ -1,4 +1,3 @@
-import React from "react";
 import clsx from "clsx";
 import type { CostSummary } from "../../../types/cost";
 
@@ -98,8 +97,12 @@ interface Props {
 export default function CostSummaryView({ data }: Props) {
   const overrun = data.totalContractValue - data.totalBudget;
 
+  const byWbs = data.byWbs ?? [];
+  const byVendor = data.byVendor ?? [];
+  const woStatusBreakdown = data.woStatusBreakdown ?? [];
+
   // WBS slices for donut
-  const wbsSlices: DonutSlice[] = data.byWbs
+  const wbsSlices: DonutSlice[] = byWbs
     .filter((w) => w.level === 1 && w.contractValue > 0)
     .map((w, i) => ({
       label: w.name,
@@ -114,12 +117,12 @@ export default function CostSummaryView({ data }: Props) {
     CLOSED: "#6b7280",
     CANCELLED: "#ef4444",
   };
-  const statusSlices: DonutSlice[] = data.woStatusBreakdown.map((s) => ({
+  const statusSlices: DonutSlice[] = woStatusBreakdown.map((s) => ({
     label: s.status,
     value: s.totalAmount,
     color: statusColors[s.status] ?? "#94a3b8",
   }));
-  const totalStatusAmt = data.woStatusBreakdown.reduce(
+  const totalStatusAmt = woStatusBreakdown.reduce(
     (s, r) => s + r.totalAmount,
     0,
   );
@@ -231,7 +234,7 @@ export default function CostSummaryView({ data }: Props) {
           <div className="flex items-center gap-6">
             <DonutChart slices={statusSlices} total={totalStatusAmt} />
             <div className="flex-1 space-y-2">
-              {data.woStatusBreakdown.map((s, i) => (
+              {woStatusBreakdown.map((s, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -273,7 +276,7 @@ export default function CostSummaryView({ data }: Props) {
               </tr>
             </thead>
             <tbody>
-              {data.byVendor
+              {byVendor
                 .sort((a, b) => b.contractValue - a.contractValue)
                 .map((v, i) => {
                   const pct =
@@ -326,7 +329,7 @@ export default function CostSummaryView({ data }: Props) {
                 })}
             </tbody>
           </table>
-          {data.byVendor.length === 0 && (
+          {byVendor.length === 0 && (
             <div className="text-center py-8 text-text-muted text-sm">
               No vendor data available
             </div>

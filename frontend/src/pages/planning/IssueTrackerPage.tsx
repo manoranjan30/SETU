@@ -196,10 +196,10 @@ function IssueDetailModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+      <div className="flex h-full w-full flex-col bg-surface-card shadow-2xl">
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-border shrink-0">
+        <div className="flex items-start justify-between border-b border-border shrink-0 px-5 py-4 md:px-7 md:py-5">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-mono text-text-muted">{issue.issueNumber || `#${issue.id}`}</span>
@@ -254,7 +254,7 @@ function IssueDetailModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 md:p-7 space-y-4 bg-surface-base">
           {activeTab === "flow" && (
             <>
               {/* Description */}
@@ -390,7 +390,8 @@ function IssueDetailModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -499,6 +500,11 @@ function CreateIssueModal({
       });
       onCreated();
       onClose();
+    } catch (error: any) {
+      const message = Array.isArray(error?.response?.data?.message)
+        ? error.response.data.message.join(", ")
+        : error?.response?.data?.message || "Failed to create issue.";
+      alert(message);
     } finally {
       setSubmitting(false);
     }
@@ -516,15 +522,30 @@ function CreateIssueModal({
   }, [tags]);
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface-card rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between mb-4 shrink-0">
-          <h2 className="font-semibold text-text-primary">Create Issue</h2>
-          <button onClick={onClose}><X size={18} /></button>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+      <div className="flex h-full w-full flex-col bg-surface-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4 md:px-7 md:py-5 shrink-0">
+          <div>
+            <h2 className="text-xl font-semibold text-text-primary">Create Issue</h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Fill the full issue details without losing visibility of tags,
+              dates, and departments.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border-default p-2 text-text-muted transition-colors hover:bg-surface-raised hover:text-text-primary"
+          >
+            <X size={18} />
+          </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 space-y-4">
-          <div>
+        <div className="overflow-y-auto flex-1 bg-surface-base p-5 md:p-7">
+          <div className="mx-auto grid w-full max-w-7xl gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-border-default bg-surface-card p-5 shadow-sm">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-text-secondary mb-1">Title *</label>
             <input
               className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface-page focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -533,17 +554,17 @@ function CreateIssueModal({
               placeholder="Brief issue title"
             />
           </div>
-          <div>
+          <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-text-secondary mb-1">Description</label>
             <textarea
               className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface-page focus:outline-none resize-none"
-              rows={3}
+              rows={10}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               placeholder="Detailed description of the issue"
             />
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 lg:col-span-2">
             <div className="flex-1">
               <label className="block text-xs font-medium text-text-secondary mb-1">Priority</label>
               <select
@@ -567,35 +588,45 @@ function CreateIssueModal({
               />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-2">Tags * (select which departments are involved)</label>
-            {[...tagsByDept.entries()].map(([deptId, { deptName, tags: deptTags }]) => (
-              <div key={deptId} className="mb-3">
-                <p className="text-xs text-text-muted font-medium mb-1">{deptName}</p>
-                <div className="flex gap-2 flex-wrap">
-                  {deptTags.map((tag) => (
-                    <button
-                      key={tag.id}
-                      onClick={() => toggleTag(tag.id)}
-                      className={`text-xs px-3 py-1 rounded-full border transition-all ${
-                        form.tagIds.includes(tag.id)
-                          ? "bg-blue-600 text-white border-blue-600"
-                          : "bg-surface-page text-text-secondary border-border hover:border-blue-400"
-                      }`}
-                    >
-                      {tag.name}
-                    </button>
-                  ))}
                 </div>
               </div>
-            ))}
-            {tagsByDept.size === 0 && (
-              <p className="text-xs text-text-muted">No tags defined for this project. Set up tags in the Tags tab first.</p>
-            )}
+            </div>
+
+            <aside className="rounded-2xl border border-border-default bg-surface-card p-5 shadow-sm">
+              <label className="block text-xs font-medium text-text-secondary mb-2">Tags * (select which departments are involved)</label>
+              <div className="max-h-[52vh] overflow-y-auto pr-1">
+                {[...tagsByDept.entries()].map(([deptId, { deptName, tags: deptTags }]) => (
+                  <div key={deptId} className="mb-4 last:mb-0">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{deptName}</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {deptTags.map((tag) => (
+                        <button
+                          key={tag.id}
+                          onClick={() => toggleTag(tag.id)}
+                          className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+                            form.tagIds.includes(tag.id)
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-surface-page text-text-secondary border-border hover:border-blue-400"
+                          }`}
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {tagsByDept.size === 0 && (
+                  <p className="text-xs text-text-muted">No tags defined for this project. Set up tags in the Tags tab first.</p>
+                )}
+              </div>
+              <div className="mt-4 rounded-xl bg-surface-base p-3 text-xs text-text-muted">
+                Selected departments: <span className="font-semibold text-text-primary">{form.tagIds.length}</span>
+              </div>
+            </aside>
           </div>
         </div>
 
-        <div className="flex gap-3 mt-5 shrink-0">
+        <div className="flex gap-3 border-t border-border bg-surface-card px-5 py-4 md:px-7 shrink-0">
           <button
             onClick={submit}
             disabled={submitting || !form.title.trim() || !form.tagIds.length}
@@ -808,6 +839,27 @@ export default function IssueTrackerPage() {
   const [tagForm, setTagForm] = useState({ name: "", description: "", departmentId: "" });
   const [tagLoading, setTagLoading] = useState(false);
 
+  const visibleKanbanColumns = useMemo(() => {
+    const departmentColumns = kanbanData.filter(
+      (column) => column.key !== "COMPLETED" && column.key !== "CLOSED",
+    );
+    const activeDepartmentColumns = departmentColumns.filter(
+      (column) => column.issues.length > 0,
+    );
+    const emptyDepartmentColumns = departmentColumns.filter(
+      (column) => column.issues.length === 0,
+    );
+    const trailingColumns = kanbanData.filter(
+      (column) => column.key === "COMPLETED" || column.key === "CLOSED",
+    );
+
+    return [
+      ...activeDepartmentColumns,
+      ...trailingColumns,
+      ...emptyDepartmentColumns,
+    ];
+  }, [kanbanData]);
+
   useEffect(() => { if (pId) loadAll(); }, [pId]);
 
   const loadAll = async () => {
@@ -976,8 +1028,8 @@ export default function IssueTrackerPage() {
               <div className="flex items-center justify-center h-64 text-text-muted">Loading…</div>
             ) : viewMode === "kanban" ? (
               // Kanban view
-              <div className="flex gap-4 p-6 overflow-x-auto h-full">
-                {kanbanData.map((col) => (
+              <div className="flex gap-4 p-6 overflow-x-auto h-full items-start">
+                {visibleKanbanColumns.map((col) => (
                   <div key={col.key} className="shrink-0 w-72">
                     <div
                       className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg"
