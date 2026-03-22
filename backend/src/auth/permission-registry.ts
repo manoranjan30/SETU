@@ -437,6 +437,13 @@ export const DASHBOARD_PERMISSIONS: PermissionDef[] = [
     R,
   ),
   perm('DASHBOARD.ALERTS.READ', 'View Alerts', 'DASHBOARD', R),
+  perm(
+    'DASHBOARD.EXECUTIVE.READ',
+    'View Executive Portfolio Dashboard',
+    'DASHBOARD',
+    R,
+    SYS,
+  ),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════

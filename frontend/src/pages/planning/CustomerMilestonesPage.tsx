@@ -1,15 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { CopyPlus, RefreshCw } from "lucide-react";
 import { useParams } from "react-router-dom";
+import MilestoneActivityPickerModal from "../../components/planning/MilestoneActivityPickerModal";
 import {
   customerMilestoneService,
   type CustomerMilestoneTemplateDto,
   type FlatSaleInfoDto,
-  type MilestoneScopeTower,
+  type MilestoneScopeBlock,
   type ScheduleActivityOption,
 } from "../../services/customerMilestone.service";
 
 type MilestoneTab = "templates" | "sales" | "tracker";
+
+interface ActivityTreeFloor {
+  floorId: number;
+  floorName: string;
+  activities: ScheduleActivityOption[];
+}
+
+interface ActivityTreeTower {
+  towerId: number;
+  towerName: string;
+  floors: Map<number, ActivityTreeFloor>;
+  activities: ScheduleActivityOption[];
+}
+
+interface ActivityTreeBlock {
+  blockId: number;
+  blockName: string;
+  towers: Map<number, ActivityTreeTower>;
+  activities: ScheduleActivityOption[];
+}
+
+interface ActivityTreeTowerView {
+  towerId: number;
+  towerName: string;
+  floors: ActivityTreeFloor[];
+  activities: ScheduleActivityOption[];
+}
+
+interface ActivityTreeBlockView {
+  blockId: number;
+  blockName: string;
+  towers: ActivityTreeTowerView[];
+  activities: ScheduleActivityOption[];
+}
 
 const blankTemplate = (): CustomerMilestoneTemplateDto => ({
   name: "",
@@ -42,38 +77,78 @@ export default function CustomerMilestonesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [flatSales, setFlatSales] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
-  const [scopeOptions, setScopeOptions] = useState<MilestoneScopeTower[]>([]);
+  const [scopeOptions, setScopeOptions] = useState<MilestoneScopeBlock[]>([]);
   const [activityOptions, setActivityOptions] = useState<ScheduleActivityOption[]>([]);
   const [templateForm, setTemplateForm] = useState<CustomerMilestoneTemplateDto>(blankTemplate());
   const [saleForm, setSaleForm] = useState<FlatSaleInfoDto>(blankSale());
   const [loading, setLoading] = useState(false);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [baseLoadError, setBaseLoadError] = useState<string | null>(null);
+  const [trackerLoadError, setTrackerLoadError] = useState<string | null>(null);
   const [cloneSourceTowerId, setCloneSourceTowerId] = useState<number | "">("");
   const [cloneTargetTowerIds, setCloneTargetTowerIds] = useState<number[]>([]);
+  const [activitySearch, setActivitySearch] = useState("");
+  const [isActivityPickerOpen, setIsActivityPickerOpen] = useState(false);
 
-  const loadAll = async () => {
+  const loadBaseData = async () => {
     if (!pId) return;
     setLoading(true);
+    setBaseLoadError(null);
     try {
-      const [templateData, saleData, unitData, scopeData, scheduleData] = await Promise.all([
+      const [templateData, saleData, scopeData, scheduleData] = await Promise.allSettled([
         customerMilestoneService.listTemplates(pId),
         customerMilestoneService.listFlatSales(pId),
-        customerMilestoneService.listUnitMilestones(pId),
         customerMilestoneService.listScopeOptions(pId),
         customerMilestoneService.listScheduleActivities(pId),
       ]);
-      setTemplates(templateData);
-      setFlatSales(saleData);
-      setUnits(unitData);
-      setScopeOptions(scopeData);
-      setActivityOptions(scheduleData);
+
+      if (templateData.status === "fulfilled") setTemplates(templateData.value);
+      if (saleData.status === "fulfilled") setFlatSales(saleData.value);
+      if (scopeData.status === "fulfilled") setScopeOptions(scopeData.value);
+      if (scheduleData.status === "fulfilled") setActivityOptions(scheduleData.value);
+
+      const failedSections = [
+        templateData.status === "rejected" ? "templates" : null,
+        saleData.status === "rejected" ? "flat sales" : null,
+        scopeData.status === "rejected" ? "scope options" : null,
+        scheduleData.status === "rejected" ? "schedule activities" : null,
+      ].filter(Boolean);
+
+      if (failedSections.length > 0) {
+        setBaseLoadError(`Could not load ${failedSections.join(", ")}.`);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const loadTrackerData = async () => {
+    if (!pId) return;
+    setTrackerLoading(true);
+    setTrackerLoadError(null);
+    try {
+      const unitData = await customerMilestoneService.listUnitMilestones(pId);
+      setUnits(unitData);
+    } catch (error: any) {
+      setTrackerLoadError(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to load unit milestones right now.",
+      );
+    } finally {
+      setTrackerLoading(false);
+    }
+  };
+
   useEffect(() => {
-    void loadAll();
+    void loadBaseData();
   }, [pId]);
+
+  useEffect(() => {
+    if (tab === "tracker") {
+      void loadTrackerData();
+    }
+  }, [pId, tab]);
 
   const totalDue = useMemo(
     () =>
@@ -94,30 +169,114 @@ export default function CustomerMilestonesPage() {
     [units],
   );
 
-  const selectedScopeOptions = useMemo(() => {
-    if (templateForm.applicableTo === "tower") {
-      return scopeOptions.map((tower) => ({ id: tower.towerId, label: tower.towerName }));
-    }
-    if (templateForm.applicableTo === "floor") {
-      return scopeOptions.flatMap((tower) =>
-        tower.floors.map((floor) => ({
-          id: floor.floorId,
-          label: `${tower.towerName} / ${floor.floorName}`,
+  const towerOptions = useMemo(
+    () =>
+      scopeOptions.flatMap((block) =>
+        block.towers.map((tower) => ({
+          ...tower,
+          blockId: block.blockId,
+          blockName: block.blockName,
+          label: `${block.blockName} / ${tower.towerName}`,
         })),
-      );
+      ),
+    [scopeOptions],
+  );
+
+  const activityTree = useMemo(() => {
+    const normalizedSearch = activitySearch.trim().toLowerCase();
+    const filteredActivities = activityOptions.filter((activity) => {
+      if (!normalizedSearch) return true;
+      const haystack = [
+        activity.activityCode,
+        activity.activityName,
+        ...(activity.locations || []).map((location) => location.pathLabel),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+
+    const generalActivities: ScheduleActivityOption[] = [];
+    const blockMap = new Map<number, ActivityTreeBlock>();
+
+    for (const activity of filteredActivities) {
+      const locations = activity.locations || [];
+      if (!locations.length) {
+        generalActivities.push(activity);
+        continue;
+      }
+
+      for (const location of locations) {
+        const blockId = location.blockId ?? -1;
+        const blockName = location.blockName || "General";
+        const towerId = location.towerId ?? -1;
+        const towerName = location.towerName || "General";
+
+        const blockEntry: ActivityTreeBlock =
+          blockMap.get(blockId) ||
+          {
+            blockId,
+            blockName,
+            towers: new Map(),
+            activities: [],
+          };
+
+        const towerEntry: ActivityTreeTower =
+          blockEntry.towers.get(towerId) ||
+          {
+            towerId,
+            towerName,
+            floors: new Map(),
+            activities: [],
+          };
+
+        if (location.floorId) {
+          const floorEntry: ActivityTreeFloor =
+            towerEntry.floors.get(location.floorId) ||
+            {
+              floorId: location.floorId,
+              floorName: location.floorName || "Floor",
+              activities: [],
+            };
+          if (!floorEntry.activities.some((item: ScheduleActivityOption) => item.id === activity.id)) {
+            floorEntry.activities.push(activity);
+          }
+          towerEntry.floors.set(location.floorId, floorEntry);
+        } else if (!towerEntry.activities.some((item: ScheduleActivityOption) => item.id === activity.id)) {
+          towerEntry.activities.push(activity);
+        }
+
+        blockEntry.towers.set(towerId, towerEntry);
+        blockMap.set(blockId, blockEntry);
+      }
     }
-    if (templateForm.applicableTo === "unit") {
-      return scopeOptions.flatMap((tower) =>
-        tower.floors.flatMap((floor) =>
-          floor.units.map((unit) => ({
-            id: unit.unitId,
-            label: `${tower.towerName} / ${floor.floorName} / ${unit.unitName}`,
-          })),
-        ),
+
+    const sortByLabel = <T,>(items: T[], getLabel: (item: T) => string) =>
+      [...items].sort((a, b) =>
+        getLabel(a).localeCompare(getLabel(b), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
       );
-    }
-    return [];
-  }, [scopeOptions, templateForm.applicableTo]);
+
+    const blocks: ActivityTreeBlockView[] = sortByLabel(
+      Array.from(blockMap.values()),
+      (block) => block.blockName,
+    ).map((block) => ({
+      ...block,
+      towers: sortByLabel(Array.from(block.towers.values()), (tower) => tower.towerName).map(
+        (tower) => ({
+          ...tower,
+          floors: sortByLabel(Array.from(tower.floors.values()), (floor) => floor.floorName),
+        }),
+      ),
+    }));
+
+    return {
+      blocks,
+      generalActivities: sortByLabel(generalActivities, (activity) => activity.activityName),
+    };
+  }, [activityOptions, activitySearch]);
 
   const toggleScopeId = (id: number) => {
     setTemplateForm((prev) => {
@@ -154,7 +313,8 @@ export default function CustomerMilestonesPage() {
       await customerMilestoneService.createTemplate(pId, payload);
     }
     setTemplateForm(blankTemplate());
-    await loadAll();
+    await loadBaseData();
+    if (tab === "tracker") await loadTrackerData();
   };
 
   const saveFlatSale = async () => {
@@ -165,7 +325,8 @@ export default function CustomerMilestonesPage() {
       await customerMilestoneService.createFlatSale(pId, saleForm);
     }
     setSaleForm(blankSale());
-    await loadAll();
+    await loadBaseData();
+    if (tab === "tracker") await loadTrackerData();
   };
 
   const cloneTemplates = async () => {
@@ -178,8 +339,29 @@ export default function CustomerMilestonesPage() {
     });
     setCloneSourceTowerId("");
     setCloneTargetTowerIds([]);
-    await loadAll();
+    await loadBaseData();
+    if (tab === "tracker") await loadTrackerData();
   };
+
+  const renderActivityCheckbox = (activity: ScheduleActivityOption, key: string) => (
+    <label key={key} className="flex items-start gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm">
+      <input
+        type="checkbox"
+        checked={(templateForm.linkedActivityIds || []).includes(activity.id)}
+        onChange={() => toggleLinkedActivity(activity.id)}
+        className="mt-1"
+      />
+      <span>
+        <span className="font-medium text-text-primary">
+          {activity.activityCode} - {activity.activityName}
+        </span>
+        <span className="block text-xs text-text-muted">
+          Planned: {activity.plannedFinish || "Not in active working schedule"} • Actual:{" "}
+          {activity.actualFinish || "Not completed"}
+        </span>
+      </span>
+    </label>
+  );
 
   return (
     <div className="space-y-4">
@@ -192,12 +374,23 @@ export default function CustomerMilestonesPage() {
           </p>
         </div>
         <button
-          onClick={() => void loadAll()}
+          onClick={() => {
+            void loadBaseData();
+            if (tab === "tracker") {
+              void loadTrackerData();
+            }
+          }}
           className="flex items-center gap-2 rounded-lg border border-border-default px-3 py-2 text-sm"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
       </div>
+
+      {baseLoadError ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {baseLoadError}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-border-default bg-surface-base p-4">
@@ -285,17 +478,80 @@ export default function CustomerMilestonesPage() {
                     <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                       Applies To
                     </div>
-                    <div className="mt-2 max-h-48 space-y-2 overflow-auto">
-                      {selectedScopeOptions.map((option) => (
-                        <label key={option.id} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={(templateForm.applicableEpsIds || []).includes(option.id)}
-                            onChange={() => toggleScopeId(option.id)}
-                          />
-                          <span>{option.label}</span>
-                        </label>
+                    <div className="mt-2 max-h-64 space-y-2 overflow-auto rounded-lg border border-border-subtle p-2">
+                      {scopeOptions.map((block) => (
+                        <details key={block.blockId} open className="rounded-lg border border-border-subtle bg-surface-base">
+                          <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-text-primary">
+                            Block {block.blockName}
+                          </summary>
+                          <div className="space-y-2 px-3 pb-3">
+                            {block.towers.map((tower) => (
+                              <details key={tower.towerId} open className="rounded-lg border border-border-subtle bg-surface-card">
+                                <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-text-primary">
+                                  {templateForm.applicableTo === "tower" ? (
+                                    <label className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={(templateForm.applicableEpsIds || []).includes(tower.towerId)}
+                                        onChange={() => toggleScopeId(tower.towerId)}
+                                      />
+                                      <span>{tower.towerName}</span>
+                                    </label>
+                                  ) : (
+                                    <span>{tower.towerName}</span>
+                                  )}
+                                </summary>
+                                {templateForm.applicableTo !== "tower" ? (
+                                  <div className="space-y-2 px-3 pb-3">
+                                    {tower.floors.map((floor) => (
+                                      <details key={floor.floorId} open className="rounded-lg border border-border-subtle bg-surface-base">
+                                        <summary className="cursor-pointer px-3 py-2 text-sm text-text-primary">
+                                          {templateForm.applicableTo === "floor" ? (
+                                            <label className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                              <input
+                                                type="checkbox"
+                                                checked={(templateForm.applicableEpsIds || []).includes(floor.floorId)}
+                                                onChange={() => toggleScopeId(floor.floorId)}
+                                              />
+                                              <span>{floor.floorName}</span>
+                                            </label>
+                                          ) : (
+                                            <span>{floor.floorName}</span>
+                                          )}
+                                        </summary>
+                                        {templateForm.applicableTo === "unit" ? (
+                                          <div className="space-y-2 px-3 pb-3">
+                                            {floor.units.map((unit) => (
+                                              <label key={unit.unitId} className="flex items-center gap-2 text-sm">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={(templateForm.applicableEpsIds || []).includes(unit.unitId)}
+                                                  onChange={() => toggleScopeId(unit.unitId)}
+                                                />
+                                                <span>{unit.unitName}</span>
+                                              </label>
+                                            ))}
+                                            {!floor.units.length ? (
+                                              <div className="text-xs text-text-muted">
+                                                No quality units mapped for this floor yet.
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                      </details>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </details>
+                            ))}
+                          </div>
+                        </details>
                       ))}
+                      {!scopeOptions.length ? (
+                        <div className="text-sm text-text-muted">
+                          No EPS block or tower structure is available for this project yet.
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
@@ -304,8 +560,101 @@ export default function CustomerMilestonesPage() {
                   <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                     Linked Schedule Activities
                   </div>
-                  <div className="mt-2 max-h-56 space-y-2 overflow-auto">
-                    {activityOptions.map((activity) => (
+                  <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-base px-3 py-3">
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {templateForm.linkedActivityIds?.length
+                          ? `${templateForm.linkedActivityIds.length} working schedule activities linked`
+                          : "No schedule activities linked yet"}
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        Open the full working schedule tree, select one or more activities, and link them to this milestone.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsActivityPickerOpen(true)}
+                      className="rounded-lg border border-border-default px-3 py-2 text-sm font-medium"
+                    >
+                      Link to Working Schedule
+                    </button>
+                  </div>
+                  {templateForm.linkedActivityIds?.length ? (
+                    <div className="mt-2 max-h-40 space-y-2 overflow-auto rounded-lg border border-border-subtle p-2">
+                      {activityOptions
+                        .filter((activity) => (templateForm.linkedActivityIds || []).includes(activity.id))
+                        .map((activity) => (
+                          <div key={activity.id} className="rounded-lg border border-border-subtle px-3 py-2 text-sm">
+                            <div className="font-medium text-text-primary">
+                              {activity.activityCode} - {activity.activityName}
+                            </div>
+                            <div className="text-xs text-text-muted">
+                              Planned: {activity.plannedFinish || "Not in working schedule"} • Actual: {activity.actualFinish || "Not completed"}
+                            </div>
+                            {activity.locations?.length ? (
+                              <div className="text-xs text-text-muted">
+                                {activity.locations.map((location) => location.pathLabel).join(", ")}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
+                  <input
+                    value={activitySearch}
+                    onChange={(e) => setActivitySearch(e.target.value)}
+                    placeholder="Search block, tower, floor, code, or activity"
+                    className="hidden"
+                  />
+                  <div className="hidden">
+                    {activityTree.blocks.map((block) => (
+                      <details key={`activity-block-${block.blockId}`} open className="rounded-lg border border-border-subtle bg-surface-base">
+                        <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-text-primary">
+                          Block {block.blockName}
+                        </summary>
+                        <div className="space-y-2 px-3 pb-3">
+                          {block.towers.map((tower) => (
+                            <details key={`activity-tower-${block.blockId}-${tower.towerId}`} open className="rounded-lg border border-border-subtle bg-surface-card">
+                              <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-text-primary">
+                                {tower.towerName}
+                              </summary>
+                              <div className="space-y-2 px-3 pb-3">
+                                {tower.activities.map((activity) =>
+                                  renderActivityCheckbox(activity, `tower-${tower.towerId}-${activity.id}`),
+                                )}
+                                {tower.floors.map((floor) => (
+                                  <details key={`activity-floor-${tower.towerId}-${floor.floorId}`} open className="rounded-lg border border-border-subtle bg-surface-base">
+                                    <summary className="cursor-pointer px-3 py-2 text-sm text-text-primary">
+                                      Floor {floor.floorName}
+                                    </summary>
+                                    <div className="space-y-2 px-3 pb-3">
+                                      {floor.activities.map((activity) =>
+                                        renderActivityCheckbox(activity, `floor-${floor.floorId}-${activity.id}`),
+                                      )}
+                                    </div>
+                                  </details>
+                                ))}
+                              </div>
+                            </details>
+                          ))}
+                        </div>
+                      </details>
+                    ))}
+                    {activityTree.generalActivities.length > 0 ? (
+                      <details open className="rounded-lg border border-border-subtle bg-surface-base">
+                        <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-text-primary">
+                          General / Unmapped Activities
+                        </summary>
+                        <div className="space-y-2 px-3 pb-3">
+                          {activityTree.generalActivities.map((activity) =>
+                            renderActivityCheckbox(activity, `general-${activity.id}`),
+                          )}
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                  <div className="hidden">
+                    {([] as ScheduleActivityOption[]).map((activity) => (
                       <label key={activity.id} className="flex items-start gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm">
                         <input
                           type="checkbox"
@@ -375,9 +724,9 @@ export default function CustomerMilestonesPage() {
                     className="rounded-lg border border-border-default px-3 py-2"
                   >
                     <option value="">Select source tower</option>
-                    {scopeOptions.map((tower) => (
+                    {towerOptions.map((tower) => (
                       <option key={tower.towerId} value={tower.towerId}>
-                        {tower.towerName}
+                        {tower.label}
                       </option>
                     ))}
                   </select>
@@ -386,7 +735,7 @@ export default function CustomerMilestonesPage() {
                       Target Towers
                     </div>
                     <div className="mt-2 space-y-2">
-                      {scopeOptions
+                      {towerOptions
                         .filter((tower) => tower.towerId !== cloneSourceTowerId)
                         .map((tower) => (
                           <label key={tower.towerId} className="flex items-center gap-2 text-sm">
@@ -401,7 +750,7 @@ export default function CustomerMilestonesPage() {
                                 )
                               }
                             />
-                            {tower.towerName}
+                            {tower.label}
                           </label>
                         ))}
                     </div>
@@ -458,7 +807,7 @@ export default function CustomerMilestonesPage() {
                             onClick={async () => {
                               if (!confirm("Delete template?")) return;
                               await customerMilestoneService.deleteTemplate(pId, template.id);
-                              await loadAll();
+                              await loadBaseData();
                             }}
                             className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600"
                           >
@@ -517,10 +866,20 @@ export default function CustomerMilestonesPage() {
         <div className="rounded-2xl border border-border-default bg-surface-card p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold">Unit Milestone Tracker</h2>
-            <button onClick={async () => { await customerMilestoneService.recompute(pId); await loadAll(); }} className="rounded-lg border border-border-default px-3 py-2 text-sm">
+            <button onClick={async () => { await customerMilestoneService.recompute(pId); await loadTrackerData(); }} className="rounded-lg border border-border-default px-3 py-2 text-sm">
               Recompute Triggers
             </button>
           </div>
+          {trackerLoadError ? (
+            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {trackerLoadError}
+            </div>
+          ) : null}
+          {trackerLoading ? (
+            <div className="rounded-xl border border-dashed border-border-default p-6 text-sm text-text-muted">
+              Loading unit milestones...
+            </div>
+          ) : (
           <div className="space-y-4">
             {units.map((unit) => (
               <div key={`${unit.qualityUnitId}-${unit.unitLabel}`} className="rounded-xl border border-border-subtle p-4">
@@ -557,17 +916,17 @@ export default function CustomerMilestonesPage() {
                             if (!completionDate) return;
                             const remarks = prompt("Remarks", "Manual completion override") || undefined;
                             await customerMilestoneService.manualTrigger(pId, milestone.id, { completionDate, remarks });
-                            await loadAll();
+                            await loadTrackerData();
                           }} className="rounded-lg border border-border-default px-3 py-1.5 text-xs">Mark Complete</button>
                         )}
                         {(milestone.status === "triggered" || milestone.status === "partially_collected") && (
-                          <button onClick={async () => { const invoiceNumber = prompt("Invoice number"); if (!invoiceNumber) return; const invoiceDate = prompt("Invoice date (YYYY-MM-DD)", new Date().toISOString().slice(0,10)); if (!invoiceDate) return; await customerMilestoneService.raiseInvoice(pId, milestone.id, { invoiceNumber, invoiceDate }); await loadAll(); }} className="rounded-lg border border-border-default px-3 py-1.5 text-xs">Raise Invoice</button>
+                          <button onClick={async () => { const invoiceNumber = prompt("Invoice number"); if (!invoiceNumber) return; const invoiceDate = prompt("Invoice date (YYYY-MM-DD)", new Date().toISOString().slice(0,10)); if (!invoiceDate) return; await customerMilestoneService.raiseInvoice(pId, milestone.id, { invoiceNumber, invoiceDate }); await loadTrackerData(); }} className="rounded-lg border border-border-default px-3 py-1.5 text-xs">Raise Invoice</button>
                         )}
                         {(milestone.status === "invoice_raised" || milestone.status === "partially_collected") && (
-                          <button onClick={async () => { const amount = prompt("Amount received"); if (!amount) return; const receivedDate = prompt("Received date (YYYY-MM-DD)", new Date().toISOString().slice(0,10)); if (!receivedDate) return; await customerMilestoneService.addTranche(pId, milestone.id, { amount, receivedDate, paymentMode: "neft", referenceNumber: `REF-${Date.now()}` }); await loadAll(); }} className="rounded-lg border border-border-default px-3 py-1.5 text-xs">Add Collection</button>
+                          <button onClick={async () => { const amount = prompt("Amount received"); if (!amount) return; const receivedDate = prompt("Received date (YYYY-MM-DD)", new Date().toISOString().slice(0,10)); if (!receivedDate) return; await customerMilestoneService.addTranche(pId, milestone.id, { amount, receivedDate, paymentMode: "neft", referenceNumber: `REF-${Date.now()}` }); await loadTrackerData(); }} className="rounded-lg border border-border-default px-3 py-1.5 text-xs">Add Collection</button>
                         )}
                         {milestone.status !== "waived" && (
-                          <button onClick={async () => { await customerMilestoneService.updateStatus(pId, milestone.id, { status: "waived" }); await loadAll(); }} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-600">Waive</button>
+                          <button onClick={async () => { await customerMilestoneService.updateStatus(pId, milestone.id, { status: "waived" }); await loadTrackerData(); }} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-600">Waive</button>
                         )}
                       </div>
                     </div>
@@ -575,14 +934,31 @@ export default function CustomerMilestonesPage() {
                 </div>
               </div>
             ))}
-            {!units.length && !loading && (
+            {!units.length && !trackerLoading && (
               <div className="rounded-xl border border-dashed border-border-default p-6 text-sm text-text-muted">
                 No unit milestones available yet. Add sale info and milestone templates first.
               </div>
             )}
           </div>
+          )}
         </div>
       )}
+
+      <MilestoneActivityPickerModal
+        isOpen={isActivityPickerOpen}
+        onClose={() => setIsActivityPickerOpen(false)}
+        onConfirm={(activityIds) => {
+          setTemplateForm((prev) => ({
+            ...prev,
+            linkedActivityIds: activityIds,
+            triggerType: activityIds.length > 0 ? "PROGRESS_PCT" : "MANUAL",
+          }));
+          setIsActivityPickerOpen(false);
+        }}
+        activities={activityOptions}
+        selectedActivityIds={templateForm.linkedActivityIds || []}
+        projectId={pId}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import clsx from "clsx";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { AopNode } from "../../../types/cost";
@@ -228,9 +228,10 @@ function AopRow({ node, months, depth, collapsed, toggleCollapse, viewMode }: Ro
 interface Props {
   data: AopNode[];
   defaultFy?: number;
+  onFyChange?: (fy: number) => void;
 }
 
-export default function CostAopTableView({ data, defaultFy }: Props) {
+export default function CostAopTableView({ data, defaultFy, onFyChange }: Props) {
   const currentFY = useMemo(() => {
     const now = new Date();
     return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -242,20 +243,17 @@ export default function CostAopTableView({ data, defaultFy }: Props) {
 
   const months = useMemo(() => FY_MONTHS(selectedFY), [selectedFY]);
 
-  // Build available FY list from data
+  // Show a fixed range: 2 years back to 5 years forward from current FY
   const availableFYs = useMemo(() => {
-    const years = new Set<number>();
-    const extractYears = (node: AopNode) => {
-      for (const mk of Object.keys(node.months)) {
-        const [y, m] = mk.split("-").map(Number);
-        years.add(m >= 4 ? y : y - 1);
-      }
-      node.children?.forEach(extractYears);
-    };
-    data.forEach(extractYears);
-    if (!years.size) years.add(currentFY);
-    return Array.from(years).sort();
-  }, [data, currentFY]);
+    const years: number[] = [];
+    for (let y = currentFY - 2; y <= currentFY + 5; y++) years.push(y);
+    return years;
+  }, [currentFY]);
+
+  const handleFyChange = (fy: number) => {
+    setSelectedFY(fy);
+    onFyChange?.(fy);
+  };
 
   const toggleCollapse = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -285,7 +283,7 @@ export default function CostAopTableView({ data, defaultFy }: Props) {
           <span className="text-xs font-medium text-text-muted">Financial Year:</span>
           <select
             value={selectedFY}
-            onChange={(e) => setSelectedFY(Number(e.target.value))}
+            onChange={(e) => handleFyChange(Number(e.target.value))}
             className="text-sm border border-border-default rounded-lg px-3 py-1.5 bg-surface-card focus:ring-2 focus:ring-primary"
           >
             {availableFYs.map((fy) => (

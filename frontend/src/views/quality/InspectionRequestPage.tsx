@@ -217,29 +217,28 @@ export default function InspectionRequestPage() {
           setActivities(acts);
           setInspections(inspectionRows);
 
-          // Fetch observation streams only for activities that actually have
-          // unresolved inspection-scoped or legacy observations.
-          const obsPromises = acts
-            .filter((a) => {
-              if (a.status === "PENDING_OBSERVATION") return true;
-              return inspectionRows.some(
-                (inspection) =>
-                  inspection.activityId === a.id &&
-                  ((inspection.pendingObservationCount || 0) > 0 ||
-                    (inspection.legacyActivityObservationCount || 0) > 0),
-              );
-            })
-            .map((a) =>
+          // Fetch only the observations that belong to RFIs raised for the
+          // currently selected scope. Shared activity templates must not leak
+          // observations across floor / unit / GO boundaries.
+          const obsPromises = inspectionRows
+            .filter((inspection) => (inspection.pendingObservationCount || 0) > 0)
+            .map((inspection) =>
               api
-                .get(`/quality/activities/${a.id}/observations`)
-                .then((res) => ({ id: a.id, obs: res.data })),
+                .get(`/quality/activities/${inspection.activityId}/observations`, {
+                  params: { inspectionId: inspection.id },
+                })
+                .then((res) => ({
+                  activityId: inspection.activityId,
+                  inspectionId: inspection.id,
+                  obs: res.data as ActivityObservation[],
+                })),
             );
 
           Promise.all(obsPromises)
             .then((results) => {
               const oMap: Record<number, ActivityObservation[]> = {};
               results.forEach((r) => {
-                oMap[r.id] = r.obs;
+                oMap[r.activityId] = [...(oMap[r.activityId] || []), ...r.obs];
               });
               setObservationsMap(oMap);
             })
@@ -301,9 +300,7 @@ export default function InspectionRequestPage() {
         (observationsMap[act.id] || []).some((obs) => obs.status !== "CLOSED") ||
         inspections.some(
           (inspection) =>
-            inspection.activityId === act.id &&
-            ((inspection.pendingObservationCount || 0) > 0 ||
-              (inspection.legacyActivityObservationCount || 0) > 0),
+            inspection.activityId === act.id && (inspection.pendingObservationCount || 0) > 0,
         );
       let state:
         | "LOCKED"
@@ -334,7 +331,7 @@ export default function InspectionRequestPage() {
         }
       }
 
-      if (act.status === "PENDING_OBSERVATION" || hasUnresolvedObservations) {
+      if (hasUnresolvedObservations) {
         state = "PENDING_OBSERVATION" as any;
       } else if (insp) {
         state = insp.status as any;
@@ -354,7 +351,7 @@ export default function InspectionRequestPage() {
 
   const getObservationScopeLabel = (inspection?: QualityInspection) => {
     if (!inspection) {
-      return "Legacy activity observation";
+      return "RFI observation";
     }
 
     const bits = [
@@ -378,31 +375,20 @@ export default function InspectionRequestPage() {
       const grouped = new Map<string, ObservationGroup>();
 
       list.forEach((observation) => {
-        if (typeof observation.inspectionId === "number") {
-          const inspection = inspectionsById.get(observation.inspectionId);
-          const groupKey = `inspection-${observation.inspectionId}`;
-          if (!grouped.has(groupKey)) {
-            grouped.set(groupKey, {
-              key: groupKey,
-              label: getObservationScopeLabel(inspection),
-              inspection,
-              observations: [],
-            });
-          }
-          grouped.get(groupKey)!.observations.push(observation);
+        if (typeof observation.inspectionId !== "number") {
           return;
         }
-
-        const legacyKey = "legacy-unassigned";
-        if (!grouped.has(legacyKey)) {
-          grouped.set(legacyKey, {
-            key: legacyKey,
-            label: "Legacy unassigned observation",
+        const inspection = inspectionsById.get(observation.inspectionId);
+        const groupKey = `inspection-${observation.inspectionId}`;
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, {
+            key: groupKey,
+            label: getObservationScopeLabel(inspection),
+            inspection,
             observations: [],
-            isLegacy: true,
           });
         }
-        grouped.get(legacyKey)!.observations.push(observation);
+        grouped.get(groupKey)!.observations.push(observation);
       });
 
       groups[activityId] = Array.from(grouped.values()).sort((a, b) => {

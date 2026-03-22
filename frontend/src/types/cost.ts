@@ -1,5 +1,15 @@
 // ─── Cost Module Types ────────────────────────────────────────────────────────
 
+export interface ScheduleVersionOption {
+  id: number;
+  code: string;
+  type: 'BASELINE' | 'REVISED' | 'WORKING';
+  isActive: boolean;
+  isLocked: boolean;
+  remarks: string | null;
+  createdOn: string;
+}
+
 export interface WbsCostRow {
   id: number;
   code: string;

@@ -440,26 +440,61 @@ class QualityRequestBloc
         inspListMap.putIfAbsent(i.activityId, () => []).add(i);
       }
 
-      // Only fetch observations for activities that are PENDING_OBSERVATION
-      // (i.e. the QC inspector raised an issue). Skip others to save bandwidth.
-      final pendingObsActivities =
-          activities.where((a) => a.status == 'PENDING_OBSERVATION').toList();
+      // Fetch observations scoped to the specific inspection (floor/unit RFI).
+      // Trigger: inspections with pendingObservationCount > 0, NOT the
+      // activity-level status field (which is project-wide and leaks across floors).
+      //
+      // For unit-wise activities one inspection exists per unit — we fetch each
+      // separately so observations from Unit 101 never appear in Unit 102's view.
+      final pendingObsInspections = <QualityInspection>[];
+      for (final inspList in inspListMap.values) {
+        for (final insp in inspList) {
+          if (insp.pendingObservationCount > 0) {
+            pendingObsInspections.add(insp);
+          }
+        }
+      }
+      // Also include activities whose backend status is still PENDING_OBSERVATION
+      // but whose inspection record hasn't refreshed the count yet (stale cache).
+      for (final a in activities) {
+        if (a.status == 'PENDING_OBSERVATION') {
+          final hasInsp = inspListMap[a.id]?.isNotEmpty ?? false;
+          if (!hasInsp) {
+            // No inspection found — fall back to un-scoped fetch for this activity.
+            pendingObsInspections.add(QualityInspection(
+              id: -1,
+              activityId: a.id,
+              status: InspectionStatus.pending,
+              requestDate: '',
+            ));
+          }
+        }
+      }
+
       final obsMap = <int, List<ActivityObservation>>{};
-      if (pendingObsActivities.isNotEmpty) {
-        // Fire all observation fetches in parallel; individual failures are
-        // swallowed with catchError so one bad activity doesn't fail the page.
-        final obsFutures = pendingObsActivities.map((a) => _apiClient
-            .getActivityObservations(a.id)
-            .then((raw) => MapEntry(
-                a.id,
-                raw
-                    .map((e) => ActivityObservation.fromJson(
-                        e as Map<String, dynamic>))
-                    .toList()))
-            .catchError((_) => MapEntry(a.id, <ActivityObservation>[])));
+      if (pendingObsInspections.isNotEmpty) {
+        // Each inspection maps to exactly one floor/unit — pass its id so the
+        // backend filters observations to that inspection only.
+        final obsFutures = pendingObsInspections.map((insp) {
+          final inspId = insp.id > 0 ? insp.id : null;
+          return _apiClient
+              .getActivityObservations(insp.activityId, inspectionId: inspId)
+              .then((raw) => MapEntry(
+                    insp.activityId,
+                    raw
+                        .map((e) => ActivityObservation.fromJson(
+                            e as Map<String, dynamic>))
+                        .toList()))
+              .catchError((_) => MapEntry(insp.activityId, <ActivityObservation>[]));
+        });
         final obsResults = await Future.wait(obsFutures);
         for (final e in obsResults) {
-          obsMap[e.key] = e.value;
+          // Merge results when multiple unit inspections map to the same activityId.
+          obsMap.update(
+            e.key,
+            (existing) => [...existing, ...e.value],
+            ifAbsent: () => e.value,
+          );
         }
       }
 
@@ -559,9 +594,18 @@ class QualityRequestBloc
         }
       }
 
-      // Compute the display status from the merged context
+      // Compute the display status from the merged context.
+      //
+      // Pending-observation detection: prefer inspection-level
+      // pendingObservationCount so the flag is scoped to this floor/unit.
+      // Fall back to activity.status == 'PENDING_OBSERVATION' for backward
+      // compat when the inspection record hasn't refreshed its count yet.
+      final allInspForAct = inspListMap[act.id] ?? [];
+      final hasPendingObs = act.status == 'PENDING_OBSERVATION' ||
+          allInspForAct.any((i) => i.pendingObservationCount > 0);
+
       ActivityDisplayStatus displayStatus;
-      if (act.status == 'PENDING_OBSERVATION') {
+      if (hasPendingObs) {
         // QC inspector raised a defect — the site engineer must rectify it.
         displayStatus = ActivityDisplayStatus.pendingObservation;
       } else if (inspection != null) {

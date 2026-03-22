@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import type { CashflowMonth } from "../../../types/cost";
 
@@ -209,7 +209,7 @@ function CashflowChart({ months, showBudget, showActual }: ChartProps) {
               strokeWidth={2}
               strokeLinejoin="round"
             />
-            {months.map((m, i) => {
+            {months.map((_, i) => {
               const [px, py] = cumPoints[i].split(",").map(Number);
               return (
                 <circle key={i} cx={px} cy={py} r={3} fill="#f59e0b" />

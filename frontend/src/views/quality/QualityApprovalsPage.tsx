@@ -372,27 +372,19 @@ export default function QualityApprovalsPage() {
           setInspectionDetail(detailRes.data);
           setWorkflowState(flowRes.data);
 
-          // Fetch only the observations scoped to this inspection.
+          // Fetch only the observations scoped to this inspection. Checklist
+          // templates may be shared, but each RFI flow must stay unique to its
+          // own floor / unit / GO context.
           if (detailRes.data.activityId) {
             try {
-              const [inspectionObsRes, legacyObsRes] = await Promise.all([
-                api.get(
-                  `/quality/activities/${detailRes.data.activityId}/observations`,
-                  {
-                    params: { inspectionId: detailRes.data.id },
-                  },
-                ),
-                api
-                  .get(
-                    `/quality/activities/${detailRes.data.activityId}/observations`,
-                    {
-                      params: { unassignedOnly: true },
-                    },
-                  )
-                  .catch(() => ({ data: [] })),
-              ]);
+              const inspectionObsRes = await api.get(
+                `/quality/activities/${detailRes.data.activityId}/observations`,
+                {
+                  params: { inspectionId: detailRes.data.id },
+                },
+              );
               setObservations(inspectionObsRes.data || []);
-              setLegacyObservations(legacyObsRes.data || []);
+              setLegacyObservations([]);
             } catch (err) {
               console.error("Failed to load observations", err);
               setObservations([]);
@@ -1384,12 +1376,6 @@ export default function QualityApprovalsPage() {
                             <span className="text-red-700 inline-flex items-center gap-1">
                               <Siren className="w-3 h-3" />{" "}
                               {insp.pendingObservationCount} obs
-                            </span>
-                          )}
-                          {(insp.legacyActivityObservationCount || 0) > 0 && (
-                            <span className="text-amber-700 inline-flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              {insp.legacyActivityObservationCount} legacy
                             </span>
                           )}
                         </div>

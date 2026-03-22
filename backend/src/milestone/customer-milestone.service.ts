@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { EpsNode } from '../eps/eps.entity';
+import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { QualityFloorStructure } from '../quality/entities/quality-floor-structure.entity';
 import { QualityInspection } from '../quality/entities/quality-inspection.entity';
@@ -45,6 +45,23 @@ type UnitContext = {
   floorName: string;
   towerId: number;
   towerName: string;
+};
+
+type ScopeBlockNode = {
+  blockId: number;
+  blockName: string;
+  towers: Array<{
+    towerId: number;
+    towerName: string;
+    floors: Array<{
+      floorId: number;
+      floorName: string;
+      units: Array<{
+        unitId: number;
+        unitName: string;
+      }>;
+    }>;
+  }>;
 };
 
 @Injectable()
@@ -104,41 +121,23 @@ export class CustomerMilestoneService {
   }
 
   async listScopeOptions(projectId: number) {
-    const floors = await this.floorStructureRepo.find({
-      where: { projectId },
-      relations: ['tower', 'floor', 'units'],
-      order: {
-        tower: { order: 'ASC', name: 'ASC' },
-        floor: { order: 'ASC', name: 'ASC' },
-        units: { sequence: 'ASC', name: 'ASC' },
-      },
-    });
+    const [projectNodes, floors] = await Promise.all([
+      this.getProjectEpsNodes(projectId),
+      this.floorStructureRepo.find({
+        where: { projectId },
+        relations: ['units'],
+        order: {
+          units: { sequence: 'ASC', name: 'ASC' },
+        },
+      }),
+    ]);
 
-    const towers = new Map<number, any>();
-    for (const floor of floors) {
-      const towerId = floor.towerId;
-      const current =
-        towers.get(towerId) ||
-        {
-          towerId,
-          towerName: floor.tower?.name || `Tower ${towerId}`,
-          floors: [],
-        };
-      current.floors.push({
-        floorId: floor.floorId,
-        floorName: floor.floor?.name || `Floor ${floor.floorId}`,
-        units: (floor.units || []).map((unit) => ({
-          unitId: unit.id,
-          unitName: unit.name,
-        })),
-      });
-      towers.set(towerId, current);
-    }
-
-    return Array.from(towers.values());
+    return this.buildScopeTree(projectNodes, floors);
   }
 
   async listScheduleActivities(projectId: number) {
+    const projectNodes = await this.getProjectEpsNodes(projectId);
+    const nodesById = new Map(projectNodes.map((node) => [node.id, node]));
     const activeVersion = await this.scheduleVersionRepo.findOne({
       where: {
         projectId,
@@ -151,34 +150,81 @@ export class CustomerMilestoneService {
     const activities = activeVersion
       ? await this.activityVersionRepo.find({
           where: { versionId: activeVersion.id },
-          relations: ['activity'],
+          relations: ['activity', 'activity.wbsNode'],
           order: { finishDate: 'ASC', id: 'ASC' },
         })
       : [];
 
-    if (activities.length > 0) {
-      return activities.map((item) => ({
-        id: item.activityId,
-        activityCode: item.activity?.activityCode || '',
-        activityName: item.activity?.activityName || '',
-        plannedFinish: item.finishDate,
-        actualFinish: item.activity?.finishDateActual || null,
-        status: item.activity?.status || null,
-      }));
+    const activityRows =
+      activities.length > 0
+        ? activities.map((item) => ({
+            id: item.activityId,
+            activityCode: item.activity?.activityCode || '',
+            activityName: item.activity?.activityName || '',
+            plannedFinish: item.finishDate,
+            actualFinish: item.activity?.finishDateActual || null,
+            status: item.activity?.status || null,
+            wbsNodeId: item.activity?.wbsNode?.id ?? null,
+            wbsNode: item.activity?.wbsNode
+              ? {
+                  id: item.activity.wbsNode.id,
+                  wbsCode: item.activity.wbsNode.wbsCode,
+                  wbsName: item.activity.wbsNode.wbsName,
+                  parentId: item.activity.wbsNode.parentId,
+                }
+              : null,
+          }))
+        : (
+            await this.activityRepo.find({
+              where: { projectId },
+              relations: ['wbsNode'],
+              order: { finishDatePlanned: 'ASC', id: 'ASC' },
+            })
+          ).map((item) => ({
+            id: item.id,
+            activityCode: item.activityCode,
+            activityName: item.activityName,
+            plannedFinish: item.finishDatePlanned,
+            actualFinish: item.finishDateActual,
+            status: item.status,
+            wbsNodeId: item.wbsNode?.id ?? null,
+            wbsNode: item.wbsNode
+              ? {
+                  id: item.wbsNode.id,
+                  wbsCode: item.wbsNode.wbsCode,
+                  wbsName: item.wbsNode.wbsName,
+                  parentId: item.wbsNode.parentId,
+                }
+              : null,
+          }));
+
+    const activityIds = activityRows.map((item) => item.id);
+    const plans =
+      activityIds.length > 0
+        ? await this.planRepo.find({
+            where: { projectId, activityId: In(activityIds) },
+            relations: ['boqItem'],
+          })
+        : [];
+
+    const locationsByActivityId = new Map<number, any[]>();
+    for (const plan of plans) {
+      const rawNodeId = plan.boqItem?.epsNodeId;
+      if (!rawNodeId) continue;
+      const location = this.resolveActivityLocation(rawNodeId, nodesById, projectId);
+      if (!location) continue;
+      const current = locationsByActivityId.get(plan.activityId) || [];
+      if (!current.some((item) => item.epsNodeId === location.epsNodeId)) {
+        current.push(location);
+        current.sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, undefined, { numeric: true }));
+        locationsByActivityId.set(plan.activityId, current);
+      }
     }
 
-    const masterActivities = await this.activityRepo.find({
-      where: { projectId },
-      order: { finishDatePlanned: 'ASC', id: 'ASC' },
-    });
-    return masterActivities.map((item) => ({
-      id: item.id,
-      activityCode: item.activityCode,
-      activityName: item.activityName,
-      plannedFinish: item.finishDatePlanned,
-      actualFinish: item.finishDateActual,
-      status: item.status,
-    }));
+      return activityRows.map((item) => ({
+        ...item,
+        locations: locationsByActivityId.get(item.id) || [],
+      }));
   }
 
   async upsertTemplate(
@@ -682,6 +728,114 @@ export class CustomerMilestoneService {
         towerName: floor.tower?.name || `Tower ${floor.towerId}`,
       })),
     );
+  }
+
+  private async getProjectEpsNodes(projectId: number) {
+    const allNodes = await this.epsRepo.find({
+      order: { order: 'ASC', id: 'ASC' },
+    });
+    const allowedIds = new Set<number>();
+    const queue = [projectId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      if (allowedIds.has(currentId)) continue;
+      allowedIds.add(currentId);
+      allNodes
+        .filter((node) => node.parentId === currentId)
+        .forEach((node) => queue.push(node.id));
+    }
+
+    return allNodes.filter((node) => allowedIds.has(node.id));
+  }
+
+  private buildScopeTree(
+    projectNodes: EpsNode[],
+    floorStructures: QualityFloorStructure[],
+  ): ScopeBlockNode[] {
+    const nodesById = new Map(projectNodes.map((node) => [node.id, node]));
+    const unitsByFloorId = new Map<number, Array<{ unitId: number; unitName: string }>>();
+
+    for (const floor of floorStructures) {
+      unitsByFloorId.set(
+        floor.floorId,
+        (floor.units || [])
+          .map((unit) => ({
+            unitId: unit.id,
+            unitName: unit.name,
+          }))
+          .sort((a, b) => a.unitName.localeCompare(b.unitName, undefined, { numeric: true })),
+      );
+    }
+
+    const sortNodes = (a: EpsNode, b: EpsNode) =>
+      (a.order ?? 0) - (b.order ?? 0) ||
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
+    const blockNodes = projectNodes
+      .filter((node) => node.type === EpsNodeType.BLOCK)
+      .sort(sortNodes);
+
+    return blockNodes.map((block) => {
+      const towerNodes = projectNodes
+        .filter((node) => node.parentId === block.id && node.type === EpsNodeType.TOWER)
+        .sort(sortNodes);
+
+      return {
+        blockId: block.id,
+        blockName: block.name,
+        towers: towerNodes.map((tower) => {
+          const floorNodes = projectNodes
+            .filter((node) => node.parentId === tower.id && node.type === EpsNodeType.FLOOR)
+            .sort(sortNodes);
+
+          return {
+            towerId: tower.id,
+            towerName: tower.name,
+            floors: floorNodes.map((floor) => ({
+              floorId: floor.id,
+              floorName: floor.name,
+              units: unitsByFloorId.get(floor.id) || [],
+            })),
+          };
+        }),
+      };
+    });
+  }
+
+  private resolveActivityLocation(
+    epsNodeId: number,
+    nodesById: Map<number, EpsNode>,
+    projectId: number,
+  ) {
+    let current = nodesById.get(epsNodeId);
+    let block: EpsNode | null = null;
+    let tower: EpsNode | null = null;
+    let floor: EpsNode | null = null;
+
+    while (current) {
+      if (current.type === EpsNodeType.FLOOR && !floor) floor = current;
+      if (current.type === EpsNodeType.TOWER && !tower) tower = current;
+      if (current.type === EpsNodeType.BLOCK && !block) block = current;
+      if (current.id === projectId || current.type === EpsNodeType.PROJECT) break;
+      current = current.parentId ? nodesById.get(current.parentId) : undefined;
+    }
+
+    if (!tower && !block && !floor) {
+      return null;
+    }
+
+    const pathParts = [block?.name, tower?.name, floor?.name].filter(Boolean);
+    return {
+      epsNodeId,
+      blockId: block?.id ?? null,
+      blockName: block?.name ?? null,
+      towerId: tower?.id ?? null,
+      towerName: tower?.name ?? null,
+      floorId: floor?.id ?? null,
+      floorName: floor?.name ?? null,
+      pathLabel: pathParts.length > 0 ? pathParts.join(' / ') : 'General',
+    };
   }
 
   private isTemplateApplicable(template: CustomerMilestoneTemplate, unit: UnitContext) {

@@ -16,6 +16,46 @@ interface Props {
   projectId: number;
 }
 
+const TRAINING_TYPE_OPTIONS = [
+  { value: "INDUCTION", label: "Induction" },
+  { value: "TBT", label: "Tool Box Talk" },
+  { value: "SPECIALIZED", label: "Specialized" },
+  { value: "FIRE_DRILL", label: "Fire Drill" },
+  { value: "FIRST_AID", label: "First Aid" },
+] as const;
+
+const TRAINING_TYPE_LABELS = Object.fromEntries(
+  TRAINING_TYPE_OPTIONS.map((option) => [option.value, option.label]),
+) as Record<string, string>;
+
+const normalizeTrainingType = (value?: string | null) => {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+  const legacyMap: Record<string, string> = {
+    SAFETY: "INDUCTION",
+    HEALTH: "FIRST_AID",
+    ENVIRONMENT: "SPECIALIZED",
+    QUALITY: "SPECIALIZED",
+    OTHER: "SPECIALIZED",
+    TOOL_BOX_TALK: "TBT",
+    TOOLBOX_TALK: "TBT",
+    FIREDRILL: "FIRE_DRILL",
+    FIRSTAID: "FIRST_AID",
+  };
+
+  if (TRAINING_TYPE_LABELS[normalized]) {
+    return normalized;
+  }
+
+  return legacyMap[normalized] || "INDUCTION";
+};
+
+const getTrainingTypeLabel = (value?: string | null) =>
+  TRAINING_TYPE_LABELS[normalizeTrainingType(value)] || "Induction";
+
 const EhsTraining: React.FC<Props> = ({ projectId }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +68,7 @@ const EhsTraining: React.FC<Props> = ({ projectId }) => {
 
   const [formData, setFormData] = useState({
     topic: "",
-    trainingType: "Safety", // Default to Safety
+    trainingType: "INDUCTION",
     status: "Completed",
     date: new Date().toISOString().slice(0, 10),
     attendeeCount: 0,
@@ -79,7 +119,7 @@ const EhsTraining: React.FC<Props> = ({ projectId }) => {
   const handleEdit = (item: any) => {
     setFormData({
       topic: item.topic,
-      trainingType: item.trainingType || "Safety",
+      trainingType: normalizeTrainingType(item.trainingType),
       status: item.status || "Completed",
       date: item.date,
       attendeeCount: item.attendeeCount,
@@ -125,7 +165,7 @@ const EhsTraining: React.FC<Props> = ({ projectId }) => {
   const resetForm = () => {
     setFormData({
       topic: "",
-      trainingType: "Safety",
+      trainingType: "INDUCTION",
       status: "Completed",
       date: new Date().toISOString().slice(0, 10),
       attendeeCount: 0,
@@ -227,9 +267,9 @@ const EhsTraining: React.FC<Props> = ({ projectId }) => {
                   <td className="px-6 py-4 font-medium text-text-primary">
                     {item.topic}
                   </td>
-                  <td className="px-6 py-4">
+                      <td className="px-6 py-4">
                     <span className="bg-surface-raised text-text-secondary px-2 py-1 rounded text-xs font-medium">
-                      {item.trainingType}
+                      {getTrainingTypeLabel(item.trainingType)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -320,11 +360,11 @@ const EhsTraining: React.FC<Props> = ({ projectId }) => {
                       setFormData({ ...formData, trainingType: e.target.value })
                     }
                   >
-                    <option value="Safety">Safety</option>
-                    <option value="Health">Health</option>
-                    <option value="Environment">Environment</option>
-                    <option value="Quality">Quality</option>
-                    <option value="Other">Other</option>
+                    {TRAINING_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>

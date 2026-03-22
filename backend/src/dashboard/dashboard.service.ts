@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, LessThanOrEqual, Between } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
-import { SiteObservation, SiteObservationSeverity, SiteObservationStatus } from '../quality/entities/site-observation.entity';
+import {
+  SiteObservation,
+  SiteObservationSeverity,
+  SiteObservationStatus,
+} from '../quality/entities/site-observation.entity';
 import { EhsIncident, IncidentType } from '../ehs/entities/ehs-incident.entity';
 import { EhsManhours } from '../ehs/entities/ehs-manhours.entity';
+import { DashboardExecutiveService } from './dashboard-executive.service';
 
 @Injectable()
 export class DashboardService {
@@ -29,18 +34,16 @@ export class DashboardService {
     private readonly incidentRepo: Repository<EhsIncident>,
     @InjectRepository(EhsManhours)
     private readonly manhoursRepo: Repository<EhsManhours>,
+    private readonly executiveService: DashboardExecutiveService,
   ) {}
 
   async getPortfolioSummary() {
-    // Get all projects
     const projects = await this.epsRepo.find({
       where: { type: EpsNodeType.PROJECT },
       relations: ['projectProfile'],
     });
 
     const totalProjects = projects.length;
-
-    // Get activities with schedule issues
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -51,7 +54,6 @@ export class DashboardService {
       .andWhere('a.percentComplete < 100')
       .getCount();
 
-    // This week's burn (from Progress)
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - 7);
 
@@ -64,7 +66,6 @@ export class DashboardService {
       .select('COALESCE(SUM(p.executedQty * sub.rate), 0)', 'total')
       .getRawOne();
 
-    // Today's manpower
     const todayLabor = await this.laborRepo
       .createQueryBuilder('l')
       .where('l.date = :today', { today: today.toISOString().split('T')[0] })
@@ -73,14 +74,14 @@ export class DashboardService {
 
     return {
       totalProjects,
-      activeProjects: totalProjects, // Can refine based on status
+      activeProjects: totalProjects,
       delayedActivities,
       thisWeekBurn: Number(weekProgress?.total || 0),
       todayManpower: Number(todayLabor?.total || 0),
-      projects: projects.map((p) => ({
-        id: p.id,
-        name: p.name,
-        status: p.projectProfile?.projectStatus || 'ACTIVE',
+      projects: projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        status: project.projectProfile?.projectStatus || 'ACTIVE',
       })),
     };
   }
@@ -89,7 +90,6 @@ export class DashboardService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Last 30 days trend
     const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -106,34 +106,33 @@ export class DashboardService {
       .getRawMany();
 
     return {
-      trends: dailyBurn.map((d) => ({
-        date: d.date,
-        value: Number(d.value || 0),
+      trends: dailyBurn.map((item) => ({
+        date: item.date,
+        value: Number(item.value || 0),
       })),
-      total: dailyBurn.reduce((sum, d) => sum + Number(d.value || 0), 0),
+      total: dailyBurn.reduce((sum, item) => sum + Number(item.value || 0), 0),
     };
   }
 
   async getTodaysManpower() {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
 
     const byCategory = await this.laborRepo
       .createQueryBuilder('l')
       .leftJoin('l.category', 'c')
-      .where('l.date = :date', { date: dateStr })
+      .where('l.date = :date', { date: today })
       .select('c.name', 'category')
       .addSelect('SUM(l.count)', 'count')
       .groupBy('c.name')
       .getRawMany();
 
-    const total = byCategory.reduce((sum, c) => sum + Number(c.count || 0), 0);
+    const total = byCategory.reduce((sum, item) => sum + Number(item.count || 0), 0);
 
     return {
       total,
-      byCategory: byCategory.map((c) => ({
-        name: c.category || 'Uncategorized',
-        count: Number(c.count || 0),
+      byCategory: byCategory.map((item) => ({
+        name: item.category || 'Uncategorized',
+        count: Number(item.count || 0),
       })),
     };
   }
@@ -145,8 +144,7 @@ export class DashboardService {
     const nextWeek = new Date(today);
     nextWeek.setDate(nextWeek.getDate() + 7);
 
-    // Get activities finishing in next 7 days
-    const milestones = await this.activityRepo
+    return this.activityRepo
       .createQueryBuilder('a')
       .leftJoin('a.wbsNode', 'w')
       .leftJoin('w.project', 'p')
@@ -165,8 +163,6 @@ export class DashboardService {
       .orderBy('a.finishDatePlanned', 'ASC')
       .limit(10)
       .getRawMany();
-
-    return milestones;
   }
 
   async getAlerts() {
@@ -180,7 +176,6 @@ export class DashboardService {
       count?: number;
     }[] = [];
 
-    // 1. Overdue activities
     const overdueCount = await this.activityRepo
       .createQueryBuilder('a')
       .where('a.finishDatePlanned < :today', { today })
@@ -197,7 +192,6 @@ export class DashboardService {
       });
     }
 
-    // 2. Activities starting today with no progress
     const startingToday = await this.activityRepo
       .createQueryBuilder('a')
       .where('a.startDatePlanned = :today', { today })
@@ -213,7 +207,6 @@ export class DashboardService {
       });
     }
 
-    // 3. Low manpower warning (if significantly lower than average)
     const todayLabor = await this.laborRepo
       .createQueryBuilder('l')
       .where('l.date = :date', { date: today.toISOString().split('T')[0] })
@@ -233,7 +226,7 @@ export class DashboardService {
 
   async getQualityMetrics() {
     const today = new Date();
-    
+
     const openObservations = await this.obsRepo.count({
       where: { status: SiteObservationStatus.OPEN },
     });
@@ -249,7 +242,6 @@ export class DashboardService {
       },
     });
 
-    // Closed this week
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - 7);
     const closedThisWeek = await this.obsRepo.count({
@@ -259,8 +251,6 @@ export class DashboardService {
       },
     });
 
-    // NCR Aging Distribution for openly active ones
-    const now = new Date();
     const allOpen = await this.obsRepo.find({
       where: { status: SiteObservationStatus.OPEN },
       select: ['createdAt'],
@@ -272,15 +262,11 @@ export class DashboardService {
 
     allOpen.forEach((obs) => {
       const daysDiff = Math.floor(
-        (now.getTime() - new Date(obs.createdAt).getTime()) / (1000 * 3600 * 24)
+        (today.getTime() - new Date(obs.createdAt).getTime()) / (1000 * 3600 * 24),
       );
-      if (daysDiff < 7) {
-        under7Days++;
-      } else if (daysDiff <= 14) {
-        under14Days++;
-      } else {
-        over14Days++;
-      }
+      if (daysDiff < 7) under7Days += 1;
+      else if (daysDiff <= 14) under14Days += 1;
+      else over14Days += 1;
     });
 
     return {
@@ -301,36 +287,35 @@ export class DashboardService {
       .createQueryBuilder('m')
       .select('SUM(m.safeManhours)', 'totalSafe')
       .getRawOne();
-      
-    const rawSafeManhours = Number(totalManhoursRes?.totalSafe || 0);
-    // Format large numbers (like 124,500)
-    const safeManHoursStr = rawSafeManhours > 1000 
-      ? rawSafeManhours.toLocaleString('en-US') 
-      : String(rawSafeManhours);
 
-    // Incidents this quarter
+    const rawSafeManhours = Number(totalManhoursRes?.totalSafe || 0);
+    const safeManHoursStr =
+      rawSafeManhours > 1000
+        ? rawSafeManhours.toLocaleString('en-US')
+        : String(rawSafeManhours);
+
     const quarterStart = new Date();
     quarterStart.setMonth(Math.floor(quarterStart.getMonth() / 3) * 3, 1);
     quarterStart.setHours(0, 0, 0, 0);
 
     const ltiCount = await this.incidentRepo.count({
-      where: { 
+      where: {
         incidentType: IncidentType.LTI,
-        createdAt: MoreThanOrEqual(quarterStart)
+        createdAt: MoreThanOrEqual(quarterStart),
       },
     });
 
     const mtcCount = await this.incidentRepo.count({
-      where: { 
+      where: {
         incidentType: IncidentType.MTC,
-        createdAt: MoreThanOrEqual(quarterStart)
+        createdAt: MoreThanOrEqual(quarterStart),
       },
     });
 
     const nearMissCount = await this.incidentRepo.count({
-      where: { 
+      where: {
         incidentType: IncidentType.NEAR_MISS,
-        createdAt: MoreThanOrEqual(quarterStart)
+        createdAt: MoreThanOrEqual(quarterStart),
       },
     });
 
@@ -339,7 +324,41 @@ export class DashboardService {
       lti: ltiCount,
       nearMisses: nearMissCount,
       medicalTreated: mtcCount,
-      complianceRate: 98 // Hardcoded mapping for PTW as a placeholder till audits feature
+      complianceRate: 98,
     };
+  }
+
+  async listExecutiveCompanies(user: any) {
+    return this.executiveService.listCompanies(user);
+  }
+
+  async listExecutiveProjects(user: any, companyId?: number | null) {
+    return this.executiveService.listProjects(user, companyId);
+  }
+
+  async getEnterpriseExecutiveSummary(
+    user: any,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<any> {
+    return this.executiveService.getEnterpriseSummary(user, dateFrom, dateTo);
+  }
+
+  async getCompanyExecutiveSummary(
+    user: any,
+    companyId: number,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<any> {
+    return this.executiveService.getCompanySummary(user, companyId, dateFrom, dateTo);
+  }
+
+  async getProjectExecutiveSummary(
+    user: any,
+    projectId: number,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<any> {
+    return this.executiveService.getProjectSummary(user, projectId, dateFrom, dateTo);
   }
 }

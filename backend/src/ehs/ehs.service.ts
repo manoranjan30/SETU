@@ -8,7 +8,7 @@ import {
   IncidentType,
 } from './entities/ehs-incident.entity';
 import { EhsEnvironmental } from './entities/ehs-environmental.entity';
-import { EhsTraining } from './entities/ehs-training.entity';
+import { EhsTraining, TrainingType } from './entities/ehs-training.entity';
 import { EhsProjectConfig } from './entities/ehs-project-config.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 import { EhsPerformance } from './entities/ehs-performance.entity';
@@ -78,6 +78,35 @@ export class EhsService {
           'Excavation',
           'Plant & Machinery',
         ];
+  }
+
+  private normalizeTrainingType(value: unknown): TrainingType {
+    const normalized = String(value ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
+
+    const legacyMap: Record<string, TrainingType> = {
+      SAFETY: TrainingType.INDUCTION,
+      HEALTH: TrainingType.FIRST_AID,
+      ENVIRONMENT: TrainingType.SPECIALIZED,
+      QUALITY: TrainingType.SPECIALIZED,
+      OTHER: TrainingType.SPECIALIZED,
+      TOOL_BOX_TALK: TrainingType.TBT,
+      TOOLBOX_TALK: TrainingType.TBT,
+      FIREDRILL: TrainingType.FIRE_DRILL,
+      FIRSTAID: TrainingType.FIRST_AID,
+    };
+
+    if (normalized in TrainingType) {
+      return TrainingType[normalized as keyof typeof TrainingType];
+    }
+
+    if (legacyMap[normalized]) {
+      return legacyMap[normalized];
+    }
+
+    return TrainingType.INDUCTION;
   }
 
   async getProjectConfig(projectId: number): Promise<EhsProjectConfig> {
@@ -416,6 +445,7 @@ export class EhsService {
   async createTraining(data: any) {
     const training = this.trainingRepo.create({
       ...data,
+      trainingType: this.normalizeTrainingType(data.trainingType),
       attendeeCount: Number(data.attendeeCount),
       duration: Number(data.duration),
     });
@@ -423,7 +453,16 @@ export class EhsService {
   }
 
   async updateTraining(id: number, data: any) {
-    await this.trainingRepo.update(id, data);
+    await this.trainingRepo.update(id, {
+      ...data,
+      trainingType:
+        data.trainingType != null
+          ? this.normalizeTrainingType(data.trainingType)
+          : undefined,
+      attendeeCount:
+        data.attendeeCount != null ? Number(data.attendeeCount) : undefined,
+      duration: data.duration != null ? Number(data.duration) : undefined,
+    });
     return this.trainingRepo.findOne({ where: { id } });
   }
 

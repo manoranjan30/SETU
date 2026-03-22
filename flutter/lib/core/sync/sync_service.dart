@@ -689,6 +689,8 @@ class SyncService {
             await _apiClient.raiseObservation(
               activityId: payload['activityId'] as int,
               observationText: payload['observationText'] as String,
+              inspectionId: payload['inspectionId'] as int,
+              stageId: payload['stageId'] as int?,
               type: payload['type'] as String?,
               photos: (payload['photos'] as List?)
                   ?.map((e) => e as String)

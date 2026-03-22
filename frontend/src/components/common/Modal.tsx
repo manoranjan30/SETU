@@ -29,19 +29,17 @@ const Modal: React.FC<ModalProps> = ({
     medium: "max-w-2xl",
     large: "max-w-4xl",
     xl: "max-w-6xl",
-    fullscreen: "h-full w-full max-w-none rounded-none md:rounded-3xl", // Fullscreen styles
+    fullscreen: "h-full w-full max-w-none rounded-none", // Fullscreen styles
   };
 
-  // For "fullscreen within layout", we use padding to simulate margins from the screen edge
-  // creating a "card" effect that fills most of the space but shows the background app
-  const containerClass = size === "fullscreen" ? "p-1 md:p-2 lg:p-3" : "p-4";
+  const containerClass = size === "fullscreen" ? "p-0" : "p-4";
 
   return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay overflow-hidden ${containerClass}`}
     >
       <div
-        className={`bg-surface-card shadow-2xl w-full ui-animate-card ${sizeClass[size]} ${size === "fullscreen" ? "h-full" : "max-h-[90vh] rounded-3xl"} flex flex-col border border-border-default`}
+        className={`bg-surface-card shadow-2xl w-full ui-animate-card ${sizeClass[size]} ${size === "fullscreen" ? "h-full border-0" : "max-h-[90vh] rounded-3xl border border-border-default"} flex flex-col`}
       >
         <div
           className={`flex justify-between items-center p-6 border-b border-border-default flex-shrink-0 bg-surface-base ${headerClassName}`}
