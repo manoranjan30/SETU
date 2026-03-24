@@ -304,7 +304,7 @@ export class QualityActivityService {
       type: dto.type,
       observationText: dto.observationText,
       remarks: dto.remarks,
-      photos: dto.photos || [],
+      photos: (dto.photos || []).map(u => this.toRelativePath(u)),
       status: ActivityObservationStatus.PENDING,
     });
 
@@ -362,7 +362,7 @@ export class QualityActivityService {
 
     obs.status = ActivityObservationStatus.RECTIFIED;
     obs.closureText = dto.closureText;
-    obs.closureEvidence = dto.closureEvidence || [];
+    obs.closureEvidence = (dto.closureEvidence || []).map(u => this.toRelativePath(u));
     obs.resolvedBy = userId;
     obs.resolvedAt = new Date();
     const saved = await this.obsRepo.save(obs);
@@ -699,6 +699,25 @@ export class QualityActivityService {
       ActivityObservationStatus.RECTIFIED,
       ActivityObservationStatus.RESOLVED,
     ];
+  }
+
+  /**
+   * Normalizes a photo URL to a relative path for storage.
+   * The Flutter client resolves uploaded file paths to absolute URLs
+   * (e.g. http://tunnel:3000/uploads/uuid.jpg). Storing the absolute URL
+   * causes photos to break when the tunnel changes. This helper extracts
+   * just the pathname so only /uploads/uuid.jpg is stored in the database.
+   */
+  private toRelativePath(url: string): string {
+    if (!url) return url;
+    if (url.startsWith('http')) {
+      try {
+        return new URL(url).pathname;
+      } catch {
+        return url;
+      }
+    }
+    return url;
   }
 
   private async compactSequence(

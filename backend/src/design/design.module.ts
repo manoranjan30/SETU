@@ -5,6 +5,7 @@ import { DesignService } from './design.service';
 import { DrawingCategory } from './entities/drawing-category.entity';
 import { DrawingRegister } from './entities/drawing-register.entity';
 import { DrawingRevision } from './entities/drawing-revision.entity';
+import { DrawingOpenReceipt } from './entities/drawing-open-receipt.entity';
 import { User } from '../users/user.entity';
 
 import { CommonModule } from '../common/common.module';
@@ -15,6 +16,7 @@ import { CommonModule } from '../common/common.module';
       DrawingCategory,
       DrawingRegister,
       DrawingRevision,
+      DrawingOpenReceipt,
       User, // Needed to validate users
     ]),
     CommonModule,

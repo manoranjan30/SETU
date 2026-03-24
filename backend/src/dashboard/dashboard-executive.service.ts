@@ -93,6 +93,8 @@ interface DashboardMetric {
   tone?: MetricTone;
   helper?: string;
   route?: string;
+  visualPercent?: number;
+  visualLabel?: string;
 }
 
 interface DashboardTrendPoint {
@@ -220,6 +222,7 @@ interface ExecutiveCompanyRow {
   projectCount: number;
   activeProjects: number;
   portfolioValue: number;
+  workOrderValue: number;
   burnValue: number;
   collectionsDue: number;
   collectionsCollected: number;
@@ -237,6 +240,7 @@ interface ExecutiveAggregateTotals {
   delayedProjects: number;
   delayedActivities: number;
   portfolioValue: number;
+  workOrderValue: number;
   burnValue: number;
   manpower: number;
   activeWorkOrders: number;
@@ -1204,6 +1208,7 @@ export class DashboardExecutiveService {
         (sum, row) => sum + (row.approvedBudget || row.estimatedCost),
         0,
       ),
+      workOrderValue: rows.reduce((sum, row) => sum + row.activeWorkOrderValue, 0),
       burnValue: rows.reduce((sum, row) => sum + row.burnValue, 0),
       manpower: rows.reduce((sum, row) => sum + row.manpower, 0),
       activeWorkOrders: rows.reduce((sum, row) => sum + row.activeWorkOrders, 0),
@@ -1287,6 +1292,7 @@ export class DashboardExecutiveService {
           (sum, row) => sum + (row.approvedBudget || row.estimatedCost),
           0,
         ),
+        workOrderValue: scopedRows.reduce((sum, row) => sum + row.activeWorkOrderValue, 0),
         burnValue: scopedRows.reduce((sum, row) => sum + row.burnValue, 0),
         collectionsDue: scopedRows.reduce((sum, row) => sum + row.milestoneDue, 0),
         collectionsCollected: scopedRows.reduce(
@@ -1321,6 +1327,10 @@ export class DashboardExecutiveService {
     projectRows: ExecutiveProjectRow[],
     visibleCompanyCount: number,
   ): DashboardMetric[] {
+    const budgetBase = Math.max(totals.portfolioValue, 1);
+    const workOrderCommitmentPct = (totals.workOrderValue / budgetBase) * 100;
+    const burnCoveragePct = (totals.burnValue / budgetBase) * 100;
+
     if (mode === 'enterprise') {
       return [
         { key: 'companies', label: 'Companies', value: visibleCompanyCount, format: 'number' },
@@ -1331,6 +1341,8 @@ export class DashboardExecutiveService {
           value: totals.activeProjects,
           format: 'number',
           tone: 'positive',
+          visualPercent: totals.totalProjects ? (totals.activeProjects / totals.totalProjects) * 100 : 0,
+          visualLabel: `${totals.activeProjects}/${totals.totalProjects} projects active`,
         },
         {
           key: 'delayedProjects',
@@ -1338,26 +1350,39 @@ export class DashboardExecutiveService {
           value: totals.delayedProjects,
           format: 'number',
           tone: totals.delayedProjects > 0 ? 'warning' : 'positive',
+          visualPercent:
+            totals.totalProjects > 0 ? (totals.delayedProjects / totals.totalProjects) * 100 : 0,
+          visualLabel: `${totals.delayedProjects}/${totals.totalProjects} projects delayed`,
         },
         {
-          key: 'portfolioValue',
-          label: 'Portfolio Value',
+          key: 'budgetValue',
+          label: 'Total Budgeted Value',
           value: totals.portfolioValue,
           format: 'currency',
+          helper: 'Approved and estimated value across visible projects',
+          visualPercent: 100,
+          visualLabel: 'Budget baseline',
         },
         {
-          key: 'collectionsDue',
-          label: 'Collections Due',
-          value: totals.pendingMilestoneAmount,
+          key: 'woIssuedValue',
+          label: 'WO Issued Value',
+          value: totals.workOrderValue,
           format: 'currency',
-          tone: totals.pendingMilestoneAmount > 0 ? 'warning' : 'positive',
+          tone: totals.workOrderValue > 0 ? 'positive' : 'warning',
+          helper: `${totals.activeWorkOrders} active work orders in the selected scope`,
+          visualPercent: workOrderCommitmentPct,
+          visualLabel: `${workOrderCommitmentPct.toFixed(0)}% of budget committed`,
         },
         {
-          key: 'collectionsCollected',
-          label: 'Collected',
-          value: totals.milestoneCollected,
+          key: 'burnValue',
+          label: 'Burn Value',
+          value: totals.burnValue,
           format: 'currency',
-          tone: 'positive',
+          tone:
+            burnCoveragePct >= 75 ? 'positive' : burnCoveragePct >= 40 ? 'warning' : 'default',
+          helper: 'Measured execution burn during the selected range',
+          visualPercent: burnCoveragePct,
+          visualLabel: `${burnCoveragePct.toFixed(0)}% of budget burned`,
         },
       ];
     }
@@ -1371,44 +1396,90 @@ export class DashboardExecutiveService {
           value: totals.activeProjects,
           format: 'number',
           tone: 'positive',
-        },
-        { key: 'burnValue', label: 'Burn In Range', value: totals.burnValue, format: 'currency' },
-        {
-          key: 'collectionsDue',
-          label: 'Collections Due',
-          value: totals.pendingMilestoneAmount,
-          format: 'currency',
+          visualPercent: totals.totalProjects ? (totals.activeProjects / totals.totalProjects) * 100 : 0,
+          visualLabel: `${totals.activeProjects}/${totals.totalProjects} projects active`,
         },
         {
-          key: 'collectionsCollected',
-          label: 'Collected',
-          value: totals.milestoneCollected,
-          format: 'currency',
-          tone: 'positive',
-        },
-        {
-          key: 'openApprovals',
-          label: 'Pending QA',
-          value: totals.pendingRfis,
+          key: 'delayedProjects',
+          label: 'Delayed Projects',
+          value: totals.delayedProjects,
           format: 'number',
-          tone: totals.pendingRfis > 0 ? 'warning' : 'positive',
+          tone: totals.delayedProjects > 0 ? 'warning' : 'positive',
+          visualPercent:
+            totals.totalProjects > 0 ? (totals.delayedProjects / totals.totalProjects) * 100 : 0,
+          visualLabel: `${totals.delayedProjects}/${totals.totalProjects} projects delayed`,
+        },
+        {
+          key: 'delayedActivities',
+          label: 'Delayed Activities',
+          value: totals.delayedActivities,
+          format: 'number',
+          tone: totals.delayedActivities > 0 ? 'warning' : 'positive',
+          helper: 'Activities past planned finish date and still incomplete',
+        },
+        {
+          key: 'budgetValue',
+          label: 'Total Budgeted Value',
+          value: totals.portfolioValue,
+          format: 'currency',
+          helper: 'Approved and estimated value across company projects',
+          visualPercent: 100,
+          visualLabel: 'Budget baseline',
+        },
+        {
+          key: 'woIssuedValue',
+          label: 'WO Issued Value',
+          value: totals.workOrderValue,
+          format: 'currency',
+          tone: totals.workOrderValue > 0 ? 'positive' : 'warning',
+          helper: `${totals.activeWorkOrders} active work orders across company projects`,
+          visualPercent: workOrderCommitmentPct,
+          visualLabel: `${workOrderCommitmentPct.toFixed(0)}% of budget committed`,
+        },
+        {
+          key: 'burnValue',
+          label: 'Burn Value',
+          value: totals.burnValue,
+          format: 'currency',
+          tone:
+            burnCoveragePct >= 75 ? 'positive' : burnCoveragePct >= 40 ? 'warning' : 'default',
+          helper: 'Measured execution burn during the selected range',
+          visualPercent: burnCoveragePct,
+          visualLabel: `${burnCoveragePct.toFixed(0)}% of budget burned`,
         },
       ];
     }
 
     const currentProject = projectRows[0];
+    const projectBudget = Math.max(
+      currentProject?.approvedBudget || currentProject?.estimatedCost || 0,
+      1,
+    );
+    const projectWorkOrderPct =
+      ((currentProject?.activeWorkOrderValue || 0) / projectBudget) * 100;
+    const projectBurnPct = ((currentProject?.burnValue || 0) / projectBudget) * 100;
+
     return [
       {
-        key: 'projectStatus',
-        label: 'Project Status',
-        value: currentProject?.status || 'Active',
-        format: 'text',
-      },
-      {
-        key: 'progress',
+        key: 'actualProgress',
         label: 'Actual Progress',
         value: currentProject?.progressPercent || 0,
         format: 'percent',
+      },
+      {
+        key: 'delayedActivities',
+        label: 'Delayed Activities',
+        value: currentProject?.delayedActivities || 0,
+        format: 'number',
+        tone: (currentProject?.delayedActivities || 0) > 0 ? 'warning' : 'positive',
+        helper: 'Activities past planned finish date and still incomplete',
+        visualPercent:
+          (currentProject?.totalActivities || 0) > 0
+            ? ((currentProject?.delayedActivities || 0) /
+                (currentProject?.totalActivities || 1)) *
+              100
+            : 0,
+        visualLabel: `${currentProject?.delayedActivities || 0}/${currentProject?.totalActivities || 0} activities delayed`,
       },
       {
         key: 'pendingQa',
@@ -1416,29 +1487,49 @@ export class DashboardExecutiveService {
         value: currentProject?.pendingRfis || 0,
         format: 'number',
         tone: (currentProject?.pendingRfis || 0) > 0 ? 'warning' : 'positive',
+        visualPercent:
+          (currentProject?.totalRfis || 0) > 0
+            ? ((currentProject?.pendingRfis || 0) / (currentProject?.totalRfis || 1)) * 100
+            : 0,
+        visualLabel: `${currentProject?.pendingRfis || 0}/${currentProject?.totalRfis || 0} RFIs pending`,
       },
       {
-        key: 'ehsRisk',
-        label: 'EHS Alerts',
-        value:
-          (currentProject?.overdueEhsInspections || 0) +
-          (currentProject?.complianceAlerts || 0) +
-          (currentProject?.criticalEhsObservations || 0),
+        key: 'openIssues',
+        label: 'Open Issues',
+        value: currentProject?.openIssues || 0,
         format: 'number',
-        tone: 'warning',
+        tone: (currentProject?.overdueIssues || 0) > 0 ? 'warning' : 'default',
+        helper: `${currentProject?.overdueIssues || 0} overdue issue tracker items`,
       },
       {
-        key: 'collectionsDue',
-        label: 'Collections Due',
-        value: currentProject?.pendingMilestoneAmount || 0,
+        key: 'budgetValue',
+        label: 'Budgeted Value',
+        value: currentProject?.approvedBudget || currentProject?.estimatedCost || 0,
         format: 'currency',
+        helper: 'Approved or estimated project budget baseline',
+        visualPercent: 100,
+        visualLabel: 'Budget baseline',
       },
       {
-        key: 'collectionsCollected',
-        label: 'Collected',
-        value: currentProject?.milestoneCollected || 0,
+        key: 'woIssuedValue',
+        label: 'WO Issued Value',
+        value: currentProject?.activeWorkOrderValue || 0,
         format: 'currency',
-        tone: 'positive',
+        tone: (currentProject?.activeWorkOrderValue || 0) > 0 ? 'positive' : 'warning',
+        helper: `${currentProject?.activeWorkOrders || 0} active work orders`,
+        visualPercent: projectWorkOrderPct,
+        visualLabel: `${projectWorkOrderPct.toFixed(0)}% of budget committed`,
+      },
+      {
+        key: 'burnValue',
+        label: 'Burn Value',
+        value: currentProject?.burnValue || 0,
+        format: 'currency',
+        tone:
+          projectBurnPct >= 75 ? 'positive' : projectBurnPct >= 40 ? 'warning' : 'default',
+        helper: 'Measured execution burn during the selected range',
+        visualPercent: projectBurnPct,
+        visualLabel: `${projectBurnPct.toFixed(0)}% of budget burned`,
       },
     ];
   }
@@ -1449,14 +1540,19 @@ export class DashboardExecutiveService {
     trend: DashboardTrend,
     mode: ExecutiveMode,
   ): DashboardSection {
+    const budgetBase = Math.max(totals.portfolioValue, 1);
+    const workOrderCommitmentPct = (totals.workOrderValue / budgetBase) * 100;
+    const burnCoveragePct = (totals.burnValue / budgetBase) * 100;
+
     return {
       kpis: [
         {
-          key: 'scheduleHealth',
-          label: 'Schedule Health',
-          value: totals.scheduleHealth,
-          format: 'percent',
-          tone: totals.scheduleHealth >= 80 ? 'positive' : 'warning',
+          key: 'delayedActivities',
+          label: 'Delayed Activities',
+          value: totals.delayedActivities,
+          format: 'number',
+          tone: totals.delayedActivities > 0 ? 'warning' : 'positive',
+          helper: `${totals.delayedProjects} project(s) currently carrying delay`,
         },
         {
           key: 'actualProgress',
@@ -1467,26 +1563,42 @@ export class DashboardExecutiveService {
             : 0,
           format: 'percent',
         },
-        { key: 'burnValue', label: 'Burn', value: totals.burnValue, format: 'currency' },
+        {
+          key: 'budgetValue',
+          label: 'Budgeted Value',
+          value: totals.portfolioValue,
+          format: 'currency',
+          helper: 'Approved and estimated value in the selected scope',
+          visualPercent: 100,
+          visualLabel: 'Budget baseline',
+        },
+        {
+          key: 'woIssuedValue',
+          label: 'WO Issued Value',
+          value: totals.workOrderValue,
+          format: 'currency',
+          tone: totals.workOrderValue > 0 ? 'positive' : 'warning',
+          helper: `${totals.activeWorkOrders} active work orders`,
+          visualPercent: workOrderCommitmentPct,
+          visualLabel: `${workOrderCommitmentPct.toFixed(0)}% of budget committed`,
+        },
+        {
+          key: 'burnValue',
+          label: 'Burn Value',
+          value: totals.burnValue,
+          format: 'currency',
+          tone:
+            burnCoveragePct >= 75 ? 'positive' : burnCoveragePct >= 40 ? 'warning' : 'default',
+          helper: 'Measured execution burn during the selected range',
+          visualPercent: burnCoveragePct,
+          visualLabel: `${burnCoveragePct.toFixed(0)}% of budget burned`,
+        },
         { key: 'manpower', label: 'Latest Manpower', value: totals.manpower, format: 'number' },
         {
           key: 'workOrders',
           label: 'Active WOs',
           value: totals.activeWorkOrders,
           format: 'number',
-        },
-        {
-          key: 'issues',
-          label: 'Open Issues',
-          value: totals.openIssues,
-          format: 'number',
-          tone: totals.overdueIssues > 0 ? 'warning' : 'default',
-        },
-        {
-          key: 'milestoneDue',
-          label: 'Pending Collection',
-          value: totals.pendingMilestoneAmount,
-          format: 'currency',
         },
         {
           key: 'drawings',
@@ -1652,7 +1764,9 @@ export class DashboardExecutiveService {
             label: company.companyName,
             secondaryLabel: `${company.projectCount} projects`,
             metrics: [
-              { label: 'Portfolio', value: company.portfolioValue, format: 'currency' },
+              { label: 'Budgeted', value: company.portfolioValue, format: 'currency' },
+              { label: 'WO Issued', value: company.workOrderValue, format: 'currency' },
+              { label: 'Burn', value: company.burnValue, format: 'currency' },
               { label: 'Progress', value: company.progressPercent, format: 'percent' },
               {
                 label: 'Quality Risk',
@@ -1743,7 +1857,7 @@ export class DashboardExecutiveService {
           {
             key: `project-planning-${row.id}`,
             label: 'Open Planning & Schedule',
-            secondaryLabel: 'Schedule, issues, milestones',
+            secondaryLabel: 'Schedule, issues, work orders',
             route: this.getPlanningRoute(row.id, 'schedule'),
             metrics: [
               { label: 'Delayed', value: row.delayedActivities, format: 'number' },
@@ -1818,18 +1932,32 @@ export class DashboardExecutiveService {
   ): DashboardListItem[] {
     return [
       ...projectRows
-        .filter((row) => row.pendingMilestoneAmount > 0)
-        .sort((left, right) => right.pendingMilestoneAmount - left.pendingMilestoneAmount)
+        .filter((row) => row.activeWorkOrders === 0 && row.delayedActivities > 0)
+        .sort((left, right) => right.delayedActivities - left.delayedActivities)
         .slice(0, 2)
         .map((row) => ({
-          key: `milestone-${row.id}`,
-          title: `Raise collection demand in ${row.name}`,
-          description: `₹${Math.round(row.pendingMilestoneAmount).toLocaleString('en-IN')} remains pending against triggered milestones.`,
-          severity: 'info' as const,
-          value: Math.round(row.pendingMilestoneAmount),
+          key: `wo-gap-${row.id}`,
+          title: `Issue work orders in ${row.name}`,
+          description: `${row.delayedActivities} delayed activities are still not backed by active work orders.`,
+          severity: 'warning' as const,
+          value: row.delayedActivities,
           projectId: row.id,
           projectName: row.name,
-          route: this.getPlanningRoute(row.id, 'customer_milestones'),
+          route: this.getPlanningRoute(row.id, 'contracts'),
+        })),
+      ...projectRows
+        .filter((row) => row.openIssues > 0)
+        .sort((left, right) => right.openIssues - left.openIssues)
+        .slice(0, 2)
+        .map((row) => ({
+          key: `issue-clearance-${row.id}`,
+          title: `Close execution blockers in ${row.name}`,
+          description: `${row.openIssues} issue tracker items still need coordination closure.`,
+          severity: 'warning' as const,
+          value: row.openIssues,
+          projectId: row.id,
+          projectName: row.name,
+          route: this.getPlanningRoute(row.id, 'issue_tracker'),
         })),
       ...projectRows
         .filter((row) => row.drawingBlockers > 0)
@@ -2142,7 +2270,7 @@ export class DashboardExecutiveService {
 
   private getPlanningRoute(
     projectId: number,
-    view: 'schedule' | 'issue_tracker' | 'customer_milestones',
+    view: 'schedule' | 'issue_tracker' | 'customer_milestones' | 'contracts',
   ) {
     return `/dashboard/projects/${projectId}/planning?view=${view}`;
   }

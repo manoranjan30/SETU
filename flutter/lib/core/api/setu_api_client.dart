@@ -696,6 +696,15 @@ class SetuApiClient {
     return response.data;
   }
 
+  /// Downloads the PDF inspection report for [inspectionId] as raw bytes.
+  Future<List<int>> downloadInspectionReport(int inspectionId) async {
+    final response = await _dio.get<List<int>>(
+      ApiEndpoints.inspectionReport(inspectionId),
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return response.data ?? [];
+  }
+
   /// Creates a new non-conformance observation linked to an activity.
   ///
   /// Raised by the QC Inspector during or after an inspection.

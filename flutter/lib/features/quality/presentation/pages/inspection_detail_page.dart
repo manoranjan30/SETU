@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/core/network/connectivity_banner.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
@@ -9,6 +14,7 @@ import 'package:setu_mobile/features/quality/presentation/widgets/checklist_item
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/raise_observation_sheet.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
+import 'package:setu_mobile/shared/widgets/rectify_sheet.dart';
 
 /// QC Inspector detail page for a single inspection.
 /// Shows checklist stages (expandable), observations, and approval actions.
@@ -30,6 +36,41 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
   /// Last successfully loaded state — shown while approval actions run
   /// and when transient errors occur (e.g. photo upload failures).
   InspectionDetailLoaded? _lastDetail;
+
+  bool _isPdfDownloading = false;
+
+  /// Downloads the PDF report and opens it with the system file viewer.
+  Future<void> _downloadPdf() async {
+    setState(() => _isPdfDownloading = true);
+    try {
+      final bytes = await sl<SetuApiClient>().downloadInspectionReport(widget.inspection.id);
+      if (bytes.isEmpty) throw Exception('Empty PDF response');
+
+      final dir = await getTemporaryDirectory();
+      final fileName =
+          'RFI_Report_${widget.inspection.id}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
+
+      final result = await OpenFile.open(file.path);
+      if (result.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open PDF: ${result.message}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF download failed: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPdfDownloading = false);
+    }
+  }
 
   @override
   void initState() {
@@ -69,6 +110,20 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
           ],
         ),
         actions: [
+          // PDF report download
+          _isPdfDownloading
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14),
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  tooltip: 'Download PDF Report',
+                  onPressed: _downloadPdf,
+                ),
           // Manual refresh button dispatches RefreshInspectionDetail event
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -172,19 +227,25 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
                   .add(const RefreshInspectionDetail());
             }
           }
-          // Observation action (raise/close/delete) — show result and refresh
+          // Observation action (raise/rectify/close/delete) — show result and refresh
           if (state is ObservationActionQueued) {
             final String msg;
             if (state.action == 'raise') {
               msg = state.isOffline
                   ? 'Observation queued — will sync when online'
                   : 'Observation raised';
-            } else if (state.action == 'deleted') {
-              msg = 'Observation deleted';
-            } else {
+            } else if (state.action == 'rectify') {
+              msg = state.isOffline
+                  ? 'Rectification queued — will sync when online'
+                  : 'Rectification submitted — tap Close once QC is verified';
+            } else if (state.action == 'close') {
               msg = state.isOffline
                   ? 'Close queued — will sync when online'
                   : 'Observation closed';
+            } else if (state.action == 'deleted') {
+              msg = 'Observation deleted';
+            } else {
+              msg = 'Done';
             }
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(msg),
@@ -868,7 +929,7 @@ class _ObservationsTab extends StatelessWidget {
               // Raise new observation — only available with QUALITY.OBSERVATION.CREATE
               TextButton.icon(
                 onPressed: ps.canCreateActivityObs
-                    ? () => RaiseObservationSheet.show(context)
+                    ? () => RaiseObservationSheet.show(context, stages: state.stages)
                     : () => ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
@@ -888,22 +949,38 @@ class _ObservationsTab extends StatelessWidget {
         ),
 
         Expanded(
-          child: obs.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_outline,
-                          size: 64,
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.3)),
-                      const SizedBox(height: 12),
-                      Text('No observations raised',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.5))),
-                    ],
-                  ),
+          child: RefreshIndicator(
+            onRefresh: () async =>
+                context.read<QualityApprovalBloc>().add(const RefreshInspectionDetail()),
+            child: obs.isEmpty
+              ? ListView(
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_outline,
+                                size: 64,
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.3)),
+                            const SizedBox(height: 12),
+                            Text('No observations raised',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.5))),
+                            const SizedBox(height: 8),
+                            Text('Pull down to refresh',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.35))),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 )
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -912,8 +989,25 @@ class _ObservationsTab extends StatelessWidget {
                     final o = obs[i];
                     return ObservationCard(
                       obs: o,
-                      // Close button hidden once observation is already closed
-                      onClose: !o.isClosed
+                      // Fix button shown only for PENDING observations
+                      onRectify: o.isPending
+                          ? () => RectifySheet.show(
+                                context,
+                                title: 'Fix Observation',
+                                onSubmit: ({required String notes, List<String> photoUrls = const []}) async {
+                                  context.read<QualityApprovalBloc>().add(
+                                        SubmitRectification(
+                                          obsId: o.id,
+                                          closureText: notes,
+                                          closureEvidence: photoUrls,
+                                        ),
+                                      );
+                                },
+                              )
+                          : null,
+                      // Close button shown for RECTIFIED observations when
+                      // the user has QUALITY.OBSERVATION.CLOSE permission.
+                      onClose: o.isRectified && ps.canCloseActivityObs
                           ? () => context
                               .read<QualityApprovalBloc>()
                               .add(CloseObservation(o.id))
@@ -927,6 +1021,7 @@ class _ObservationsTab extends StatelessWidget {
                     );
                   },
                 ),
+          ),
         ),
       ],
     );

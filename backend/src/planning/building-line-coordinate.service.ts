@@ -205,6 +205,7 @@ export class BuildingLineCoordinateService {
         type: node.type,
         coordinatesId: coordinate?.id || null,
         coordinatesText: coordinate?.coordinatesText || '',
+        coordinateUom: coordinate?.coordinateUom || 'mm',
         heightMeters:
           coordinate?.heightMeters != null ? Number(coordinate.heightMeters) : null,
         customFeatures: coordinate?.customFeatures || [],
@@ -265,6 +266,7 @@ export class BuildingLineCoordinateService {
     epsNodeId: number,
     payload: {
       coordinatesText?: string | null;
+      coordinateUom?: 'mm' | 'cm' | 'm' | null;
       heightMeters?: number | null;
       customFeatures?: any[] | null;
       structureSnapshot?: any;
@@ -286,16 +288,21 @@ export class BuildingLineCoordinateService {
         epsNodeId,
       });
 
-    entity.coordinatesText =
-      payload.coordinatesText != null ? payload.coordinatesText : entity.coordinatesText;
-    entity.heightMeters =
-      payload.heightMeters != null ? payload.heightMeters : entity.heightMeters;
-    entity.customFeatures =
-      payload.customFeatures != null ? payload.customFeatures : entity.customFeatures;
-    entity.structureSnapshot =
-      payload.structureSnapshot != null
-        ? payload.structureSnapshot
-        : entity.structureSnapshot;
+    if (Object.prototype.hasOwnProperty.call(payload, 'coordinatesText')) {
+      entity.coordinatesText = payload.coordinatesText ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'coordinateUom')) {
+      entity.coordinateUom = (payload.coordinateUom || 'mm') as 'mm' | 'cm' | 'm';
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'heightMeters')) {
+      entity.heightMeters = payload.heightMeters ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'customFeatures')) {
+      entity.customFeatures = payload.customFeatures ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'structureSnapshot')) {
+      entity.structureSnapshot = payload.structureSnapshot ?? null;
+    }
     entity.updatedByUserId = userId ?? null;
 
     return this.coordinateRepo.save(entity);

@@ -917,6 +917,11 @@ export class IssueTrackerService {
 
   async getKanban(projectId: number, user: any) {
     const allIssues = await this.listIssues(projectId, user);
+    const openIssues = allIssues.filter(
+      (issue) =>
+        issue.status !== IssueTrackerStatus.CLOSED &&
+        issue.status !== IssueTrackerStatus.COMPLETED,
+    );
 
     const deptConfigs = await this.deptConfigRepo.find({
       where: { projectId },
@@ -927,7 +932,7 @@ export class IssueTrackerService {
       order: { sequenceOrder: 'ASC' },
     });
 
-    // Build columns: one per active dept in project + COMPLETED + CLOSED
+    // Build columns only for open workflow departments.
     const columns: Record<string, { label: string; color: string | null; issues: any[] }> = {};
 
     for (const gDept of globalDepts) {
@@ -940,15 +945,8 @@ export class IssueTrackerService {
         };
       }
     }
-    columns['COMPLETED'] = { label: 'Completed', color: '#059669', issues: [] };
-    columns['CLOSED'] = { label: 'Closed', color: '#6B7280', issues: [] };
-
-    for (const issue of allIssues) {
-      if (issue.status === IssueTrackerStatus.CLOSED) {
-        columns['CLOSED'].issues.push(issue);
-      } else if (issue.status === IssueTrackerStatus.COMPLETED) {
-        columns['COMPLETED'].issues.push(issue);
-      } else if (issue.currentDepartmentId) {
+    for (const issue of openIssues) {
+      if (issue.currentDepartmentId) {
         const key = `dept_${issue.currentDepartmentId}`;
         if (columns[key]) {
           columns[key].issues.push(issue);

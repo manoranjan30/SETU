@@ -18,11 +18,33 @@ class TowerProgressRepository {
   /// The EPS tree is fetched once, then per-tower and per-floor data
   /// is fetched in parallel to minimize round-trips.
   Future<List<TowerRenderModel>> buildForProject(int projectId) async {
-    // 1. Fetch flat EPS tree (all nodes for this project)
+    // 1. Fetch EPS tree — the backend returns a NESTED tree (children array),
+    // so we flatten it into a list with parentId references for easy lookup.
     final rawNodes = await _api.getEpsTree(projectId);
-    final nodes = rawNodes
-        .whereType<Map<String, dynamic>>()
-        .toList();
+    final nodes = <Map<String, dynamic>>[];
+    void flattenNode(dynamic node, int? parentId) {
+      if (node is! Map<String, dynamic>) return;
+      // Normalise: backend uses 'label' in tree response, 'name' in flat response
+      final name = (node['name'] ?? node['label'] ?? '').toString();
+      // 'data' holds the original EPS entity which carries 'progress'
+      final data = node['data'];
+      final progress = (data is Map ? data['progress'] : null) ??
+          node['progress'];
+      nodes.add({
+        'id': node['id'],
+        'name': name,
+        'type': node['type'],
+        'parentId': parentId ?? node['parentId'],
+        'progress': progress,
+      });
+      final children = node['children'] as List<dynamic>? ?? [];
+      for (final child in children) {
+        flattenNode(child, node['id'] as int?);
+      }
+    }
+    for (final raw in rawNodes.whereType<Map<String, dynamic>>()) {
+      flattenNode(raw, null);
+    }
 
     // 2. Find TOWER-type nodes first; fall back to BLOCK if no towers
     var towerNodes = nodes

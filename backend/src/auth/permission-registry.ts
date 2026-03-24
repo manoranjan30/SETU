@@ -358,6 +358,12 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     U,
   ),
   perm(
+    'QUALITY.OBSERVATION.CLOSE',
+    'Close Activity Observation',
+    'QUALITY',
+    S,
+  ),
+  perm(
     'QUALITY.OBSERVATION.DELETE',
     'Delete Activity Observation',
     'QUALITY',
@@ -504,6 +510,17 @@ export const DASHBOARD_BUILDER_PERMISSIONS: PermissionDef[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MODULE 22: AI INSIGHTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const AI_INSIGHTS_PERMISSIONS: PermissionDef[] = [
+  perm('AI.INSIGHTS.READ',            'View AI Insights & Run History',        'AI', R, SYS),
+  perm('AI.INSIGHTS.RUN',             'Run AI Insight Templates',              'AI', S),
+  perm('AI.INSIGHTS.TEMPLATES.WRITE', 'Create/Edit Custom Insight Templates',  'AI', C, SYS),
+  perm('AI.INSIGHTS.ADMIN',           'Manage AI Model Config & All Runs',     'AI', S, SYS),
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ALL PERMISSIONS — Combined Registry
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -531,6 +548,7 @@ export const ALL_MODULE_PERMISSIONS: PermissionDef[][] = [
   TEMP_ROLE_PERMISSIONS,
   TEMP_USER_PERMISSIONS,
   DASHBOARD_BUILDER_PERMISSIONS,
+  AI_INSIGHTS_PERMISSIONS,
 ];
 
 /** Flat array of all permission definitions */

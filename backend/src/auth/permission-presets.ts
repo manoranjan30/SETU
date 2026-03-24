@@ -13,6 +13,8 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 
+import { QUALITY_PERMISSIONS } from './permission-registry';
+
 export interface PermissionPreset {
   /** Unique machine-readable ID, e.g. 'PROGRESS_ENTRY_OPERATOR' */
   id: string;
@@ -299,24 +301,21 @@ const QUALITY_VIEWER: PermissionPreset = {
   ],
 };
 
+const QUALITY_NON_DELETE_PERMISSIONS = QUALITY_PERMISSIONS.filter(
+  (permission) => !permission.code.endsWith('.DELETE'),
+).map((permission) => permission.code);
+
 const QC_FIELD_INSPECTOR: PermissionPreset = {
   id: 'QC_FIELD_INSPECTOR',
   name: 'QC Field Inspector',
   description:
-    'Can raise RFIs, log NCRs and snags, perform material tests. Ideal for QC engineers on site.',
+    'Can use the full QA/QC workflow across checklists, RFIs, observations, snags, audits, and site observations, but cannot delete records.',
   group: 'Quality (QA/QC)',
   tier: 2,
   icon: 'Search',
-  permissions: [
-    ...QUALITY_VIEWER.permissions,
-    'QUALITY.INSPECTION.RAISE',
-    'QUALITY.NCR.CREATE',
-    'QUALITY.NCR.UPDATE',
-    'QUALITY.SNAG.CREATE',
-    'QUALITY.SNAG.UPDATE',
-    'QUALITY.TEST.CREATE',
-    'QUALITY.TEST.UPDATE',
-  ],
+  permissions: Array.from(
+    new Set([...QUALITY_VIEWER.permissions, ...QUALITY_NON_DELETE_PERMISSIONS]),
+  ),
 };
 
 const QC_MANAGER: PermissionPreset = {
@@ -562,6 +561,48 @@ const RESOURCE_ADMIN: PermissionPreset = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AI INSIGHTS PRESETS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const AI_INSIGHTS_VIEWER: PermissionPreset = {
+  id: 'AI_INSIGHTS_VIEWER',
+  name: 'AI Insights Viewer',
+  description: 'Can view AI insight runs and results but cannot trigger new analyses.',
+  group: 'Administration',
+  tier: 1,
+  icon: 'Brain',
+  permissions: ['AI.INSIGHTS.READ'],
+};
+
+const AI_INSIGHTS_USER: PermissionPreset = {
+  id: 'AI_INSIGHTS_USER',
+  name: 'AI Insights User',
+  description: 'Can run AI insight templates and view results for assigned projects.',
+  group: 'Administration',
+  tier: 2,
+  icon: 'Sparkles',
+  permissions: [
+    'AI.INSIGHTS.READ',
+    'AI.INSIGHTS.RUN',
+  ],
+};
+
+const AI_INSIGHTS_ADMIN: PermissionPreset = {
+  id: 'AI_INSIGHTS_ADMIN',
+  name: 'AI Insights Administrator',
+  description: 'Full AI Insights access — manage provider configs, create templates, view all runs.',
+  group: 'Administration',
+  tier: 3,
+  icon: 'BrainCircuit',
+  permissions: [
+    'AI.INSIGHTS.READ',
+    'AI.INSIGHTS.RUN',
+    'AI.INSIGHTS.TEMPLATES.WRITE',
+    'AI.INSIGHTS.ADMIN',
+  ],
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ALL ATOMIC PRESETS — Exported flat list
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -596,6 +637,10 @@ export const ALL_PERMISSION_PRESETS: PermissionPreset[] = [
   // Administration
   USER_ADMIN,
   RESOURCE_ADMIN,
+  // AI Insights
+  AI_INSIGHTS_VIEWER,
+  AI_INSIGHTS_USER,
+  AI_INSIGHTS_ADMIN,
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -644,6 +689,7 @@ export const COMPOSITE_ROLE_TEMPLATES: CompositeRoleTemplate[] = [
       'EHS_MANAGER',
       'DRAWINGS_ADMIN',
       'LABOR_ADMIN',
+      'AI_INSIGHTS_USER',
     ],
   },
   {
@@ -691,7 +737,7 @@ export const COMPOSITE_ROLE_TEMPLATES: CompositeRoleTemplate[] = [
     description:
       'Full system administration — manages users, roles, resources, and templates. Has all permissions.',
     icon: 'Terminal',
-    presetIds: ['USER_ADMIN', 'RESOURCE_ADMIN', 'SCHEDULE_ADMIN', 'BOQ_ADMIN'],
+    presetIds: ['USER_ADMIN', 'RESOURCE_ADMIN', 'SCHEDULE_ADMIN', 'BOQ_ADMIN', 'AI_INSIGHTS_ADMIN'],
   },
 ];
 

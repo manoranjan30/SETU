@@ -20,10 +20,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { DesignService } from './design.service';
+import { DrawingStatus } from './entities/drawing-register.entity';
 import { GetUser } from '../auth/get-user.decorator';
 import { User } from '../users/user.entity';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, resolve } from 'path';
 import * as fs from 'fs';
 
 // Helper to ensure directory exists
@@ -58,23 +59,32 @@ export class DesignController {
   async getRegister(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Query('categoryId') categoryId?: number,
+    @GetUser() user?: User,
   ) {
     return this.designService.getRegister(
       projectId,
       categoryId ? Number(categoryId) : undefined,
+      user?.id,
     );
   }
 
   @Post(':projectId/register')
   async createRegisterItem(
     @Param('projectId', ParseIntPipe) projectId: number,
-    @Body() body: { categoryId: number; drawingNumber: string; title: string },
+    @Body()
+    body: {
+      categoryId: number;
+      drawingNumber: string;
+      title: string;
+      status?: DrawingStatus | string;
+    },
   ) {
     return this.designService.createRegisterItem({
       projectId,
       categoryId: Number(body.categoryId),
       drawingNumber: body.drawingNumber,
       title: body.title,
+      status: body.status,
     });
   }
 
@@ -142,8 +152,27 @@ export class DesignController {
     @Param('revisionId', ParseIntPipe) revisionId: number,
     @Res() res: Response, // Express response
   ) {
-    const fileInfo = await this.designService.getRevisionFile(revisionId);
+    const fileInfo = await this.designService.getRevisionFile(revisionId, true);
     res.download(fileInfo.path, fileInfo.filename);
+  }
+
+  @Get(':projectId/preview/:revisionId')
+  async previewRevision(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('revisionId', ParseIntPipe) revisionId: number,
+    @Res() res: Response,
+  ) {
+    const fileInfo = await this.designService.getRevisionFile(revisionId, false);
+    return res.sendFile(resolve(fileInfo.path));
+  }
+
+  @Post(':projectId/register/:registerId/open')
+  async markRegisterOpened(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('registerId', ParseIntPipe) registerId: number,
+    @GetUser() user: User,
+  ) {
+    return this.designService.markRegisterOpened(registerId, user.id);
   }
 
   @Delete(':projectId/register/:registerId')
@@ -159,7 +188,12 @@ export class DesignController {
     @Param('projectId', ParseIntPipe) projectId: number,
     @Param('registerId', ParseIntPipe) registerId: number,
     @Body()
-    body: { categoryId?: number; drawingNumber?: string; title?: string },
+    body: {
+      categoryId?: number;
+      drawingNumber?: string;
+      title?: string;
+      status?: DrawingStatus | string;
+    },
   ) {
     return this.designService.updateRegisterItem(registerId, {
       ...body,

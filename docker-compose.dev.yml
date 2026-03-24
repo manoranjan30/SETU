@@ -20,6 +20,8 @@ services:
       FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
       RUN_DB_MIGRATIONS: "true"
       DB_MIGRATION_SCRIPT: migration:run:dist
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
     depends_on:
       - db
 

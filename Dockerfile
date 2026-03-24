@@ -37,6 +37,9 @@ COPY --from=frontend-builder /app/frontend/dist ./client
 ENV RUN_DB_MIGRATIONS=true
 ENV DB_MIGRATION_SCRIPT=migration:run:dist
 
+# Create uploads directory so multer can write files on first upload
+RUN mkdir -p /usr/src/app/uploads
+
 # Expose Port
 EXPOSE 3000
 
