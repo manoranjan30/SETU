@@ -840,22 +840,15 @@ export default function IssueTrackerPage() {
   const [tagLoading, setTagLoading] = useState(false);
 
   const visibleKanbanColumns = useMemo(() => {
-    const departmentColumns = kanbanData.filter(
-      (column) => column.key !== "COMPLETED" && column.key !== "CLOSED",
-    );
-    const activeDepartmentColumns = departmentColumns.filter(
+    const activeDepartmentColumns = kanbanData.filter(
       (column) => column.issues.length > 0,
     );
-    const emptyDepartmentColumns = departmentColumns.filter(
+    const emptyDepartmentColumns = kanbanData.filter(
       (column) => column.issues.length === 0,
-    );
-    const trailingColumns = kanbanData.filter(
-      (column) => column.key === "COMPLETED" || column.key === "CLOSED",
     );
 
     return [
       ...activeDepartmentColumns,
-      ...trailingColumns,
       ...emptyDepartmentColumns,
     ];
   }, [kanbanData]);

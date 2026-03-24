@@ -13,6 +13,7 @@ interface CreateDrawingModalProps {
     drawingNumber: string;
     title: string;
     category: { id: number };
+    status: string;
   } | null;
 }
 
@@ -33,6 +34,7 @@ const CreateDrawingModal = ({
   const isEditMode = !!initialData;
   const [drawingNumber, setDrawingNumber] = useState("");
   const [title, setTitle] = useState("");
+  const [status, setStatus] = useState("PLANNED");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -46,12 +48,14 @@ const CreateDrawingModal = ({
       if (initialData) {
         setDrawingNumber(initialData.drawingNumber);
         setTitle(initialData.title);
+        setStatus(initialData.status || "PLANNED");
         setCategoryId(initialData.category.id);
         setFile(null); // Files handled separately for edit
       } else {
         // Reset form
         setDrawingNumber("");
         setTitle("");
+        setStatus("PLANNED");
         setCategoryId("");
         setFile(null);
       }
@@ -85,6 +89,7 @@ const CreateDrawingModal = ({
           categoryId: Number(categoryId),
           drawingNumber,
           title,
+          status,
         });
 
         // If file is selected in edit mode, it's a new revision (upload separate handled?)
@@ -102,6 +107,7 @@ const CreateDrawingModal = ({
           categoryId: Number(categoryId),
           drawingNumber,
           title,
+          status,
         });
 
         const newRegisterId = res.data.id;
@@ -226,6 +232,24 @@ const CreateDrawingModal = ({
                 placeholder="e.g. Ground Floor Plan"
                 required
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">
+                Status
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+              >
+                <option value="PLANNED">PLANNED</option>
+                <option value="ON_HOLD">ON HOLD</option>
+                <option value="SUPERSEDED">SUPERSEDED</option>
+                <option value="ACTIVE_GFC">ACTIVE GFC</option>
+                <option value="ADVANCE_COPY">ADVANCE COPY</option>
+                <option value="REFERENCE_ONLY">REFERENCE ONLY</option>
+              </select>
             </div>
 
             {!isEditMode && (

@@ -12,13 +12,16 @@ import {
   Plus,
   Save,
   Trash2,
+  Cuboid,
 } from "lucide-react";
 import {
   buildingLineCoordinatesService,
   type BuildingLineNode,
+  type TowerProgressResponse,
 } from "../../services/buildingLineCoordinates.service";
 import { useAuth } from "../../context/AuthContext";
 import { PermissionCode } from "../../config/permissions";
+import BuildingProgress3DTab from "../../components/planning/BuildingProgress3DTab";
 
 type EditableFeature = {
   id: string;
@@ -67,6 +70,7 @@ type EditableStructureSnapshot = {
 
 type EditableNode = Omit<BuildingLineNode, "children" | "customFeatures" | "structureSnapshot"> & {
   draftCoordinatesText: string;
+  draftCoordinateUom: "mm" | "cm" | "m";
   draftHeightMeters: string;
   draftCustomFeatures: EditableFeature[];
   draftStructureSnapshot: EditableStructureSnapshot | null;
@@ -167,6 +171,7 @@ function toEditable(node: BuildingLineNode): EditableNode {
   return {
     ...node,
     draftCoordinatesText: node.coordinatesText || "",
+    draftCoordinateUom: node.coordinateUom || "mm",
     draftHeightMeters: node.heightMeters != null ? String(node.heightMeters) : "",
     draftCustomFeatures: (node.customFeatures || []).map((feature) => ({
       id: feature.id,
@@ -269,6 +274,22 @@ export default function BuildingLineCoordinatesPage() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [expandedUnitKeys, setExpandedUnitKeys] = useState<Set<string>>(new Set());
   const [expandedRoomKeys, setExpandedRoomKeys] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<"EDITOR" | "PROGRESS_3D">("EDITOR");
+  const [towerProgress, setTowerProgress] = useState<TowerProgressResponse | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState(false);
+
+  const loadTowerProgress = async (projectNumber: number) => {
+    if (!projectNumber) return;
+    setLoadingProgress(true);
+    try {
+      const progress = await buildingLineCoordinatesService.getTowerProgress(projectNumber);
+      setTowerProgress(progress);
+    } catch {
+      setTowerProgress({ towers: [] });
+    } finally {
+      setLoadingProgress(false);
+    }
+  };
 
   useEffect(() => {
     if (!pId) {
@@ -284,6 +305,7 @@ export default function BuildingLineCoordinatesPage() {
         const editable = toEditable(data);
         setRoot(editable);
         setExpandedIds(new Set([editable.id, ...(editable.children || []).map((child) => child.id)]));
+        void loadTowerProgress(pId);
       })
       .catch((error: any) => {
         setRoot(null);
@@ -317,8 +339,8 @@ export default function BuildingLineCoordinatesPage() {
 
   const setNodeDraft = (
     nodeId: number,
-    field: "draftCoordinatesText" | "draftHeightMeters",
-    value: string,
+    field: "draftCoordinatesText" | "draftHeightMeters" | "draftCoordinateUom",
+    value: string | "mm" | "cm" | "m",
   ) => {
     setRoot((prev) =>
       prev ? updateNodeTree(prev, nodeId, (node) => ({ ...node, [field]: value })) : prev,
@@ -458,6 +480,7 @@ export default function BuildingLineCoordinatesPage() {
     try {
       await buildingLineCoordinatesService.saveNode(pId, node.id, {
         coordinatesText: node.draftCoordinatesText.trim() || null,
+        coordinateUom: node.draftCoordinateUom,
         heightMeters: node.draftHeightMeters.trim()
           ? Number(node.draftHeightMeters)
           : null,
@@ -732,7 +755,7 @@ export default function BuildingLineCoordinatesPage() {
 
           {showEditor ? (
             <div className="space-y-4 border-t border-border-subtle bg-surface-base px-4 py-4">
-              <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+              <div className="grid gap-4 lg:grid-cols-[1fr_180px_220px]">
                 <label className="space-y-2">
                   <div className="text-sm font-medium text-text-primary">
                     {node.type === "FLOOR" ? "Floor Coordinates" : "Building Line Coordinates"}
@@ -745,6 +768,28 @@ export default function BuildingLineCoordinatesPage() {
                     placeholder="Paste coordinates here. Example: [[x1,y1],[x2,y2],[x3,y3]]"
                     className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
                   />
+                </label>
+                <label className="space-y-2">
+                  <div className="text-sm font-medium text-text-primary">Coordinates UOM</div>
+                  <select
+                    value={node.draftCoordinateUom}
+                    onChange={(e) =>
+                      setNodeDraft(
+                        node.id,
+                        "draftCoordinateUom",
+                        e.target.value as "mm" | "cm" | "m",
+                      )
+                    }
+                    disabled={!canWrite}
+                    className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm"
+                  >
+                    <option value="mm">Millimetre (mm)</option>
+                    <option value="cm">Centimetre (cm)</option>
+                    <option value="m">Metre (m)</option>
+                  </select>
+                  <div className="text-xs text-text-muted">
+                    Coordinates will be converted to metres for the 3D renderer.
+                  </div>
                 </label>
                 <label className="space-y-2">
                   <div className="text-sm font-medium text-text-primary">Height (m)</div>
@@ -953,9 +998,47 @@ export default function BuildingLineCoordinatesPage() {
             <div className="mt-2 text-3xl font-bold text-text-primary">{stats.configured}</div>
           </div>
         </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("EDITOR")}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold ${
+              activeTab === "EDITOR"
+                ? "bg-primary text-white"
+                : "border border-border-default bg-surface-base text-text-primary"
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            Coordinate Editor
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("PROGRESS_3D")}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold ${
+              activeTab === "PROGRESS_3D"
+                ? "bg-primary text-white"
+                : "border border-border-default bg-surface-base text-text-primary"
+            }`}
+          >
+            <Cuboid className="h-4 w-4" />
+            3D Progress Model
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-4">{renderNode(root)}</div>
+      {activeTab === "EDITOR" ? (
+        <div className="space-y-4">{renderNode(root)}</div>
+      ) : (
+        <BuildingProgress3DTab
+          root={root}
+          towerProgress={towerProgress}
+          loadingProgress={loadingProgress}
+          onRefresh={() => {
+            void loadTowerProgress(pId);
+          }}
+        />
+      )}
     </div>
   );
 }

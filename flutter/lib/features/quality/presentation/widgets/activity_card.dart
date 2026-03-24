@@ -9,9 +9,6 @@ class ActivityCard extends StatefulWidget {
   final ActivityRow row;
   final VoidCallback? onRaiseRfi;
 
-  /// Called when the user taps Fix on a specific pending observation.
-  final void Function(ActivityObservation obs)? onFixObservation;
-
   /// Called when the user taps "Raise Part X" in the multi-go progress section.
   /// [partNo] is the part number to raise, [totalParts] is the total.
   final void Function(int partNo, int totalParts)? onRaisePart;
@@ -20,13 +17,17 @@ class ActivityCard extends StatefulWidget {
   /// [unitId] is the qualityUnitId, [unitName] is the display label.
   final void Function(int unitId, String unitName)? onRaiseUnit;
 
+  /// Called when the user taps "View in Approvals" on a pending-observation
+  /// activity. Passes the inspection that should be opened.
+  final void Function(QualityInspection inspection)? onViewApproval;
+
   const ActivityCard({
     super.key,
     required this.row,
     this.onRaiseRfi,
-    this.onFixObservation,
     this.onRaisePart,
     this.onRaiseUnit,
+    this.onViewApproval,
   });
 
   @override
@@ -221,13 +222,34 @@ class _ActivityCardState extends State<ActivityCard> {
 
             // ── Inline observation list ────────────────────────────────────
             if (_obsExpanded)
-              ...observations.map((obs) => _InlineObservationRow(
-                    obs: obs,
-                    onFix: obs.status == ObservationStatus.pending &&
-                            widget.onFixObservation != null
-                        ? () => widget.onFixObservation!(obs)
-                        : null,
-                  )),
+              ...observations.map((obs) => _InlineObservationRow(obs: obs)),
+
+            // ── "View in Approvals" CTA when there are pending observations ─
+            if (_obsExpanded &&
+                pendingCount > 0 &&
+                widget.onViewApproval != null &&
+                widget.row.inspection != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        widget.onViewApproval!(widget.row.inspection!),
+                    icon: const Icon(Icons.assignment_turned_in_outlined,
+                        size: 16),
+                    label: const Text('View in Approvals →'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade800,
+                      side: BorderSide(color: Colors.orange.shade400),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      textStyle: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ),
 
             const SizedBox(height: 4),
           ],
@@ -243,9 +265,8 @@ class _ActivityCardState extends State<ActivityCard> {
 
 class _InlineObservationRow extends StatelessWidget {
   final ActivityObservation obs;
-  final VoidCallback? onFix;
 
-  const _InlineObservationRow({required this.obs, this.onFix});
+  const _InlineObservationRow({required this.obs});
 
   @override
   Widget build(BuildContext context) {
@@ -326,27 +347,6 @@ class _InlineObservationRow extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            // Fix button for pending observations
-            if (onFix != null) ...[
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: onFix,
-                  icon: const Icon(Icons.build_outlined, size: 14),
-                  label: const Text('Fix'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.orange.shade700,
-                    side: BorderSide(color: Colors.orange.shade400),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    textStyle: const TextStyle(fontSize: 11),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),

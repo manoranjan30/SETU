@@ -5,6 +5,7 @@ import {
   Database,
   ClipboardList,
   ExternalLink,
+  Brain,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -85,6 +86,24 @@ export const MENU_CONFIG: MenuItem[] = [
         label: "Issue Tracker Departments",
         path: "/dashboard/admin/issue-tracker",
         permission: PermissionCode.MANAGE_USERS,
+      },
+    ],
+  },
+  {
+    label: "AI Insights",
+    path: "/dashboard/ai-insights",
+    icon: Brain,
+    permission: PermissionCode.AI_INSIGHTS_READ,
+    children: [
+      {
+        label: "Analyse",
+        path: "/dashboard/ai-insights",
+        permission: PermissionCode.AI_INSIGHTS_READ,
+      },
+      {
+        label: "AI Settings",
+        path: "/dashboard/ai-insights/admin",
+        permission: PermissionCode.AI_INSIGHTS_ADMIN,
       },
     ],
   },

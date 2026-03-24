@@ -304,6 +304,16 @@ export default function QualityApprovalsPage() {
   const [currentPhotos, setCurrentPhotos] = useState<string[]>([]);
   const [savingObs, setSavingObs] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveUploadingId, setResolveUploadingId] = useState<string | null>(
+    null,
+  );
+  const [resolutionTexts, setResolutionTexts] = useState<Record<string, string>>(
+    {},
+  );
+  const [resolutionPhotos, setResolutionPhotos] = useState<
+    Record<string, string[]>
+  >({});
 
   useEffect(() => {
     if (selectedInspectionId) {
@@ -327,13 +337,19 @@ export default function QualityApprovalsPage() {
   const canApproveInspection = hasPermission(
     PermissionCode.QUALITY_INSPECTION_APPROVE,
   );
+  const canCloseChecklistObservation = hasPermission(
+    PermissionCode.QUALITY_OBSERVATION_CLOSE,
+  );
 
-  // Helper for correct image URLs
+  // Helper for correct image URLs.
+  // Strips the /api suffix from VITE_API_URL so uploads (served at the server
+  // root) are resolved correctly even if the API URL includes /api.
   const getFileUrl = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
-    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-    return `${baseUrl}${path}`;
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    const origin = apiUrl.replace(/\/api\/?$/, "");
+    return `${origin}${path}`;
   };
 
   // Filter states
@@ -352,6 +368,20 @@ export default function QualityApprovalsPage() {
         })
         .then((res) => {
           setInspections(res.data);
+          // Auto-select when navigated from raise-RFI page via ?inspectionId=X
+          const focusId = searchParams.get("inspectionId");
+          if (focusId) {
+            const id = Number(focusId);
+            if (!isNaN(id)) {
+              setSelectedInspectionId(id);
+              setFilterStatus("ALL");
+            }
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("inspectionId");
+              return next;
+            }, { replace: true });
+          }
         })
         .finally(() => setLoadingList(false));
     }
@@ -507,24 +537,19 @@ export default function QualityApprovalsPage() {
     };
   }, [approvalMetrics.pending, inspections]);
 
-  const stageScopedObservations = useMemo(() => {
-    if (selectedObservationStageId == null) return observations;
-    return observations.filter((o) => o.stageId === selectedObservationStageId);
-  }, [observations, selectedObservationStageId]);
-
   const filteredObservations = useMemo(() => {
     if (obsTab === "PENDING")
-      return stageScopedObservations.filter(
+      return observations.filter(
         (o) => o.status === "PENDING" || o.status === "OPEN",
       );
     if (obsTab === "RECTIFIED")
-      return stageScopedObservations.filter((o) => o.status === "RECTIFIED");
-    if (obsTab === "CLOSED")
-      return stageScopedObservations.filter(
-        (o) => o.status === "CLOSED" || o.status === "RESOLVED",
+      return observations.filter(
+        (o) => o.status === "RECTIFIED" || o.status === "RESOLVED",
       );
-    return stageScopedObservations;
-  }, [stageScopedObservations, obsTab]);
+    if (obsTab === "CLOSED")
+      return observations.filter((o) => o.status === "CLOSED");
+    return observations;
+  }, [observations, obsTab]);
 
   const filteredLegacyObservations = useMemo(() => {
     if (obsTab === "PENDING")
@@ -532,11 +557,11 @@ export default function QualityApprovalsPage() {
         (o) => o.status === "PENDING" || o.status === "OPEN",
       );
     if (obsTab === "RECTIFIED")
-      return legacyObservations.filter((o) => o.status === "RECTIFIED");
-    if (obsTab === "CLOSED")
       return legacyObservations.filter(
-        (o) => o.status === "CLOSED" || o.status === "RESOLVED",
+        (o) => o.status === "RECTIFIED" || o.status === "RESOLVED",
       );
+    if (obsTab === "CLOSED")
+      return legacyObservations.filter((o) => o.status === "CLOSED");
     return legacyObservations;
   }, [legacyObservations, obsTab]);
 
@@ -860,6 +885,67 @@ export default function QualityApprovalsPage() {
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to close observation.");
+    }
+  };
+
+  const handleResolveObservationUpload = async (
+    obsId: string,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setResolveUploadingId(obsId);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await api.post("/files/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setResolutionPhotos((prev) => ({
+        ...prev,
+        [obsId]: [...(prev[obsId] || []), res.data.url],
+      }));
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Upload failed"));
+    } finally {
+      setResolveUploadingId(null);
+      e.target.value = "";
+    }
+  };
+
+  const handleResolveObservation = async (obsId: string) => {
+    const closureText = resolutionTexts[obsId]?.trim();
+    if (!closureText) {
+      alert("Please enter rectification details before submitting.");
+      return;
+    }
+
+    setResolvingId(obsId);
+    try {
+      await api.patch(
+        `/quality/activities/${inspectionDetail.activityId}/observation/${obsId}/resolve`,
+        {
+          closureText,
+          closureEvidence: resolutionPhotos[obsId] || [],
+        },
+      );
+      setResolutionTexts((prev) => {
+        const next = { ...prev };
+        delete next[obsId];
+        return next;
+      });
+      setResolutionPhotos((prev) => {
+        const next = { ...prev };
+        delete next[obsId];
+        return next;
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to submit rectification.");
+    } finally {
+      setResolvingId(null);
     }
   };
 
@@ -2326,12 +2412,15 @@ export default function QualityApprovalsPage() {
                                       o.status === "PENDING" ||
                                       o.status === "OPEN",
                                   ).length
-                                : observations.filter(
-                                    (o) =>
-                                      o.status === "CLOSED" ||
-                                      o.status === "RECTIFIED" ||
-                                      o.status === "RESOLVED",
-                                  ).length}
+                                : tab === "RECTIFIED"
+                                  ? observations.filter(
+                                      (o) =>
+                                        o.status === "RECTIFIED" ||
+                                        o.status === "RESOLVED",
+                                    ).length
+                                  : observations.filter(
+                                      (o) => o.status === "CLOSED",
+                                    ).length}
                           </span>
                         </button>
                       ),
@@ -2356,12 +2445,15 @@ export default function QualityApprovalsPage() {
                                 className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded w-fit ${
                                   obs.status === "PENDING"
                                     ? "bg-amber-100 text-amber-800"
-                                    : obs.status === "RECTIFIED"
+                                    : obs.status === "RECTIFIED" ||
+                                        obs.status === "RESOLVED"
                                       ? "bg-info-muted text-blue-800"
                                       : "bg-surface-raised text-text-secondary"
                                 }`}
                               >
-                                {obs.status}
+                                {obs.status === "RESOLVED"
+                                  ? "RECTIFIED"
+                                  : obs.status}
                               </span>
                               <span className="text-xs font-semibold text-text-muted">
                                 [{obs.type || "Minor"}] #{idx + 1}
@@ -2416,7 +2508,8 @@ export default function QualityApprovalsPage() {
                             </div>
                           )}
 
-                          {obs.status === "RECTIFIED" && (
+                          {(obs.status === "RECTIFIED" ||
+                            obs.status === "RESOLVED") && (
                             <div className="mt-4 p-3 bg-primary-muted border border-blue-100 rounded-lg">
                               <p className="text-xs font-bold text-blue-900 mb-1">
                                 Rectification Details (From Site Team):
@@ -2449,11 +2542,107 @@ export default function QualityApprovalsPage() {
                                 )}
 
                               <div className="mt-3">
-                                <button
-                                  onClick={() => handleCloseObservation(obs.id)}
-                                  className="px-4 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-dark shadow-sm transition-all"
+                                {canCloseChecklistObservation ? (
+                                  <button
+                                    onClick={() => handleCloseObservation(obs.id)}
+                                    className="px-4 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-dark shadow-sm transition-all"
+                                  >
+                                    Verify & Close Observation
+                                  </button>
+                                ) : (
+                                  <div className="text-xs font-medium text-blue-900">
+                                    Awaiting QC closure authority.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {(obs.status === "PENDING" || obs.status === "OPEN") && (
+                            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-rose-900">
+                                Rectification Update
+                              </div>
+                              <p className="mt-1 text-sm text-rose-800">
+                                Submit contractor/site-team rectification here. QC will verify and close it from this same approval workflow.
+                              </p>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {(resolutionPhotos[obs.id] || []).map(
+                                  (url, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      className="group relative h-14 w-14"
+                                    >
+                                      <img
+                                        src={getFileUrl(url)}
+                                        alt="Rectification"
+                                        className="h-full w-full rounded border border-rose-200 object-cover"
+                                      />
+                                      <button
+                                        onClick={() =>
+                                          setResolutionPhotos((prev) => ({
+                                            ...prev,
+                                            [obs.id]: (prev[obs.id] || []).filter(
+                                              (_, index) => index !== pIdx,
+                                            ),
+                                          }))
+                                        }
+                                        className="absolute -right-1.5 -top-1.5 rounded-full bg-rose-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  ),
+                                )}
+
+                                <label
+                                  className={`flex h-14 w-14 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-rose-300 bg-white transition-all hover:bg-rose-100 ${
+                                    resolveUploadingId === obs.id
+                                      ? "pointer-events-none opacity-50"
+                                      : ""
+                                  }`}
                                 >
-                                  Verify & Close Observation
+                                  <Camera className="h-4 w-4 text-rose-500" />
+                                  <span className="mt-0.5 text-[8px] font-bold uppercase text-rose-500">
+                                    {resolveUploadingId === obs.id ? "..." : "Photo"}
+                                  </span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={(e) =>
+                                      handleResolveObservationUpload(obs.id, e)
+                                    }
+                                  />
+                                </label>
+                              </div>
+
+                              <textarea
+                                className="mt-3 min-h-[88px] w-full rounded-md border border-rose-200 bg-white p-3 text-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                                placeholder="Describe how this checklist observation was rectified..."
+                                value={resolutionTexts[obs.id] || ""}
+                                onChange={(e) =>
+                                  setResolutionTexts((prev) => ({
+                                    ...prev,
+                                    [obs.id]: e.target.value,
+                                  }))
+                                }
+                              />
+
+                              <div className="mt-3 flex justify-end">
+                                <button
+                                  onClick={() => handleResolveObservation(obs.id)}
+                                  disabled={
+                                    resolvingId === obs.id ||
+                                    resolveUploadingId === obs.id ||
+                                    !resolutionTexts[obs.id]?.trim()
+                                  }
+                                  className="px-4 py-2 rounded-md bg-rose-600 text-sm font-semibold text-white shadow-sm transition-all hover:bg-rose-700 disabled:opacity-50"
+                                >
+                                  {resolvingId === obs.id
+                                    ? "Submitting..."
+                                    : "Submit Rectification"}
                                 </button>
                               </div>
                             </div>
@@ -2470,6 +2659,12 @@ export default function QualityApprovalsPage() {
                     <AlertCircle className="w-4 h-4 text-warning" /> Add New
                     Observation
                   </h4>
+
+                  {selectedObservationStageId != null && (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      New observations added here will be linked to the selected checklist stage, but the log above now shows all observations for this RFI so QC can rectify and close them from one place.
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     <div>

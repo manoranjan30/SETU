@@ -226,58 +226,6 @@ export class QualityReportService {
         })
         .filter((row) => row.stage);
 
-      const workflowHistoryRows = sortedWorkflowSteps.map((step) => {
-        const levelSignatures = activeStageApprovals
-          .map((row) =>
-            row.stageApprovalLevels.find(
-              (level) => level.stepOrder === step.stepOrder,
-            )?.signature,
-          )
-          .filter(Boolean) as any[];
-
-        const uniqueSignerLabels = Array.from(
-          new Set(
-            levelSignatures.map((signature) =>
-              [
-                signature.signerDisplayName || signature.signedBy,
-                signature.signerCompany,
-                signature.signerRoleLabel || signature.role,
-              ]
-                .filter(Boolean)
-                .join(' - '),
-            ),
-          ),
-        ).filter(Boolean);
-
-        const latestSignedAt = levelSignatures.length
-          ? levelSignatures.reduce((latest, signature) => {
-              const current = new Date(signature.createdAt).getTime();
-              return current > latest ? current : latest;
-            }, 0)
-          : 0;
-
-        const status = levelSignatures.length === 0
-          ? isApproved
-            ? 'NOT RECORDED'
-            : step.status
-          : levelSignatures.length === activeStageApprovals.length &&
-              activeStageApprovals.length > 0
-            ? 'COMPLETED'
-            : 'PARTIAL';
-
-        return {
-          step,
-          status,
-          signedBy: uniqueSignerLabels.join(', '),
-          completedAt:
-            status === 'COMPLETED' && latestSignedAt
-              ? new Date(latestSignedAt)
-              : step.completedAt
-                ? new Date(step.completedAt)
-                : null,
-        };
-      });
-
       if (!isApproved) {
         doc.save();
         doc.opacity(0.08);
@@ -668,9 +616,9 @@ export class QualityReportService {
         }
       }
 
-      // WORKFLOW HISTORY SECTION
-      if (workflowRun && workflowRun.steps && workflowRun.steps.length > 0) {
-        if (currentY + 100 > doc.page.height) {
+      // STAGE APPROVAL SUMMARY — always shown when stages have been signed
+      if (activeStageApprovals.length > 0) {
+        if (currentY + 80 > doc.page.height - 50) {
           doc.addPage();
           currentY = 40;
         }
@@ -679,202 +627,101 @@ export class QualityReportService {
         doc
           .fontSize(10)
           .font('Helvetica-Bold')
-          .fillColor('#4F46E5')
-          .text('APPROVAL WORKFLOW HISTORY', startX);
+          .fillColor('#0F766E')
+          .text('STAGE APPROVAL SUMMARY', startX, currentY);
         doc.fillColor('black');
         currentY = doc.y + 5;
 
-        const wfColWidths = { step: 180, roles: 150, status: 80, date: 100 };
-        doc.fontSize(8).font('Helvetica-Bold');
-        doc.rect(startX, currentY, pageWidth, 15).stroke();
-        doc.text('STEP NAME', startX + 5, currentY + 4);
+        const stageColWidths = { stage: 150, level: 120, approver: 160, date: 90 };
+        doc.rect(startX, currentY, pageWidth, 15).fill('#E5E7EB').stroke();
+        doc.fillColor('black').fontSize(8).font('Helvetica-Bold');
+        doc.text('STAGE', startX + 5, currentY + 4);
+        doc.text('LEVEL', startX + stageColWidths.stage + 5, currentY + 4);
         doc.text(
           'SIGNED BY / ROLE',
-          startX + wfColWidths.step + 5,
+          startX + stageColWidths.stage + stageColWidths.level + 5,
           currentY + 4,
         );
         doc.text(
-          'STATUS',
-          startX + wfColWidths.step + wfColWidths.roles + 5,
-          currentY + 4,
-        );
-        doc.text(
-          'DATE',
+          'DATE & TIME',
           startX +
-            wfColWidths.step +
-            wfColWidths.roles +
-            wfColWidths.status +
+            stageColWidths.stage +
+            stageColWidths.level +
+            stageColWidths.approver +
             5,
           currentY + 4,
         );
         currentY += 15;
 
-        for (const row of workflowHistoryRows) {
-          const rowHeight = 26;
-          if (currentY + rowHeight > doc.page.height - 50) {
-            doc.addPage();
-            currentY = 40;
-          }
+        for (const row of activeStageApprovals) {
+          const levels = row.stageApprovalLevels?.length
+            ? row.stageApprovalLevels
+            : [{ stepOrder: null, stepName: 'Stage Approval', signature: null }];
 
-          doc.rect(startX, currentY, pageWidth, rowHeight).stroke();
-          doc.font('Helvetica').fontSize(8);
-          doc.text(
-            row.step.stepName || row.step.workflowNode?.label || 'Step',
-            startX + 5,
-            currentY + 5,
-          );
-          doc.text(
-            row.signedBy || '-',
-            startX + wfColWidths.step + 5,
-            currentY + 5,
-            { width: wfColWidths.roles - 10 },
-          );
+          for (let index = 0; index < levels.length; index += 1) {
+            const level = levels[index];
+            const rowHeight = 24;
+            if (currentY + rowHeight > doc.page.height - 50) {
+              doc.addPage();
+              currentY = 40;
+            }
 
-          const statusColor =
-            row.status === 'COMPLETED'
-              ? '#059669'
-              : row.status === 'REJECTED'
-                ? '#DC2626'
-                : row.status === 'PARTIAL'
-                  ? '#B45309'
-                : '#6B7280';
-          doc
-            .fillColor(statusColor)
-            .font('Helvetica-Bold')
-            .text(
-              row.status,
-              startX + wfColWidths.step + wfColWidths.roles + 5,
-              currentY + 5,
-            )
-            .fillColor('black');
-          if ((row.step.minApprovalsRequired || 1) > 1) {
-            doc
-              .font('Helvetica')
-              .fontSize(7)
-              .text(
-                `${row.step.currentApprovalCount || 0}/${row.step.minApprovalsRequired} approvals`,
-                startX + wfColWidths.step + wfColWidths.roles + 5,
-                currentY + 14,
-              );
-          }
-          doc
-            .font('Helvetica')
-            .text(
-              row.completedAt
-                ? new Date(row.completedAt).toLocaleDateString()
+            doc.rect(startX, currentY, pageWidth, rowHeight).stroke();
+            doc.font('Helvetica').fontSize(8);
+            doc.text(
+              index === 0
+                ? row.stage.stageTemplate?.name || `Stage #${row.stage.id}`
+                : '',
+              startX + 5,
+              currentY + 6,
+              { width: stageColWidths.stage - 10 },
+            );
+            doc.text(
+              `Level ${level.stepOrder ?? '-'}: ${level.stepName || 'Approval'}`,
+              startX + stageColWidths.stage + 5,
+              currentY + 6,
+              { width: stageColWidths.level - 10 },
+            );
+            doc.text(
+              level.signature
+                ? [
+                    level.signature.signerDisplayName ||
+                      level.signature.signedBy,
+                    level.signature.signerCompany,
+                    level.signature.signerRoleLabel,
+                    level.signature.isAutoInherited
+                      ? '(Auto-filled)'
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' — ')
+                : 'Pending stage approval',
+              startX + stageColWidths.stage + stageColWidths.level + 5,
+              currentY + 6,
+              { width: stageColWidths.approver - 10 },
+            );
+            // Date + time for the signature
+            const sigDate = level.signature?.createdAt
+              ? new Date(level.signature.createdAt)
+              : null;
+            doc.text(
+              sigDate
+                ? `${sigDate.toLocaleDateString('en-IN')} ${sigDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`
                 : '-',
               startX +
-                wfColWidths.step +
-                wfColWidths.roles +
-                wfColWidths.status +
+                stageColWidths.stage +
+                stageColWidths.level +
+                stageColWidths.approver +
                 5,
-              currentY + 5,
+              currentY + 6,
+              { width: stageColWidths.date - 5 },
             );
-
-          currentY += rowHeight;
-        }
-        currentY += 20;
-
-        if (activeStageApprovals.length > 0) {
-          if (currentY + 80 > doc.page.height - 50) {
-            doc.addPage();
-            currentY = 40;
+            currentY += rowHeight;
           }
-
-          doc
-            .fontSize(10)
-            .font('Helvetica-Bold')
-            .fillColor('#0F766E')
-            .text('STAGE APPROVAL SUMMARY', startX, currentY);
-          doc.fillColor('black');
-          currentY += 18;
-
-          const stageColWidths = { stage: 150, level: 120, approver: 190, date: 60 };
-          doc.rect(startX, currentY, pageWidth, 15).stroke();
-          doc.fontSize(8).font('Helvetica-Bold');
-          doc.text('STAGE', startX + 5, currentY + 4);
-          doc.text('LEVEL', startX + stageColWidths.stage + 5, currentY + 4);
-          doc.text(
-            'SIGNED BY / ROLE',
-            startX + stageColWidths.stage + stageColWidths.level + 5,
-            currentY + 4,
-          );
-          doc.text(
-            'DATE',
-            startX +
-              stageColWidths.stage +
-              stageColWidths.level +
-              stageColWidths.approver +
-              5,
-            currentY + 4,
-          );
-          currentY += 15;
-
-          for (const row of activeStageApprovals) {
-            const levels = row.stageApprovalLevels?.length
-              ? row.stageApprovalLevels
-              : [{ stepOrder: null, stepName: 'Stage Approval', signature: null }];
-
-            for (let index = 0; index < levels.length; index += 1) {
-              const level = levels[index];
-              const rowHeight = 24;
-              if (currentY + rowHeight > doc.page.height - 50) {
-                doc.addPage();
-                currentY = 40;
-              }
-
-              doc.rect(startX, currentY, pageWidth, rowHeight).stroke();
-              doc.font('Helvetica').fontSize(8);
-              doc.text(
-                index === 0
-                  ? row.stage.stageTemplate?.name || `Stage #${row.stage.id}`
-                  : '',
-                startX + 5,
-                currentY + 6,
-                { width: stageColWidths.stage - 10 },
-              );
-              doc.text(
-                `Level ${level.stepOrder ?? '-'}: ${level.stepName || 'Approval'}`,
-                startX + stageColWidths.stage + 5,
-                currentY + 6,
-                { width: stageColWidths.level - 10 },
-              );
-              doc.text(
-                level.signature
-                  ? [
-                      level.signature.signerDisplayName ||
-                        level.signature.signedBy,
-                      level.signature.signerCompany,
-                      level.signature.signerRoleLabel,
-                      level.signature.isAutoInherited
-                        ? '(Auto-filled)'
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' - ')
-                  : 'Pending stage approval',
-                startX + stageColWidths.stage + stageColWidths.level + 5,
-                currentY + 6,
-                { width: stageColWidths.approver - 10 },
-              );
-              doc.text(
-                level.signature?.createdAt
-                  ? new Date(level.signature.createdAt).toLocaleDateString()
-                  : '-',
-                startX +
-                  stageColWidths.stage +
-                  stageColWidths.level +
-                  stageColWidths.approver +
-                  5,
-                currentY + 6,
-              );
-              currentY += rowHeight;
-            }
-          }
-          currentY += 18;
         }
+        currentY += 18;
       } else {
-        // Note at bottom of table
+        // Note at bottom of table when no approvals yet
         doc.moveDown(1);
         doc
           .fontSize(8)
@@ -1024,17 +871,30 @@ export class QualityReportService {
                   },
                 );
 
-                if (
-                  sig.signatureData &&
-                  sig.signatureData.startsWith('data:image')
-                ) {
+                if (sig.signatureData) {
                   try {
-                    doc.image(sig.signatureData, cx + 5, y + 20, {
-                      width: sigColWidth - 10,
-                      height: 40,
-                    });
+                    let imgSrc: string | Buffer | null = null;
+                    if (sig.signatureData.startsWith('data:image')) {
+                      // Already a proper data URI
+                      imgSrc = sig.signatureData;
+                    } else if (sig.signatureData.startsWith('/uploads/') || sig.signatureData.startsWith('uploads/')) {
+                      // Stored as a file path
+                      const sigFilePath = this.resolveUploadPath(sig.signatureData);
+                      if (sigFilePath && existsSync(sigFilePath)) {
+                        imgSrc = readFileSync(sigFilePath);
+                      }
+                    } else if (sig.signatureData.length > 100) {
+                      // Raw base64 without data URI prefix — wrap it
+                      imgSrc = `data:image/png;base64,${sig.signatureData}`;
+                    }
+                    if (imgSrc) {
+                      doc.image(imgSrc as any, cx + 5, y + 20, {
+                        width: sigColWidth - 10,
+                        height: 40,
+                      });
+                    }
                   } catch (e) {
-                    console.error('Invalid signature image blob');
+                    console.error('Failed to render signature image:', (e as Error).message);
                   }
                 }
 
@@ -1070,9 +930,12 @@ export class QualityReportService {
         doc.end();
       };
 
-      // Fetch observations mapping to the inspection activity
+      // Fetch observations scoped to this specific inspection
       this.observationRepo
-        .find({ where: { activityId: inspection.activityId } })
+        .find({
+          where: { inspectionId: inspectionId },
+          order: { createdAt: 'ASC' },
+        })
         .then((observations) => {
           if (observations.length > 0) {
             if (currentY + 100 > doc.page.height) {
@@ -1088,96 +951,187 @@ export class QualityReportService {
               .fillColor('#B45309')
               .text('OBSERVATIONS / NCR LOG', startX, currentY);
             doc.fillColor('black');
-            currentY += 20;
+            currentY = doc.y + 8;
 
-            const obsColWidths = {
-              si: 30,
-              desc: 250,
-              type: 60,
-              status: 60,
-              date: 110,
+            const formatDateTime = (d: Date | null | undefined) => {
+              if (!d) return '-';
+              const dt = new Date(d);
+              return `${dt.toLocaleDateString('en-IN')} ${dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
             };
-            doc.rect(startX, currentY, pageWidth, 15).stroke();
-            doc.fontSize(8).font('Helvetica-Bold');
-            doc.text('#', startX + 5, currentY + 4);
-            doc.text('OBSERVATION', startX + obsColWidths.si + 5, currentY + 4);
-            doc.text(
-              'TYPE',
-              startX + obsColWidths.si + obsColWidths.desc + 5,
-              currentY + 4,
-            );
-            doc.text(
-              'STATUS',
-              startX +
-                obsColWidths.si +
-                obsColWidths.desc +
-                obsColWidths.type +
-                5,
-              currentY + 4,
-            );
-            doc.text(
-              'DATE / CLOSURE',
-              startX +
-                obsColWidths.si +
-                obsColWidths.desc +
-                obsColWidths.type +
-                obsColWidths.status +
-                5,
-              currentY + 4,
-            );
-            currentY += 15;
+
+            const photoWidth = 70;
+            const photoHeight = 55;
+            const photosPerRow = 4;
 
             observations.forEach((obs: any, idx) => {
-              const rowH = 20;
-              if (currentY + rowH > doc.page.height - 50) {
+              // ── Header row for each observation ──────────────────────────
+              const obsHeaderH = 16;
+              if (currentY + obsHeaderH > doc.page.height - 50) {
                 doc.addPage();
                 currentY = 40;
               }
-              doc.rect(startX, currentY, pageWidth, rowH).stroke();
-              doc.font('Helvetica').fontSize(8);
-              doc.text(String(idx + 1), startX + 5, currentY + 6);
-              doc.text(
-                obs.observationText || '',
-                startX + obsColWidths.si + 5,
-                currentY + 6,
-                { width: obsColWidths.desc - 10 },
-              );
-              doc.text(
-                obs.type || 'Minor',
-                startX + obsColWidths.si + obsColWidths.desc + 5,
-                currentY + 6,
-              );
-
+              doc.rect(startX, currentY, pageWidth, obsHeaderH).fill('#FEF3C7').stroke();
+              doc.fillColor('#92400E').font('Helvetica-Bold').fontSize(8);
               const statusColor =
                 obs.status === 'CLOSED'
                   ? '#059669'
                   : obs.status === 'RECTIFIED'
                     ? '#2563EB'
                     : '#DC2626';
-              doc
-                .fillColor(statusColor)
-                .text(
-                  obs.status,
-                  startX +
-                    obsColWidths.si +
-                    obsColWidths.desc +
-                    obsColWidths.type +
-                    5,
-                  currentY + 6,
-                )
-                .fillColor('black');
-
               doc.text(
-                new Date(obs.createdAt).toLocaleDateString(),
-                startX +
-                  obsColWidths.si +
-                  obsColWidths.desc +
-                  obsColWidths.type +
-                  obsColWidths.status +
-                  5,
-                currentY + 6,
+                `#${idx + 1}  ${obs.type || 'Minor'}`,
+                startX + 5,
+                currentY + 4,
               );
-              currentY += rowH;
+              doc.fillColor(statusColor).text(
+                obs.status || 'PENDING',
+                startX + 80,
+                currentY + 4,
+              );
+              doc.fillColor('#374151').font('Helvetica').fontSize(7);
+              doc.text(
+                `Raised: ${formatDateTime(obs.createdAt)}`,
+                startX + 160,
+                currentY + 4,
+              );
+              if (obs.resolvedAt) {
+                doc.text(
+                  `Closed/Rectified: ${formatDateTime(obs.resolvedAt)}`,
+                  startX + 320,
+                  currentY + 4,
+                );
+              }
+              doc.fillColor('black');
+              currentY += obsHeaderH;
+
+              // ── Observation text row ──────────────────────────────────────
+              const obsTextH = Math.max(
+                24,
+                Math.ceil((obs.observationText || '').length / 55) * 12 + 10,
+              );
+              if (currentY + obsTextH > doc.page.height - 50) {
+                doc.addPage();
+                currentY = 40;
+              }
+              doc.rect(startX, currentY, pageWidth, obsTextH).stroke();
+              doc.font('Helvetica').fontSize(8).fillColor('black');
+              doc.text(
+                obs.observationText || '',
+                startX + 5,
+                currentY + 6,
+                { width: pageWidth - 10 },
+              );
+              currentY += obsTextH;
+
+              // ── Closure text row (if any) ─────────────────────────────────
+              if (obs.closureText) {
+                const closureH = Math.max(
+                  20,
+                  Math.ceil((obs.closureText || '').length / 55) * 12 + 8,
+                );
+                if (currentY + closureH > doc.page.height - 50) {
+                  doc.addPage();
+                  currentY = 40;
+                }
+                doc.rect(startX, currentY, pageWidth, closureH).fill('#F0FDF4').stroke();
+                doc.fillColor('#065F46').font('Helvetica-Oblique').fontSize(7);
+                doc.text(
+                  `Closure Note: ${obs.closureText}`,
+                  startX + 5,
+                  currentY + 5,
+                  { width: pageWidth - 10 },
+                );
+                doc.fillColor('black');
+                currentY += closureH;
+              }
+
+              // ── Observation photos ─────────────────────────────────────────
+              const allPhotos: string[] = [
+                ...((obs.photos as string[]) || []),
+              ];
+              if (allPhotos.length > 0) {
+                const photoRowH = photoHeight + 8;
+                const numRows = Math.ceil(allPhotos.length / photosPerRow);
+                const totalPhotoH = numRows * photoRowH + 14;
+                if (currentY + totalPhotoH > doc.page.height - 50) {
+                  doc.addPage();
+                  currentY = 40;
+                }
+                doc.rect(startX, currentY, pageWidth, 12).fill('#FEF9C3').stroke();
+                doc.fillColor('#713F12').font('Helvetica-Bold').fontSize(7);
+                doc.text('Observation Photos', startX + 5, currentY + 3);
+                doc.fillColor('black');
+                currentY += 12;
+
+                for (let r = 0; r < numRows; r++) {
+                  const rowH = photoRowH;
+                  if (currentY + rowH > doc.page.height - 50) {
+                    doc.addPage();
+                    currentY = 40;
+                  }
+                  doc.rect(startX, currentY, pageWidth, rowH).stroke();
+                  for (let c = 0; c < photosPerRow; c++) {
+                    const pi = r * photosPerRow + c;
+                    if (pi >= allPhotos.length) break;
+                    const photoPath = this.resolveUploadPath(allPhotos[pi]);
+                    if (photoPath && existsSync(photoPath)) {
+                      try {
+                        doc.image(photoPath, startX + c * (photoWidth + 5) + 3, currentY + 3, {
+                          width: photoWidth,
+                          height: photoHeight,
+                          fit: [photoWidth, photoHeight],
+                        });
+                      } catch (_) { /* skip unreadable image */ }
+                    }
+                  }
+                  currentY += rowH;
+                }
+              }
+
+              // ── Closure evidence photos ────────────────────────────────────
+              const closurePhotos: string[] = [
+                ...((obs.closureEvidence as string[]) || []),
+              ];
+              if (closurePhotos.length > 0) {
+                const photoRowH = photoHeight + 8;
+                const numRows = Math.ceil(closurePhotos.length / photosPerRow);
+                const totalPhotoH = numRows * photoRowH + 14;
+                if (currentY + totalPhotoH > doc.page.height - 50) {
+                  doc.addPage();
+                  currentY = 40;
+                }
+                doc.rect(startX, currentY, pageWidth, 12).fill('#DCFCE7').stroke();
+                doc.fillColor('#14532D').font('Helvetica-Bold').fontSize(7);
+                doc.text('Closure Evidence Photos', startX + 5, currentY + 3);
+                doc.fillColor('black');
+                currentY += 12;
+
+                for (let r = 0; r < numRows; r++) {
+                  const rowH = photoRowH;
+                  if (currentY + rowH > doc.page.height - 50) {
+                    doc.addPage();
+                    currentY = 40;
+                  }
+                  doc.rect(startX, currentY, pageWidth, rowH).stroke();
+                  for (let c = 0; c < photosPerRow; c++) {
+                    const pi = r * photosPerRow + c;
+                    if (pi >= closurePhotos.length) break;
+                    const photoPath = this.resolveUploadPath(closurePhotos[pi]);
+                    if (photoPath && existsSync(photoPath)) {
+                      try {
+                        doc.image(photoPath, startX + c * (photoWidth + 5) + 3, currentY + 3, {
+                          width: photoWidth,
+                          height: photoHeight,
+                          fit: [photoWidth, photoHeight],
+                        });
+                      } catch (_) { /* skip unreadable image */ }
+                    }
+                  }
+                  currentY += rowH;
+                }
+              }
+
+              currentY += 6; // spacing between observations
             });
 
             currentY += 20;

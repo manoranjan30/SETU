@@ -265,7 +265,16 @@ class ApiEndpoints {
     // Extract only scheme + host + port from baseUrl, discarding the `/api`
     // path prefix — uploaded files are served from the server root, not /api.
     final base = Uri.parse(baseUrl);
-    final origin = '${base.scheme}://${base.host}:${base.port}';
+
+    // Don't include the port when it's the default for the scheme (80 for
+    // HTTP, 443 for HTTPS). Tunnel/CDN proxies like ngrok reject explicit
+    // default ports (e.g. https://abc.ngrok.io:443 fails, without port works).
+    final isDefaultPort = (base.scheme == 'http' && base.port == 80) ||
+        (base.scheme == 'https' && base.port == 443) ||
+        base.port == 0;
+    final origin = isDefaultPort
+        ? '${base.scheme}://${base.host}'
+        : '${base.scheme}://${base.host}:${base.port}';
 
     // Ensure a single slash between origin and the relative path.
     return url.startsWith('/') ? '$origin$url' : '$origin/$url';
@@ -361,6 +370,9 @@ class ApiEndpoints {
   /// Returns per-unit inspection completion percentages for dashboard tiles.
   static const String inspectionUnitProgress =
       '/quality/inspections/unit-progress';
+
+  /// GET /quality/inspections/:id/report — Download PDF report as bytes
+  static String inspectionReport(int id) => '/quality/inspections/$id/report';
 
   /// GET /quality/:projectId/structure/floor/:floorId
   /// Returns the unit/room structure under a specific floor EPS node.

@@ -183,6 +183,11 @@ import { SnagItem } from './snag/entities/snag-item.entity';
 import { SnagPhoto } from './snag/entities/snag-photo.entity';
 import { SnagReleaseApproval } from './snag/entities/snag-release-approval.entity';
 import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-step.entity';
+// AI Insights
+import { AiInsightsModule } from './ai-insights/ai-insights.module';
+import { AiModelConfig } from './ai-insights/entities/ai-model-config.entity';
+import { InsightTemplate } from './ai-insights/entities/insight-template.entity';
+import { InsightRun } from './ai-insights/entities/insight-run.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -342,6 +347,10 @@ import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-s
         SnagPhoto,
         SnagReleaseApproval,
         SnagReleaseApprovalStep,
+        // AI Insights
+        AiModelConfig,
+        InsightTemplate,
+        InsightRun,
       ],
       synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
       migrationsRun: process.env.TYPEORM_MIGRATIONS_RUN === 'true',
@@ -383,6 +392,7 @@ import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-s
     PluginsModule,
     MilestoneModule,
     SnagModule,
+    AiInsightsModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

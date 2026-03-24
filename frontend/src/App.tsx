@@ -49,6 +49,9 @@ import PluginHostPage from "./pages/plugins/PluginHostPage";
 import IssueTrackerDepartmentsPage from "./pages/admin/IssueTrackerDepartmentsPage";
 import IssueTrackerPage from "./pages/planning/IssueTrackerPage";
 import { PluginRuntimeProvider } from "./context/PluginRuntimeContext";
+import AiInsightsPage from "./pages/ai-insights/AiInsightsPage";
+import InsightResultPage from "./pages/ai-insights/InsightResultPage";
+import AiInsightsAdminPage from "./pages/ai-insights/AiInsightsAdminPage";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -474,6 +477,32 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute permission="PLUGIN.RUNTIME.READ">
               <PluginHostPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ── AI Insights ──────────────────────────────────────────────── */}
+        <Route
+          path="ai-insights"
+          element={
+            <ProtectedRoute permission="AI.INSIGHTS.READ">
+              <AiInsightsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="ai-insights/runs/:id"
+          element={
+            <ProtectedRoute permission="AI.INSIGHTS.READ">
+              <InsightResultPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="ai-insights/admin"
+          element={
+            <ProtectedRoute permission="AI.INSIGHTS.ADMIN">
+              <AiInsightsAdminPage />
             </ProtectedRoute>
           }
         />

@@ -7,7 +7,10 @@ import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/core/network/connectivity_banner.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart'
+    hide SubmitRectification;
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/inspection_detail_page.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/activity_card.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -227,9 +230,6 @@ class _ActivityListBody extends StatelessWidget {
                       // Determine which CTA is available based on status
                       final canRaiseRfi =
                           status == ActivityDisplayStatus.ready;
-                      final hasPendingObs =
-                          status == ActivityDisplayStatus.pendingObservation;
-
                       // Allow raising additional parts / units when the
                       // activity isn't locked or fully approved.
                       final canRaiseMore =
@@ -242,11 +242,6 @@ class _ActivityListBody extends StatelessWidget {
                         onRaiseRfi: canRaiseRfi
                             ? () => _showRfiDialog(context, row.activity)
                             : null,
-                        // "Fix observation" callback when an observation is pending
-                        onFixObservation: hasPendingObs
-                            ? (obs) =>
-                                _showRectificationSheet(context, row.activity, obs)
-                            : null,
                         // Multi-Go: raise a specific part number
                         onRaisePart: canRaiseMore
                             ? (partNo, totalParts) => _raiseRfiPart(
@@ -257,6 +252,14 @@ class _ActivityListBody extends StatelessWidget {
                             ? (unitId, unitName) =>
                                 _raiseUnitRfi(context, row, unitId)
                             : null,
+                        // Navigate to approval page when pending observations exist
+                        onViewApproval: row.inspection != null &&
+                                row.observations.any((o) =>
+                                    o.status == ObservationStatus.pending ||
+                                    o.status == ObservationStatus.rectified)
+                            ? (inspection) =>
+                                _openInspectionApproval(context, inspection)
+                            : null,
                       );
                     },
                   ),
@@ -264,6 +267,28 @@ class _ActivityListBody extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Navigates to [InspectionDetailPage] for [inspection] in approval mode.
+  /// Provides a fresh [QualityApprovalBloc] so the detail page can load
+  /// the checklist stages, observations and workflow independently of any
+  /// parent bloc that may not exist in this navigator branch.
+  void _openInspectionApproval(
+      BuildContext context, QualityInspection inspection) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<QualityApprovalBloc>(),
+          child: InspectionDetailPage(inspection: inspection),
+        ),
+      ),
+    ).then((_) {
+      // Refresh the activity list when returning so the status badge updates
+      if (context.mounted) {
+        context.read<QualityRequestBloc>().add(const RefreshCurrentList());
+      }
+    });
   }
 
   /// Opens the Raise RFI dialog, passing the activity and the required context
@@ -388,27 +413,6 @@ class _ActivityListBody extends StatelessWidget {
     ).then((_) => ctrl.dispose());
   }
 
-  /// Opens the rectification bottom sheet for the given observation.
-  void _showRectificationSheet(
-      BuildContext context, QualityActivity activity, ActivityObservation obs) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => BlocProvider.value(
-        // Share the existing bloc so the sheet can dispatch events
-        value: context.read<QualityRequestBloc>(),
-        child: _RectificationSheet(
-          activity: activity,
-          observations: [obs],
-          projectId: projectId,
-        ),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------

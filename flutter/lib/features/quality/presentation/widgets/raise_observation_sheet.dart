@@ -5,16 +5,21 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
+import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Modal bottom sheet for QC inspector to raise a new observation.
 /// Dispatches [RaiseObservation] to [QualityApprovalBloc].
+///
+/// [stages] is the list of checklist stages for this inspection so the
+/// inspector can link the observation to a specific stage.
 class RaiseObservationSheet extends StatefulWidget {
-  const RaiseObservationSheet({super.key});
+  final List<InspectionStage> stages;
+  const RaiseObservationSheet({super.key, this.stages = const []});
 
   /// Show the sheet and return true if observation was submitted.
-  static Future<bool?> show(BuildContext context) {
+  static Future<bool?> show(BuildContext context, {List<InspectionStage> stages = const []}) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -24,7 +29,7 @@ class RaiseObservationSheet extends StatefulWidget {
       ),
       builder: (_) => BlocProvider.value(
         value: context.read<QualityApprovalBloc>(),
-        child: const RaiseObservationSheet(),
+        child: RaiseObservationSheet(stages: stages),
       ),
     );
   }
@@ -37,6 +42,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
   final _formKey = GlobalKey<FormState>();
   final _textCtrl = TextEditingController();
   String _type = 'Minor';
+  int? _selectedStageId;
   final List<String> _photoUrls = [];
   bool _submitting = false;
   bool _uploadingPhoto = false;
@@ -94,6 +100,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
           observationText: _textCtrl.text.trim(),
           type: _type,
           photos: List.from(_photoUrls),
+          stageId: _selectedStageId,
         ));
     Navigator.of(context).pop(true);
   }
@@ -147,6 +154,32 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // Stage selector — shown only when stages are available
+            if (widget.stages.isNotEmpty) ...[
+              Text('Link to Stage (optional)', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int?>(
+                value: _selectedStageId,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  hintText: 'None — general observation',
+                ),
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('None — general observation'),
+                  ),
+                  ...widget.stages.map((s) => DropdownMenuItem<int?>(
+                        value: s.id,
+                        child: Text(s.stageName ?? 'Stage ${s.id}'),
+                      )),
+                ],
+                onChanged: (v) => setState(() => _selectedStageId = v),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Observation text
             TextFormField(

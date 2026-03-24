@@ -21,6 +21,7 @@ interface RevisionHistoryModalProps {
   registerItem: { id: number; drawingNumber: string; title: string } | null;
   projectId: string;
   onDownload: (revisionId: number, filename: string) => void;
+  canDownload: boolean;
 }
 
 const RevisionHistoryModal = ({
@@ -29,6 +30,7 @@ const RevisionHistoryModal = ({
   registerItem,
   projectId,
   onDownload,
+  canDownload,
 }: RevisionHistoryModalProps) => {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [loading, setLoading] = useState(false);
@@ -153,11 +155,21 @@ const RevisionHistoryModal = ({
                       </td>
                       <td className="px-6 py-3 text-right">
                         <button
-                          onClick={() =>
-                            onDownload(rev.id, rev.originalFileName)
+                          onClick={() => {
+                            if (!canDownload) return;
+                            onDownload(rev.id, rev.originalFileName);
+                          }}
+                          disabled={!canDownload}
+                          className={`p-1.5 rounded-full transition-all ${
+                            canDownload
+                              ? "text-text-disabled hover:bg-success-muted hover:text-success opacity-0 group-hover:opacity-100"
+                              : "cursor-not-allowed text-text-disabled/60 opacity-100"
+                          }`}
+                          title={
+                            canDownload
+                              ? "Download"
+                              : "Download is allowed only for Active GFC drawings"
                           }
-                          className="text-text-disabled hover:text-success p-1.5 rounded-full hover:bg-success-muted transition-all opacity-0 group-hover:opacity-100"
-                          title="Download"
                         >
                           <Download size={18} />
                         </button>

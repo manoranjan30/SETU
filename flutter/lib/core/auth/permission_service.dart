@@ -122,6 +122,9 @@ class PermissionService {
   /// Whether this user may mark activity observations as resolved.
   bool get canResolveActivityObs  => can('QUALITY.OBSERVATION.RESOLVE');
 
+  /// Whether this user may close (verify) rectified activity observations.
+  bool get canCloseActivityObs    => can('QUALITY.OBSERVATION.CLOSE');
+
   /// Whether this user may delete activity-level observations.
   bool get canDeleteActivityObs   => can('QUALITY.OBSERVATION.DELETE');
 

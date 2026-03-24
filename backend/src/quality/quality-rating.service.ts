@@ -96,6 +96,23 @@ export class QualityRatingService {
         overallScore: 10, // Max score if no observations? Or 0? Usually 10 if no defects.
         observationScore: 5,
         details: 'No observations recorded yet.',
+        documentationScore: 5,
+        customerInspectionScore: 5,
+        pendingDeduction: 0,
+        totalObservations: 0,
+        openObservations: 0,
+        pendingRatioPercentage: 0,
+        context: projectStatus,
+        breakdown: {
+          projectStatus,
+          categoryWeights:
+            config.categoryWeights.find((w) => w.status === projectStatus) ||
+            config.categoryWeights[0],
+          weightedObservationScore: 5,
+          weightedDocumentationScore: 5,
+          weightedCustomerInspectionScore: 0,
+          severityCounts: {},
+        },
       };
     }
 
@@ -154,6 +171,14 @@ export class QualityRatingService {
       weightedCustScore -
       deductionPoints;
 
+    const severityCounts = observations.reduce<Record<string, number>>(
+      (acc, obs) => {
+        acc[obs.severity] = (acc[obs.severity] || 0) + 1;
+        return acc;
+      },
+      {},
+    );
+
     return {
       overallScore: Math.max(0, parseFloat(overallScore.toFixed(2))),
       observationScore: parseFloat(averageObservationScore.toFixed(2)),
@@ -164,6 +189,21 @@ export class QualityRatingService {
       documentationScore,
       customerInspectionScore,
       context: projectStatus,
+      breakdown: {
+        projectStatus,
+        categoryWeights: contextWeights,
+        weightedObservationScore: parseFloat(
+          weightedObservationScore.toFixed(2),
+        ),
+        weightedDocumentationScore: parseFloat(weightedDocScore.toFixed(2)),
+        weightedCustomerInspectionScore: parseFloat(
+          weightedCustScore.toFixed(2),
+        ),
+        averageObservationScore: parseFloat(
+          averageObservationScore.toFixed(2),
+        ),
+        severityCounts,
+      },
     };
   }
 
@@ -204,5 +244,19 @@ export class QualityRatingService {
       where: { projectNodeId: projectId },
       order: { period: 'DESC' },
     });
+  }
+
+  async deleteSnapshot(projectId: number, snapshotId: number): Promise<void> {
+    const snapshot = await this.ratingRepo.findOne({
+      where: { id: snapshotId, projectNodeId: projectId },
+    });
+
+    if (!snapshot) {
+      throw new NotFoundException(
+        `Rating snapshot #${snapshotId} not found for this project`,
+      );
+    }
+
+    await this.ratingRepo.remove(snapshot);
   }
 }

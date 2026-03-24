@@ -174,7 +174,7 @@ export class QualityActivityController {
   }
 
   @Patch('activities/:id/observation/:obsId/close')
-  @Permissions('QUALITY.OBSERVATION.RESOLVE')
+  @Permissions('QUALITY.OBSERVATION.CLOSE')
   closeObservation(
     @Param('id', ParseIntPipe) id: number,
     @Param('obsId') obsId: string,

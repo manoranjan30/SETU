@@ -520,12 +520,17 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
 
       {/* ---> MODAL: RAISE OBSERVATION <--- */}
       {showRaiseModal && (
-        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface-card rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-            <div className="p-5 border-b flex justify-between items-center bg-surface-base shrink-0">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Plus className="w-5 h-5 text-primary" /> Raise Site Observation
-              </h2>
+        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-50 p-4 md:p-6">
+          <div className="bg-surface-card rounded-3xl shadow-2xl w-full h-full overflow-hidden animate-in zoom-in duration-200 flex flex-col">
+            <div className="p-5 md:p-6 border-b flex justify-between items-center bg-surface-base shrink-0">
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-primary" /> Raise Site Observation
+                </h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  Record the observation with full location, severity, rectification target, and evidence in a dedicated full-screen form.
+                </p>
+              </div>
               <button
                 onClick={() => setShowRaiseModal(false)}
                 className="p-2 hover:bg-gray-200 rounded-full transition-colors"
@@ -534,13 +539,15 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-6 md:p-8 overflow-y-auto flex-1">
               <form
                 id="raise-form"
                 onSubmit={handleCreateSubmit}
-                className="space-y-5"
+                className="space-y-6 max-w-6xl mx-auto"
               >
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                  <div className="xl:col-span-2 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
                     <label className="block text-xs font-bold text-text-muted uppercase mb-2">
                       Severity
@@ -629,109 +636,118 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                       </button>
                     </div>
                   </div>
-                </div>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-text-muted uppercase mb-1">
-                    Location *
-                  </label>
-                  <EpsLocationPicker
-                    projectId={projectId}
-                    value={formData.epsNodeId}
-                    onChange={(id) =>
-                      setFormData({ ...formData, epsNodeId: id })
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-text-muted uppercase mb-1">
-                    Description *
-                  </label>
-                  <textarea
-                    required
-                    rows={3}
-                    placeholder="Describe the defect or observation found..."
-                    className="w-full bg-surface-base border border-border-default rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary outline-none"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase mb-1">
-                      Target Rectification Date
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full bg-surface-base border border-border-default rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary"
-                      value={formData.targetDate}
-                      onChange={(e) =>
-                        setFormData({ ...formData, targetDate: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase mb-1">
-                      Remarks (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Internal notes"
-                      className="w-full bg-surface-base border border-border-default rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary"
-                      value={formData.remarks}
-                      onChange={(e) =>
-                        setFormData({ ...formData, remarks: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-text-muted uppercase mb-2">
-                    Evidence Photos
-                  </label>
-                  <div className="flex gap-2 flex-wrap">
-                    {photos.map((p, i) => (
-                      <div key={i} className="relative w-20 h-20 group">
-                        <img
-                          src={URL.createObjectURL(p)}
-                          alt="preview"
-                          className="w-full h-full object-cover rounded-lg border border-border-default"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPhotos(photos.filter((_, idx) => idx !== i))
-                          }
-                          className="absolute top-1 right-1 bg-error text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                    <label className="w-20 h-20 border-2 border-dashed border-border-strong rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-surface-base hover:border-blue-400 transition-colors">
-                      <Upload className="w-5 h-5 text-text-disabled" />
-                      <span className="text-[9px] text-text-muted mt-1 font-medium">
-                        Add Photo
-                      </span>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files)
-                            setPhotos([
-                              ...photos,
-                              ...Array.from(e.target.files),
-                            ]);
-                        }}
+                    <div>
+                      <label className="block text-xs font-bold text-text-muted uppercase mb-1">
+                        Location *
+                      </label>
+                      <EpsLocationPicker
+                        projectId={projectId}
+                        value={formData.epsNodeId}
+                        onChange={(id) =>
+                          setFormData({ ...formData, epsNodeId: id })
+                        }
                       />
-                    </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-text-muted uppercase mb-1">
+                        Description *
+                      </label>
+                      <textarea
+                        required
+                        rows={10}
+                        placeholder="Describe the defect or observation found..."
+                        className="w-full bg-surface-base border border-border-default rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary outline-none"
+                        value={formData.description}
+                        onChange={(e) =>
+                          setFormData({ ...formData, description: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="rounded-2xl border border-border-subtle bg-surface-base p-5">
+                      <h3 className="text-sm font-bold text-text-primary mb-4">
+                        Execution Details
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-text-muted uppercase mb-1">
+                            Target Rectification Date
+                          </label>
+                          <input
+                            type="date"
+                            className="w-full bg-surface-card border border-border-default rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary"
+                            value={formData.targetDate}
+                            onChange={(e) =>
+                              setFormData({ ...formData, targetDate: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-text-muted uppercase mb-1">
+                            Remarks (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Internal notes"
+                            className="w-full bg-surface-card border border-border-default rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary"
+                            value={formData.remarks}
+                            onChange={(e) =>
+                              setFormData({ ...formData, remarks: e.target.value })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border-subtle bg-surface-base p-5">
+                      <h3 className="text-sm font-bold text-text-primary mb-4">
+                        Evidence Photos
+                      </h3>
+                      <div className="flex gap-2 flex-wrap">
+                        {photos.map((p, i) => (
+                          <div key={i} className="relative w-24 h-24 group">
+                            <img
+                              src={URL.createObjectURL(p)}
+                              alt="preview"
+                              className="w-full h-full object-cover rounded-lg border border-border-default"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPhotos(photos.filter((_, idx) => idx !== i))
+                              }
+                              className="absolute top-1 right-1 bg-error text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <label className="w-24 h-24 border-2 border-dashed border-border-strong rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-surface-base hover:border-blue-400 transition-colors">
+                          <Upload className="w-5 h-5 text-text-disabled" />
+                          <span className="text-[9px] text-text-muted mt-1 font-medium">
+                            Add Photo
+                          </span>
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files)
+                                setPhotos([
+                                  ...photos,
+                                  ...Array.from(e.target.files),
+                                ]);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </form>

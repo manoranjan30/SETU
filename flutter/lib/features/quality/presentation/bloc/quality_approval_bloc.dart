@@ -150,6 +150,21 @@ class DeleteActivityObservation extends QualityApprovalEvent {
   List<Object?> get props => [obsId];
 }
 
+/// Submit rectification (fix) for a pending observation.
+/// Used by either the site engineer or QC inspector to mark an observation as rectified.
+class SubmitRectification extends QualityApprovalEvent {
+  final String obsId;
+  final String closureText;
+  final List<String> closureEvidence;
+  const SubmitRectification({
+    required this.obsId,
+    required this.closureText,
+    this.closureEvidence = const [],
+  });
+  @override
+  List<Object?> get props => [obsId, closureText, closureEvidence];
+}
+
 /// Advance the current workflow step (multi-level approval).
 /// Requires a [signatureData] base64 image captured from the signature pad.
 class AdvanceWorkflowStep extends QualityApprovalEvent {
@@ -421,6 +436,7 @@ class QualityApprovalBloc
     on<RaiseObservation>(_onRaiseObservation);
     on<UploadObservationPhoto>(_onUploadObservationPhoto);
     on<CloseObservation>(_onCloseObservation);
+    on<SubmitRectification>(_onSubmitRectification);
     on<DeleteActivityObservation>(_onDeleteActivityObservation);
     on<RefreshInspectionDetail>(_onRefreshInspectionDetail);
   }
@@ -461,7 +477,10 @@ class QualityApprovalBloc
       // Fire all three data fetches in parallel to minimise latency.
       final results = await Future.wait([
         _apiClient.getQualityInspectionDetail(event.inspection.id),
-        _apiClient.getActivityObservations(event.inspection.activityId),
+        _apiClient.getActivityObservations(
+          event.inspection.activityId,
+          inspectionId: event.inspection.id,
+        ),
         _apiClient.getInspectionWorkflow(event.inspection.id),
       ]);
 
@@ -1010,6 +1029,33 @@ class QualityApprovalBloc
       final syncResult = await _syncService.syncAll();
       emit(ObservationActionQueued(
           action: 'close', isOffline: !syncResult.success));
+    } catch (e) {
+      emit(QualityApprovalError(_friendly(e)));
+    }
+  }
+
+  /// Submits rectification (fix) for a pending observation.
+  /// Works from both the site-engineer checklist and the QC approval page.
+  Future<void> _onSubmitRectification(
+      SubmitRectification event, Emitter<QualityApprovalState> emit) async {
+    if (_currentInspection == null) return;
+    try {
+      await _syncService.addToQueue(
+        entityType: 'quality_obs_resolve',
+        entityId: _currentInspection!.activityId,
+        operation: 'update',
+        payload: {
+          'activityId': _currentInspection!.activityId,
+          'obsId': event.obsId,
+          'closureText': event.closureText,
+          if (event.closureEvidence.isNotEmpty)
+            'closureEvidence': event.closureEvidence,
+        },
+        priority: 2,
+      );
+      final syncResult = await _syncService.syncAll();
+      emit(ObservationActionQueued(
+          action: 'rectify', isOffline: !syncResult.success));
     } catch (e) {
       emit(QualityApprovalError(_friendly(e)));
     }

@@ -24,6 +24,8 @@ export interface ExecutiveMetric {
   tone?: MetricTone;
   helper?: string;
   route?: string;
+  visualPercent?: number;
+  visualLabel?: string;
 }
 
 export interface ExecutiveTrendPoint {

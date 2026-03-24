@@ -27,6 +27,10 @@ interface RegisterItem {
     code: string;
   };
   status: string;
+  statusUpdatedAt?: string | null;
+  latestRevisionDate?: string | null;
+  latestRevisionUploadedAt?: string | null;
+  currentRevisionUnread?: boolean;
   currentRevision?: {
     id: number;
     revisionNumber: string;
@@ -42,6 +46,25 @@ interface RegisterItem {
   revisions: any[];
 }
 
+const formatDateTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString() : "-";
+
+const formatDateOnly = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString() : "-";
+
+const STATUS_LABELS: Record<string, string> = {
+  PLANNED: "Planned",
+  ON_HOLD: "On Hold",
+  SUPERSEDED: "Superseded",
+  ACTIVE_GFC: "Active GFC",
+  ADVANCE_COPY: "Advance Copy",
+  REFERENCE_ONLY: "Reference Only",
+  HOLD: "On Hold",
+  OBSOLETE: "Superseded",
+  GFC: "Active GFC",
+  IN_PROGRESS: "Advance Copy",
+};
+
 const DrawingRegister = () => {
   const { projectId } = useParams();
   const [rowData, setRowData] = useState<RegisterItem[]>([]);
@@ -55,6 +78,7 @@ const DrawingRegister = () => {
     name: string;
     type: string;
   } | null>(null);
+  const [previewCanDownload, setPreviewCanDownload] = useState(false);
 
   const fetchData = async () => {
     if (!projectId) return;
@@ -129,15 +153,30 @@ const DrawingRegister = () => {
     }
   };
 
+  const canDownload = (item: RegisterItem) =>
+    item.status === "ACTIVE_GFC" || item.status === "GFC";
+
+  const markOpened = async (registerId: number) => {
+    if (!projectId) return;
+    try {
+      await api.post(`/design/${projectId}/register/${registerId}/open`);
+      await fetchData();
+    } catch (e) {
+      console.error("Failed to mark drawing as opened", e);
+    }
+  };
+
   const handlePreview = async (
+    registerId: number,
     revisionId: number,
     filename: string,
     fileType: string,
+    allowDownload: boolean,
   ) => {
     if (!projectId) return;
     try {
       const response = await api.get(
-        `/design/${projectId}/download/${revisionId}`,
+        `/design/${projectId}/preview/${revisionId}`,
         {
           responseType: "blob",
         },
@@ -149,7 +188,9 @@ const DrawingRegister = () => {
 
       setPreviewUrl(url);
       setPreviewFile({ name: filename, type: fileType });
+      setPreviewCanDownload(allowDownload);
       setIsPreviewModalOpen(true);
+      await markOpened(registerId);
     } catch (e) {
       console.error("Preview failed", e);
       alert("Failed to load preview");
@@ -190,19 +231,56 @@ const DrawingRegister = () => {
         sortable: true,
         filter: true,
         pinned: "left",
+        cellRenderer: (params: any) => {
+          if (!params.value) return "-";
+          return (
+            <div className="flex items-center gap-2">
+              <span className={params.data?.currentRevisionUnread ? "font-bold" : ""}>
+                {params.value}
+              </span>
+              {params.data?.currentRevisionUnread && (
+                <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  Updated
+                </span>
+              )}
+            </div>
+          );
+        },
       },
-      { field: "title", headerName: "Title", flex: 1, minWidth: 200 },
+      {
+        field: "title",
+        headerName: "Title",
+        flex: 1,
+        minWidth: 220,
+        cellRenderer: (params: any) => (
+          <div className="flex flex-col py-1">
+            <span className={params.data?.currentRevisionUnread ? "font-bold" : ""}>
+              {params.value || "-"}
+            </span>
+            <span className="text-xs text-text-muted">
+              Latest revision: {formatDateOnly(params.data?.latestRevisionDate)}
+            </span>
+          </div>
+        ),
+      },
       {
         field: "currentRevision.revisionNumber",
         headerName: "Rev",
-        width: 80,
+        width: 140,
         cellRenderer: (params: any) => {
           if (!params.value)
             return <span className="text-text-disabled">-</span>;
           return (
-            <span className="font-bold text-primary bg-primary-muted px-2 py-1 rounded">
-              {params.value}
-            </span>
+            <div className="flex flex-col gap-1 py-1">
+              <span className="inline-flex w-fit items-center rounded bg-primary-muted px-2 py-1 font-bold text-primary">
+                {params.value}
+              </span>
+              {params.data?.currentRevisionUnread && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+                  Latest unread
+                </span>
+              )}
+            </div>
           );
         },
       },
@@ -213,23 +291,43 @@ const DrawingRegister = () => {
         cellRenderer: (params: any) => {
           const status = params.value;
           let color = "text-text-muted bg-surface-raised";
-          if (status === "GFC") color = "text-success bg-green-100";
-          if (status === "IN_PROGRESS") color = "text-primary bg-info-muted";
+          if (status === "ACTIVE_GFC" || status === "GFC") color = "text-success bg-green-100";
+          if (status === "ADVANCE_COPY" || status === "IN_PROGRESS") color = "text-primary bg-info-muted";
+          if (status === "ON_HOLD" || status === "HOLD") color = "text-amber-700 bg-amber-100";
+          if (status === "SUPERSEDED" || status === "OBSOLETE") color = "text-rose-700 bg-rose-100";
+          if (status === "REFERENCE_ONLY") color = "text-violet-700 bg-violet-100";
+          if (status === "PLANNED") color = "text-slate-700 bg-slate-100";
           return (
-            <span
-              className={`px-2 py-1 rounded-full text-xs font-medium ${color}`}
-            >
-              {status}
-            </span>
+            <div className="flex flex-col gap-1 py-1">
+              <span
+                className={`w-fit px-2 py-1 rounded-full text-xs font-medium ${color}`}
+              >
+                {STATUS_LABELS[status] || status}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {formatDateTime(params.data?.statusUpdatedAt)}
+              </span>
+            </div>
           );
         },
       },
       {
+        field: "statusUpdatedAt",
+        headerName: "Status Updated",
+        width: 180,
+        valueFormatter: (params: any) => formatDateTime(params.value),
+      },
+      {
+        field: "latestRevisionDate",
+        headerName: "Revision Date",
+        width: 150,
+        valueFormatter: (params: any) => formatDateOnly(params.value),
+      },
+      {
         field: "currentRevision.uploadedAt",
-        headerName: "Date",
-        width: 120,
-        valueFormatter: (params: any) =>
-          params.value ? new Date(params.value).toLocaleDateString() : "-",
+        headerName: "Latest Revision Uploaded",
+        width: 190,
+        valueFormatter: (params: any) => formatDateTime(params.value),
       },
       {
         headerName: "Actions",
@@ -244,9 +342,11 @@ const DrawingRegister = () => {
                 <button
                   onClick={() =>
                     handlePreview(
+                      item.id,
                       item.currentRevision.id,
                       item.currentRevision.originalFileName || "drawing",
                       item.currentRevision.fileType,
+                      canDownload(item),
                     )
                   }
                   className="p-1.5 text-text-secondary hover:bg-surface-raised rounded transition-colors"
@@ -265,12 +365,19 @@ const DrawingRegister = () => {
               {item.currentRevision && (
                 <button
                   onClick={() =>
-                    handleDownload(
-                      item.currentRevision.id,
-                      item.currentRevision.originalFileName || "drawing.pdf",
-                    )
+                    canDownload(item)
+                      ? handleDownload(
+                          item.currentRevision.id,
+                          item.currentRevision.originalFileName || "drawing.pdf",
+                        )
+                      : alert("Download is allowed only for Active GFC drawings")
                   }
-                  className="p-1.5 text-success hover:bg-success-muted rounded transition-colors"
+                  disabled={!canDownload(item)}
+                  className={`p-1.5 rounded transition-colors ${
+                    canDownload(item)
+                      ? "text-success hover:bg-success-muted"
+                      : "text-text-disabled bg-surface-base cursor-not-allowed"
+                  }`}
                   title="Download Latest"
                 >
                   <Download size={16} />
@@ -345,6 +452,11 @@ const DrawingRegister = () => {
         <AgGridReact
           rowData={rowData}
           columnDefs={colDefs}
+          getRowStyle={(params) =>
+            params.data?.currentRevisionUnread
+              ? { fontWeight: "700", backgroundColor: "#eff6ff" }
+              : undefined
+          }
           defaultColDef={{
             sortable: true,
             filter: true,
@@ -381,6 +493,7 @@ const DrawingRegister = () => {
         registerItem={selectedItem}
         projectId={projectId || ""}
         onDownload={handleDownload}
+        canDownload={selectedItem ? canDownload(selectedItem) : false}
       />
 
       <PreviewModal
@@ -389,10 +502,12 @@ const DrawingRegister = () => {
           setIsPreviewModalOpen(false);
           if (previewUrl) window.URL.revokeObjectURL(previewUrl);
           setPreviewUrl(null);
+          setPreviewCanDownload(false);
         }}
         fileUrl={previewUrl}
         fileName={previewFile?.name || ""}
         fileType={previewFile?.type || ""}
+        canDownload={previewCanDownload}
       />
     </div>
   );

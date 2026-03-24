@@ -14,10 +14,15 @@ import { DrawingRevision } from './drawing-revision.entity';
 
 export enum DrawingStatus {
   PLANNED = 'PLANNED',
-  IN_PROGRESS = 'IN_PROGRESS',
-  GFC = 'GFC', // Good For Construction
-  OBSOLETE = 'OBSOLETE',
-  HOLD = 'HOLD',
+  ON_HOLD = 'ON_HOLD',
+  SUPERSEDED = 'SUPERSEDED',
+  ACTIVE_GFC = 'ACTIVE_GFC',
+  ADVANCE_COPY = 'ADVANCE_COPY',
+  REFERENCE_ONLY = 'REFERENCE_ONLY',
+  IN_PROGRESS = 'IN_PROGRESS', // legacy compatibility
+  GFC = 'GFC', // legacy compatibility
+  OBSOLETE = 'OBSOLETE', // legacy compatibility
+  HOLD = 'HOLD', // legacy compatibility
 }
 
 @Entity()
@@ -48,9 +53,13 @@ export class DrawingRegister {
   @Column({
     type: 'enum',
     enum: DrawingStatus,
+    enumName: 'drawing_register_status_enum',
     default: DrawingStatus.PLANNED,
   })
   status: DrawingStatus;
+
+  @Column({ type: 'timestamp', nullable: true })
+  statusUpdatedAt: Date | null;
 
   // Track the current active revision for quick access
   @Column({ nullable: true })

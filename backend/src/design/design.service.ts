@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, In } from 'typeorm';
 import { DrawingCategory } from './entities/drawing-category.entity';
 import {
   DrawingRegister,
@@ -14,6 +14,7 @@ import {
   DrawingRevision,
   RevisionStatus,
 } from './entities/drawing-revision.entity';
+import { DrawingOpenReceipt } from './entities/drawing-open-receipt.entity';
 import { SystemSettingsService } from '../common/system-settings.service';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -31,8 +32,37 @@ export class DesignService {
     private registerRepo: Repository<DrawingRegister>,
     @InjectRepository(DrawingRevision)
     private revisionRepo: Repository<DrawingRevision>,
+    @InjectRepository(DrawingOpenReceipt)
+    private readonly openReceiptRepo: Repository<DrawingOpenReceipt>,
     private settingsService: SystemSettingsService,
   ) {}
+
+  private normalizeStatus(
+    status?: string | null,
+  ): DrawingStatus {
+    const raw = (status || '').trim().toUpperCase();
+    if (!raw) return DrawingStatus.PLANNED;
+
+    const aliases: Record<string, DrawingStatus> = {
+      HOLD: DrawingStatus.ON_HOLD,
+      ONHOLD: DrawingStatus.ON_HOLD,
+      ON_HOLD: DrawingStatus.ON_HOLD,
+      OBSOLETE: DrawingStatus.SUPERSEDED,
+      SUPERSEDED: DrawingStatus.SUPERSEDED,
+      SUPERSEEDED: DrawingStatus.SUPERSEDED,
+      GFC: DrawingStatus.ACTIVE_GFC,
+      ACTIVE_GFC: DrawingStatus.ACTIVE_GFC,
+      ACTIVEGFC: DrawingStatus.ACTIVE_GFC,
+      ADVANCE_COPY: DrawingStatus.ADVANCE_COPY,
+      ADVANCECOPY: DrawingStatus.ADVANCE_COPY,
+      IN_PROGRESS: DrawingStatus.ADVANCE_COPY,
+      REFERENCE_ONLY: DrawingStatus.REFERENCE_ONLY,
+      REFERENCEONLY: DrawingStatus.REFERENCE_ONLY,
+      PLANNED: DrawingStatus.PLANNED,
+    };
+
+    return aliases[raw] || DrawingStatus.PLANNED;
+  }
 
   // --- Categories ---
   async findAllCategories() {
@@ -55,7 +85,7 @@ export class DesignService {
   }
 
   // --- Register ---
-  async getRegister(projectId: number, categoryId?: number) {
+  async getRegister(projectId: number, categoryId?: number, userId?: number) {
     const query = this.registerRepo
       .createQueryBuilder('register')
       .leftJoinAndSelect('register.category', 'category')
@@ -66,10 +96,48 @@ export class DesignService {
       query.andWhere('register.categoryId = :categoryId', { categoryId });
     }
 
-    return query.getMany();
+    const registers = await query.getMany();
+    if (!userId) {
+      return registers.map((register) => ({
+        ...register,
+        status: this.normalizeStatus(register.status),
+        currentRevisionUnread: false,
+      }));
+    }
+
+    if (registers.length === 0) {
+      return [];
+    }
+
+    const receipts = await this.openReceiptRepo.find({
+      where: {
+        userId,
+        registerId: In(registers.map((register) => register.id)),
+      },
+    });
+    const receiptMap = new Map(receipts.map((receipt) => [receipt.registerId, receipt]));
+
+    return registers.map((register) => {
+      const receipt = receiptMap.get(register.id);
+      const currentRevisionId = register.currentRevision?.id || null;
+      const currentRevisionUnread =
+        Boolean(currentRevisionId) &&
+        receipt?.lastOpenedRevisionId !== currentRevisionId;
+
+      return {
+        ...register,
+        status: this.normalizeStatus(register.status),
+        currentRevisionUnread,
+        latestRevisionDate: register.currentRevision?.revisionDate || null,
+        latestRevisionUploadedAt: register.currentRevision?.uploadedAt || null,
+        statusUpdatedAt: register.statusUpdatedAt || register.updatedAt || null,
+      };
+    });
   }
 
-  async createRegisterItem(data: Partial<DrawingRegister>) {
+  async createRegisterItem(
+    data: Partial<Omit<DrawingRegister, 'status'>> & { status?: DrawingStatus | string },
+  ) {
     const exists = await this.registerRepo.findOne({
       where: {
         projectId: data.projectId,
@@ -83,7 +151,12 @@ export class DesignService {
       );
     }
 
-    const item = this.registerRepo.create(data);
+    const normalizedStatus = this.normalizeStatus(data.status as string | undefined);
+    const item = this.registerRepo.create({
+      ...data,
+      status: normalizedStatus,
+      statusUpdatedAt: new Date(),
+    });
     return this.registerRepo.save(item);
   }
 
@@ -121,7 +194,6 @@ export class DesignService {
     const savedRevision = await this.revisionRepo.save(revision);
 
     register.currentRevision = savedRevision;
-    register.status = DrawingStatus.IN_PROGRESS;
     await this.registerRepo.save(register);
 
     return savedRevision;
@@ -135,11 +207,21 @@ export class DesignService {
     });
   }
 
-  async getRevisionFile(revisionId: number) {
+  async getRevisionFile(revisionId: number, enforceDownloadStatus = true) {
     const revision = await this.revisionRepo.findOne({
       where: { id: revisionId },
+      relations: ['register'],
     });
     if (!revision) throw new NotFoundException('Revision not found');
+
+    if (
+      enforceDownloadStatus &&
+      this.normalizeStatus(revision.register?.status) !== DrawingStatus.ACTIVE_GFC
+    ) {
+      throw new BadRequestException(
+        'Download is allowed only for drawings with Active GFC status',
+      );
+    }
 
     if (!fs.existsSync(revision.filePath)) {
       throw new NotFoundException('File not found on server');
@@ -233,7 +315,10 @@ export class DesignService {
     return this.registerRepo.remove(register);
   }
 
-  async updateRegisterItem(registerId: number, data: Partial<DrawingRegister>) {
+  async updateRegisterItem(
+    registerId: number,
+    data: Partial<Omit<DrawingRegister, 'status'>> & { status?: DrawingStatus | string },
+  ) {
     const register = await this.registerRepo.findOne({
       where: { id: registerId },
     });
@@ -253,7 +338,41 @@ export class DesignService {
       }
     }
 
-    Object.assign(register, data);
+    const nextStatus =
+      Object.prototype.hasOwnProperty.call(data, 'status') && data.status != null
+        ? this.normalizeStatus(data.status as string)
+        : register.status;
+    const statusChanged = nextStatus !== register.status;
+
+    Object.assign(register, {
+      ...data,
+      status: nextStatus,
+    });
+    if (statusChanged) {
+      register.statusUpdatedAt = new Date();
+    }
     return this.registerRepo.save(register);
+  }
+
+  async markRegisterOpened(registerId: number, userId: number) {
+    const register = await this.registerRepo.findOne({
+      where: { id: registerId },
+      relations: ['currentRevision'],
+    });
+    if (!register) throw new NotFoundException('Register item not found');
+
+    let receipt = await this.openReceiptRepo.findOne({
+      where: { registerId, userId },
+    });
+
+    if (!receipt) {
+      receipt = this.openReceiptRepo.create({
+        registerId,
+        userId,
+      });
+    }
+
+    receipt.lastOpenedRevisionId = register.currentRevision?.id || null;
+    return this.openReceiptRepo.save(receipt);
   }
 }

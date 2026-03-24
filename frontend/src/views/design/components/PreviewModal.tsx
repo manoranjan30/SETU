@@ -7,6 +7,7 @@ interface PreviewModalProps {
   fileUrl: string | null;
   fileName: string;
   fileType: string;
+  canDownload?: boolean;
 }
 
 const PreviewModal = ({
@@ -15,6 +16,7 @@ const PreviewModal = ({
   fileUrl,
   fileName,
   fileType,
+  canDownload = false,
 }: PreviewModalProps) => {
   const isPDF =
     fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
@@ -79,13 +81,19 @@ const PreviewModal = ({
                 This file type ({fileName.split(".").pop()}) cannot be previewed
                 directly in the browser.
               </p>
-              <a
-                href={fileUrl}
-                download={fileName}
-                className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-dark transition-colors"
-              >
-                Download File
-              </a>
+              {canDownload ? (
+                <a
+                  href={fileUrl}
+                  download={fileName}
+                  className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-dark transition-colors"
+                >
+                  Download File
+                </a>
+              ) : (
+                <div className="inline-flex items-center justify-center px-6 py-3 rounded-md text-sm font-medium text-amber-800 bg-amber-100">
+                  Download is allowed only for Active GFC drawings
+                </div>
+              )}
               {isDWG && (
                 <div className="mt-6 p-4 bg-primary-muted rounded-lg text-left text-sm text-blue-800 border border-blue-100">
                   <p className="font-semibold mb-1">

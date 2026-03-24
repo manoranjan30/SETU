@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Param,
   ParseIntPipe,
@@ -55,5 +56,14 @@ export class QualityRatingController {
   @Get(':projectId/history')
   getHistory(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.service.getRatingHistory(projectId);
+  }
+
+  @Delete(':projectId/snapshot/:snapshotId')
+  @Roles('Admin')
+  deleteSnapshot(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('snapshotId', ParseIntPipe) snapshotId: number,
+  ) {
+    return this.service.deleteSnapshot(projectId, snapshotId);
   }
 }

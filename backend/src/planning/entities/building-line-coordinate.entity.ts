@@ -10,6 +10,8 @@ import {
 } from 'typeorm';
 import { EpsNode } from '../../eps/eps.entity';
 
+export type CoordinateUom = 'mm' | 'cm' | 'm';
+
 @Entity('building_line_coordinates')
 @Unique('UQ_building_line_coordinates_project_eps', ['projectId', 'epsNodeId'])
 export class BuildingLineCoordinate {
@@ -28,6 +30,9 @@ export class BuildingLineCoordinate {
 
   @Column({ type: 'text', nullable: true })
   coordinatesText: string | null;
+
+  @Column({ type: 'varchar', length: 16, default: 'mm' })
+  coordinateUom: CoordinateUom;
 
   @Column({ type: 'decimal', precision: 12, scale: 3, nullable: true })
   heightMeters: number | null;

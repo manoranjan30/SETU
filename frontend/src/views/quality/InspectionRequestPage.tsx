@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   ClipboardCheck,
   AlertCircle,
@@ -9,9 +9,6 @@ import {
   ShieldAlert,
   AlertTriangle,
   MessageSquareWarning,
-  CheckCircle2,
-  Camera,
-  X,
 } from "lucide-react";
 import api from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
@@ -114,6 +111,7 @@ interface EpsNode {
 
 export default function InspectionRequestPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [epsNodes, setEpsNodes] = useState<EpsNode[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -125,12 +123,6 @@ export default function InspectionRequestPage() {
     Record<number, ActivityObservation[]>
   >({});
   const [loading, setLoading] = useState(false);
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [closureTexts, setClosureTexts] = useState<Record<string, string>>({});
-  const [closurePhotos, setClosurePhotos] = useState<Record<string, string[]>>(
-    {},
-  );
-  const [uploading, setUploading] = useState<string | null>(null); // obsId being uploaded for
   const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh
   const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>(
     {},
@@ -166,12 +158,15 @@ export default function InspectionRequestPage() {
     }
   }, [projectId, user]);
 
-  // Helper for correct image URLs
+  // Helper for correct image URLs.
+  // Strips the /api suffix from VITE_API_URL so uploads (served at the server
+  // root) are resolved correctly even if the API URL includes /api.
   const getFileUrl = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
-    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-    return `${baseUrl}${path}`;
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    const origin = apiUrl.replace(/\/api\/?$/, "");
+    return `${origin}${path}`;
   };
 
   // Load EPS Structure
@@ -724,72 +719,6 @@ export default function InspectionRequestPage() {
       alert(err.response?.data?.message || "Failed to raise RFI");
     } finally {
       setRaisingBatch(false);
-    }
-  };
-
-  const handleFileUpload = async (
-    obsId: string,
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(obsId);
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await api.post("/files/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setClosurePhotos((prev) => ({
-        ...prev,
-        [obsId]: [...(prev[obsId] || []), res.data.url],
-      }));
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Upload failed");
-    } finally {
-      setUploading(null);
-    }
-  };
-
-  const handleResolveObservation = async (
-    activityId: number,
-    obsId: string,
-  ) => {
-    const text = closureTexts[obsId];
-    if (!text || !text.trim()) {
-      alert(
-        "Please enter your rectification details and evidence note before submitting.",
-      );
-      return;
-    }
-    setResolvingId(obsId);
-    try {
-      await api.patch(
-        `/quality/activities/${activityId}/observation/${obsId}/resolve`,
-        {
-          closureText: text,
-          closureEvidence: closurePhotos[obsId] || [],
-        },
-      );
-      alert("Observation marked as rectified and sent back to QC.");
-      setRefreshKey((k) => k + 1);
-      // Clear inputs for this observation
-      setClosureTexts((prev) => {
-        const n = { ...prev };
-        delete n[obsId];
-        return n;
-      });
-      setClosurePhotos((prev) => {
-        const n = { ...prev };
-        delete n[obsId];
-        return n;
-      });
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to resolve observation.");
-    } finally {
-      setResolvingId(null);
     }
   };
 
@@ -1374,145 +1303,76 @@ export default function InspectionRequestPage() {
 
                                               {obs.status === "PENDING" ||
                                               obs.status === "OPEN" ? (
-                                                <div className="mt-4 border-t border-rose-200/60 pt-3">
-                                                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-rose-900">
-                                                    Rectification Evidence
-                                                  </label>
-
-                                                  <div className="mb-3 flex flex-wrap gap-2">
-                                                    {(
-                                                      closurePhotos[obs.id] ||
-                                                      []
-                                                    ).map((url, pIdx) => (
-                                                      <div
-                                                        key={pIdx}
-                                                        className="group relative h-16 w-16"
-                                                      >
-                                                        <img
-                                                          src={getFileUrl(url)}
-                                                          alt="Rectification"
-                                                          className="h-full w-full rounded border border-rose-200 object-cover"
-                                                        />
-                                                        <button
-                                                          onClick={() =>
-                                                            setClosurePhotos(
-                                                              (prev) => ({
-                                                                ...prev,
-                                                                [obs.id]: prev[
-                                                                  obs.id
-                                                                ].filter(
-                                                                  (_, i) =>
-                                                                    i !== pIdx,
-                                                                ),
-                                                              }),
-                                                            )
-                                                          }
-                                                          className="absolute -right-1.5 -top-1.5 rounded-full bg-rose-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                                                        >
-                                                          <X className="h-3 w-3" />
-                                                        </button>
-                                                      </div>
-                                                    ))}
-                                                    <label
-                                                      className={`flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-rose-300 bg-surface-card transition-all hover:bg-rose-100 ${uploading === obs.id ? "pointer-events-none opacity-50" : ""}`}
-                                                    >
-                                                      <Camera className="h-5 w-5 text-rose-400" />
-                                                      <span className="mt-0.5 text-[8px] font-bold uppercase text-rose-500">
-                                                        {uploading === obs.id
-                                                          ? "..."
-                                                          : "Photo"}
-                                                      </span>
-                                                      <input
-                                                        type="file"
-                                                        className="hidden"
-                                                        accept="image/*"
-                                                        onChange={(e) =>
-                                                          handleFileUpload(
-                                                            obs.id,
-                                                            e,
-                                                          )
-                                                        }
-                                                      />
-                                                    </label>
+                                                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3">
+                                                  <div>
+                                                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+                                                      Pending Rectification
+                                                    </div>
+                                                    <p className="mt-1 text-sm text-amber-800">
+                                                      Rectify and close this observation from the QA/QC Approvals screen.
+                                                    </p>
                                                   </div>
-
-                                                  <textarea
-                                                    className="min-h-[80px] w-full rounded-md border-rose-200 bg-surface-card p-2.5 text-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
-                                                    placeholder="Describe how this issue was fixed..."
-                                                    value={
-                                                      closureTexts[obs.id] || ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      setClosureTexts(
-                                                        (prev) => ({
-                                                          ...prev,
-                                                          [obs.id]:
-                                                            e.target.value,
-                                                        }),
-                                                      )
-                                                    }
-                                                  />
-                                                  <div className="mt-3 flex justify-end gap-2">
+                                                  {group.inspection && (
                                                     <button
                                                       onClick={() =>
-                                                        handleResolveObservation(
-                                                          item.id,
-                                                          obs.id,
+                                                        navigate(
+                                                          `/projects/${projectId}/quality/approvals?inspectionId=${group.inspection!.id}`,
                                                         )
                                                       }
-                                                      disabled={
-                                                        resolvingId ===
-                                                          obs.id ||
-                                                        !closureTexts[
-                                                          obs.id
-                                                        ]?.trim() ||
-                                                        uploading === obs.id
-                                                      }
-                                                      className="flex items-center gap-1.5 rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-rose-700 disabled:opacity-50"
+                                                      className="shrink-0 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
                                                     >
-                                                      <CheckCircle2 className="h-4 w-4" />
-                                                      {resolvingId === obs.id
-                                                        ? "Submitting..."
-                                                        : "Submit Rectification"}
+                                                      Open in Approvals →
                                                     </button>
-                                                  </div>
+                                                  )}
                                                 </div>
                                               ) : (
                                                 <div className="mt-4 rounded-lg border border-blue-100 bg-primary-muted p-3">
-                                                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-900">
-                                                    Awaiting QC Closure
-                                                  </div>
-                                                  <p className="mt-1 text-sm text-blue-800">
-                                                    {obs.closureText ||
-                                                      "Rectification has been submitted. QC needs to verify and close this observation."}
-                                                  </p>
-                                                  {obs.closureEvidence &&
-                                                    obs.closureEvidence.length >
-                                                      0 && (
-                                                      <div className="mt-2 flex flex-wrap gap-2">
-                                                        {obs.closureEvidence.map(
-                                                          (url, pIdx) => (
-                                                            <a
-                                                              key={pIdx}
-                                                              href={getFileUrl(
-                                                                url,
-                                                              )}
-                                                              target="_blank"
-                                                              rel="noreferrer"
-                                                              className="h-12 w-12 overflow-hidden rounded border border-blue-200"
-                                                            >
-                                                              <img
-                                                                src={getFileUrl(
-                                                                  url,
-                                                                )}
-                                                                alt="Rectification"
-                                                                className="h-full w-full object-cover"
-                                                              />
-                                                            </a>
-                                                          ),
-                                                        )}
+                                                  <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex-1">
+                                                      <div className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+                                                        Awaiting QC Closure
                                                       </div>
+                                                      <p className="mt-1 text-sm text-blue-800">
+                                                        {obs.closureText ||
+                                                          "Rectification submitted — QC needs to verify and close."}
+                                                      </p>
+                                                      {obs.closureEvidence &&
+                                                        obs.closureEvidence.length >
+                                                          0 && (
+                                                          <div className="mt-2 flex flex-wrap gap-2">
+                                                            {obs.closureEvidence.map(
+                                                              (url, pIdx) => (
+                                                                <a
+                                                                  key={pIdx}
+                                                                  href={getFileUrl(url)}
+                                                                  target="_blank"
+                                                                  rel="noreferrer"
+                                                                  className="h-12 w-12 overflow-hidden rounded border border-blue-200"
+                                                                >
+                                                                  <img
+                                                                    src={getFileUrl(url)}
+                                                                    alt="Rectification"
+                                                                    className="h-full w-full object-cover"
+                                                                  />
+                                                                </a>
+                                                              ),
+                                                            )}
+                                                          </div>
+                                                        )}
+                                                    </div>
+                                                    {group.inspection && (
+                                                      <button
+                                                        onClick={() =>
+                                                          navigate(
+                                                            `/projects/${projectId}/quality/approvals?inspectionId=${group.inspection!.id}`,
+                                                          )
+                                                        }
+                                                        className="shrink-0 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
+                                                      >
+                                                        Close in Approvals →
+                                                      </button>
                                                     )}
+                                                  </div>
                                                 </div>
                                               )}
                                             </div>
