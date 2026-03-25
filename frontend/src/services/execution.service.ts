@@ -39,6 +39,16 @@ export interface ExecutionBreakdownItem {
   id: number | null;
   name: string;
   boqSubItemId?: number | null;
+  microActivityId?: number | null;
+  microActivityName?: string | null;
+  microActivityDescription?: string | null;
+  workOrderItemDescription?: string | null;
+  workOrderNumber?: string | null;
+  wbsPath?: string | null;
+  wbsParentName?: string | null;
+  wbsGrandparentName?: string | null;
+  displayLabel?: string | null;
+  subtitle?: string | null;
   allocatedQty: number;
   executedQty: number;
   balanceQty: number;
@@ -53,6 +63,8 @@ export interface VendorBreakdownItem {
     boqItem: any;
     boqSubItemId?: number | null;
     workOrderItemId: number | null;
+    planId: number | null;
+    workOrderItemDescription?: string | null;
     scope: {
       total: number;
       allocated: number;
@@ -119,8 +131,11 @@ export const executionService = {
   // NEW: Get vendor summary for an activity
   getVendorSummary: async (
     activityId: number,
+    epsNodeId?: number,
   ): Promise<{ vendors: VendorSummaryItem[]; hasVendors: boolean }> => {
-    const res = await api.get(`/execution/vendors/${activityId}`);
+    const res = await api.get(`/execution/vendors/${activityId}`, {
+      params: epsNodeId ? { epsNodeId } : undefined,
+    });
     return res.data;
   },
 };

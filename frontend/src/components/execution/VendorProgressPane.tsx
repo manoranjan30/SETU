@@ -30,6 +30,45 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
   projectId,
   onProgressSaved,
 }) => {
+  const renderTaskContext = (record: VendorBreakdownItem["boqBreakdown"][number]["items"][number]) => {
+    const wbsTrail = [record.wbsGrandparentName, record.wbsParentName]
+      .filter(Boolean)
+      .join(" > ");
+
+    if (record.type === "MICRO") {
+      return (
+        <div className="min-w-0">
+          <div className="text-text-primary font-medium truncate">
+            {record.microActivityName || record.name}
+          </div>
+          {record.workOrderItemDescription && (
+            <div className="text-[11px] text-text-muted truncate">
+              WO: {record.workOrderItemDescription}
+            </div>
+          )}
+          {wbsTrail && (
+            <div className="text-[10px] text-text-disabled truncate">
+              {wbsTrail}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-w-0">
+        <div className="text-text-primary font-medium truncate">
+          {record.displayLabel || record.name}
+        </div>
+        {record.workOrderItemDescription && (
+          <div className="text-[11px] text-text-muted truncate">
+            WO: {record.workOrderItemDescription}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const [paneView, setPaneView] = useState<"vendors" | "breakdown">("vendors");
   const [vendors, setVendors] = useState<VendorSummaryItem[]>([]);
   const [loadingVendors, setLoadingVendors] = useState(false);
@@ -62,7 +101,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
   const fetchVendors = async () => {
     setLoadingVendors(true);
     try {
-      const res = await executionService.getVendorSummary(activity.id);
+      const res = await executionService.getVendorSummary(activity.id, epsNodeId);
       setVendors(res.vendors || []);
     } catch (err) {
       console.error("Failed to fetch vendors:", err);
@@ -121,6 +160,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
           return {
             vendorId: selectedVendor?.vendorId || null,
             boqItemId: boqEntry.boqItem.id,
+            planId: boqEntry.planId,
             boqSubItemId:
               record?.type === "BALANCE"
                 ? (record?.boqSubItemId ?? boqEntry.boqSubItemId ?? null)
@@ -140,13 +180,17 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
           date: progressDate,
           remarks,
         });
+        alert("Progress submitted successfully. It is now pending approval.");
         onProgressSaved();
         // Go back to vendors list on success
         setPaneView("vendors");
       }
     } catch (err) {
       console.error("Failed to save progress:", err);
-      alert("Failed to save progress. Please check server logs.");
+      const message =
+        (err as any)?.response?.data?.message ||
+        "Failed to save progress. Please check server logs.";
+      alert(Array.isArray(message) ? message.join(", ") : message);
     } finally {
       setSaving(false);
     }
@@ -277,6 +321,14 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
                           `[${boqEntry.boqItem.itemCode}] `}
                         {boqEntry.boqItem.description}
                       </p>
+                      {boqEntry.workOrderItemDescription && (
+                        <p className="text-[11px] text-text-muted mt-1">
+                          WO Description:{" "}
+                          <span className="font-medium text-text-secondary">
+                            {boqEntry.workOrderItemDescription}
+                          </span>
+                        </p>
+                      )}
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-text-muted">
                         <span>
                           UOM:{" "}
@@ -335,7 +387,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
                               className="hover:bg-surface-base"
                             >
                               <td className="px-3 py-2">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-start gap-2">
                                   {record.type === "MICRO" ? (
                                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-info-muted text-blue-700">
                                       MICRO
@@ -345,9 +397,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
                                       DIRECT
                                     </span>
                                   )}
-                                  <span className="text-text-secondary">
-                                    {record.name}
-                                  </span>
+                                  {renderTaskContext(record)}
                                 </div>
                               </td>
                               <td className="px-3 py-2 text-right text-text-secondary">

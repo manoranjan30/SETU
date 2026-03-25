@@ -1,511 +1,272 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, In } from 'typeorm';
-import { MeasurementElement } from '../boq/entities/measurement-element.entity';
-import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
+import { EpsNode, EpsNodeType } from '../eps/eps.entity';
+import {
+  ExecutionProgressAdjustment,
+} from './entities/execution-progress-adjustment.entity';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from './entities/execution-progress-entry.entity';
+import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 import { Activity, ActivityStatus } from '../wbs/entities/activity.entity';
-import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
-import { BoqService } from '../boq/boq.service';
-import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import {
+  WorkOrderItem,
+  WorkOrderItemNodeType,
+} from '../workdoc/entities/work-order-item.entity';
+import { MicroScheduleActivity } from '../micro-schedule/entities/micro-schedule-activity.entity';
+import { MicroQuantityLedger } from '../micro-schedule/entities/micro-quantity-ledger.entity';
+
+type Manager = EntityManager;
+
+type ResolvedPlanContext = {
+  plan: WoActivityPlan;
+  workOrderItem: WorkOrderItem;
+  boqSubItem: BoqSubItem | null;
+  boqItem: BoqItem | null;
+  microActivity: MicroScheduleActivity | null;
+};
 
 @Injectable()
 export class ExecutionService {
   private readonly logger = new Logger(ExecutionService.name);
 
   constructor(
-    private dataSource: DataSource,
-    private boqService: BoqService,
+    private readonly dataSource: DataSource,
     @InjectRepository(Activity)
-    private activityRepo: Repository<Activity>,
-    @InjectRepository(BoqActivityPlan)
-    private planRepo: Repository<BoqActivityPlan>,
+    private readonly activityRepo: Repository<Activity>,
+    @InjectRepository(WoActivityPlan)
+    private readonly planRepo: Repository<WoActivityPlan>,
     @InjectRepository(BoqItem)
-    private boqRepo: Repository<BoqItem>,
+    private readonly boqRepo: Repository<BoqItem>,
     @InjectRepository(BoqSubItem)
-    private boqSubItemRepo: Repository<BoqSubItem>,
-    @InjectRepository(MeasurementProgress)
-    private progressRepo: Repository<MeasurementProgress>,
-    @InjectRepository(MeasurementElement)
-    private measurementRepo: Repository<MeasurementElement>,
+    private readonly boqSubItemRepo: Repository<BoqSubItem>,
     @InjectRepository(WorkOrderItem)
-    private workOrderItemRepo: Repository<WorkOrderItem>,
+    private readonly workOrderItemRepo: Repository<WorkOrderItem>,
+    @InjectRepository(EpsNode)
+    private readonly epsRepo: Repository<EpsNode>,
+    @InjectRepository(ExecutionProgressEntry)
+    private readonly executionEntryRepo: Repository<ExecutionProgressEntry>,
+    @InjectRepository(ExecutionProgressAdjustment)
+    private readonly executionAdjustmentRepo: Repository<ExecutionProgressAdjustment>,
   ) {}
 
   async batchSaveMeasurements(
     projectId: number,
     entries: any[],
     userId: number,
-    autoApprove: boolean = false, // If true (Admin/PM), status = APPROVED immediately
+    autoApprove = false,
   ) {
-    return await this.dataSource.transaction(async (manager) => {
-      const results: MeasurementProgress[] = [];
+    return this.dataSource.transaction(async (manager) => {
+      const results: any[] = [];
 
-      for (const entry of entries) {
-        const resolvedSubItem = await this.resolveSubItemForEntry(entry);
-        if (!resolvedSubItem) {
-          throw new BadRequestException(
-            `Progress entry for BOQ item ${entry.boqItemId} is not linked to a BOQ sub item. All activity measurements must use a BOQ sub item rate.`,
-          );
-        }
-        if (Number(resolvedSubItem.rate || 0) <= 0) {
-          throw new BadRequestException(
-            `BOQ sub item "${resolvedSubItem.description}" is not having rate.`,
-          );
+      for (const rawEntry of entries) {
+        const entryQty = Number(rawEntry.executedQty ?? rawEntry.quantity ?? 0);
+        if (!Number.isFinite(entryQty) || entryQty <= 0) {
+          throw new BadRequestException('Executed quantity must be greater than 0.');
         }
 
-        // 1. Fetch BOQ Item to get context (EPS Node)
-        const boqItem = await manager.findOne(BoqItem, {
-          where: { id: entry.boqItemId },
-        });
-        if (!boqItem) {
-          this.logger.warn(
-            `BoqItem ${entry.boqItemId} not found for measurement entry`,
-          );
-          continue; // Skip invalid
-        }
-
-        // 2. Find or Create "Site Execution" Measurement Holder
-        const epsNodeId = entry.wbsNodeId || boqItem.epsNodeId || projectId;
-        const microSuffix = entry.microActivityId
-          ? `-MICRO-${entry.microActivityId}`
-          : '';
-        const vendorSuffix = entry.vendorId ? `-V-${entry.vendorId}` : '';
-        const woSuffix = entry.workOrderItemId
-          ? `-WO-${entry.workOrderItemId}`
-          : '';
-
-        const elementId = `SITE-EXEC-${entry.boqItemId}-${entry.activityId || 'GENERIC'}-${epsNodeId}-${entry.planId || 'NOPLAN'}${microSuffix}${vendorSuffix}${woSuffix}`;
-
-        let siteMeas = await manager.findOne(MeasurementElement, {
-          where: {
-            boqItemId: entry.boqItemId,
-            boqSubItemId: resolvedSubItem.id,
-            activityId: entry.activityId || null,
-            microActivityId: entry.microActivityId || null,
-            workOrderItemId: entry.workOrderItemId || null,
-            vendorId: entry.vendorId || null,
-            elementId: elementId,
-          },
-        });
-
-        if (!siteMeas) {
-          siteMeas = manager.create(MeasurementElement, {
+        const context = await this.resolvePlanContext(manager, projectId, rawEntry);
+        const selectedExecutionEpsNodeId = Number(
+          rawEntry.wbsNodeId ||
+            context.plan.executionEpsNodeId ||
+            context.plan.projectId ||
             projectId,
-            boqItemId: entry.boqItemId,
-            boqSubItemId: resolvedSubItem.id,
-            epsNodeId: epsNodeId,
-            activityId: entry.activityId || null,
-            microActivityId: entry.microActivityId || null,
-            workOrderItemId: entry.workOrderItemId || null,
-            vendorId: entry.vendorId || null,
-            elementName: entry.microActivityId
-              ? 'Micro Execution'
-              : 'Site Execution',
-            qty: 0,
-            elementId: elementId,
-          });
-          siteMeas = await manager.save(MeasurementElement, siteMeas);
+        );
+        const effectiveProjectId = await this.resolveRootProjectId(
+          manager,
+          Number(
+            rawEntry.wbsNodeId ||
+              context.plan.executionEpsNodeId ||
+              context.plan.projectId ||
+              projectId,
+          ),
+        );
+        await this.validatePlanCapacity(
+          manager,
+          context,
+          entryQty,
+          Number(rawEntry.microActivityId || 0) || null,
+          null,
+        );
+
+        const executionEntry = manager.create(ExecutionProgressEntry, {
+          projectId: effectiveProjectId,
+          workOrderId: context.plan.workOrderId ?? context.workOrderItem.workOrder?.id ?? null,
+          workOrderItemId: context.workOrderItem.id,
+          activityId: context.plan.activityId,
+          woActivityPlanId: context.plan.id,
+          executionEpsNodeId: selectedExecutionEpsNodeId,
+          microActivityId: context.microActivity?.id ?? null,
+          entryDate: new Date(rawEntry.date),
+          enteredQty: entryQty,
+          remarks: rawEntry.notes || rawEntry.remarks || null,
+          status: autoApprove
+            ? ExecutionProgressEntryStatus.APPROVED
+            : ExecutionProgressEntryStatus.PENDING,
+          createdBy: String(userId),
+          approvedBy: autoApprove ? String(userId) : null,
+          approvedAt: autoApprove ? new Date() : null,
+        });
+
+        const saved = await manager.save(ExecutionProgressEntry, executionEntry);
+
+        if (saved.status === ExecutionProgressEntryStatus.APPROVED) {
+          await this.syncDerivedState(
+            manager,
+            context.plan.activityId ? [context.plan.activityId] : [],
+            [context.workOrderItem.id],
+            context.boqItem?.id ? [context.boqItem.id] : [],
+            context.boqSubItem?.id ? [context.boqSubItem.id] : [],
+          );
         }
 
-        // 3. Create Progress Log
-        const status = autoApprove ? 'APPROVED' : 'PENDING';
-
-        const progress = new MeasurementProgress();
-        progress.measurementElement = siteMeas;
-        progress.executedQty = entry.executedQty;
-        progress.date = new Date(entry.date);
-        progress.updatedBy = userId.toString();
-        progress.status = status;
-        progress.reviewedBy = autoApprove ? userId.toString() : null;
-        progress.reviewedAt = autoApprove ? new Date() : null;
-
-        await manager.save(MeasurementProgress, progress);
-        results.push(progress);
-
-        // 4. Update Aggregates & Sync Schedule (ONLY IF APPROVED)
-        if (status === 'APPROVED') {
-          await this.recomputeAggregates(siteMeas.id, manager);
-
-          // Trigger Schedule Update
-          await this.syncSchedule(entry.boqItemId, manager, entry.activityId);
-        }
+        results.push(await this.buildCompatLogDto(manager, saved.id));
       }
 
       return results;
     });
   }
 
-  private async resolveSubItemForEntry(entry: any): Promise<BoqSubItem | null> {
-    if (entry.boqSubItemId) {
-      return this.boqSubItemRepo.findOne({
-        where: { id: Number(entry.boqSubItemId) },
-      });
-    }
-
-    if (entry.workOrderItemId) {
-      const woItem = await this.workOrderItemRepo.findOne({
-        where: { id: Number(entry.workOrderItemId) },
-      });
-      if (woItem?.boqSubItemId) {
-        return this.boqSubItemRepo.findOne({
-          where: { id: Number(woItem.boqSubItemId) },
-        });
-      }
-    }
-
-    if (entry.activityId && entry.boqItemId) {
-      const plans = await this.planRepo.find({
-        where: {
-          activityId: Number(entry.activityId),
-          boqItemId: Number(entry.boqItemId),
-        },
-        order: { id: 'ASC' },
-      });
-      const planWithSubItem = plans.find((plan) => Number(plan.boqSubItemId) > 0);
-      if (planWithSubItem?.boqSubItemId) {
-        return this.boqSubItemRepo.findOne({
-          where: { id: Number(planWithSubItem.boqSubItemId) },
-        });
-      }
-    }
-
-    return null;
-  }
-
-  private async syncSchedule(
-    boqItemId: number,
-    manager: any,
-    triggerActivityId?: number,
-  ) {
-    // 1. Find Linked Activities
-    const plans = await manager.find(BoqActivityPlan, {
-      where: { boqItemId },
-      relations: ['activity'],
-    });
-
-    if (!plans || plans.length === 0) return;
-
-    // 2. For each Activity, Recalculate %
-    const activityIds = [...new Set(plans.map((p) => p.activityId))];
-
-    for (const actId of activityIds) {
-      // Optimization: If triggerActivityId is known, only update THAT activity?
-      // Actually, if a BOQ item is shared generically (no activity context), it affects ALL.
-      // If it HAS activity context, it should only affect THAT activity.
-
-      // If the measurement was specific to Activity A, ideally we shouldn't touch Activity B.
-      // But 'recalculateActivityProgress' will handle the filtering logic.
-      await this.recalculateActivityProgress(actId as number, manager);
-    }
-  }
-
-  private async recomputeAggregates(meId: number, manager: any) {
-    // 1. Recompute MeasurementElement.executedQty from APPROVED logs
-    const { total } = await manager
-      .createQueryBuilder(MeasurementProgress, 'p')
-      .where('p.measurementElementId = :meId', { meId })
-      .andWhere('p.status = :status', { status: 'APPROVED' })
-      .select('COALESCE(SUM(p.executedQty), 0)', 'total')
-      .getRawOne();
-
-    await manager.update(MeasurementElement, meId, {
-      executedQty: Number(total),
-    });
-
-    // 2. Recompute BoqItem.consumedQty from all its MeasurementElements
-    const me = await manager.findOne(MeasurementElement, {
-      where: { id: meId },
-    });
-    if (me?.boqItemId) {
-      const { boqTotal } = await manager
-        .createQueryBuilder(MeasurementElement, 'me')
-        .where('me.boqItemId = :boqId', { boqId: me.boqItemId })
-        .select('COALESCE(SUM(me.executedQty), 0)', 'boqTotal')
-        .getRawOne();
-
-      await manager.update(BoqItem, me.boqItemId, {
-        consumedQty: Number(boqTotal),
-      });
-    }
-  }
-
-  private async recalculateActivityProgress(activityId: number, manager: any) {
-    const activity = await manager.findOne(Activity, {
-      where: { id: activityId },
-    });
-    if (!activity) return;
-
-    // Fetch All Links for this Activity
-    const allLinks = await manager.find(BoqActivityPlan, {
-      where: { activityId },
-      relations: ['boqItem'],
-    });
-
-    let totalWeightedProgress = 0;
-    let totalActivityPlanned = 0;
-    let totalBudgetedValue = 0;
-    let totalActualValue = 0;
-
-    let allLinksComplete = true; // Strict Check
-
-    // Pre-fetch consumed quantities per unique boqItemId to avoid double-counting
-    // when multiple WO items reference the same BOQ item
-    const consumedByBoq = new Map<number, number>();
-    const uniqueBoqIds = [...new Set(allLinks.map((l) => l.boqItem.id))];
-    for (const boqId of uniqueBoqIds) {
-      const meas = await manager.find(MeasurementElement, {
-        where: { boqItemId: boqId, activityId: activityId },
-      });
-      const consumed = meas.reduce(
-        (sum, m) => sum + Number(m.executedQty),
-        0,
-      );
-      consumedByBoq.set(boqId as number, consumed);
-    }
-
-    // Track consumed already attributed to links per boqItemId
-    // to distribute consumed proportionally across links sharing same BOQ
-    const consumedAttributed = new Map<number, number>();
-
-    for (const link of allLinks) {
-      const item = link.boqItem;
-      const subItemRate =
-        link.boqSubItemId != null
-          ? await this.boqSubItemRepo.findOne({
-              where: { id: link.boqSubItemId },
-              select: ['id', 'rate'],
-            })
-          : null;
-      const rate = Number(subItemRate?.rate || 0);
-      if (link.boqSubItemId && rate <= 0) {
-        throw new BadRequestException(
-          `BOQ sub item ${link.boqSubItemId} is not having rate.`,
-        );
-      }
-
-      // Planned Portion for this specific Activity
-      const plannedQty = Number(link.plannedQuantity);
-      totalActivityPlanned += plannedQty;
-      totalBudgetedValue += plannedQty * rate;
-
-      // Executed Portion: use WO-item-specific measurements if available,
-      // fall back to proportional share of BOQ-level consumed
-      const woItemId = link.workOrderItemId;
-      let specificConsumed = 0;
-
-      if (woItemId) {
-        // Try WO-item-specific measurement elements first
-        const woMeas = await manager.find(MeasurementElement, {
-          where: { boqItemId: item.id, activityId: activityId, workOrderItemId: woItemId },
-        });
-        specificConsumed = woMeas.reduce(
-          (sum, m) => sum + Number(m.executedQty),
-          0,
-        );
-      } else {
-        // Legacy fallback: proportional share of total consumed for this BOQ
-        const totalConsumedForBoq = consumedByBoq.get(item.id) || 0;
-        const alreadyAttr = consumedAttributed.get(item.id) || 0;
-        specificConsumed = Math.min(plannedQty, totalConsumedForBoq - alreadyAttr);
-        specificConsumed = Math.max(0, specificConsumed);
-      }
-
-      // Track attribution
-      consumedAttributed.set(
-        item.id,
-        (consumedAttributed.get(item.id) || 0) + specificConsumed,
-      );
-
-      totalActualValue += specificConsumed * rate;
-
-      // Calculation based on Plan Weighting
-      totalWeightedProgress += Math.min(plannedQty, specificConsumed); // Cap weight contribution to 100% for % calculation
-
-      // Strict Finish Verification
-      if (specificConsumed < plannedQty) {
-        allLinksComplete = false;
-      }
-    }
-
-    if (totalActivityPlanned === 0) return;
-
-    const percentComplete =
-      (totalWeightedProgress / totalActivityPlanned) * 100;
-    const finalPercent = Math.min(100, Math.max(0, percentComplete));
-
-    // Update Activity
-    const oldStatus = activity.status;
-    activity.percentComplete = Number(finalPercent.toFixed(2));
-    activity.budgetedValue = Number(totalBudgetedValue.toFixed(2));
-    activity.actualValue = Number(totalActualValue.toFixed(2));
-
-    const today = new Date();
-
-    // 1. AUTO-START Logic
-    if (activity.percentComplete > 0 && !activity.startDateActual) {
-      activity.startDateActual = today;
-      if (activity.status === ActivityStatus.NOT_STARTED) {
-        activity.status = ActivityStatus.IN_PROGRESS;
-      }
-    }
-
-    // 2. AUTO-FINISH Logic (Now strict)
-    if (finalPercent >= 100 && allLinksComplete) {
-      if (!activity.finishDateActual) {
-        activity.finishDateActual = today;
-      }
-      activity.status = ActivityStatus.COMPLETED;
-      activity.percentComplete = 100;
-    }
-
-    // 3. REVERSAL Logic (If user clears date or quantity drops)
-    if (
-      (activity.percentComplete < 100 || !allLinksComplete) &&
-      activity.status === ActivityStatus.COMPLETED
-    ) {
-      activity.status = ActivityStatus.IN_PROGRESS;
-      activity.finishDateActual = null;
-    }
-
-    // 4. MANUAL OVERRIDE SYNC (If finish date is missing but was complete, ensure status reflects)
-    if (
-      !activity.finishDateActual &&
-      activity.status === ActivityStatus.COMPLETED
-    ) {
-      activity.status = ActivityStatus.IN_PROGRESS;
-    }
-
-    await manager.save(Activity, activity);
-    this.logger.log(
-      `[ScheduleSync] ${activity.activityCode}: ${activity.percentComplete}% (${activity.status}) - AllLinksComplete: ${allLinksComplete}`,
-    );
-
-    // --- 3. SYNC TO ACTIVE WORKING SCHEDULE ---
-    // User expects the "Working Schedule" to reflect these actuals in the Planned Dates (As-Built effect).
-    // Find Active Version
-    const activeVersion = await manager.findOne('ScheduleVersion', {
-      where: {
-        projectId: activity.projectId,
-        isActive: true,
-        versionType: 'WORKING',
-      },
-    });
-
-    if (activeVersion) {
-      const av = await manager.findOne('ActivityVersion', {
-        where: { versionId: activeVersion.id, activityId: activity.id },
-      });
-
-      if (av) {
-        let changed = false;
-        // If Actual Start is set, update Plan Start to match (or keep it if it was already same?)
-        // Usually, Actual overrides Plan in current view.
-        if (activity.startDateActual) {
-          av.startDate = activity.startDateActual;
-          changed = true;
-        }
-        if (activity.finishDateActual) {
-          av.finishDate = activity.finishDateActual;
-          av.percentComplete = 100; // If version had % field (it doesn't, but logic holds)
-          changed = true;
-        }
-
-        // If In Progress, Duration might change?
-        // Let's just sync dates for now.
-
-        if (changed) {
-          await manager.save('ActivityVersion', av);
-          this.logger.log(`Synced ActivityVersion ${av.id} dates to Actuals`);
-        }
-      }
-    }
-  }
-
   async getProjectProgressLogs(projectId: number) {
-    this.logger.log(`Fetching progress logs for project: ${projectId}`);
-
-    // Debug check: what site execution elements exist at all?
-    const debugElements = await this.measurementRepo.find({
-      where: { elementName: 'Site Execution' },
-      take: 5,
-    });
-    this.logger.debug(
-      `Sample Site Execution Elements: ${JSON.stringify(debugElements.map((e) => ({ id: e.id, projectId: e.projectId, activityId: e.activityId })))}`,
-    );
-
-    const logs = await this.progressRepo
-      .createQueryBuilder('progress')
-      .innerJoinAndSelect('progress.measurementElement', 'me')
-      .leftJoinAndSelect('me.boqItem', 'boq')
-      .leftJoinAndSelect('me.activity', 'act')
-      .where('me.projectId = :projectId', { projectId })
-      .andWhere('progress.status = :status', { status: 'APPROVED' })
-      .orderBy('progress.loggedOn', 'DESC')
-      .getMany();
-
-    this.logger.log(
-      `Found ${logs.length} APPROVED progress logs for project ${projectId}`,
-    );
-    return logs;
+    return this.listCompatLogs(projectId, ExecutionProgressEntryStatus.APPROVED);
   }
 
   async updateProgressLog(logId: number, newQty: number, userId: number) {
-    return await this.dataSource.transaction(async (manager) => {
-      const progress = await manager.findOne(MeasurementProgress, {
+    return this.dataSource.transaction(async (manager) => {
+      const entry = await manager.findOne(ExecutionProgressEntry, {
         where: { id: logId },
-        relations: ['measurementElement', 'measurementElement.boqItem'],
+        relations: [
+          'woActivityPlan',
+          'workOrderItem',
+          'workOrderItem.workOrder',
+        ],
       });
 
-      if (!progress) throw new Error('Progress log not found');
-
-      const me = progress.measurementElement;
-      const boqItem = me.boqItem;
-      const diff = Number(newQty) - Number(progress.executedQty);
-
-      // 1. Update Log
-      progress.executedQty = newQty;
-      progress.updatedBy = userId.toString();
-      await manager.save(progress);
-
-      // 2. Recompute Aggregates
-      await this.recomputeAggregates(me.id, manager);
-
-      // 3. Trigger Syncs
-      if (boqItem) {
-        await this.syncSchedule(boqItem.id, manager, me.activityId);
+      if (!entry) {
+        throw new BadRequestException('Progress log not found');
       }
 
-      return progress;
+      const qty = Number(newQty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new BadRequestException('Executed quantity must be greater than 0.');
+      }
+
+      if (!entry.woActivityPlanId || !entry.workOrderItemId) {
+        throw new BadRequestException(
+          'Legacy execution entries without plan linkage cannot be edited.',
+        );
+      }
+
+      const plan = await manager.findOne(WoActivityPlan, {
+        where: { id: entry.woActivityPlanId },
+        relations: ['workOrderItem', 'boqItem'],
+      });
+      if (!plan) {
+        throw new BadRequestException('Mapped schedule quantity was not found.');
+      }
+
+      const workOrderItem =
+        plan.workOrderItem ||
+        (await manager.findOne(WorkOrderItem, {
+          where: { id: entry.workOrderItemId },
+          relations: ['workOrder'],
+        }));
+      if (!workOrderItem) {
+        throw new BadRequestException('Mapped work order item was not found.');
+      }
+
+      const boqSubItem =
+        plan.boqSubItemId || workOrderItem.boqSubItemId
+          ? await manager.findOne(BoqSubItem, {
+              where: {
+                id: Number(plan.boqSubItemId || workOrderItem.boqSubItemId),
+              },
+            })
+          : null;
+
+      await this.validatePlanCapacity(
+        manager,
+        {
+          plan,
+          workOrderItem,
+          boqItem: plan.boqItem || null,
+          boqSubItem: boqSubItem || null,
+          microActivity: entry.microActivityId
+            ? await manager.findOne(MicroScheduleActivity, {
+                where: { id: entry.microActivityId, deletedAt: IsNull() },
+              })
+            : null,
+        },
+        qty,
+        entry.microActivityId,
+        entry.id,
+      );
+
+      await manager.save(
+        ExecutionProgressAdjustment,
+        manager.create(ExecutionProgressAdjustment, {
+          executionProgressEntryId: entry.id,
+          oldQty: Number(entry.enteredQty || 0),
+          newQty: qty,
+          reason: 'Manual edit',
+          changedBy: String(userId),
+        }),
+      );
+
+      entry.enteredQty = qty;
+      entry.createdBy = String(userId);
+      await manager.save(ExecutionProgressEntry, entry);
+
+      if (entry.status === ExecutionProgressEntryStatus.APPROVED) {
+        const workOrderItem = await manager.findOne(WorkOrderItem, {
+          where: { id: entry.workOrderItemId },
+        });
+        await this.syncDerivedState(
+          manager,
+          entry.activityId ? [entry.activityId] : [],
+          entry.workOrderItemId ? [entry.workOrderItemId] : [],
+          workOrderItem?.boqItemId ? [workOrderItem.boqItemId] : [],
+          workOrderItem?.boqSubItemId ? [workOrderItem.boqSubItemId] : [],
+        );
+      }
+
+      return this.buildCompatLogDto(manager, entry.id);
     });
   }
 
   async deleteProgressLog(logId: number) {
-    return await this.dataSource.transaction(async (manager) => {
-      const progress = await manager.findOne(MeasurementProgress, {
+    return this.dataSource.transaction(async (manager) => {
+      const entry = await manager.findOne(ExecutionProgressEntry, {
         where: { id: logId },
-        relations: ['measurementElement', 'measurementElement.boqItem'],
       });
 
-      if (!progress) throw new Error('Progress log not found');
+      if (!entry) {
+        throw new BadRequestException('Progress log not found');
+      }
 
-      const me = progress.measurementElement;
-      const boqItem = me.boqItem;
-      const qtyToRemove = Number(progress.executedQty);
+      const workOrderItem = entry.workOrderItemId
+        ? await manager.findOne(WorkOrderItem, {
+            where: { id: entry.workOrderItemId },
+          })
+        : null;
 
-      // 1. Delete Log
-      await manager.remove(progress);
+      await manager.delete(ExecutionProgressAdjustment, {
+        executionProgressEntryId: entry.id,
+      });
+      await manager.delete(ExecutionProgressEntry, { id: entry.id });
 
-      // ONLY recompute if this progress log was actually approved
-      if (progress.status === 'APPROVED') {
-        // 2. Recompute Aggregates
-        await this.recomputeAggregates(me.id, manager);
-
-        // 3. Trigger Syncs
-        if (boqItem) {
-          await this.syncSchedule(boqItem.id, manager, me.activityId);
-        }
+      if (entry.status === ExecutionProgressEntryStatus.APPROVED) {
+        await this.syncDerivedState(
+          manager,
+          entry.activityId ? [entry.activityId] : [],
+          entry.workOrderItemId ? [entry.workOrderItemId] : [],
+          workOrderItem?.boqItemId ? [workOrderItem.boqItemId] : [],
+          workOrderItem?.boqSubItemId ? [workOrderItem.boqSubItemId] : [],
+        );
       }
 
       return { success: true };
@@ -513,76 +274,900 @@ export class ExecutionService {
   }
 
   async getPendingProgressLogs(projectId: number) {
-    return await this.progressRepo
-      .createQueryBuilder('progress')
-      .innerJoinAndSelect('progress.measurementElement', 'me')
-      .leftJoinAndSelect('me.boqItem', 'boq')
-      .leftJoinAndSelect('me.activity', 'act')
-      .leftJoinAndSelect('me.epsNode', 'loc') // location context
-      .where('me.projectId = :projectId', { projectId })
-      .andWhere('progress.status = :status', { status: 'PENDING' })
-      .orderBy('progress.loggedOn', 'DESC')
-      .getMany();
+    return this.listCompatLogs(projectId, ExecutionProgressEntryStatus.PENDING);
   }
 
   async approveProgress(logIds: number[], userId: number) {
-    return await this.dataSource.transaction(async (manager) => {
-      // Fetch only PENDING items to avoid double-counting
-      const logs = await manager.find(MeasurementProgress, {
+    return this.dataSource.transaction(async (manager) => {
+      const logs = await manager.find(ExecutionProgressEntry, {
         where: {
           id: In(logIds),
-          status: 'PENDING',
+          status: ExecutionProgressEntryStatus.PENDING,
         },
-        relations: ['measurementElement', 'measurementElement.boqItem'],
       });
 
-      if (!logs.length)
+      if (!logs.length) {
         return {
           success: true,
           count: 0,
           message: 'No pending logs found to approve',
         };
+      }
 
-      for (const progress of logs) {
-        // 1. Mark Approved
-        progress.status = 'APPROVED';
-        progress.reviewedBy = userId.toString();
-        progress.reviewedAt = new Date();
-        await manager.save(MeasurementProgress, progress);
+      const activityIds = new Set<number>();
+      const workOrderItemIds = new Set<number>();
+      const boqItemIds = new Set<number>();
+      const boqSubItemIds = new Set<number>();
 
-        // 2. Perform Adjustments (Deferred Logic)
-        const me = progress.measurementElement;
+      for (const log of logs) {
+        log.status = ExecutionProgressEntryStatus.APPROVED;
+        log.approvedBy = String(userId);
+        log.approvedAt = new Date();
+        await manager.save(ExecutionProgressEntry, log);
 
-        if (!me) continue; // Should not happen
-
-        const boqItem = me.boqItem;
-
-        // Recompute Aggregates
-        await this.recomputeAggregates(me.id, manager);
-
-        // Trigger Schedule Sync
-        if (boqItem) {
-          await this.syncSchedule(boqItem.id, manager, me.activityId);
+        if (log.activityId) activityIds.add(log.activityId);
+        if (log.workOrderItemId) {
+          workOrderItemIds.add(log.workOrderItemId);
+          const workOrderItem = await manager.findOne(WorkOrderItem, {
+            where: { id: log.workOrderItemId },
+          });
+          if (workOrderItem?.boqItemId) boqItemIds.add(workOrderItem.boqItemId);
+          if (workOrderItem?.boqSubItemId) boqSubItemIds.add(workOrderItem.boqSubItemId);
         }
       }
 
-      this.logger.log(`Approved ${logs.length} progress entries`);
+      await this.syncDerivedState(
+        manager,
+        Array.from(activityIds),
+        Array.from(workOrderItemIds),
+        Array.from(boqItemIds),
+        Array.from(boqSubItemIds),
+      );
+
       return { success: true, count: logs.length };
     });
   }
 
   async rejectProgress(logIds: number[], userId: number, reason: string) {
-    // Just update status, do NOT touch aggregates
     const result = await this.dataSource.manager.update(
-      MeasurementProgress,
-      { id: In(logIds), status: 'PENDING' },
+      ExecutionProgressEntry,
+      { id: In(logIds), status: ExecutionProgressEntryStatus.PENDING },
       {
-        status: 'REJECTED',
-        reviewedBy: userId.toString(),
-        reviewedAt: new Date(),
+        status: ExecutionProgressEntryStatus.REJECTED,
+        approvedBy: String(userId),
+        approvedAt: new Date(),
         rejectionReason: reason,
       },
     );
-    return { success: true, affected: result.affected };
+
+    return { success: true, affected: result.affected ?? 0 };
+  }
+
+  private async resolvePlanContext(
+    manager: Manager,
+    projectId: number,
+    rawEntry: any,
+  ): Promise<ResolvedPlanContext> {
+    const plan = await this.findCompatiblePlan(manager, rawEntry);
+
+    if (!plan) {
+      throw new BadRequestException(
+        'Progress can only be recorded against a mapped WO quantity for the selected activity and floor.',
+      );
+    }
+
+    const workOrderItem =
+      plan.workOrderItem ||
+      (await manager.findOne(WorkOrderItem, {
+        where: { id: plan.workOrderItemId },
+        relations: ['workOrder'],
+      }));
+
+    if (!workOrderItem) {
+      throw new BadRequestException('Mapped work order item was not found.');
+    }
+
+    const boqSubItemId =
+      rawEntry.boqSubItemId ||
+      plan.boqSubItemId ||
+      workOrderItem.boqSubItemId ||
+      null;
+    const boqSubItem = boqSubItemId
+      ? await manager.findOne(BoqSubItem, {
+          where: { id: boqSubItemId },
+        })
+      : null;
+
+    const boqItem =
+      plan.boqItem ||
+      (workOrderItem.boqItemId
+        ? await manager.findOne(BoqItem, {
+            where: { id: workOrderItem.boqItemId },
+          })
+        : null);
+
+    if (rawEntry.vendorId && plan.vendorId) {
+      const requestedVendorId = Number(rawEntry.vendorId);
+      if (requestedVendorId !== Number(plan.vendorId)) {
+        throw new BadRequestException(
+          'Progress vendor does not match the mapped work order vendor.',
+        );
+      }
+    }
+
+    if (rawEntry.wbsNodeId && plan.executionEpsNodeId) {
+      const requested = Number(rawEntry.wbsNodeId);
+      const allowedScopeIds = await this.resolveEpsScopeIds(manager, requested);
+      if (!allowedScopeIds.includes(Number(plan.executionEpsNodeId))) {
+        throw new BadRequestException(
+          'Progress location is locked to the linked schedule floor.',
+        );
+      }
+    }
+
+    let microActivity: MicroScheduleActivity | null = null;
+    if (rawEntry.microActivityId) {
+      microActivity = await manager.findOne(MicroScheduleActivity, {
+        where: { id: Number(rawEntry.microActivityId), deletedAt: IsNull() },
+      });
+
+      if (!microActivity) {
+        throw new BadRequestException('Selected micro schedule activity was not found.');
+      }
+
+      if (Number(microActivity.parentActivityId) !== Number(plan.activityId)) {
+        throw new BadRequestException(
+          'Micro schedule activity does not belong to the selected master activity.',
+        );
+      }
+
+      if (rawEntry.wbsNodeId && microActivity.epsNodeId) {
+        const requestedScopeIds = await this.resolveEpsScopeIds(
+          manager,
+          Number(rawEntry.wbsNodeId),
+        );
+        const microScopeIds = await this.resolveEpsScopeIds(
+          manager,
+          Number(microActivity.epsNodeId),
+        );
+        const sharedScope = requestedScopeIds.some((id) =>
+          microScopeIds.includes(id),
+        );
+
+        if (!sharedScope) {
+          this.logger.warn(
+            `Allowing micro activity ${microActivity.id} across EPS mismatch because it matches the selected logical activity/WO mapping. Selected EPS=${rawEntry.wbsNodeId}, micro EPS=${microActivity.epsNodeId}`,
+          );
+        }
+      }
+
+      if (
+        microActivity.workOrderItemId &&
+        Number(microActivity.workOrderItemId) !== Number(plan.workOrderItemId)
+      ) {
+        throw new BadRequestException(
+          'Micro schedule activity does not belong to the selected mapped WO quantity.',
+        );
+      }
+
+      if (rawEntry.vendorId && microActivity.vendorId) {
+        const requestedVendorId = Number(rawEntry.vendorId);
+        if (requestedVendorId !== Number(microActivity.vendorId)) {
+          throw new BadRequestException(
+            'Micro schedule activity does not belong to the selected vendor.',
+          );
+        }
+      }
+    }
+
+    return {
+      plan,
+      workOrderItem,
+      boqSubItem,
+      boqItem,
+      microActivity,
+    };
+  }
+
+  private async findCompatiblePlan(
+    manager: Manager,
+    rawEntry: any,
+  ): Promise<WoActivityPlan | null> {
+    const requestedFloorId = Number(rawEntry.wbsNodeId || 0) || null;
+    const activityId = Number(rawEntry.activityId || 0) || null;
+    const workOrderItemId = Number(rawEntry.workOrderItemId || 0) || null;
+    const boqItemId = Number(rawEntry.boqItemId || 0) || null;
+    const vendorId = Number(rawEntry.vendorId || 0) || null;
+    const activityScopeIds = activityId
+      ? await this.resolveActivityScopeIds(manager, activityId)
+      : [];
+    const epsScopeIds = requestedFloorId
+      ? await this.resolveEpsScopeIds(manager, requestedFloorId)
+      : [];
+
+    if (rawEntry.planId) {
+      const plan = await manager.findOne(WoActivityPlan, {
+        where: { id: Number(rawEntry.planId) },
+        relations: [
+          'activity',
+          'workOrderItem',
+          'workOrderItem.workOrder',
+          'boqItem',
+          'executionEpsNode',
+        ],
+      });
+      if (!plan) {
+        return null;
+      }
+      if (
+        activityScopeIds.length &&
+        !activityScopeIds.includes(Number(plan.activityId))
+      ) {
+        throw new BadRequestException('Selected progress bucket does not belong to this activity.');
+      }
+      if (
+        requestedFloorId &&
+        plan.executionEpsNodeId &&
+        !epsScopeIds.includes(Number(plan.executionEpsNodeId))
+      ) {
+        throw new BadRequestException('Selected progress bucket does not belong to this floor.');
+      }
+      if (vendorId && plan.vendorId && Number(plan.vendorId) !== vendorId) {
+        throw new BadRequestException('Selected progress bucket does not belong to this vendor.');
+      }
+      return plan;
+    }
+
+    const exactByWoItem = async (ids: number[]) => {
+      if (!ids.length || !activityScopeIds.length) return null;
+      const qb = manager
+        .createQueryBuilder(WoActivityPlan, 'plan')
+        .leftJoinAndSelect('plan.activity', 'activity')
+        .leftJoinAndSelect('plan.workOrderItem', 'workOrderItem')
+        .leftJoinAndSelect('workOrderItem.workOrder', 'workOrder')
+        .leftJoinAndSelect('plan.boqItem', 'boqItem')
+        .leftJoinAndSelect('plan.executionEpsNode', 'executionEpsNode')
+        .where('plan.workOrderItemId IN (:...ids)', { ids })
+        .andWhere('plan.activityId IN (:...activityScopeIds)', {
+          activityScopeIds,
+        });
+
+      if (vendorId) {
+        qb.andWhere('(plan.vendorId = :vendorId OR plan.vendorId IS NULL)', {
+          vendorId,
+        }).addOrderBy(
+          'CASE WHEN plan.vendorId = :vendorId THEN 0 ELSE 1 END',
+          'ASC',
+        );
+      }
+
+      if (requestedFloorId) {
+        qb.andWhere(
+          '(plan.executionEpsNodeId IN (:...epsScopeIds) OR plan.executionEpsNodeId IS NULL)',
+          { epsScopeIds, executionEpsNodeId: requestedFloorId },
+        ).orderBy(
+          'CASE WHEN plan.executionEpsNodeId = :executionEpsNodeId THEN 0 WHEN plan.executionEpsNodeId IS NULL THEN 2 ELSE 1 END',
+          'ASC',
+        );
+      }
+
+      return qb
+        .addOrderBy('plan.id', 'ASC')
+        .getOne();
+    };
+
+    if (workOrderItemId && activityId) {
+      const directPlan = await exactByWoItem([workOrderItemId]);
+      if (directPlan) return directPlan;
+
+      const descendantIds = await this.collectWorkOrderDescendantIds(
+        manager,
+        workOrderItemId,
+      );
+      const descendantPlan = await exactByWoItem(descendantIds);
+      if (descendantPlan) return descendantPlan;
+    }
+
+    if (boqItemId && activityScopeIds.length) {
+      const qb = manager
+        .createQueryBuilder(WoActivityPlan, 'plan')
+        .leftJoinAndSelect('plan.activity', 'activity')
+        .leftJoinAndSelect('plan.workOrderItem', 'workOrderItem')
+        .leftJoinAndSelect('workOrderItem.workOrder', 'workOrder')
+        .leftJoinAndSelect('plan.boqItem', 'boqItem')
+        .leftJoinAndSelect('plan.executionEpsNode', 'executionEpsNode')
+        .where('plan.boqItemId = :boqItemId', { boqItemId })
+        .andWhere('plan.activityId IN (:...activityScopeIds)', {
+          activityScopeIds,
+        });
+
+      if (vendorId) {
+        qb.andWhere('(plan.vendorId = :vendorId OR plan.vendorId IS NULL)', {
+          vendorId,
+        }).addOrderBy(
+          'CASE WHEN plan.vendorId = :vendorId THEN 0 ELSE 1 END',
+          'ASC',
+        );
+      }
+
+      if (requestedFloorId) {
+        qb.andWhere(
+          '(plan.executionEpsNodeId IN (:...epsScopeIds) OR plan.executionEpsNodeId IS NULL)',
+          { epsScopeIds, executionEpsNodeId: requestedFloorId },
+        ).orderBy(
+          'CASE WHEN plan.executionEpsNodeId = :executionEpsNodeId THEN 0 WHEN plan.executionEpsNodeId IS NULL THEN 2 ELSE 1 END',
+          'ASC',
+        );
+      }
+
+      return qb
+        .addOrderBy('plan.id', 'ASC')
+        .getOne();
+    }
+
+    if (activityScopeIds.length) {
+      const qb = manager
+        .createQueryBuilder(WoActivityPlan, 'plan')
+        .leftJoinAndSelect('plan.activity', 'activity')
+        .leftJoinAndSelect('plan.workOrderItem', 'workOrderItem')
+        .leftJoinAndSelect('workOrderItem.workOrder', 'workOrder')
+        .leftJoinAndSelect('plan.boqItem', 'boqItem')
+        .leftJoinAndSelect('plan.executionEpsNode', 'executionEpsNode')
+        .where('plan.activityId IN (:...activityScopeIds)', {
+          activityScopeIds,
+        });
+
+      if (vendorId) {
+        qb.andWhere('(plan.vendorId = :vendorId OR plan.vendorId IS NULL)', {
+          vendorId,
+        }).addOrderBy(
+          'CASE WHEN plan.vendorId = :vendorId THEN 0 ELSE 1 END',
+          'ASC',
+        );
+      }
+
+      if (requestedFloorId) {
+        qb.andWhere(
+          '(plan.executionEpsNodeId IN (:...epsScopeIds) OR plan.executionEpsNodeId IS NULL)',
+          { epsScopeIds, executionEpsNodeId: requestedFloorId },
+        ).addOrderBy(
+          'CASE WHEN plan.executionEpsNodeId = :executionEpsNodeId THEN 0 WHEN plan.executionEpsNodeId IS NULL THEN 2 ELSE 1 END',
+          'ASC',
+        );
+      }
+
+      return qb.addOrderBy('plan.id', 'ASC').getOne();
+    }
+
+    return null;
+  }
+
+  private async collectWorkOrderDescendantIds(
+    manager: Manager,
+    workOrderItemId: number,
+  ): Promise<number[]> {
+    const ids: number[] = [];
+    const queue = [workOrderItemId];
+
+    while (queue.length) {
+      const currentId = queue.shift()!;
+      const children = await manager.find(WorkOrderItem, {
+        where: { parentWorkOrderItemId: currentId },
+        select: ['id'],
+      });
+      for (const child of children) {
+        ids.push(child.id);
+        queue.push(child.id);
+      }
+    }
+
+    return ids;
+  }
+
+  private async resolveActivityScopeIds(
+    manager: Manager,
+    activityId: number,
+  ): Promise<number[]> {
+    const ids: number[] = [];
+    let currentId: number | null = Number(activityId);
+
+    while (currentId) {
+      const activity = await manager.findOne(Activity, {
+        where: { id: currentId },
+        select: ['id', 'masterActivityId'],
+      });
+      if (!activity) {
+        break;
+      }
+      ids.push(Number(activity.id));
+      currentId = activity.masterActivityId
+        ? Number(activity.masterActivityId)
+        : null;
+    }
+
+    return [...new Set(ids)];
+  }
+
+  private async resolveEpsScopeIds(
+    manager: Manager,
+    epsNodeId: number,
+  ): Promise<number[]> {
+    const ids: number[] = [];
+    let currentId: number | null = Number(epsNodeId);
+
+    while (currentId) {
+      const node = await manager.findOne(EpsNode, {
+        where: { id: currentId },
+        select: ['id', 'parentId'],
+      });
+      if (!node) {
+        break;
+      }
+      ids.push(Number(node.id));
+      currentId = node.parentId ? Number(node.parentId) : null;
+    }
+
+    return [...new Set(ids)];
+  }
+
+  private async validatePlanCapacity(
+    manager: Manager,
+    context: ResolvedPlanContext,
+    newQty: number,
+    microActivityId: number | null,
+    ignoreEntryId: number | null,
+  ) {
+    const plan = context.plan;
+    const qb = manager
+      .createQueryBuilder(ExecutionProgressEntry, 'entry')
+      .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+      .where('entry.woActivityPlanId = :woActivityPlanId', {
+        woActivityPlanId: plan.id,
+      })
+      .andWhere('entry.status != :rejected', {
+        rejected: ExecutionProgressEntryStatus.REJECTED,
+      });
+
+    if (ignoreEntryId) {
+      qb.andWhere('entry.id != :ignoreEntryId', { ignoreEntryId });
+    }
+
+    const result = await qb.getRawOne<{ total: string }>();
+    const currentTotal = Number(result?.total || 0);
+    const maxQty = Number(plan.plannedQuantity || 0);
+
+    if (maxQty > 0 && currentTotal + Number(newQty) > maxQty + 0.0001) {
+      throw new BadRequestException(
+        `Progress exceeds mapped activity quantity. Planned: ${maxQty}, already submitted: ${currentTotal}, new: ${newQty}.`,
+      );
+    }
+
+    if (microActivityId) {
+      const microActivity =
+        context.microActivity ||
+        (await manager.findOne(MicroScheduleActivity, {
+          where: { id: microActivityId, deletedAt: IsNull() },
+        }));
+
+      if (!microActivity) {
+        throw new BadRequestException('Selected micro schedule activity was not found.');
+      }
+
+      const microQb = manager
+        .createQueryBuilder(ExecutionProgressEntry, 'entry')
+        .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+        .where('entry.microActivityId = :microActivityId', { microActivityId })
+        .andWhere('entry.status != :rejected', {
+          rejected: ExecutionProgressEntryStatus.REJECTED,
+        });
+
+      if (ignoreEntryId) {
+        microQb.andWhere('entry.id != :ignoreEntryId', { ignoreEntryId });
+      }
+
+      const microResult = await microQb.getRawOne<{ total: string }>();
+      const microSubmittedQty = Number(microResult?.total || 0);
+      const microCap = Number(microActivity.allocatedQty || 0);
+
+      if (
+        microCap > 0 &&
+        microSubmittedQty + Number(newQty) > microCap + 0.0001
+      ) {
+        throw new BadRequestException(
+          `Progress exceeds micro activity quantity. Allocated: ${microCap}, already submitted: ${microSubmittedQty}, new: ${newQty}.`,
+        );
+      }
+      return;
+    }
+
+    const ledger = await manager.findOne(MicroQuantityLedger, {
+      where: {
+        parentActivityId: plan.activityId,
+        workOrderItemId: plan.workOrderItemId,
+      },
+    });
+
+    const directQb = manager
+      .createQueryBuilder(ExecutionProgressEntry, 'entry')
+      .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+      .where('entry.woActivityPlanId = :woActivityPlanId', {
+        woActivityPlanId: plan.id,
+      })
+      .andWhere('entry.microActivityId IS NULL')
+      .andWhere('entry.status != :rejected', {
+        rejected: ExecutionProgressEntryStatus.REJECTED,
+      });
+
+    if (ignoreEntryId) {
+      directQb.andWhere('entry.id != :ignoreEntryId', { ignoreEntryId });
+    }
+
+    const directResult = await directQb.getRawOne<{ total: string }>();
+    const currentDirectQty = Number(directResult?.total || 0);
+    const directCapacity =
+      ledger !== null
+        ? Math.max(0, Number(ledger.balanceQty || 0))
+        : Number(plan.plannedQuantity || 0);
+
+    if (
+      directCapacity > 0 &&
+      currentDirectQty + Number(newQty) > directCapacity + 0.0001
+    ) {
+      throw new BadRequestException(
+        `Progress exceeds direct balance quantity. Direct balance: ${directCapacity}, already submitted: ${currentDirectQty}, new: ${newQty}.`,
+      );
+    }
+  }
+
+  private async syncDerivedState(
+    manager: Manager,
+    activityIds: number[],
+    workOrderItemIds: number[],
+    boqItemIds: number[],
+    boqSubItemIds: number[],
+  ) {
+    for (const workOrderItemId of [...new Set(workOrderItemIds)].filter(Boolean)) {
+      await this.refreshWorkOrderItem(manager, workOrderItemId);
+    }
+
+    for (const boqSubItemId of [...new Set(boqSubItemIds)].filter(Boolean)) {
+      await this.refreshBoqSubItem(manager, boqSubItemId);
+    }
+
+    for (const boqItemId of [...new Set(boqItemIds)].filter(Boolean)) {
+      await this.refreshBoqItem(manager, boqItemId);
+    }
+
+    for (const activityId of [...new Set(activityIds)].filter(Boolean)) {
+      await this.recalculateActivity(manager, activityId);
+    }
+  }
+
+  private async refreshWorkOrderItem(manager: Manager, workOrderItemId: number) {
+    const result = await manager
+      .createQueryBuilder(ExecutionProgressEntry, 'entry')
+      .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+      .where('entry.workOrderItemId = :workOrderItemId', { workOrderItemId })
+      .andWhere('entry.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .getRawOne<{ total: string }>();
+
+    await manager.update(WorkOrderItem, workOrderItemId, {
+      executedQuantity: Number(result?.total || 0),
+    });
+  }
+
+  private async refreshBoqSubItem(manager: Manager, boqSubItemId: number) {
+    const result = await manager
+      .createQueryBuilder(ExecutionProgressEntry, 'entry')
+      .innerJoin(WorkOrderItem, 'woItem', 'woItem.id = entry.workOrderItemId')
+      .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+      .where('woItem.boqSubItemId = :boqSubItemId', { boqSubItemId })
+      .andWhere('entry.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .getRawOne<{ total: string }>();
+
+    await manager.update(BoqSubItem, boqSubItemId, {
+      executedQty: Number(result?.total || 0),
+    });
+  }
+
+  private async refreshBoqItem(manager: Manager, boqItemId: number) {
+    const result = await manager
+      .createQueryBuilder(ExecutionProgressEntry, 'entry')
+      .innerJoin(WorkOrderItem, 'woItem', 'woItem.id = entry.workOrderItemId')
+      .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+      .where('woItem.boqItemId = :boqItemId', { boqItemId })
+      .andWhere('entry.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .getRawOne<{ total: string }>();
+
+    await manager.update(BoqItem, boqItemId, {
+      consumedQty: Number(result?.total || 0),
+    });
+  }
+
+  private async recalculateActivity(manager: Manager, activityId: number) {
+    const activity = await manager.findOne(Activity, {
+      where: { id: activityId },
+    });
+    if (!activity) {
+      return;
+    }
+
+    const plans = await manager.find(WoActivityPlan, {
+      where: { activityId },
+      relations: ['workOrderItem'],
+      order: { id: 'ASC' },
+    });
+
+    if (!plans.length) {
+      activity.percentComplete = 0;
+      activity.budgetedValue = 0;
+      activity.actualValue = 0;
+      activity.status = ActivityStatus.NOT_STARTED;
+      activity.startDateActual = null;
+      activity.finishDateActual = null;
+      await manager.save(Activity, activity);
+      return;
+    }
+
+    let totalPlannedQty = 0;
+    let totalExecutedQty = 0;
+    let totalBudgetedValue = 0;
+    let totalActualValue = 0;
+    let allPlansComplete = true;
+
+    const entryDateRows = await manager
+      .createQueryBuilder(ExecutionProgressEntry, 'entry')
+      .select('MIN(entry.entryDate)', 'minDate')
+      .addSelect('MAX(entry.entryDate)', 'maxDate')
+      .where('entry.activityId = :activityId', { activityId })
+      .andWhere('entry.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .getRawOne<{ minDate: string | null; maxDate: string | null }>();
+
+    for (const plan of plans) {
+      const rate =
+        Number(plan.workOrderItem?.rate || 0) ||
+        Number(
+          plan.boqSubItemId
+            ? (
+                await manager.findOne(BoqSubItem, {
+                  where: { id: plan.boqSubItemId },
+                  select: ['id', 'rate'],
+                })
+              )?.rate || 0
+            : 0,
+        );
+
+      const plannedQty = Number(plan.plannedQuantity || 0);
+      totalPlannedQty += plannedQty;
+      totalBudgetedValue += plannedQty * rate;
+
+      const executedResult = await manager
+        .createQueryBuilder(ExecutionProgressEntry, 'entry')
+        .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
+        .where('entry.woActivityPlanId = :woActivityPlanId', {
+          woActivityPlanId: plan.id,
+        })
+        .andWhere('entry.status = :status', {
+          status: ExecutionProgressEntryStatus.APPROVED,
+        })
+        .getRawOne<{ total: string }>();
+
+      const executedQty = Number(executedResult?.total || 0);
+      totalExecutedQty += Math.min(plannedQty, executedQty);
+      totalActualValue += executedQty * rate;
+
+      if (plannedQty > 0 && executedQty + 0.0001 < plannedQty) {
+        allPlansComplete = false;
+      }
+    }
+
+    const percentComplete =
+      totalPlannedQty > 0 ? (totalExecutedQty / totalPlannedQty) * 100 : 0;
+    const normalizedPercent = Math.min(100, Math.max(0, percentComplete));
+
+    activity.percentComplete = Number(normalizedPercent.toFixed(2));
+    activity.budgetedValue = Number(totalBudgetedValue.toFixed(2));
+    activity.actualValue = Number(totalActualValue.toFixed(2));
+
+    if (activity.actualValue > 0 || activity.percentComplete > 0) {
+      if (!activity.startDateActual && entryDateRows?.minDate) {
+        activity.startDateActual = new Date(entryDateRows.minDate);
+      }
+      if (activity.status === ActivityStatus.NOT_STARTED) {
+        activity.status = ActivityStatus.IN_PROGRESS;
+      }
+    } else {
+      activity.startDateActual = null;
+      activity.finishDateActual = null;
+      activity.status = ActivityStatus.NOT_STARTED;
+    }
+
+    if (normalizedPercent >= 100 && allPlansComplete) {
+      activity.percentComplete = 100;
+      activity.status = ActivityStatus.COMPLETED;
+      if (!activity.finishDateActual && entryDateRows?.maxDate) {
+        activity.finishDateActual = new Date(entryDateRows.maxDate);
+      }
+      if (!activity.startDateActual && entryDateRows?.minDate) {
+        activity.startDateActual = new Date(entryDateRows.minDate);
+      }
+    } else if (activity.status === ActivityStatus.COMPLETED) {
+      activity.status = normalizedPercent > 0 ? ActivityStatus.IN_PROGRESS : ActivityStatus.NOT_STARTED;
+      activity.finishDateActual = null;
+    }
+
+    await manager.save(Activity, activity);
+  }
+
+  private async listCompatLogs(
+    projectId: number,
+    status: ExecutionProgressEntryStatus,
+  ) {
+    const scopeIds = await this.getProjectScopeIds(projectId);
+    const rows = await this.executionEntryRepo
+      .createQueryBuilder('entry')
+      .leftJoinAndSelect('entry.workOrderItem', 'workOrderItem')
+      .leftJoinAndSelect('workOrderItem.boqItem', 'boqItem')
+      .leftJoinAndSelect('entry.woActivityPlan', 'woActivityPlan')
+      .leftJoinAndSelect('woActivityPlan.activity', 'activity')
+      .leftJoinAndSelect('entry.executionEpsNode', 'executionEpsNode')
+      .where('entry.status = :status', { status })
+      .andWhere(
+        '(entry.projectId IN (:...scopeIds) OR woActivityPlan.projectId IN (:...scopeIds) OR activity.projectId IN (:...scopeIds) OR entry.executionEpsNodeId IN (:...scopeIds))',
+        { scopeIds },
+      )
+      .orderBy('entry.createdAt', 'DESC')
+      .addOrderBy('entry.id', 'DESC')
+      .getMany();
+
+    return rows.map((row) => this.toCompatLogDto(row));
+  }
+
+  private async buildCompatLogDto(manager: Manager, entryId: number) {
+    const row = await manager.findOne(ExecutionProgressEntry, {
+      where: { id: entryId },
+      relations: [
+        'workOrderItem',
+        'workOrderItem.boqItem',
+        'woActivityPlan',
+        'woActivityPlan.activity',
+        'executionEpsNode',
+      ],
+    });
+    if (!row) {
+      throw new BadRequestException('Progress log not found after save.');
+    }
+    return this.toCompatLogDto(row);
+  }
+
+  private toCompatLogDto(entry: ExecutionProgressEntry) {
+    const boqItem = entry.workOrderItem?.boqItem;
+    const activity = entry.woActivityPlan?.activity;
+    const epsNode = entry.executionEpsNode;
+    const elementName =
+      entry.workOrderItem?.description ||
+      boqItem?.description ||
+      'Execution Progress';
+
+    return {
+      id: entry.id,
+      executedQty: Number(entry.enteredQty || 0),
+      date: entry.entryDate,
+      updatedBy: entry.createdBy,
+      status: entry.status,
+      reviewedBy: entry.approvedBy,
+      reviewedAt: entry.approvedAt,
+      rejectionReason: entry.rejectionReason,
+      measurementElement: {
+        id:
+          entry.workOrderItem?.measurementElementId ||
+          entry.workOrderItemId ||
+          entry.id,
+        elementName,
+        activity: activity
+          ? {
+              id: activity.id,
+              activityCode: activity.activityCode,
+              activityName: activity.activityName,
+            }
+          : null,
+        boqItem: boqItem
+          ? {
+              id: boqItem.id,
+              description: boqItem.description,
+              uom: boqItem.uom,
+              boqCode: boqItem.boqCode,
+            }
+          : null,
+        epsNode: epsNode
+          ? {
+              id: epsNode.id,
+              nodeName: epsNode.name,
+              type: epsNode.type,
+            }
+          : null,
+      },
+    };
+  }
+
+  private async resolveRootProjectId(
+    manager: Manager,
+    nodeId: number,
+  ): Promise<number> {
+    if (!nodeId) {
+      return nodeId;
+    }
+
+    let currentId: number | null = Number(nodeId);
+    while (currentId != null) {
+      const node = await manager.findOne(EpsNode, {
+        where: { id: currentId },
+        select: ['id', 'parentId', 'type'],
+      });
+      if (!node) {
+        return Number(nodeId);
+      }
+      if (String(node.type).toUpperCase() === EpsNodeType.PROJECT) {
+        return Number(node.id);
+      }
+      currentId = node.parentId == null ? null : Number(node.parentId);
+    }
+
+    return Number(nodeId);
+  }
+
+  private async getProjectScopeIds(projectId: number): Promise<number[]> {
+    const nodes = await this.epsRepo.find({
+      select: ['id', 'parentId'],
+    });
+    const scopeIds = new Set<number>([Number(projectId)]);
+    const queue = [Number(projectId)];
+
+    while (queue.length) {
+      const currentId = queue.shift()!;
+      for (const node of nodes) {
+        if (node.parentId === currentId && !scopeIds.has(Number(node.id))) {
+          scopeIds.add(Number(node.id));
+          queue.push(Number(node.id));
+        }
+      }
+    }
+
+    return Array.from(scopeIds);
+  }
+
+  async resolveExecutionFloorForActivity(activityId: number): Promise<number | null> {
+    const activity = await this.activityRepo.findOne({
+      where: { id: activityId },
+    });
+    if (!activity) return null;
+
+    const nodes = await this.epsRepo.find({
+      select: ['id', 'parentId', 'type'],
+    });
+    const nodeMap = new Map<number, EpsNode>(nodes.map((node) => [node.id, node]));
+
+    let currentId: number | null = Number(activity.projectId);
+    while (currentId != null) {
+      const node = nodeMap.get(currentId);
+      if (!node) return Number(activity.projectId);
+      if (
+        node.type === EpsNodeType.FLOOR ||
+        String(node.type || '').toUpperCase() === 'LEVEL'
+      ) {
+        return node.id;
+      }
+      currentId = node.parentId == null ? null : Number(node.parentId);
+    }
+
+    return Number(activity.projectId);
   }
 }

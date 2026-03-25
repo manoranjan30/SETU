@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { Activity } from '../wbs/entities/activity.entity';
-import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 import {
@@ -14,6 +13,10 @@ import {
 import { EhsIncident, IncidentType } from '../ehs/entities/ehs-incident.entity';
 import { EhsManhours } from '../ehs/entities/ehs-manhours.entity';
 import { DashboardExecutiveService } from './dashboard-executive.service';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from '../execution/entities/execution-progress-entry.entity';
 
 @Injectable()
 export class DashboardService {
@@ -22,8 +25,8 @@ export class DashboardService {
     private readonly epsRepo: Repository<EpsNode>,
     @InjectRepository(Activity)
     private readonly activityRepo: Repository<Activity>,
-    @InjectRepository(MeasurementProgress)
-    private readonly progressRepo: Repository<MeasurementProgress>,
+    @InjectRepository(ExecutionProgressEntry)
+    private readonly progressRepo: Repository<ExecutionProgressEntry>,
     @InjectRepository(DailyLaborPresence)
     private readonly laborRepo: Repository<DailyLaborPresence>,
     @InjectRepository(WoActivityPlan)
@@ -59,11 +62,17 @@ export class DashboardService {
 
     const weekProgress = await this.progressRepo
       .createQueryBuilder('p')
-      .leftJoin('p.measurementElement', 'me')
-      .leftJoin('me.boqSubItem', 'sub')
-      .where('p.date >= :weekStart', { weekStart })
+      .leftJoin('p.workOrderItem', 'woItem')
+      .leftJoin('woItem.boqSubItem', 'sub')
+      .where('p.entryDate >= :weekStart', { weekStart })
+      .andWhere('p.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
       .andWhere('COALESCE(sub.rate, 0) > 0')
-      .select('COALESCE(SUM(p.executedQty * sub.rate), 0)', 'total')
+      .select(
+        'COALESCE(SUM(p.enteredQty * COALESCE(NULLIF(woItem.rate, 0), sub.rate, 0)), 0)',
+        'total',
+      )
       .getRawOne();
 
     const todayLabor = await this.laborRepo
@@ -95,14 +104,20 @@ export class DashboardService {
 
     const dailyBurn = await this.progressRepo
       .createQueryBuilder('p')
-      .leftJoin('p.measurementElement', 'me')
-      .leftJoin('me.boqSubItem', 'sub')
-      .where('p.date >= :start', { start: thirtyDaysAgo })
+      .leftJoin('p.workOrderItem', 'woItem')
+      .leftJoin('woItem.boqSubItem', 'sub')
+      .where('p.entryDate >= :start', { start: thirtyDaysAgo })
+      .andWhere('p.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
       .andWhere('COALESCE(sub.rate, 0) > 0')
-      .select('p.date', 'date')
-      .addSelect('SUM(p.executedQty * sub.rate)', 'value')
-      .groupBy('p.date')
-      .orderBy('p.date', 'ASC')
+      .select('p.entryDate', 'date')
+      .addSelect(
+        'SUM(p.enteredQty * COALESCE(NULLIF(woItem.rate, 0), sub.rate, 0))',
+        'value',
+      )
+      .groupBy('p.entryDate')
+      .orderBy('p.entryDate', 'ASC')
       .getRawMany();
 
     return {

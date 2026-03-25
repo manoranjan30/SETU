@@ -270,7 +270,16 @@ export class DashboardBuilderService {
   // ─── Template Operations ────────────────────────────────────────────────
 
   async getTemplates() {
-    return this.templateRepo.find({ order: { name: 'ASC' } });
+    const dbTemplates = await this.templateRepo.find({ order: { name: 'ASC' } });
+    const systemTemplates = this.getSystemTemplates().map((template) => ({
+      id: template.id,
+      name: template.name,
+      category: template.category,
+      description: template.description,
+      thumbnailUrl: template.thumbnailUrl || null,
+      isSystemTemplate: true,
+    }));
+    return [...systemTemplates, ...dbTemplates];
   }
 
   async applyTemplate(templateId: number, userId: number) {
@@ -319,9 +328,15 @@ export class DashboardBuilderService {
   }
 
   private getSystemTemplateConfig(templateId: number): any {
-    const SYSTEM_TEMPLATES: Record<number, any> = {
-      [-1]: {
+    return this.getSystemTemplates().find((template) => template.id === templateId) ?? null;
+  }
+
+  private getSystemTemplates(): any[] {
+    return [
+      {
+        id: -1,
         name: 'Construction Overview',
+        category: 'Construction',
         description:
           'Project-wise site progress, execution value and activity status snapshot.',
         scope: 'GLOBAL' as any,
@@ -342,8 +357,10 @@ export class DashboardBuilderService {
           },
         ],
       },
-      [-2]: {
+      {
+        id: -2,
         name: 'Quality Control Metrics',
+        category: 'Quality',
         description:
           'Latest quality scores, pending observations and quality progress across projects.',
         scope: 'GLOBAL' as any,
@@ -364,8 +381,10 @@ export class DashboardBuilderService {
           },
         ],
       },
-      [-3]: {
+      {
+        id: -3,
         name: 'Procurement Strategy & Status',
+        category: 'Procurement',
         description:
           'BOQ burn and quantity execution visibility for project-level procurement control.',
         scope: 'PROJECT' as any,
@@ -386,8 +405,10 @@ export class DashboardBuilderService {
           },
         ],
       },
-      [-4]: {
+      {
+        id: -4,
         name: 'Financial Health & Budgeting',
+        category: 'Finance',
         description:
           'Company-level budget posture and execution cash flow variance by project.',
         scope: 'GLOBAL' as any,
@@ -410,8 +431,10 @@ export class DashboardBuilderService {
           },
         ],
       },
-      [-5]: {
+      {
+        id: -5,
         name: 'Company Command Center',
+        category: 'Executive',
         description:
           'Executive dashboard across all projects covering site progress, cash flow, quality score and quality progress.',
         scope: 'GLOBAL' as any,
@@ -518,9 +541,61 @@ export class DashboardBuilderService {
           },
         ],
       },
-    };
-
-    return SYSTEM_TEMPLATES[templateId] || null;
+      {
+        id: -6,
+        name: 'Executive Control Tower',
+        category: 'Executive',
+        description:
+          'Current executive dashboard template with portfolio value, WO issued value, burn visibility, and project-wide command-center widgets.',
+        scope: 'GLOBAL' as any,
+        layoutConfig: { cols: 12, rowHeight: 80 },
+        widgetsConfig: [
+          {
+            widgetType: 'KPI',
+            title: 'Total Budgeted Value',
+            dataSourceKey: 'project.portfolio',
+            queryConfig: { valueField: 'approvedBudget', aggregation: 'SUM' },
+            displayConfig: { label: 'Budgeted Value' },
+            gridPosition: { x: 0, y: 0, w: 3, h: 2 },
+            refreshIntervalSec: 0,
+            sortOrder: 1,
+          },
+          {
+            widgetType: 'KPI',
+            title: 'WO Issued Value',
+            dataSourceKey: 'project.portfolio',
+            queryConfig: { valueField: 'workOrderValue', aggregation: 'SUM' },
+            displayConfig: { label: 'WO Issued Value' },
+            gridPosition: { x: 3, y: 0, w: 3, h: 2 },
+            refreshIntervalSec: 0,
+            sortOrder: 2,
+          },
+          {
+            widgetType: 'KPI',
+            title: 'Burn Value',
+            dataSourceKey: 'project.progress.summary',
+            queryConfig: { valueField: 'actualValue', aggregation: 'SUM' },
+            displayConfig: { label: 'Burn Value' },
+            gridPosition: { x: 6, y: 0, w: 3, h: 2 },
+            refreshIntervalSec: 0,
+            sortOrder: 3,
+          },
+          {
+            widgetType: 'TABLE',
+            title: 'Executive Project Watchlist',
+            dataSourceKey: 'project.progress.summary',
+            queryConfig: {
+              orderBy: [{ field: 'siteProgressPercent', direction: 'DESC' }],
+              limit: 25,
+            },
+            displayConfig: {},
+            gridPosition: { x: 0, y: 2, w: 12, h: 5 },
+            refreshIntervalSec: 0,
+            sortOrder: 4,
+          },
+        ],
+      },
+    ];
   }
 
   async saveAsTemplate(

@@ -561,6 +561,85 @@ const RESOURCE_ADMIN: PermissionPreset = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// GROUP I — VENDOR / CONTRACTOR
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Vendor users are subcontractors working on site. They can:
+//   • Enter their own daily progress and micro-schedule logs (no approval/delete)
+//   • View release strategies assigned to their scope
+//   • Raise RFIs and rectify observations (Quality — no approve/close/delete)
+//   • Raise and rectify EHS site observations (no close/delete)
+//   • Read project structure, schedule, BOQ, and dashboards
+//
+// Vendor users CANNOT:
+//   • Approve, close, or delete any inspection / observation / progress record
+//   • Access BOQ management, WO management, admin, or planning tools
+
+const VENDOR_CONTRIBUTOR: PermissionPreset = {
+  id: 'VENDOR_CONTRIBUTOR',
+  name: 'Vendor / Contractor',
+  description:
+    'On-site contractor: enters progress, raises RFIs, raises and rectifies quality & EHS observations. ' +
+    'Can view release strategy. Cannot approve, close, or delete any records.',
+  group: 'Project Execution',
+  tier: 2,
+  icon: 'HardHat',
+  permissions: [
+    // ── Project Context (read-only) ────────────────────────────────────────
+    'EPS.NODE.READ',
+    'PROJECT.TEAM.READ',
+    'WBS.NODE.READ',
+    'WBS.ACTIVITY.READ',
+    'SCHEDULE.READ',
+    'SCHEDULE.VERSION.READ',
+    'SCHEDULE.CALENDAR.READ',
+    'BOQ.ITEM.READ',
+    'PROGRESS.DASHBOARD.READ',
+    'DASHBOARD.SUMMARY.READ',
+    'DASHBOARD.ALERTS.READ',
+
+    // ── Release Strategy (view only — vendor scope) ────────────────────────
+    'RELEASE_STRATEGY.READ',
+    'PLANNING.MATRIX.READ',
+    'PLANNING.ANALYSIS.READ',
+
+    // ── Progress Entry (create/update own; no approve or delete) ──────────
+    'EXECUTION.ENTRY.READ',
+    'EXECUTION.ENTRY.CREATE',
+    'EXECUTION.ENTRY.UPDATE',
+    'EXECUTION.MICRO.CREATE',
+    'MICRO.SCHEDULE.READ',
+    'MICRO.ACTIVITY.READ',
+    'MICRO.LOG.CREATE',
+    'MICRO.LOG.UPDATE',
+
+    // ── Quality — Raise & Rectify only ────────────────────────────────────
+    // Explicitly NOT included: APPROVE, STAGE_APPROVE, FINAL_APPROVE,
+    //   REVERSE, CLOSE, DELETE, ACTIVITY.APPROVE
+    'QUALITY.DASHBOARD.READ',
+    'QUALITY.CHECKLIST.READ',
+    'QUALITY.ACTIVITYLIST.READ',
+    'QUALITY.ACTIVITY.READ',
+    'QUALITY.SEQUENCE.READ',
+    'QUALITY.INSPECTION.READ',
+    'QUALITY.INSPECTION.RAISE',        // Raise RFI ✓
+    'QUALITY.OBSERVATION.CREATE',      // Create activity observation ✓
+    'QUALITY.OBSERVATION.RESOLVE',     // Rectify activity observation ✓
+    'QUALITY.SITE_OBS.READ',
+    'QUALITY.SITE_OBS.CREATE',         // Raise site observation ✓
+    'QUALITY.SITE_OBS.RECTIFY',        // Rectify site observation ✓
+    'QUALITY.WORKFLOW.READ',           // View approval workflow (read-only) ✓
+
+    // ── EHS — Raise & Rectify only ────────────────────────────────────────
+    // Explicitly NOT included: CLOSE, DELETE, Incident/Inspection/Training CRUD
+    'EHS.DASHBOARD.READ',
+    'EHS.SITE_OBS.READ',
+    'EHS.SITE_OBS.CREATE',             // Raise EHS observation ✓
+    'EHS.SITE_OBS.RECTIFY',            // Rectify EHS observation ✓
+  ],
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // AI INSIGHTS PRESETS
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -610,6 +689,8 @@ export const ALL_PERMISSION_PRESETS: PermissionPreset[] = [
   // Project Execution
   PROGRESS_VIEWER,
   PROGRESS_ENTRY_OPERATOR,
+  // Vendor / Contractor (placed here — project execution group)
+  VENDOR_CONTRIBUTOR,
   PROGRESS_APPROVER,
   // Planning & Scheduling
   SCHEDULE_VIEWER,
@@ -715,6 +796,15 @@ export const COMPOSITE_ROLE_TEMPLATES: CompositeRoleTemplate[] = [
       'Full EHS management — logs all safety observations, incidents, manhours, and legal compliance.',
     icon: 'ShieldAlert',
     presetIds: ['EHS_MANAGER', 'LABOR_ENTRY_OPERATOR', 'PROGRESS_VIEWER'],
+  },
+  {
+    id: 'VENDOR',
+    name: 'Vendor / Subcontractor',
+    description:
+      'On-site contractor: enters daily progress, views release strategy, raises RFIs, ' +
+      'raises and rectifies quality and EHS site observations. No approval, close, or delete rights.',
+    icon: 'HardHat',
+    presetIds: ['VENDOR_CONTRIBUTOR'],
   },
   {
     id: 'CLIENT_AUDITOR',

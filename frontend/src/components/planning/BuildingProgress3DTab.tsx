@@ -68,6 +68,12 @@ type BuildingProgress3DTabProps = {
   towerProgress: TowerProgressResponse | null;
   loadingProgress: boolean;
   onRefresh: () => void;
+  displayMode?: "full" | "viewerOnly";
+  autoRotate?: boolean;
+  autoRotateSpeed?: number;
+  viewerClassName?: string;
+  panelTitle?: string;
+  panelSubtitle?: string;
 };
 
 type ActivityTreeTower = {
@@ -1101,6 +1107,12 @@ export default function BuildingProgress3DTab({
   towerProgress,
   loadingProgress,
   onRefresh,
+  displayMode = "full",
+  autoRotate = false,
+  autoRotateSpeed = 0.8,
+  viewerClassName = "h-[620px]",
+  panelTitle,
+  panelSubtitle,
 }: BuildingProgress3DTabProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -1296,6 +1308,8 @@ export default function BuildingProgress3DTab({
     controls.minPolarAngle = Math.PI / 8;
     controls.maxPolarAngle = Math.PI / 2.15;
     controls.enablePan = true;
+    controls.autoRotate = autoRotate;
+    controls.autoRotateSpeed = autoRotateSpeed;
     controlsRef.current = controls;
 
     const animate = () => {
@@ -1489,6 +1503,32 @@ export default function BuildingProgress3DTab({
     { label: "Started", color: "#f97316", range: "1-34%" },
     { label: "Not Started", color: "#94a3b8", range: "0%" },
   ];
+
+  if (displayMode === "viewerOnly") {
+    return (
+      <div className="overflow-hidden rounded-3xl border border-border-default bg-surface-card">
+        <div className="border-b border-border-subtle px-4 py-2.5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+              <Move3d className="h-4 w-4 text-secondary" />
+              Project 3D Progress
+            </div>
+            <div className="mt-0.5 text-base font-bold leading-tight text-text-primary">
+              {panelTitle || "Transparent Building Mass with Activity Progress Overlay"}
+            </div>
+            <div className="mt-0.5 line-clamp-1 text-xs text-text-secondary">
+              {panelSubtitle ||
+                "Planned work stays visible as a coloured transparent shell, and achieved progress darkens upward from the base to the executed height."}
+            </div>
+          </div>
+        </div>
+        <div
+          ref={containerRef}
+          className={`${viewerClassName} w-full bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.75),_rgba(228,238,246,0.94))]`}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

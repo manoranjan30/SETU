@@ -74,11 +74,17 @@ export class ExecutionController {
 
   @Get('vendors/:activityId')
   @Permissions('EXECUTION.ENTRY.READ')
-  async getVendorsForActivity(@Param('activityId') activityId: string) {
+  async getVendorsForActivity(
+    @Param('activityId') activityId: string,
+    @Query('epsNodeId') epsNodeId?: string,
+  ) {
     if (!FEATURES.ENABLE_MICRO_PROGRESS) {
       return { activityId: +activityId, vendors: [], hasVendors: false };
     }
-    return this.breakdownService.getVendorSummary(+activityId);
+    return this.breakdownService.getVendorSummaryForFloor(
+      +activityId,
+      epsNodeId ? +epsNodeId : null,
+    );
   }
 
   @Get('has-micro/:activityId')
@@ -103,7 +109,9 @@ export class ExecutionController {
     const projectId = dto.projectId;
 
     const entries = dto.entries.map((entry: any) => ({
+      planId: entry.planId ?? null,
       boqItemId: entry.boqItemId,
+      boqSubItemId: entry.boqSubItemId ?? null,
       workOrderItemId: entry.workOrderItemId,
       vendorId: entry.vendorId,
       activityId: dto.activityId,

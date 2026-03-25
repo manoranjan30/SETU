@@ -327,9 +327,12 @@ class SetuApiClient {
   /// return activities from all floors and units beneath it — you do not need
   /// to query each child node separately.
   ///
-  /// Endpoint: GET /planning/:epsNodeId/execution-ready
-  Future<List<dynamic>> getExecutionReadyActivities(int epsNodeId) async {
-    final response = await _dio.get(ApiEndpoints.executionReady(epsNodeId));
+  /// Endpoint: GET /planning/:projectId/execution-ready?wbsNodeId=:epsNodeId
+  Future<List<dynamic>> getExecutionReadyActivities(int projectId, int epsNodeId) async {
+    final response = await _dio.get(
+      ApiEndpoints.executionReady(projectId),
+      queryParameters: {'wbsNodeId': epsNodeId},
+    );
     return response.data;
   }
 

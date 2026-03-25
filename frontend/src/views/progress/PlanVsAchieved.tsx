@@ -2,12 +2,12 @@ import React from "react";
 import { Target, AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface PlanVsAchievedProps {
-  data: {
+  data?: {
     planned: number;
     achieved: number;
     variance: number;
     status: string;
-  };
+  } | null;
   loading?: boolean;
 }
 
@@ -19,6 +19,27 @@ const PlanVsAchieved: React.FC<PlanVsAchievedProps> = ({ data, loading }) => {
         <div className="space-y-4">
           <div className="h-4 bg-surface-base rounded w-full"></div>
           <div className="h-4 bg-surface-base rounded w-5/6"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-surface-card rounded-2xl p-6 shadow-sm border border-border-default">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h3 className="font-bold text-text-secondary flex items-center gap-2">
+              <Target className="w-5 h-5 text-secondary" />
+              Plan vs. Achieved
+            </h3>
+            <p className="text-xs text-text-disabled mt-1">
+              Cumulative financial progress vs. Baseline
+            </p>
+          </div>
+        </div>
+        <div className="text-sm text-text-muted">
+          Progress summary is not available right now.
         </div>
       </div>
     );

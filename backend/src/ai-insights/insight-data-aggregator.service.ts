@@ -58,7 +58,7 @@ export class InsightDataAggregatorService {
     }
   }
 
-  // ── Progress (quantity_progress_record) ────────────────────────────────────
+  // ── Progress (execution_progress_entry) ────────────────────────────────────
 
   private async fetchProgress(
     projectId: number | null,
@@ -70,18 +70,29 @@ export class InsightDataAggregatorService {
 
     const rows = await this.db.query(
       `SELECT
-         qpr."measureDate"  AS "entryDate",
-         bi."boqCode"       AS "activityCode",
-         bi.description     AS "activityName",
-         qpr."measuredQty"  AS quantity,
-         qpr.status         AS "approvalStatus",
-         bi.qty             AS "totalPlannedQty",
-         qpr."totalToDate"  AS "totalApprovedQty"
-       FROM quantity_progress_record qpr
-       JOIN boq_item bi ON bi.id = qpr."boqItemId"
-       WHERE ($1::int IS NULL OR qpr."projectId" = $1)
-         AND qpr."measureDate" >= $2
-       ORDER BY qpr."measureDate" DESC
+         e."entryDate"                     AS "entryDate",
+         COALESCE(a."activityCode", bi."boqCode") AS "activityCode",
+         COALESCE(a."activityName", bi.description, wi.description) AS "activityName",
+         e."enteredQty"                    AS quantity,
+         e.status                          AS "approvalStatus",
+         wap."plannedQuantity"             AS "totalPlannedQty",
+         COALESCE(approved."totalApprovedQty", 0) AS "totalApprovedQty"
+       FROM execution_progress_entry e
+       LEFT JOIN wo_activity_plan wap ON wap.id = e."woActivityPlanId"
+       LEFT JOIN activity a ON a.id = e."activityId"
+       LEFT JOIN work_order_items wi ON wi.id = e."workOrderItemId"
+       LEFT JOIN boq_item bi ON bi.id = wi."boqItemId"
+       LEFT JOIN (
+         SELECT
+           "woActivityPlanId",
+           COALESCE(SUM("enteredQty"), 0) AS "totalApprovedQty"
+         FROM execution_progress_entry
+         WHERE status = 'APPROVED'
+         GROUP BY "woActivityPlanId"
+       ) approved ON approved."woActivityPlanId" = e."woActivityPlanId"
+       WHERE ($1::int IS NULL OR e."projectId" = $1)
+         AND e."entryDate" >= $2
+       ORDER BY e."entryDate" DESC
        LIMIT 300`,
       [projectId, cutoff.toISOString().split('T')[0]],
     );

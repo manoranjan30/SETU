@@ -21,6 +21,7 @@ import {
   Cell,
   Tooltip
 } from "recharts";
+import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
 
 interface SummaryData {
   totalProjects: number;
@@ -93,10 +94,19 @@ const ManagementDashboard = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [qualityMetrics, setQualityMetrics] = useState<any>(null);
   const [ehsMetrics, setEhsMetrics] = useState<any>(null);
+  const [activeProjectIndex, setActiveProjectIndex] = useState(0);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (!summary?.projects?.length) return;
+    const timer = window.setInterval(() => {
+      setActiveProjectIndex((current) => (current + 1) % summary.projects.length);
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [summary?.projects]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -182,6 +192,18 @@ const ManagementDashboard = () => {
           </div>
 
           <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 flex flex-col gap-5 overflow-hidden">
+            {summary?.projects?.length ? (
+              <div className="shrink-0">
+                <ProjectProgress3DPanel
+                  projectId={summary.projects[activeProjectIndex].id}
+                  projectName={summary.projects[activeProjectIndex].name}
+                  subtitle="15-second rotating enterprise 3D overview"
+                  autoRotate
+                  autoRotateSpeed={4}
+                  viewerClassName="h-[260px]"
+                />
+              </div>
+            ) : null}
             
             {/* Burn Rate Mini-Chart */}
             <div className="shrink-0">

@@ -16,12 +16,14 @@ import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { WorkDocTemplate } from './entities/work-doc-template.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
+import { WorkOrderItemNodeType } from './entities/work-order-item.entity';
 
 interface BoqSelectionItem {
   boqItemId: number;
   boqSubItemId?: number;
   measurementElementId?: number;
   allocatedQty: number;
+  qty?: number;
   rate: number;
   woRefText?: string;
 }
@@ -38,6 +40,8 @@ interface CreateWoFromBoqDto {
   woRefDate?: string;
   items: BoqSelectionItem[];
 }
+
+type WorkOrderNodeCache = Map<string, WorkOrderItem>;
 
 @Injectable()
 export class WorkDocService {
@@ -564,100 +568,18 @@ export class WorkDocService {
       // 2. Process BOQ items selection
       let totalAmount = 0;
       const createdItems: WorkOrderItem[] = [];
+      const nodeCache: WorkOrderNodeCache = new Map();
 
       for (const sel of items) {
-        // Normalize quantity (support 'allocatedQty' from BOQ and 'qty' from manual/generic)
-        const currentAllocatedQty = Number(sel.allocatedQty || sel.qty || 0);
-        if (currentAllocatedQty <= 0) continue;
-
-        let available = 0;
-        let originalQty = 0;
-        let materialCode = sel.code || `ITEM-${Date.now()}`;
-        let description = sel.description;
-        let uom = sel.uom || 'NOS';
-        let level = 0;
-
-        // If it's a BOQ-linked item, perform validation
-        if (sel.boqItemId) {
-          const boqItem = await this.boqItemRepo.findOne({
-            where: { id: sel.boqItemId },
-            relations: ['subItems'],
-          });
-
-          if (boqItem) {
-            materialCode = boqItem.boqCode;
-            description = boqItem.description;
-            uom = boqItem.uom || uom;
-
-            if (sel.measurementElementId) {
-              const m = await this.measurementRepo.findOneBy({
-                id: sel.measurementElementId,
-              });
-              if (m) {
-                const allocated = await this.getMeasurementAllocatedQty(
-                  m.id,
-                  projectId,
-                );
-                available = Number(m.qty || 0) - allocated;
-                originalQty = Number(m.qty || 0);
-                description = m.elementName;
-                level = 2;
-              }
-            } else if (sel.boqSubItemId) {
-              const s = await this.boqSubItemRepo.findOneBy({
-                id: sel.boqSubItemId,
-              });
-              if (s) {
-                const allocated = await this.getBoqSubItemAllocatedQty(
-                  s.id,
-                  projectId,
-                );
-                available = Number(s.qty || 0) - allocated;
-                originalQty = Number(s.qty || 0);
-                description = s.description;
-                level = 1;
-              }
-            } else {
-              const allocated = await this.getBoqAllocatedQty(
-                boqItem.id,
-                projectId,
-              );
-              available = Number(boqItem.qty || 0) - allocated;
-              originalQty = Number(boqItem.qty || 0);
-              level = 0;
-            }
-
-            if (currentAllocatedQty > available) {
-              throw new BadRequestException(
-                `Insufficient balance for "${description}". Available: ${available}, Requested: ${currentAllocatedQty}`,
-              );
-            }
-          }
-        }
-
-        const woItem = queryRunner.manager.create(WorkOrderItem, {
-          workOrder: savedWo,
-          boqItemId: sel.boqItemId || null,
-          boqSubItemId: sel.boqSubItemId || null,
-          measurementElementId: sel.measurementElementId || null,
-          level: sel.level !== undefined ? sel.level : level,
-          description: sel.description || description,
-          materialCode: sel.code || materialCode,
-          uom: sel.uom || uom || 'NOS',
-          serialNumber: sel.serialNumber || null,
-          parentSerialNumber: sel.parentSerialNumber || null,
-          isParent: !!sel.isParent,
-          boqQty: originalQty,
-          allocatedQty: currentAllocatedQty,
-          rate: Number(sel.rate || 0),
-          amount: currentAllocatedQty * Number(sel.rate || 0),
-          woRefText: sel.woRefText || null,
-          status: 'ACTIVE',
-        } as Partial<WorkOrderItem>);
-
-        const savedItem = await queryRunner.manager.save(woItem);
-        createdItems.push(savedItem);
-        totalAmount += currentAllocatedQty * Number(sel.rate || 0);
+        const materialized = await this.materializeWoSelection(
+          queryRunner.manager,
+          savedWo,
+          projectId,
+          sel,
+          nodeCache,
+        );
+        createdItems.push(...materialized.createdItems);
+        totalAmount += materialized.leafAmount;
       }
 
       // 3. Update total amount
@@ -695,93 +617,17 @@ export class WorkDocService {
 
     try {
       let addedAmount = 0;
+      const nodeCache: WorkOrderNodeCache = new Map();
 
       for (const sel of items) {
-        // Validate BOQ item exists
-        const boqItem = await this.boqItemRepo.findOne({
-          where: { id: sel.boqItemId },
-          relations: ['subItems'],
-        });
-        if (!boqItem)
-          throw new BadRequestException(
-            `BOQ Item ID ${sel.boqItemId} not found`,
-          );
-
-        // Determine level and check available qty
-        let available = 0;
-        let originalQty = 0;
-        const materialCode = boqItem.boqCode;
-        let description = boqItem.description;
-        const uom = boqItem.uom;
-        let level = 0;
-
-        if (sel.measurementElementId) {
-          const m = await this.measurementRepo.findOneBy({
-            id: sel.measurementElementId,
-          });
-          if (!m)
-            throw new BadRequestException(
-              `Measurement ID ${sel.measurementElementId} not found`,
-            );
-          const allocated = await this.getMeasurementAllocatedQty(
-            m.id,
-            projectId,
-          );
-          available = Number(m.qty || 0) - allocated;
-          originalQty = Number(m.qty || 0);
-          description = m.elementName;
-          level = 2;
-        } else if (sel.boqSubItemId) {
-          const s = await this.boqSubItemRepo.findOneBy({
-            id: sel.boqSubItemId,
-          });
-          if (!s)
-            throw new BadRequestException(
-              `Sub-Item ID ${sel.boqSubItemId} not found`,
-            );
-          const allocated = await this.getBoqSubItemAllocatedQty(
-            s.id,
-            projectId,
-          );
-          available = Number(s.qty || 0) - allocated;
-          originalQty = Number(s.qty || 0);
-          description = s.description;
-          level = 1;
-        } else {
-          const allocated = await this.getBoqAllocatedQty(
-            boqItem.id,
-            projectId,
-          );
-          available = Number(boqItem.qty || 0) - allocated;
-          originalQty = Number(boqItem.qty || 0);
-          level = 0;
-        }
-
-        if (sel.allocatedQty > available) {
-          throw new BadRequestException(
-            `Insufficient balance for "${description}". Available: ${available}, Requested: ${sel.allocatedQty}`,
-          );
-        }
-
-        const woItem = queryRunner.manager.create(WorkOrderItem, {
-          workOrder: wo,
-          boqItemId: sel.boqItemId,
-          boqSubItemId: sel.boqSubItemId || null,
-          measurementElementId: sel.measurementElementId || null,
-          level,
-          description,
-          materialCode,
-          uom: uom || 'NOS',
-          boqQty: originalQty,
-          allocatedQty: sel.allocatedQty,
-          rate: sel.rate,
-          amount: sel.allocatedQty * sel.rate,
-          woRefText: sel.woRefText || null,
-          status: 'ACTIVE',
-        } as Partial<WorkOrderItem>);
-
-        await queryRunner.manager.save(woItem);
-        addedAmount += sel.allocatedQty * sel.rate;
+        const materialized = await this.materializeWoSelection(
+          queryRunner.manager,
+          wo,
+          projectId,
+          sel,
+          nodeCache,
+        );
+        addedAmount += materialized.leafAmount;
       }
 
       // Update WO total
@@ -800,6 +646,382 @@ export class WorkDocService {
 
   async getAvailableBoqQty(projectId: number) {
     return this.getBoqTreeForWoCreation(projectId);
+  }
+
+  private async materializeWoSelection(
+    manager: DataSource['manager'],
+    workOrder: WorkOrder,
+    projectId: number,
+    sel: BoqSelectionItem,
+    nodeCache: WorkOrderNodeCache,
+  ): Promise<{ createdItems: WorkOrderItem[]; leafAmount: number }> {
+    const requestedQty = Number(sel.allocatedQty || sel.qty || 0);
+    if (!Number.isFinite(requestedQty) || requestedQty <= 0) {
+      return { createdItems: [], leafAmount: 0 };
+    }
+
+    const boqItem = await this.boqItemRepo.findOne({
+      where: { id: sel.boqItemId },
+      relations: ['subItems', 'subItems.measurements'],
+    });
+    if (!boqItem) {
+      throw new BadRequestException(`BOQ Item ID ${sel.boqItemId} not found`);
+    }
+
+    const selectionMeasurements = await this.resolveSelectionMeasurements(
+      projectId,
+      boqItem,
+      sel,
+      requestedQty,
+    );
+
+    if (!selectionMeasurements.length) {
+      throw new BadRequestException(
+        `Selected BOQ scope "${boqItem.description}" does not contain executable measurement rows.`,
+      );
+    }
+
+    const createdItems: WorkOrderItem[] = [];
+    let leafAmount = 0;
+
+    const itemNode = await this.ensureWoNode(
+      manager,
+      workOrder,
+      nodeCache,
+      {
+        nodeType: WorkOrderItemNodeType.ITEM,
+        boqItemId: boqItem.id,
+        boqSubItemId: null,
+        measurementElementId: null,
+        parentWorkOrderItemId: null,
+        level: 0,
+        description: boqItem.description,
+        materialCode: boqItem.boqCode,
+        uom: boqItem.uom || 'NOS',
+        boqQty: Number(boqItem.qty || 0),
+        deltaAllocatedQty: 0,
+        rate: 0,
+        deltaAmount: 0,
+        woRefText: sel.woRefText || null,
+      },
+    );
+    createdItems.push(itemNode);
+
+    const groupedBySubItem = new Map<number | null, typeof selectionMeasurements>();
+    for (const measurement of selectionMeasurements) {
+      const key = measurement.subItem?.id || null;
+      const current = groupedBySubItem.get(key) || [];
+      current.push(measurement);
+      groupedBySubItem.set(key, current);
+    }
+
+    for (const [subItemId, measurementRows] of groupedBySubItem.entries()) {
+      const subItem = measurementRows[0]?.subItem || null;
+      let parentNode = itemNode;
+
+      if (subItemId && subItem) {
+        parentNode = await this.ensureWoNode(
+          manager,
+          workOrder,
+          nodeCache,
+          {
+            nodeType: WorkOrderItemNodeType.SUB_ITEM,
+            boqItemId: boqItem.id,
+            boqSubItemId: subItem.id,
+            measurementElementId: null,
+            parentWorkOrderItemId: itemNode.id,
+            level: 1,
+            description: subItem.description,
+            materialCode: boqItem.boqCode,
+            uom: subItem.uom || boqItem.uom || 'NOS',
+            boqQty: Number(subItem.qty || 0),
+            deltaAllocatedQty: 0,
+            rate: Number(subItem.rate || 0),
+            deltaAmount: 0,
+            woRefText: sel.woRefText || null,
+          },
+        );
+        createdItems.push(parentNode);
+      }
+
+      for (const measurementRow of measurementRows) {
+        const rate =
+          Number(subItem?.rate || 0) || Number(sel.rate || 0);
+        const amount = Number(measurementRow.allocatedQty) * rate;
+        const measurementNode = await this.ensureWoNode(
+          manager,
+          workOrder,
+          nodeCache,
+          {
+            nodeType: WorkOrderItemNodeType.MEASUREMENT,
+            boqItemId: boqItem.id,
+            boqSubItemId: subItem?.id || null,
+            measurementElementId: measurementRow.measurement.id,
+            parentWorkOrderItemId: parentNode.id,
+            level: 2,
+            description: measurementRow.measurement.elementName,
+            materialCode: boqItem.boqCode,
+            uom: measurementRow.measurement.uom || subItem?.uom || boqItem.uom || 'NOS',
+            boqQty: Number(measurementRow.measurement.qty || 0),
+            deltaAllocatedQty: Number(measurementRow.allocatedQty),
+            rate,
+            deltaAmount: amount,
+            woRefText: sel.woRefText || null,
+          },
+        );
+        createdItems.push(measurementNode);
+        leafAmount += amount;
+      }
+
+      if (subItemId && subItem) {
+        await this.ensureWoNode(
+          manager,
+          workOrder,
+          nodeCache,
+          {
+            nodeType: WorkOrderItemNodeType.SUB_ITEM,
+            boqItemId: boqItem.id,
+            boqSubItemId: subItem.id,
+            measurementElementId: null,
+            parentWorkOrderItemId: itemNode.id,
+            level: 1,
+            description: subItem.description,
+            materialCode: boqItem.boqCode,
+            uom: subItem.uom || boqItem.uom || 'NOS',
+            boqQty: Number(subItem.qty || 0),
+            deltaAllocatedQty: measurementRows.reduce(
+              (sum, row) => sum + Number(row.allocatedQty || 0),
+              0,
+            ),
+            rate: Number(subItem.rate || 0),
+            deltaAmount: measurementRows.reduce(
+              (sum, row) =>
+                sum + Number(row.allocatedQty || 0) * Number(subItem.rate || 0),
+              0,
+            ),
+            woRefText: sel.woRefText || null,
+          },
+        );
+      }
+    }
+
+    await this.ensureWoNode(
+      manager,
+      workOrder,
+      nodeCache,
+      {
+        nodeType: WorkOrderItemNodeType.ITEM,
+        boqItemId: boqItem.id,
+        boqSubItemId: null,
+        measurementElementId: null,
+        parentWorkOrderItemId: null,
+        level: 0,
+        description: boqItem.description,
+        materialCode: boqItem.boqCode,
+        uom: boqItem.uom || 'NOS',
+        boqQty: Number(boqItem.qty || 0),
+        deltaAllocatedQty: selectionMeasurements.reduce(
+          (sum, row) => sum + Number(row.allocatedQty || 0),
+          0,
+        ),
+        rate: 0,
+        deltaAmount: leafAmount,
+        woRefText: sel.woRefText || null,
+      },
+    );
+
+    return { createdItems, leafAmount };
+  }
+
+  private async resolveSelectionMeasurements(
+    projectId: number,
+    boqItem: BoqItem,
+    sel: BoqSelectionItem,
+    requestedQty: number,
+  ): Promise<
+    Array<{
+      measurement: MeasurementElement;
+      subItem: BoqSubItem | null;
+      availableQty: number;
+      allocatedQty: number;
+    }>
+  > {
+    let measurementRows: Array<{
+      measurement: MeasurementElement;
+      subItem: BoqSubItem | null;
+      availableQty: number;
+    }> = [];
+
+    if (sel.measurementElementId) {
+      const measurement = await this.measurementRepo.findOne({
+        where: { id: sel.measurementElementId },
+        relations: ['boqSubItem'],
+      });
+      if (!measurement) {
+        throw new BadRequestException(
+          `Measurement ID ${sel.measurementElementId} not found`,
+        );
+      }
+      const allocated = await this.getMeasurementAllocatedQty(
+        measurement.id,
+        projectId,
+      );
+      measurementRows = [
+        {
+          measurement,
+          subItem: measurement.boqSubItem || null,
+          availableQty: Math.max(0, Number(measurement.qty || 0) - allocated),
+        },
+      ];
+    } else if (sel.boqSubItemId) {
+      const subItem = await this.boqSubItemRepo.findOne({
+        where: { id: sel.boqSubItemId },
+        relations: ['measurements'],
+      });
+      if (!subItem) {
+        throw new BadRequestException(
+          `Sub-Item ID ${sel.boqSubItemId} not found`,
+        );
+      }
+      for (const measurement of subItem.measurements || []) {
+        const allocated = await this.getMeasurementAllocatedQty(
+          measurement.id,
+          projectId,
+        );
+        measurementRows.push({
+          measurement,
+          subItem,
+          availableQty: Math.max(0, Number(measurement.qty || 0) - allocated),
+        });
+      }
+    } else {
+      for (const subItem of boqItem.subItems || []) {
+        for (const measurement of subItem.measurements || []) {
+          const allocated = await this.getMeasurementAllocatedQty(
+            measurement.id,
+            projectId,
+          );
+          measurementRows.push({
+            measurement,
+            subItem,
+            availableQty: Math.max(0, Number(measurement.qty || 0) - allocated),
+          });
+        }
+      }
+    }
+
+    measurementRows = measurementRows.filter((row) => row.availableQty > 0);
+    const totalAvailable = measurementRows.reduce(
+      (sum, row) => sum + Number(row.availableQty || 0),
+      0,
+    );
+
+    if (requestedQty > totalAvailable + 0.0001) {
+      throw new BadRequestException(
+        `Insufficient balance for "${boqItem.description}". Available: ${totalAvailable}, Requested: ${requestedQty}`,
+      );
+    }
+
+    let distributed = 0;
+    return measurementRows.map((row, index) => {
+      const isLast = index === measurementRows.length - 1;
+      const proportional = totalAvailable
+        ? Number(
+            (
+              (requestedQty * Number(row.availableQty || 0)) /
+              totalAvailable
+            ).toFixed(3),
+          )
+        : 0;
+      const allocatedQty = isLast
+        ? Number((requestedQty - distributed).toFixed(3))
+        : proportional;
+      distributed += allocatedQty;
+      return {
+        ...row,
+        allocatedQty: Math.max(0, allocatedQty),
+      };
+    });
+  }
+
+  private async ensureWoNode(
+    manager: DataSource['manager'],
+    workOrder: WorkOrder,
+    nodeCache: WorkOrderNodeCache,
+    data: {
+      nodeType: WorkOrderItemNodeType;
+      boqItemId: number | null;
+      boqSubItemId: number | null;
+      measurementElementId: number | null;
+      parentWorkOrderItemId: number | null;
+      level: number;
+      description: string;
+      materialCode: string | null;
+      uom: string;
+      boqQty: number;
+      deltaAllocatedQty: number;
+      rate: number;
+      deltaAmount: number;
+      woRefText: string | null;
+    },
+  ): Promise<WorkOrderItem> {
+    const cacheKey = [
+      workOrder.id,
+      data.nodeType,
+      data.boqItemId ?? 'null',
+      data.boqSubItemId ?? 'null',
+      data.measurementElementId ?? 'null',
+      data.parentWorkOrderItemId ?? 'root',
+    ].join(':');
+
+    let existing: WorkOrderItem | undefined = nodeCache.get(cacheKey);
+    if (!existing) {
+      existing =
+        (await this.woItemRepo.findOne({
+        where: {
+          workOrder: { id: workOrder.id },
+          nodeType: data.nodeType,
+          boqItemId: data.boqItemId as any,
+          boqSubItemId: data.boqSubItemId as any,
+          measurementElementId: data.measurementElementId as any,
+          parentWorkOrderItemId: data.parentWorkOrderItemId as any,
+        },
+      })) || undefined;
+    }
+
+    if (!existing) {
+      existing = manager.create(WorkOrderItem, {
+        workOrder,
+        boqItemId: data.boqItemId,
+        boqSubItemId: data.boqSubItemId,
+        measurementElementId: data.measurementElementId,
+        nodeType: data.nodeType,
+        parentWorkOrderItemId: data.parentWorkOrderItemId,
+        level: data.level,
+        description: data.description,
+        materialCode: data.materialCode || null,
+        uom: data.uom || 'NOS',
+        isParent: data.nodeType !== WorkOrderItemNodeType.MEASUREMENT,
+        boqQty: data.boqQty,
+        allocatedQty: 0,
+        rate: data.rate || 0,
+        amount: 0,
+        woRefText: data.woRefText || null,
+        status: 'ACTIVE',
+      } as Partial<WorkOrderItem>);
+    }
+
+    existing.allocatedQty =
+      Number(existing.allocatedQty || 0) + Number(data.deltaAllocatedQty || 0);
+    if (data.rate > 0 && data.nodeType !== WorkOrderItemNodeType.ITEM) {
+      existing.rate = data.rate;
+    }
+    existing.amount =
+      Number(existing.amount || 0) + Number(data.deltaAmount || 0);
+
+    const saved = await manager.save(WorkOrderItem, existing);
+    nodeCache.set(cacheKey, saved);
+    return saved;
   }
 
   // ===========================
@@ -981,6 +1203,9 @@ export class WorkDocService {
 
       const woItemFlat = {
         workOrderItemId: item.id,
+        nodeType: item.nodeType,
+        parentWorkOrderItemId: item.parentWorkOrderItemId,
+        isExecutableLeaf: item.nodeType === WorkOrderItemNodeType.MEASUREMENT,
         description: item.description,
         qty: Number(item.allocatedQty),
         uom: item.uom || boqItem?.uom || 'N/A',

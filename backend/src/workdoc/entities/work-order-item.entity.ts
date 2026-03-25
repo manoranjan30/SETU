@@ -12,6 +12,12 @@ import { BoqItem } from '../../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../../boq/entities/boq-sub-item.entity';
 import { MeasurementElement } from '../../boq/entities/measurement-element.entity';
 
+export enum WorkOrderItemNodeType {
+  ITEM = 'ITEM',
+  SUB_ITEM = 'SUB_ITEM',
+  MEASUREMENT = 'MEASUREMENT',
+}
+
 @Entity('work_order_items')
 export class WorkOrderItem {
   @PrimaryGeneratedColumn()
@@ -42,6 +48,20 @@ export class WorkOrderItem {
 
   @Column({ nullable: true })
   measurementElementId: number;
+
+  @Column({
+    type: 'enum',
+    enum: WorkOrderItemNodeType,
+    default: WorkOrderItemNodeType.ITEM,
+  })
+  nodeType: WorkOrderItemNodeType;
+
+  @ManyToOne(() => WorkOrderItem, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parentWorkOrderItemId' })
+  parentWorkOrderItem: WorkOrderItem | null;
+
+  @Column({ nullable: true })
+  parentWorkOrderItemId: number | null;
 
   // Hierarchy level: 0=Item, 1=SubItem, 2=Measurement
   @Column({ default: 0 })

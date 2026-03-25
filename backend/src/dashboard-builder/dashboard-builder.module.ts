@@ -23,6 +23,9 @@ import { QuantityProgressRecord } from '../planning/entities/quantity-progress-r
 import { EpsNode } from '../eps/eps.entity';
 import { Role } from '../roles/role.entity';
 import { ProjectRating } from '../quality/entities/quality-project-rating.entity';
+import { ExecutionProgressEntry } from '../execution/entities/execution-progress-entry.entity';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 
 // Data Sources
 import { ALL_DATA_SOURCES } from './data-sources';
@@ -44,6 +47,9 @@ import { ALL_DATA_SOURCES } from './data-sources';
       BoqItem,
       DailyLaborPresence,
       QuantityProgressRecord,
+      ExecutionProgressEntry,
+      WorkOrderItem,
+      BoqSubItem,
       EpsNode,
       Role,
       ProjectRating,

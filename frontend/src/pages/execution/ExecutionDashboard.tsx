@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/axios";
 import { Folder, ChevronRight, Activity } from "lucide-react";
+import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
 
 const ExecutionDashboard = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchProjects();
@@ -24,7 +26,9 @@ const ExecutionDashboard = () => {
         });
         return list;
       };
-      setProjects(flatten(res.data));
+      const nextProjects = flatten(res.data);
+      setProjects(nextProjects);
+      setSelectedProjectId((current) => current ?? nextProjects[0]?.id ?? null);
     } catch (err) {
       console.error(err);
     } finally {
@@ -47,32 +51,64 @@ const ExecutionDashboard = () => {
             <div className="w-64 h-32 bg-surface-raised rounded-xl border border-border-default"></div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ui-stagger">
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                onClick={() =>
-                  navigate(`/dashboard/projects/${project.id}/progress`)
-                }
-                className="ui-card ui-animate-card p-6 hover:border-primary hover:shadow-xl transition-all cursor-pointer group"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="p-3 bg-primary-muted rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                    <Folder className="w-6 h-6" />
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-text-muted group-hover:text-primary" />
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_1fr]">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border-default bg-surface-card p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Project List
                 </div>
-                <h3 className="text-lg font-bold text-text-primary mb-1">
-                  {project.name}
-                </h3>
-                <div className="flex items-center text-sm text-text-muted">
-                  <Activity className="w-4 h-4 mr-1" />
-                  <span>Tap to Enter Progress</span>
+                <div className="mt-3 space-y-3">
+                  {projects.map((project) => (
+                    <div
+                      key={project.id}
+                      onMouseEnter={() => setSelectedProjectId(project.id)}
+                      className={`ui-card ui-animate-card p-5 transition-all ${
+                        selectedProjectId === project.id
+                          ? "border-primary shadow-lg"
+                          : "hover:border-primary hover:shadow-xl"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-primary-muted rounded-lg text-primary">
+                          <Folder className="w-6 h-6" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/dashboard/projects/${project.id}/progress`)
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-3 py-1.5 text-xs font-semibold text-text-primary"
+                        >
+                          Open
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <h3 className="text-lg font-bold text-text-primary mb-1">
+                        {project.name}
+                      </h3>
+                      <div className="flex items-center text-sm text-text-muted">
+                        <Activity className="w-4 h-4 mr-1" />
+                        <span>Hover to preview 3D progress</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-            {projects.length === 0 && (
-              <div className="col-span-3 text-center py-20 bg-surface-base rounded-lg border border-dashed border-border-strong">
+            </div>
+
+            {selectedProjectId ? (
+              <ProjectProgress3DPanel
+                projectId={selectedProjectId}
+                projectName={
+                  projects.find((project) => project.id === selectedProjectId)?.name || "Project"
+                }
+                subtitle="Live 3D preview sourced from Building Lines > 3D Progress Model"
+                autoRotate
+                autoRotateSpeed={1.2}
+                viewerClassName="h-[620px]"
+              />
+            ) : (
+              <div className="text-center py-20 bg-surface-base rounded-lg border border-dashed border-border-strong">
                 <p className="text-text-muted">No Projects found.</p>
               </div>
             )}

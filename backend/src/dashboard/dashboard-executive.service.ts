@@ -7,7 +7,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { Activity, ActivityStatus } from '../wbs/entities/activity.entity';
-import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
 import { CustomerMilestoneAchievement } from '../milestone/entities/customer-milestone-achievement.entity';
 import {
@@ -45,6 +44,10 @@ import {
   DrawingStatus,
 } from '../design/entities/drawing-register.entity';
 import { WorkOrder } from '../workdoc/entities/work-order.entity';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from '../execution/entities/execution-progress-entry.entity';
 
 type ExecutiveMode = 'enterprise' | 'company' | 'project';
 type MetricFormat = 'number' | 'currency' | 'percent' | 'text';
@@ -289,8 +292,8 @@ export class DashboardExecutiveService {
     private readonly epsRepo: Repository<EpsNode>,
     @InjectRepository(Activity)
     private readonly activityRepo: Repository<Activity>,
-    @InjectRepository(MeasurementProgress)
-    private readonly progressRepo: Repository<MeasurementProgress>,
+    @InjectRepository(ExecutionProgressEntry)
+    private readonly progressRepo: Repository<ExecutionProgressEntry>,
     @InjectRepository(DailyLaborPresence)
     private readonly laborRepo: Repository<DailyLaborPresence>,
     @InjectRepository(CustomerMilestoneAchievement)
@@ -692,16 +695,22 @@ export class DashboardExecutiveService {
         .getRawMany(),
       this.progressRepo
         .createQueryBuilder('p')
-        .leftJoin('p.measurementElement', 'me')
-        .leftJoin('me.boqSubItem', 'sub')
-        .select('me.projectId', 'projectId')
-        .addSelect('COALESCE(SUM(p.executedQty * COALESCE(sub.rate, 0)), 0)', 'burnValue')
-        .where('me.projectId IN (:...projectIds)', { projectIds })
-        .andWhere('p.date BETWEEN :dateFrom AND :dateTo', {
+        .leftJoin('p.workOrderItem', 'woItem')
+        .leftJoin('woItem.boqSubItem', 'sub')
+        .select('p.projectId', 'projectId')
+        .addSelect(
+          'COALESCE(SUM(p.enteredQty * COALESCE(NULLIF(woItem.rate, 0), sub.rate, 0)), 0)',
+          'burnValue',
+        )
+        .where('p.projectId IN (:...projectIds)', { projectIds })
+        .andWhere('p.status = :progressStatus', {
+          progressStatus: ExecutionProgressEntryStatus.APPROVED,
+        })
+        .andWhere('p.entryDate BETWEEN :dateFrom AND :dateTo', {
           dateFrom: window.dateFrom,
           dateTo: window.dateTo,
         })
-        .groupBy('me.projectId')
+        .groupBy('p.projectId')
         .getRawMany(),
       this.workOrderRepo
         .createQueryBuilder('wo')
@@ -2171,17 +2180,23 @@ export class DashboardExecutiveService {
     if (projectIds.length === 0) return EMPTY_TREND;
     const rawPoints = await this.progressRepo
       .createQueryBuilder('p')
-      .leftJoin('p.measurementElement', 'me')
-      .leftJoin('me.boqSubItem', 'sub')
-      .select('p.date', 'label')
-      .addSelect('COALESCE(SUM(p.executedQty * COALESCE(sub.rate, 0)), 0)', 'value')
-      .where('me.projectId IN (:...projectIds)', { projectIds })
-      .andWhere('p.date BETWEEN :dateFrom AND :dateTo', {
+      .leftJoin('p.workOrderItem', 'woItem')
+      .leftJoin('woItem.boqSubItem', 'sub')
+      .select('p.entryDate', 'label')
+      .addSelect(
+        'COALESCE(SUM(p.enteredQty * COALESCE(NULLIF(woItem.rate, 0), sub.rate, 0)), 0)',
+        'value',
+      )
+      .where('p.projectId IN (:...projectIds)', { projectIds })
+      .andWhere('p.status = :progressStatus', {
+        progressStatus: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .andWhere('p.entryDate BETWEEN :dateFrom AND :dateTo', {
         dateFrom: window.dateFrom,
         dateTo: window.dateTo,
       })
-      .groupBy('p.date')
-      .orderBy('p.date', 'ASC')
+      .groupBy('p.entryDate')
+      .orderBy('p.entryDate', 'ASC')
       .getRawMany();
 
     return {

@@ -221,7 +221,9 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
       loadData();
     } catch (error) {
       console.error("Error deleting activity:", error);
-      alert("Failed to delete activity");
+      const message =
+        (error as any)?.response?.data?.message || "Failed to delete activity";
+      alert(Array.isArray(message) ? message.join(", ") : message);
     }
   };
 

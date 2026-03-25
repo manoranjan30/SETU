@@ -50,6 +50,8 @@ import { IssueTrackerService } from './issue-tracker.service';
 import { MilestoneModule } from '../milestone/milestone.module';
 import { CostService } from './cost.service';
 import { CostController } from './cost.controller';
+import { ExecutionProgressEntry } from '../execution/entities/execution-progress-entry.entity';
+import { ExecutionProgressAdjustment } from '../execution/entities/execution-progress-adjustment.entity';
 
 @Module({
   imports: [
@@ -90,6 +92,8 @@ import { CostController } from './cost.controller';
       QualityFloorStructure,
       QualityUnit,
       QualityRoom,
+      ExecutionProgressEntry,
+      ExecutionProgressAdjustment,
     ]),
     WbsModule,
     NotificationsModule,

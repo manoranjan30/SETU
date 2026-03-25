@@ -42,9 +42,7 @@ class AuthService {
       final accessToken = response['access_token'] as String?;
       final refreshToken = response['refresh_token'] as String?;
       final expiresIn = response['expires_in'] as int?;
-      final userJson = response['user'] as Map<String, dynamic>?;
       print('[AuthService] Access token: ${accessToken != null ? "received" : "null"}');
-      print('[AuthService] User JSON: $userJson');
 
       // A missing access token indicates an unexpected backend response
       // (e.g. the server returned 200 but with an error body).
@@ -52,20 +50,28 @@ class AuthService {
         throw Exception('Invalid login response: missing access token');
       }
 
+      // Backend returns user data nested under a 'user' key with all fields
+      // including permissions, roles, and project_ids.
+      final userJson = response['user'] as Map<String, dynamic>?;
+      print('[AuthService] User JSON keys: ${userJson?.keys.toList()}');
+      print('[AuthService] Permissions from login: ${userJson?['permissions']}');
+
       // Save tokens
       await _tokenManager.saveTokens(
         accessToken: accessToken,
         refreshToken: refreshToken ?? '',
         expiresIn: expiresIn ?? 28800, // Default 8 hours
-        userId: userJson?['id'] ?? 0,
+        userId: userJson?['id'] as int? ?? 0,
       );
       print('[AuthService] Tokens saved successfully');
 
-      // Return user
       if (userJson != null) {
-        // Fast path: user data was included in the login response body.
+        // Fast path: user data (including permissions) came inline in the
+        // login response under the 'user' key.
         final user = User.fromJson(userJson);
-        print('[AuthService] User parsed: ${user.username}');
+        print('[AuthService] User parsed: ${user.username}, '
+            'permissions count: ${user.permissions.length}, '
+            'permissions: ${user.permissions}');
         return user;
       }
 

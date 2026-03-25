@@ -29,6 +29,8 @@ import { CpmService } from '../wbs/cpm.service';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
+import { ExecutionProgressEntry, ExecutionProgressEntryStatus } from '../execution/entities/execution-progress-entry.entity';
+import { WorkOrderItemNodeType } from '../workdoc/entities/work-order-item.entity';
 
 @Injectable()
 export class PlanningService {
@@ -49,6 +51,8 @@ export class PlanningService {
     private measurementRepo: Repository<MeasurementElement>,
     @InjectRepository(MeasurementProgress)
     private measurementProgressRepo: Repository<MeasurementProgress>,
+    @InjectRepository(ExecutionProgressEntry)
+    private executionEntryRepo: Repository<ExecutionProgressEntry>,
     @InjectRepository(WbsNode)
     private wbsRepo: Repository<WbsNode>,
     @InjectRepository(EpsNode)
@@ -270,58 +274,165 @@ export class PlanningService {
 
     if (!woItem) throw new NotFoundException('Work Order Item not found');
 
+    const executionEpsNodeId = await this.resolveFloorExecutionNodeId(activity);
+    const leafItems = await this.expandWoExecutionLeaves(woItem);
+    if (!leafItems.length) {
+      throw new BadRequestException(
+        'Selected work order node does not have executable measurement leaves.',
+      );
+    }
+
+    const leafQuantities = new Map<number, number>();
     if (quantity === -1) {
-      // Calculate remaining quantity
-      const existingLinks = await this.planRepo.find({
-        where: { workOrderItemId },
+      for (const leaf of leafItems) {
+        const existingLinks = await this.planRepo.find({
+          where: { workOrderItemId: leaf.id },
+        });
+        const mappedTotal = existingLinks
+          .filter((link) => link.activityId !== activityId)
+          .reduce((sum, link) => sum + Number(link.plannedQuantity || 0), 0);
+        const remaining = Math.max(
+          0,
+          Number(leaf.allocatedQty || 0) - Number(mappedTotal || 0),
+        );
+        leafQuantities.set(leaf.id, remaining);
+      }
+    } else {
+      const totalBaseQty = leafItems.reduce(
+        (sum, leaf) => sum + Number(leaf.allocatedQty || 0),
+        0,
+      );
+      let distributed = 0;
+      leafItems.forEach((leaf, index) => {
+        const isLast = index === leafItems.length - 1;
+        const proportionalQty =
+          totalBaseQty > 0
+            ? Number(
+                (
+                  (quantity * Number(leaf.allocatedQty || 0)) /
+                  totalBaseQty
+                ).toFixed(3),
+              )
+            : 0;
+        const qtyForLeaf = isLast
+          ? Number((quantity - distributed).toFixed(3))
+          : proportionalQty;
+        distributed += qtyForLeaf;
+        leafQuantities.set(leaf.id, Math.max(0, qtyForLeaf));
       });
-      const mappedTotal = existingLinks
-        .filter(l => l.activityId !== activityId) // Ignore current link's qty if updating
-        .reduce((sum, l) => sum + (Number(l.plannedQuantity) > 0 ? Number(l.plannedQuantity) : 0), 0);
-      
-      const remaining = Number(woItem.allocatedQty || 0) - mappedTotal;
-      quantity = remaining > 0 ? remaining : 0;
     }
 
-    // Check for existing link
-    const existing = await this.planRepo.findOne({
-      where: { activityId, workOrderItemId },
-    });
+    const savedPlans: WoActivityPlan[] = [];
+    for (const leaf of leafItems) {
+      const plannedQuantity = leafQuantities.get(leaf.id) || 0;
+      if (plannedQuantity <= 0) continue;
 
-    if (existing) {
-      existing.plannedQuantity = quantity;
-      return this.planRepo.save(existing);
+      let existing = await this.planRepo.findOne({
+        where: { activityId, workOrderItemId: leaf.id },
+      });
+
+      if (existing) {
+        existing.plannedQuantity = plannedQuantity;
+        existing.executionEpsNodeId = executionEpsNodeId;
+        savedPlans.push(await this.planRepo.save(existing));
+        continue;
+      }
+
+      const plan = this.planRepo.create({
+        projectId: activity.projectId,
+        activityId,
+        workOrderItemId: leaf.id,
+        workOrderId: leaf.workOrder?.id,
+        vendorId: leaf.workOrder?.vendor?.id,
+        boqItemId: leaf.boqItemId,
+        boqSubItemId: leaf.boqSubItemId,
+        measurementId: leaf.measurementElementId,
+        executionEpsNodeId,
+        plannedQuantity,
+        planningBasis: PlanningBasis.INITIAL,
+        mappingType: MappingType.DIRECT,
+      });
+
+      savedPlans.push(await this.planRepo.save(plan));
     }
 
-    const plan = this.planRepo.create({
-      projectId: activity.projectId,
-      activityId,
-      workOrderItemId,
-      workOrderId: woItem.workOrder.id,
-      vendorId: woItem.workOrder.vendor?.id,
-      boqItemId: woItem.boqItemId,
-      boqSubItemId: woItem.boqSubItemId,
-      measurementId: woItem.measurementElementId,
-      plannedQuantity: quantity,
-      planningBasis: PlanningBasis.INITIAL,
-      mappingType: MappingType.DIRECT,
-    });
-
-    return await this.planRepo.save(plan);
+    await this.updateActivityFinancials(activityId);
+    return savedPlans;
   }
 
   async unlinkWoItem(workOrderItemId: number): Promise<void> {
+    const woItem = await this.woItemRepo.findOne({
+      where: { id: workOrderItemId },
+    });
+    if (!woItem) return;
+
+    const leafItems = await this.expandWoExecutionLeaves(woItem);
+    const targetIds = leafItems.length
+      ? leafItems.map((item) => item.id)
+      : [workOrderItemId];
+
     const affectedPlans = await this.planRepo.find({
-      where: { workOrderItemId },
+      where: targetIds.map((id) => ({ workOrderItemId: id })),
       select: ['activityId'],
     });
 
     const activityIds = [...new Set(affectedPlans.map((p) => p.activityId))];
-    const result = await this.planRepo.delete({ workOrderItemId });
+    if (targetIds.length > 0) {
+      await this.planRepo.delete(targetIds.map((id) => ({ workOrderItemId: id })));
+    }
 
     for (const id of activityIds) {
       await this.updateActivityFinancials(id);
     }
+  }
+
+  private async expandWoExecutionLeaves(
+    woItem: WorkOrderItem,
+  ): Promise<WorkOrderItem[]> {
+    if (woItem.nodeType === WorkOrderItemNodeType.MEASUREMENT) {
+      const leaf = await this.woItemRepo.findOne({
+        where: { id: woItem.id },
+        relations: ['workOrder', 'workOrder.vendor'],
+      });
+      return leaf ? [leaf] : [];
+    }
+
+    const descendants = await this.woItemRepo.find({
+      where: { parentWorkOrderItemId: woItem.id },
+      relations: ['workOrder', 'workOrder.vendor'],
+      order: { id: 'ASC' },
+    });
+
+    const leaves: WorkOrderItem[] = [];
+    for (const child of descendants) {
+      const childLeaves = await this.expandWoExecutionLeaves(child);
+      leaves.push(...childLeaves);
+    }
+    return leaves;
+  }
+
+  private async resolveFloorExecutionNodeId(
+    activity: Activity,
+  ): Promise<number | null> {
+    const nodes = await this.epsRepo.find({
+      select: ['id', 'parentId', 'type'],
+    });
+    const nodeMap = new Map<number, EpsNode>(
+      nodes.map((node) => [node.id, node]),
+    );
+
+    let currentId: number | null = Number(activity.projectId);
+    while (currentId != null) {
+      const node = nodeMap.get(currentId);
+      if (!node) return Number(activity.projectId);
+      const type = String(node.type || '').toUpperCase();
+      if (type === EpsNodeType.FLOOR || type === 'LEVEL') {
+        return node.id;
+      }
+      currentId = node.parentId == null ? null : Number(node.parentId);
+    }
+
+    return Number(activity.projectId);
   }
 
   // --- Mapper Logic (Legacy) ---
@@ -498,14 +609,48 @@ export class PlanningService {
 
   async recordProgress(
     data: Partial<QuantityProgressRecord>,
-  ): Promise<QuantityProgressRecord> {
-    // 1. Create Record
-    const record = this.progressRepo.create({
-      ...data,
-      measureDate: new Date(),
-      status: ProgressStatus.APPROVED, // Auto-approve for now (or make configurable)
-    });
-    const savedRecord = await this.progressRepo.save(record);
+  ): Promise<any> {
+    const woActivityPlanId = Number((data as any).woActivityPlanId || 0) || null;
+    const workOrderItemId = Number((data as any).workOrderItemId || 0) || null;
+    if (!woActivityPlanId && !workOrderItemId) {
+      throw new BadRequestException(
+        'Progress must be recorded against a mapped work order measurement.',
+      );
+    }
+
+    const resolvedPlan =
+      woActivityPlanId
+        ? await this.planRepo.findOne({ where: { id: woActivityPlanId } })
+        : workOrderItemId
+          ? await this.planRepo.findOne({
+              where: { workOrderItemId },
+              order: { id: 'ASC' },
+            })
+          : null;
+
+    if (!resolvedPlan) {
+      throw new BadRequestException(
+        'No mapped schedule activity was found for the supplied progress entry.',
+      );
+    }
+
+    const savedRecord = await this.executionEntryRepo.save(
+      this.executionEntryRepo.create({
+        projectId: Number(data.projectId),
+        activityId: resolvedPlan.activityId,
+        woActivityPlanId: resolvedPlan.id,
+        workOrderId: resolvedPlan.workOrderId,
+        workOrderItemId: resolvedPlan.workOrderItemId,
+        executionEpsNodeId: resolvedPlan.executionEpsNodeId,
+        entryDate: data.measureDate ? new Date(data.measureDate) : new Date(),
+        enteredQty: Number(data.measuredQty || 0),
+        remarks: data.remarks || null,
+        status: ExecutionProgressEntryStatus.APPROVED,
+        createdBy: data.createdBy || 'system',
+        approvedBy: data.approvedBy || data.createdBy || 'system',
+        approvedAt: new Date(),
+      }),
+    );
 
     // 2. Notify project-scoped progress approvers (fire-and-forget)
     if (savedRecord.projectId) {
@@ -514,7 +659,7 @@ export class PlanningService {
           savedRecord.projectId,
           'EXECUTION.ENTRY.APPROVE',
           'Progress Entry Submitted',
-          `New progress recorded — BOQ item #${savedRecord.boqItemId}`,
+          `New progress recorded for activity #${savedRecord.activityId}`,
           {
             type: 'PROGRESS_SUBMITTED',
             projectId: String(savedRecord.projectId),
@@ -527,7 +672,9 @@ export class PlanningService {
     }
 
     // 3. Trigger Schedule Recalculation for affected activities
-    await this.recalculateScheduleFromBoq(savedRecord.boqItemId);
+    if (savedRecord.activityId) {
+      await this.updateActivityFinancials(savedRecord.activityId);
+    }
     await this.customerMilestoneService.handleProgressRefresh(savedRecord.projectId);
 
     return savedRecord;
@@ -1300,7 +1447,7 @@ export class PlanningService {
 
     const query = this.activityRepo
       .createQueryBuilder('activity')
-      .innerJoin('wo_activity_plan', 'plan', 'plan.activity_id = activity.id')
+      .leftJoin('wo_activity_plan', 'plan', 'plan.activity_id = activity.id')
       .leftJoin('plan.boqItem', 'boqItem')
       .leftJoin('boq_sub_item', 'subItem', 'subItem.id = plan.boqSubItemId')
       .leftJoin('measurement_element', 'meas', 'meas.id = plan.measurement_id')
@@ -1311,6 +1458,7 @@ export class PlanningService {
       .where(
         new Brackets((qb) => {
           qb.where('activity.projectId IN (:...ids)', { ids: targetIds })
+            .orWhere('plan.execution_eps_node_id IN (:...ids)', { ids: targetIds })
             .orWhere('boqItem.epsNodeId IN (:...ids)', { ids: targetIds })
             .orWhere('meas.epsNodeId IN (:...ids)', { ids: targetIds });
         }),
@@ -1325,6 +1473,8 @@ export class PlanningService {
         'activity.finishDateActual',
         'activity.percentComplete',
         'activity.status',
+        'activity.projectId',
+        'activity.masterActivityId',
         'activWbs.wbsName as wbs_wbsName',
         'activWbs.wbsCode as wbs_wbsCode',
         'parent.wbsName as parent_wbsName',
@@ -1334,6 +1484,7 @@ export class PlanningService {
         'plan.id',
         'plan.plannedQuantity',
         'plan.boqItemId',
+        'plan.executionEpsNodeId',
         'boqItem.id',
         'boqItem.epsNodeId',
         'boqItem.description',
@@ -1371,86 +1522,31 @@ export class PlanningService {
       }
     }
 
-    // Fetch all Site Execution measurements for these combinations
-    // Separate maps for approved and pending quantities
+    // Fetch execution quantities from dedicated execution transaction storage.
     const approvedMeasMap = new Map<string, number>();
     const pendingMeasMap = new Map<string, number>();
 
     if (activityBoqPairs.length > 0) {
-      // Get unique boqItemIds
-      const uniqueBoqIds = [
-        ...new Set(activityBoqPairs.map((p) => p.boqItemId)),
-      ];
+      const planIds = [...new Set(activityBoqPairs.map((p) => p.planId))];
+      const executionRows = await this.executionEntryRepo
+        .createQueryBuilder('entry')
+        .where('entry.woActivityPlanId IN (:...planIds)', { planIds })
+        .select('entry.woActivityPlanId', 'planId')
+        .addSelect('entry.activityId', 'activityId')
+        .addSelect('entry.status', 'status')
+        .addSelect('COALESCE(SUM(entry.enteredQty), 0)', 'qty')
+        .groupBy('entry.woActivityPlanId')
+        .addGroupBy('entry.activityId')
+        .addGroupBy('entry.status')
+        .getRawMany();
 
-      // Query Site Execution measurements
-      const siteExecMeas = await this.measurementRepo
-        .createQueryBuilder('m')
-        .where('m.boqItemId IN (:...boqIds)', { boqIds: uniqueBoqIds })
-        .andWhere('m.elementName = :name', { name: 'Site Execution' })
-        .getMany();
-
-      console.log(
-        `[PlanningService] Found ${siteExecMeas.length} Site Execution measurements`,
-      );
-
-      // Also get PENDING progress logs for these elements
-      const elementIds = siteExecMeas.map((m: any) => m.id);
-      const pendingLogs =
-        elementIds.length > 0
-          ? await this.measurementProgressRepo
-              .createQueryBuilder('p')
-              .where('p.measurementElementId IN (:...ids)', { ids: elementIds })
-              .andWhere('p.status = :status', { status: 'PENDING' })
-              .getMany()
-          : [];
-
-      const pendingMap = new Map<number, number>();
-      for (const p of pendingLogs) {
-        pendingMap.set(
-          p.measurementElementId,
-          (pendingMap.get(p.measurementElementId) || 0) +
-            Number(p.executedQty || 0),
-        );
-      }
-
-      for (const m of siteExecMeas as any[]) {
-        const approvedQty = Number(m.executedQty || 0);
-        const pendingQty = pendingMap.get(m.id) || 0;
-        const totalQty = Math.max(0, approvedQty + pendingQty);
-
-        // NEW: Parse elementId to extract planId for per-plan lookup
-        // Format A (Legacy): "SITE-EXEC-{boqItemId}-{activityId}-{planId}" (5 parts)
-        // Format B (Isolated): "SITE-EXEC-{boqItemId}-{activityId}-{epsNodeId}-{planId}" (6 parts)
-        const elementId = m.elementId || '';
-        const parts = elementId.split('-');
-        const extractedPlanId =
-          parts.length >= 6 ? parts[5] : parts.length >= 5 ? parts[4] : null;
-
-        if (extractedPlanId && extractedPlanId !== 'NOPLAN') {
-          // Per-plan tracking key: plan - {planId}
-          const key = `plan - ${extractedPlanId} `;
-          approvedMeasMap.set(
-            key,
-            (approvedMeasMap.get(key) || 0) + approvedQty,
-          );
-          pendingMeasMap.set(key, (pendingMeasMap.get(key) || 0) + pendingQty);
-          console.log(
-            `[PlanningService] Per-Plan approved=${approvedQty} pending=${pendingQty} key=${key}`,
-          );
-        } else {
-          // Fallback to legacy key format: "activityId-boqItemId"
-          const legacyKey = `${m.activityId || 'null'} -${m.boqItemId} `;
-          approvedMeasMap.set(
-            legacyKey,
-            (approvedMeasMap.get(legacyKey) || 0) + approvedQty,
-          );
-          pendingMeasMap.set(
-            legacyKey,
-            (pendingMeasMap.get(legacyKey) || 0) + pendingQty,
-          );
-          console.log(
-            `[PlanningService] Legacy approved=${approvedQty} pending=${pendingQty} key=${legacyKey}`,
-          );
+      for (const row of executionRows) {
+        const planKey = `plan - ${row.planId} `;
+        const qty = Number(row.qty || 0);
+        if (row.status === ExecutionProgressEntryStatus.APPROVED) {
+          approvedMeasMap.set(planKey, (approvedMeasMap.get(planKey) || 0) + qty);
+        } else if (row.status === ExecutionProgressEntryStatus.PENDING) {
+          pendingMeasMap.set(planKey, (pendingMeasMap.get(planKey) || 0) + qty);
         }
       }
     }
@@ -1505,11 +1601,21 @@ export class PlanningService {
           Boolean,
         );
 
-        // epsNodeId: the EPS node the activity is directly assigned to via BOQ.
-        // Used by the mobile client to filter activities at the correct EPS level
-        // (prevents the same activity appearing at both floor and unit levels).
+        // epsNodeId: determines which EPS node this activity belongs to for mobile filtering.
+        // Priority:
+        // 1. distribute-schedule copies: activity.projectId IS the target EPS node (floor/unit)
+        // 2. WO-linked activities: plan.executionEpsNodeId set during WO distribution
+        // 3. BOQ-linked fallback: boqItem.epsNodeId
+        const activityProjectId = r.activity_projectId ?? r.activity_projectid ?? null;
+        const masterActivityId = r.activity_masterActivityId ?? r.activity_masteractivityid ?? null;
+        const planExecutionEpsNodeId =
+          r.plan_executionEpsNodeId ?? r.plan_executionepsnodeid ??
+          r.plan_execution_eps_node_id ?? null;
         const epsNodeId =
-          r.boqItem_epsNodeId ?? r.boqitem_epsnodeid ?? null;
+          (masterActivityId ? activityProjectId : null) ?? // distribute-schedule copies
+          planExecutionEpsNodeId ??                        // WO workflow
+          r.boqItem_epsNodeId ?? r.boqitem_epsnodeid ??   // BOQ fallback
+          null;
 
         groupedMap.set(activityId, {
           id: activityId,
@@ -2189,52 +2295,101 @@ export class PlanningService {
     });
     if (!activity) return;
 
-    // 1. Budgeted Value (Planned)
-    // SUM(plannedQty * rate) from plans
-    const invalidPlan = await this.planRepo
-      .createQueryBuilder('p')
-      .leftJoin('boq_sub_item', 's', 'p."boqSubItemId" = s.id')
-      .where('p.activity_id = :activityId', { activityId })
-      .andWhere('(p."boqSubItemId" IS NULL OR COALESCE(s.rate, 0) <= 0)')
-      .getCount();
-    if (invalidPlan > 0) {
-      throw new BadRequestException(
-        `Activity ${activityId} has BOQ sub item mappings without valid rate.`,
-      );
+    const plans = await this.planRepo.find({
+      where: { activityId },
+      relations: ['workOrderItem'],
+      order: { id: 'ASC' },
+    });
+
+    let totalPlannedQty = 0;
+    let totalExecutedQty = 0;
+    let totalBudgetedValue = 0;
+    let totalActualValue = 0;
+    let allPlansComplete = true;
+
+    const approvedDateWindow = await this.executionEntryRepo
+      .createQueryBuilder('entry')
+      .select('MIN(entry.entryDate)', 'minDate')
+      .addSelect('MAX(entry.entryDate)', 'maxDate')
+      .where('entry.activityId = :activityId', { activityId })
+      .andWhere('entry.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .getRawOne<{ minDate: string | null; maxDate: string | null }>();
+
+    for (const plan of plans) {
+      const subItemId = plan.boqSubItemId || plan.workOrderItem?.boqSubItemId;
+      const rateSource = subItemId
+        ? await this.subItemRepo.findOne({
+            where: { id: subItemId },
+            select: ['id', 'rate'],
+          })
+        : null;
+      const rate =
+        Number(plan.workOrderItem?.rate || 0) || Number(rateSource?.rate || 0);
+
+      if (!subItemId || rate <= 0) {
+        throw new BadRequestException(
+          `Activity ${activityId} has BOQ sub item mappings without valid rate.`,
+        );
+      }
+
+      const plannedQty = Number(plan.plannedQuantity || 0);
+      totalPlannedQty += plannedQty;
+      totalBudgetedValue += plannedQty * rate;
+
+      const actualRes = await this.executionEntryRepo
+        .createQueryBuilder('entry')
+        .select('COALESCE(SUM(entry.enteredQty), 0)', 'sum')
+        .where('entry.woActivityPlanId = :planId', { planId: plan.id })
+        .andWhere('entry.status = :status', {
+          status: ExecutionProgressEntryStatus.APPROVED,
+        })
+        .getRawOne<{ sum: string }>();
+
+      const executedQty = Number(actualRes?.sum || 0);
+      totalExecutedQty += Math.min(plannedQty, executedQty);
+      totalActualValue += executedQty * rate;
+
+      if (plannedQty > 0 && executedQty + 0.0001 < plannedQty) {
+        allPlansComplete = false;
+      }
     }
 
-    const budgetRes = await this.planRepo
-      .createQueryBuilder('p')
-      .leftJoin('boq_sub_item', 's', 'p."boqSubItemId" = s.id')
-      .select('SUM(p.plannedQuantity * s.rate)', 'sum')
-      .where('p.activity_id = :activityId', { activityId })
-      .getRawOne();
+    const percentComplete =
+      totalPlannedQty > 0 ? (totalExecutedQty / totalPlannedQty) * 100 : 0;
+    activity.percentComplete = Number(
+      Math.min(100, Math.max(0, percentComplete)).toFixed(2),
+    );
+    activity.budgetedValue = Number(totalBudgetedValue.toFixed(2));
+    activity.actualValue = Number(totalActualValue.toFixed(2));
 
-    activity.budgetedValue = Number(budgetRes?.sum || 0);
-
-    // 2. Actual Value (Executed)
-    // SUM(executedQty * rate) from measurements
-    const invalidActual = await this.measurementRepo
-      .createQueryBuilder('m')
-      .leftJoin('boq_sub_item', 's', 'm."boqSubItemId" = s.id')
-      .where('m.activityId = :activityId', { activityId })
-      .andWhere('m."executedQty" > 0')
-      .andWhere('(m."boqSubItemId" IS NULL OR COALESCE(s.rate, 0) <= 0)')
-      .getCount();
-    if (invalidActual > 0) {
-      throw new BadRequestException(
-        `Activity ${activityId} has executed measurements without valid BOQ sub item rate.`,
-      );
+    if (activity.percentComplete > 0 || activity.actualValue > 0) {
+      if (!activity.startDateActual && approvedDateWindow?.minDate) {
+        activity.startDateActual = new Date(approvedDateWindow.minDate);
+      }
+      if (activity.status === ActivityStatus.NOT_STARTED) {
+        activity.status = ActivityStatus.IN_PROGRESS;
+      }
+    } else {
+      activity.startDateActual = null;
+      activity.finishDateActual = null;
+      activity.status = ActivityStatus.NOT_STARTED;
     }
 
-    const actualRes = await this.measurementRepo
-      .createQueryBuilder('m')
-      .leftJoin('boq_sub_item', 's', 'm."boqSubItemId" = s.id')
-      .select('SUM(m.executedQty * s.rate)', 'sum')
-      .where('m.activityId = :activityId', { activityId })
-      .getRawOne();
-
-    activity.actualValue = Number(actualRes?.sum || 0);
+    if (activity.percentComplete >= 100 && allPlansComplete) {
+      activity.percentComplete = 100;
+      activity.status = ActivityStatus.COMPLETED;
+      if (!activity.finishDateActual && approvedDateWindow?.maxDate) {
+        activity.finishDateActual = new Date(approvedDateWindow.maxDate);
+      }
+    } else if (activity.status === ActivityStatus.COMPLETED) {
+      activity.status =
+        activity.percentComplete > 0
+          ? ActivityStatus.IN_PROGRESS
+          : ActivityStatus.NOT_STARTED;
+      activity.finishDateActual = null;
+    }
 
     await this.activityRepo.save(activity);
 

@@ -188,6 +188,8 @@ import { AiInsightsModule } from './ai-insights/ai-insights.module';
 import { AiModelConfig } from './ai-insights/entities/ai-model-config.entity';
 import { InsightTemplate } from './ai-insights/entities/insight-template.entity';
 import { InsightRun } from './ai-insights/entities/insight-run.entity';
+import { ExecutionProgressEntry } from './execution/entities/execution-progress-entry.entity';
+import { ExecutionProgressAdjustment } from './execution/entities/execution-progress-adjustment.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -302,6 +304,8 @@ import { InsightRun } from './ai-insights/entities/insight-run.entity';
         Vendor,
         WorkOrder,
         WorkOrderItem,
+        ExecutionProgressEntry,
+        ExecutionProgressAdjustment,
         // WorkOrderBoqMap removed
         WorkDocTemplate,
         // Template Builder

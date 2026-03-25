@@ -217,14 +217,15 @@ class ApiEndpoints {
 
   // ==================== PLANNING ENDPOINTS ====================
 
-  /// GET /planning/:epsNodeId/execution-ready
+  /// GET /planning/:projectId/execution-ready?wbsNodeId=:epsNodeId
   ///
   /// Returns activities that have been released for on-site execution at the
   /// given EPS node.  The backend recursively includes all descendant EPS
   /// nodes, so passing a floor ID returns that floor's activities AND any
   /// activities from units or sub-zones beneath it.
-  static String executionReady(int epsNodeId) =>
-      '/planning/$epsNodeId/execution-ready';
+  /// NOTE: projectId must be the real project ID (not the EPS node ID).
+  static String executionReady(int projectId) =>
+      '/planning/$projectId/execution-ready';
 
   /// GET /planning/projects/:projectId/activities (NOT USED - endpoint does not exist)
   ///

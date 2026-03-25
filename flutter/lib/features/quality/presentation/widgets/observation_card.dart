@@ -39,7 +39,7 @@ class ObservationCard extends StatelessWidget {
         statusIcon = Icons.pending_outlined;
       case ObservationStatus.rectified:
         statusColor = Colors.blue.shade700;
-        statusLabel = 'Rectified';
+        statusLabel = 'Rectified ✓';
         statusIcon = Icons.check_circle_outline;
       case ObservationStatus.closed:
         statusColor = Colors.green.shade700;
@@ -176,9 +176,28 @@ class ObservationCard extends StatelessWidget {
               ),
             ],
 
-            // Action buttons
-            if (onRectify != null || onClose != null || onDelete != null) ...[
+            // Full-width Close button for RECTIFIED observations
+            if (obs.status == ObservationStatus.rectified) ...[
               const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.verified_outlined, size: 16),
+                  label: const Text('Close Observation'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
+
+            // Delete / Fix action row
+            if (onRectify != null || onDelete != null) ...[
+              const SizedBox(height: 6),
               Row(
                 children: [
                   if (onDelete != null)
@@ -194,27 +213,11 @@ class ObservationCard extends StatelessWidget {
                   if (onRectify != null)
                     OutlinedButton.icon(
                       onPressed: onRectify,
-                      icon: const Icon(Icons.build_outlined,
-                          size: 16),
+                      icon: const Icon(Icons.build_outlined, size: 16),
                       label: const Text('Fix Observation'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.orange.shade700,
-                        side: BorderSide(
-                            color: Colors.orange.shade400),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        textStyle: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  if (onClose != null)
-                    ElevatedButton.icon(
-                      onPressed: onClose,
-                      icon: const Icon(Icons.verified_outlined,
-                          size: 16),
-                      label: const Text('Close'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green.shade600,
-                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.orange.shade400),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         textStyle: const TextStyle(fontSize: 12),
