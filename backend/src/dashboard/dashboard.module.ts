@@ -26,6 +26,9 @@ import { ProjectRating } from '../quality/entities/quality-project-rating.entity
 import { DrawingRegister } from '../design/entities/drawing-register.entity';
 import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { DashboardExecutiveService } from './dashboard-executive.service';
+import { ExecutionProgressEntry } from '../execution/entities/execution-progress-entry.entity';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 
 @Module({
   imports: [
@@ -53,6 +56,9 @@ import { DashboardExecutiveService } from './dashboard-executive.service';
       ProjectRating,
       DrawingRegister,
       WorkOrder,
+      WorkOrderItem,
+      BoqSubItem,
+      ExecutionProgressEntry,
     ]),
   ],
   controllers: [DashboardController],

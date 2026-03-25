@@ -8,9 +8,12 @@ import { WbsNode } from '../wbs/entities/wbs.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
-import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
 import { ScheduleVersion, ScheduleVersionType } from './entities/schedule-version.entity';
 import { ActivityVersion } from './entities/activity-version.entity';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from '../execution/entities/execution-progress-entry.entity';
 
 // ─── Response Shapes ──────────────────────────────────────────────────────────
 
@@ -117,8 +120,8 @@ export class CostService {
     private boqItemRepo: Repository<BoqItem>,
     @InjectRepository(BoqSubItem)
     private boqSubItemRepo: Repository<BoqSubItem>,
-    @InjectRepository(MeasurementProgress)
-    private progressRepo: Repository<MeasurementProgress>,
+    @InjectRepository(ExecutionProgressEntry)
+    private progressRepo: Repository<ExecutionProgressEntry>,
     @InjectRepository(ScheduleVersion)
     private scheduleVersionRepo: Repository<ScheduleVersion>,
     @InjectRepository(ActivityVersion)
@@ -128,26 +131,23 @@ export class CostService {
   /**
    * Build a map of boqItemId → total spent amount (₹).
    * Uses the same formula as the Progress module:
-   *   sum(MeasurementProgress.executedQty × MeasurementElement.boqSubItem.rate)
+   *   sum(ExecutionProgressEntry.enteredQty × applicable sub-item rate)
    *   for all APPROVED records, grouped by boqItemId.
-   * This is the authoritative source — BoqSubItem.executedQty is never updated
-   * by the execution service; only MeasurementProgress records are.
    */
   private async buildSpentMap(projectId: number): Promise<Map<number, number>> {
     const records = await this.progressRepo.find({
-      where: {
-        measurementElement: { projectId } as any,
-        status: 'APPROVED',
-      },
-      relations: ['measurementElement', 'measurementElement.boqSubItem'],
+      where: { projectId, status: ExecutionProgressEntryStatus.APPROVED },
+      relations: ['workOrderItem', 'workOrderItem.boqSubItem'],
     });
 
     const map = new Map<number, number>();
     for (const p of records) {
-      const boqItemId = p.measurementElement?.boqItemId;
+      const boqItemId = p.workOrderItem?.boqItemId;
       if (!boqItemId) continue;
-      const rate = Number(p.measurementElement?.boqSubItem?.rate || 0);
-      const value = Number(p.executedQty) * rate;
+      const rate =
+        Number(p.workOrderItem?.rate || 0) ||
+        Number(p.workOrderItem?.boqSubItem?.rate || 0);
+      const value = Number(p.enteredQty) * rate;
       map.set(boqItemId, (map.get(boqItemId) || 0) + value);
     }
     return map;

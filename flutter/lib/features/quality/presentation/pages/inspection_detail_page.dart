@@ -1005,9 +1005,8 @@ class _ObservationsTab extends StatelessWidget {
                                 },
                               )
                           : null,
-                      // Close button shown for RECTIFIED observations when
-                      // the user has QUALITY.OBSERVATION.CLOSE permission.
-                      onClose: o.isRectified && ps.canCloseActivityObs
+                      // Close button shown for all RECTIFIED observations.
+                      onClose: o.isRectified
                           ? () => context
                               .read<QualityApprovalBloc>()
                               .add(CloseObservation(o.id))

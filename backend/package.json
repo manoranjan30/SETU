@@ -12,6 +12,7 @@
     "migration:run:dist": "node ./node_modules/typeorm/cli.js -d dist/src/data-source.js migration:run",
     "migration:revert": "typeorm-ts-node-commonjs -d src/data-source.ts migration:revert",
     "migration:show": "typeorm-ts-node-commonjs -d src/data-source.ts migration:show",
+    "progress:reset": "ts-node src/scripts/reset-progress-state.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:dev:migrated": "node scripts/start-with-migrations.js npm run start:dev",

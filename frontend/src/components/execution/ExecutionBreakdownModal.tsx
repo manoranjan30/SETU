@@ -12,7 +12,9 @@ export interface ExecutionBreakdown {
     vendorCode: string | null;
     boqBreakdown: {
       boqItem: any;
+      boqSubItemId?: number | null;
       workOrderItemId: number | null;
+      planId: number | null;
       scope: {
         total: number;
         allocated: number;
@@ -22,6 +24,7 @@ export interface ExecutionBreakdown {
         type: "MICRO" | "BALANCE";
         id: number | null;
         name: string;
+        boqSubItemId?: number | null;
         allocatedQty: number;
         executedQty: number;
         balanceQty: number;
@@ -31,6 +34,7 @@ export interface ExecutionBreakdown {
 }
 
 interface ExecutionBreakdownModalProps {
+  projectId: number;
   activityId: number;
   activityName: string;
   epsNodeId: number;
@@ -40,7 +44,7 @@ interface ExecutionBreakdownModalProps {
 
 export const ExecutionBreakdownModal: React.FC<
   ExecutionBreakdownModalProps
-> = ({ activityId, activityName, epsNodeId, onClose, onProgressLogged }) => {
+> = ({ projectId, activityId, activityName, epsNodeId, onClose, onProgressLogged }) => {
   const [breakdown, setBreakdown] = useState<ExecutionBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,17 +109,23 @@ export const ExecutionBreakdownModal: React.FC<
           const [vIdx, bIdx, type, id] = key.split("-");
           const vendor = breakdown!.vendorBreakdown[parseInt(vIdx)];
           const boqEntry = vendor.boqBreakdown[parseInt(bIdx)];
+          const record = boqEntry.items.find(
+            (entry) => entry.type === type && String(entry.id || 0) === id,
+          );
 
           entries.push({
             vendorId: vendor.vendorId,
             boqItemId: boqEntry.boqItem.id,
+            planId: boqEntry.planId,
             workOrderItemId: boqEntry.workOrderItemId,
+            boqSubItemId:
+              record?.type === "BALANCE"
+                ? (record?.boqSubItemId ?? boqEntry.boqSubItemId ?? null)
+                : (record?.boqSubItemId ?? null),
             microActivityId: type === "MICRO" ? parseInt(id) : null,
             quantity: qty,
           });
         });
-
-      const projectId = breakdown!.activity?.projectId || epsNodeId;
 
       await api.post("/execution/progress/micro", {
         projectId,

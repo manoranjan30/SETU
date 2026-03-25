@@ -216,7 +216,7 @@ enum ObservationStatus {
       case ObservationStatus.pending:
         return 'Pending';
       case ObservationStatus.rectified:
-        return 'Rectified';
+        return 'Rectified ✓';
       case ObservationStatus.closed:
         return 'Closed';
     }

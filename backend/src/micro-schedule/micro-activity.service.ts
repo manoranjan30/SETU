@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { DataSource, Repository, IsNull, In } from 'typeorm';
 import {
   MicroScheduleActivity,
   MicroActivityStatus,
@@ -12,14 +12,27 @@ import {
 import { MicroSchedule } from './entities/micro-schedule.entity';
 import { CreateMicroActivityDto } from './dto/create-micro-activity.dto';
 import { MicroLedgerService } from './micro-ledger.service';
+import { MicroDailyLog } from './entities/micro-daily-log.entity';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from '../execution/entities/execution-progress-entry.entity';
+import { ExecutionProgressAdjustment } from '../execution/entities/execution-progress-adjustment.entity';
 
 @Injectable()
 export class MicroActivityService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(MicroScheduleActivity)
     private readonly activityRepo: Repository<MicroScheduleActivity>,
     @InjectRepository(MicroSchedule)
     private readonly microScheduleRepo: Repository<MicroSchedule>,
+    @InjectRepository(MicroDailyLog)
+    private readonly dailyLogRepo: Repository<MicroDailyLog>,
+    @InjectRepository(ExecutionProgressEntry)
+    private readonly executionEntryRepo: Repository<ExecutionProgressEntry>,
+    @InjectRepository(ExecutionProgressAdjustment)
+    private readonly executionAdjustmentRepo: Repository<ExecutionProgressAdjustment>,
     private readonly ledgerService: MicroLedgerService,
   ) {}
 
@@ -302,23 +315,59 @@ export class MicroActivityService {
    * Soft delete activity
    */
   async delete(id: number): Promise<void> {
-    const activity = await this.findOne(id);
+    await this.dataSource.transaction(async (manager) => {
+      const activity = await manager.findOne(MicroScheduleActivity, {
+        where: { id, deletedAt: IsNull() },
+      });
 
-    // Prevent deletion of in-progress activities
-    if (activity.status === MicroActivityStatus.IN_PROGRESS) {
-      throw new BadRequestException('Cannot delete in-progress activity');
-    }
+      if (!activity) {
+        throw new NotFoundException(`Micro activity ${id} not found`);
+      }
 
-    // Update ledger (return allocated quantity)
-    if (activity.workOrderItemId) {
-      await this.ledgerService.updateAllocatedQty(
-        activity.parentActivityId,
-        activity.workOrderItemId,
-        -Number(activity.allocatedQty),
-      );
-    }
+      const dailyLogCount = await manager.count(MicroDailyLog, {
+        where: { microActivityId: id },
+      });
+      const approvedEntryCount = await manager.count(ExecutionProgressEntry, {
+        where: {
+          microActivityId: id,
+          status: ExecutionProgressEntryStatus.APPROVED,
+        },
+      });
 
-    activity.deletedAt = new Date();
-    await this.activityRepo.save(activity);
+      // Prevent deletion only when real committed progress/logged execution exists.
+      if (dailyLogCount > 0 || approvedEntryCount > 0) {
+        throw new BadRequestException(
+          'Cannot delete activity because approved or logged progress has already been recorded against it.',
+        );
+      }
+
+      const pendingOrRejectedEntries = await manager.find(ExecutionProgressEntry, {
+        where: { microActivityId: id },
+        select: ['id'],
+      });
+      const pendingIds = pendingOrRejectedEntries.map((entry) => entry.id);
+      if (pendingIds.length > 0) {
+        await manager.delete(ExecutionProgressAdjustment, {
+          executionProgressEntryId: In(pendingIds),
+        });
+        await manager.delete(ExecutionProgressEntry, { id: In(pendingIds) });
+      }
+
+      if (activity.workOrderItemId) {
+        await this.ledgerService.updateAllocatedQty(
+          activity.parentActivityId,
+          activity.workOrderItemId,
+          -Number(activity.allocatedQty),
+        );
+      }
+
+      activity.status = MicroActivityStatus.PLANNED;
+      activity.progressPercent = 0;
+      activity.actualStart = null as any;
+      activity.actualFinish = null as any;
+      activity.forecastFinish = activity.plannedFinish;
+      activity.deletedAt = new Date();
+      await manager.save(MicroScheduleActivity, activity);
+    });
   }
 }

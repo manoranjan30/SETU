@@ -1,36 +1,32 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual } from 'typeorm';
-import { MeasurementProgress } from '../boq/entities/measurement-progress.entity';
-import { MeasurementElement } from '../boq/entities/measurement-element.entity';
-import { BoqItem } from '../boq/entities/boq-item.entity';
-import { BoqActivityPlan } from '../planning/entities/boq-activity-plan.entity';
-import { Activity } from '../wbs/entities/activity.entity';
+import { Repository } from 'typeorm';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from '../execution/entities/execution-progress-entry.entity';
+import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
+import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 
 @Injectable()
 export class ProgressService {
   private readonly logger = new Logger(ProgressService.name);
 
   constructor(
-    @InjectRepository(MeasurementProgress)
-    private progressRepo: Repository<MeasurementProgress>,
-    @InjectRepository(MeasurementElement)
-    private elementRepo: Repository<MeasurementElement>,
-    @InjectRepository(BoqActivityPlan)
-    private planRepo: Repository<BoqActivityPlan>,
+    @InjectRepository(ExecutionProgressEntry)
+    private progressRepo: Repository<ExecutionProgressEntry>,
+    @InjectRepository(WorkOrderItem)
+    private workOrderItemRepo: Repository<WorkOrderItem>,
+    @InjectRepository(BoqSubItem)
+    private subItemRepo: Repository<BoqSubItem>,
   ) {}
 
   // 1. Burn Rate Stats (Financials)
   async getBurnRateStats(projectId: number) {
-    // Fetch all progress with rates
     const progress = await this.progressRepo.find({
-      where: { measurementElement: { projectId }, status: 'APPROVED' },
-      relations: [
-        'measurementElement',
-        'measurementElement.boqItem',
-        'measurementElement.boqSubItem',
-      ],
-      order: { date: 'DESC' },
+      where: { projectId, status: ExecutionProgressEntryStatus.APPROVED },
+      relations: ['workOrderItem', 'workOrderItem.boqSubItem'],
+      order: { entryDate: 'DESC' },
     });
 
     const today = new Date();
@@ -45,19 +41,25 @@ export class ProgressService {
     let weeklyBurn = 0;
     let monthlyBurn = 0;
     let totalBurn = 0;
+    let skippedEntries = 0;
 
     const dailyTrends: Record<string, number> = {};
 
     for (const p of progress) {
-      const subItem = p.measurementElement?.boqSubItem;
-      const subItemRate = Number(subItem?.rate || 0);
-      if (!subItem?.id || subItemRate <= 0) {
-        throw new BadRequestException(
-          `Progress log ${p.id} is linked to a BOQ entry without a valid sub item rate.`,
+      const rate =
+        Number(p.workOrderItem?.rate || 0) ||
+        Number(p.workOrderItem?.boqSubItem?.rate || 0);
+
+      if (rate <= 0) {
+        skippedEntries += 1;
+        this.logger.warn(
+          `Skipping progress log ${p.id} in burn stats because no rate is available.`,
         );
+        continue;
       }
-      const value = Number(p.executedQty) * subItemRate;
-      const pDate = new Date(p.date);
+
+      const value = Number(p.enteredQty) * rate;
+      const pDate = new Date(p.entryDate);
       pDate.setHours(0, 0, 0, 0);
 
       totalBurn += value;
@@ -85,6 +87,7 @@ export class ProgressService {
       thisMonth: monthlyBurn,
       total: totalBurn,
       trends: dailyTrends,
+      skippedEntries,
     };
   }
 
@@ -106,21 +109,32 @@ export class ProgressService {
 
   // 3. Efficiency Insights
   async getEfficiencyInsights(projectId: number) {
-    // Find top burning BOQ items
-    const topBurners = await this.elementRepo.find({
-      where: { projectId },
-      relations: ['boqItem', 'boqSubItem'],
-      order: { executedQty: 'DESC' },
-      take: 5,
-    });
+    const topBurnersRaw = await this.progressRepo
+      .createQueryBuilder('entry')
+      .innerJoin('entry.workOrderItem', 'woItem')
+      .leftJoin('woItem.boqItem', 'boqItem')
+      .leftJoin('woItem.boqSubItem', 'boqSubItem')
+      .select('woItem.boqItemId', 'boqItemId')
+      .addSelect('COALESCE(boqItem.description, woItem.description)', 'name')
+      .addSelect(
+        'COALESCE(SUM(entry.enteredQty * COALESCE(NULLIF(woItem.rate, 0), boqSubItem.rate, 0)), 0)',
+        'value',
+      )
+      .where('entry.projectId = :projectId', { projectId })
+      .andWhere('entry.status = :status', {
+        status: ExecutionProgressEntryStatus.APPROVED,
+      })
+      .groupBy('woItem.boqItemId')
+      .addGroupBy('boqItem.description')
+      .addGroupBy('woItem.description')
+      .orderBy('"value"', 'DESC')
+      .limit(5)
+      .getRawMany();
 
     return {
-      topBurners: topBurners.map((e) => ({
-        name:
-          e.boqSubItem?.description ||
-          e.boqItem?.description ||
-          e.elementName,
-        value: Number(e.executedQty) * (Number(e.boqSubItem?.rate) || 0),
+      topBurners: topBurnersRaw.map((row) => ({
+        name: row.name,
+        value: Number(row.value || 0),
       })),
       alerts: [],
     };

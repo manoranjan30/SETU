@@ -7,7 +7,10 @@ import {
   DataSourceFilter,
   QueryConfig,
 } from './base.data-source';
-import { QuantityProgressRecord } from '../../planning/entities/quantity-progress-record.entity';
+import {
+  ExecutionProgressEntry,
+  ExecutionProgressEntryStatus,
+} from '../../execution/entities/execution-progress-entry.entity';
 
 @Injectable()
 export class ProgressDailySource implements IDataSource {
@@ -57,7 +60,7 @@ export class ProgressDailySource implements IDataSource {
       label: 'Status',
       type: 'multi_select',
       options: [
-        { value: 'DRAFT', label: 'Draft' },
+        { value: 'PENDING', label: 'Pending' },
         { value: 'APPROVED', label: 'Approved' },
         { value: 'REJECTED', label: 'Rejected' },
       ],
@@ -65,23 +68,24 @@ export class ProgressDailySource implements IDataSource {
   ];
 
   constructor(
-    @InjectRepository(QuantityProgressRecord)
-    private readonly progressRepo: Repository<QuantityProgressRecord>,
+    @InjectRepository(ExecutionProgressEntry)
+    private readonly progressRepo: Repository<ExecutionProgressEntry>,
   ) {}
 
   async execute(config: QueryConfig): Promise<any[]> {
     const qb = this.progressRepo
       .createQueryBuilder('p')
-      .leftJoin('p.boqItem', 'b')
+      .leftJoin('p.workOrderItem', 'woItem')
+      .leftJoin('woItem.boqItem', 'b')
       .select([
         'p.id AS "id"',
-        'p.measureDate AS "measureDate"',
-        'p.measuredQty AS "measuredQty"',
-        'p.totalToDate AS "totalToDate"',
+        'p.entryDate AS "measureDate"',
+        'p.enteredQty AS "measuredQty"',
+        'NULL AS "totalToDate"',
         'b.boqCode AS "boqCode"',
         'b.description AS "boqDescription"',
         'p.status AS "status"',
-        'p.locationId AS "locationId"',
+        'p.executionEpsNodeId AS "locationId"',
         'p.createdBy AS "createdBy"',
       ]);
 
@@ -90,10 +94,10 @@ export class ProgressDailySource implements IDataSource {
     }
 
     if (config.dateRange?.start) {
-      qb.andWhere('p.measureDate >= :start', { start: config.dateRange.start });
+      qb.andWhere('p.entryDate >= :start', { start: config.dateRange.start });
     }
     if (config.dateRange?.end) {
-      qb.andWhere('p.measureDate <= :end', { end: config.dateRange.end });
+      qb.andWhere('p.entryDate <= :end', { end: config.dateRange.end });
     }
 
     if (config.filters?.status?.length) {
@@ -112,7 +116,7 @@ export class ProgressDailySource implements IDataSource {
 
       qb.select([]);
       groupCols.forEach((col) => qb.addSelect(col, col.split('.').pop()));
-      qb.addSelect('SUM(p.measuredQty)', 'totalMeasured');
+      qb.addSelect('SUM(p.enteredQty)', 'totalMeasured');
       qb.addSelect('COUNT(p.id)', 'recordCount');
       groupCols.forEach((col) => qb.addGroupBy(col));
     }
@@ -120,7 +124,7 @@ export class ProgressDailySource implements IDataSource {
     if (config.orderBy?.length) {
       config.orderBy.forEach((o) => qb.addOrderBy(`p.${o.field}`, o.direction));
     } else {
-      qb.addOrderBy('p.measureDate', 'DESC');
+      qb.addOrderBy('p.entryDate', 'DESC');
     }
 
     if (config.limit) {
@@ -138,10 +142,10 @@ export class ProgressDailySource implements IDataSource {
     }
 
     if (config.dateRange?.start) {
-      qb.andWhere('p.measureDate >= :start', { start: config.dateRange.start });
+      qb.andWhere('p.entryDate >= :start', { start: config.dateRange.start });
     }
     if (config.dateRange?.end) {
-      qb.andWhere('p.measureDate <= :end', { end: config.dateRange.end });
+      qb.andWhere('p.entryDate <= :end', { end: config.dateRange.end });
     }
 
     return qb.getCount();

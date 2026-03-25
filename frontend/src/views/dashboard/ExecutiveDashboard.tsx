@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Area,
@@ -27,7 +27,9 @@ import {
   Zap,
 } from "lucide-react";
 import { executiveDashboardApi } from "../../services/executive-dashboard.service";
+import { aiInsightsService } from "../../services/aiInsights.service";
 import { useTheme } from "../../context/ThemeContext";
+import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
 import type {
   ExecutiveListItem,
   ExecutiveMetric,
@@ -37,6 +39,7 @@ import type {
   ExecutiveSummary,
   ExecutiveTab,
 } from "../../services/executive-dashboard.service";
+import type { InsightRun } from "../../services/aiInsights.service";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -73,6 +76,57 @@ const toneMutedBg = (tone?: string) => {
 
 const toneLabel = (tone?: string) =>
   tone === "positive" ? "Good" : tone === "warning" ? "Watch" : tone === "danger" ? "Risk" : "Live";
+
+type AiInsightBulletin = {
+  runId: number;
+  title: string;
+  subtitle: string;
+  bullets: string[];
+};
+
+const buildAiInsightBulletin = (run: InsightRun | null): AiInsightBulletin | null => {
+  if (!run || run.status !== "COMPLETED" || !run.result) return null;
+  const result = run.result as Record<string, unknown>;
+  const sections = Array.isArray(result.sections)
+    ? (result.sections as { title?: string; content?: string }[])
+    : [];
+  const recommendations = Array.isArray(result.recommendations)
+    ? (result.recommendations as string[])
+    : [];
+  const keyMetrics = Array.isArray(result.keyMetrics)
+    ? (result.keyMetrics as { label?: string; value?: string }[])
+    : [];
+
+  const bullets = [
+    ...(typeof result.headline === "string" ? [result.headline] : []),
+    ...sections.flatMap((section) =>
+      typeof section?.content === "string"
+        ? [`${section.title ? `${section.title}: ` : ""}${section.content}`]
+        : [],
+    ),
+    ...recommendations.filter((item): item is string => typeof item === "string"),
+    ...keyMetrics.flatMap((metric) =>
+      metric?.label && metric?.value ? [`${metric.label}: ${metric.value}`] : [],
+    ),
+  ]
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  if (!bullets.length) return null;
+
+  return {
+    runId: run.id,
+    title: run.template?.name || "Recent AI Insight",
+    subtitle: run.completedAt
+      ? new Date(run.completedAt).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+        })
+      : "Latest completed run",
+    bullets,
+  };
+};
 
 // ─── Pillar definitions ───────────────────────────────────────────────────────
 
@@ -198,14 +252,131 @@ function KpiChip({ metric, onClick }: { metric: ExecutiveMetric; onClick?: () =>
   );
 }
 
+function AiInsightBulletinChip({
+  bulletin,
+  onClick,
+}: {
+  bulletin: AiInsightBulletin | null;
+  onClick?: () => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [marqueeSeconds, setMarqueeSeconds] = useState(0);
+  const [shouldMarquee, setShouldMarquee] = useState(false);
+  const textViewportRef = useRef<HTMLDivElement | null>(null);
+  const textTrackRef = useRef<HTMLParagraphElement | null>(null);
+  const clickable = Boolean(onClick);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [bulletin?.runId]);
+
+  useEffect(() => {
+    if (!bulletin || bulletin.bullets.length <= 1) return;
+    const currentBullet = bulletin.bullets[activeIndex] || "";
+    const displayMs = Math.max(3600, currentBullet.length * 85);
+    const intervalId = window.setTimeout(() => {
+      setActiveIndex((current) => (current + 1) % bulletin.bullets.length);
+    }, displayMs);
+    return () => window.clearTimeout(intervalId);
+  }, [activeIndex, bulletin]);
+
+  const currentBullet =
+    bulletin?.bullets[activeIndex] ||
+    "Run an AI insight to see recent executive bulletins here.";
+
+  useEffect(() => {
+    const viewport = textViewportRef.current;
+    const track = textTrackRef.current;
+    if (!viewport || !track) {
+      setShouldMarquee(false);
+      return;
+    }
+    const overflow = track.scrollWidth - viewport.clientWidth;
+    if (overflow > 18) {
+      setShouldMarquee(true);
+      setMarqueeSeconds(Math.max(7, currentBullet.length * 0.12));
+    } else {
+      setShouldMarquee(false);
+      setMarqueeSeconds(0);
+    }
+  }, [currentBullet]);
+
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={clickable ? onClick : undefined}
+      className="group relative flex h-[118px] w-full flex-col overflow-hidden rounded-2xl px-4 py-3 text-left transition"
+      style={{
+        background: "linear-gradient(135deg, rgba(15,118,110,0.08), rgba(59,130,246,0.08))",
+        border: "1px solid var(--color-border-default)",
+        boxShadow: "var(--card-shadow)",
+        cursor: clickable ? "pointer" : "default",
+      }}
+      onMouseEnter={e => { if (clickable) (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow-hover)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow)"; }}
+    >
+      <div className="absolute inset-x-0 top-0 h-0.5 rounded-t-2xl"
+        style={{ background: "linear-gradient(90deg, var(--color-secondary), var(--color-primary))" }} />
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+          style={{ color: "var(--color-text-muted)" }}>
+          AI Insight
+        </div>
+        <div className="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold"
+          style={{ background: "var(--color-surface-card)", color: "var(--color-secondary)" }}>
+          {bulletin ? `${activeIndex + 1}/${bulletin.bullets.length}` : "AI"}
+        </div>
+      </div>
+
+      <div className="mt-2 flex min-h-[74px] items-start gap-2 rounded-xl px-3 py-2.5"
+        style={{ background: "rgba(255,255,255,0.7)", border: "1px solid var(--color-border-subtle)" }}>
+        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: "var(--color-secondary)" }} />
+        <div ref={textViewportRef} className="min-w-0 flex-1 overflow-hidden">
+          <p
+            ref={textTrackRef}
+            className="text-[12px] leading-5 whitespace-nowrap"
+            style={{
+              color: "var(--color-text-secondary)",
+              animation: shouldMarquee
+                ? `dashboard-ai-marquee ${marqueeSeconds}s linear infinite alternate`
+                : "none",
+            }}
+          >
+            {currentBullet}
+          </p>
+        </div>
+      </div>
+
+      {clickable && (
+        <ArrowUpRight className="absolute right-3 bottom-3 h-3.5 w-3.5 transition group-hover:scale-110"
+          style={{ color: "var(--color-text-muted)" }} />
+      )}
+      <style>{`
+        @keyframes dashboard-ai-marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(calc(-100% + 420px)); }
+        }
+      `}</style>
+    </button>
+  );
+}
+
 // ─── Pillar Top KPI Bar ───────────────────────────────────────────────────────
 
 function PillarKpiBar({ section }: {
   section: ExecutiveSection;
 }) {
+  const kpis =
+    section.kpis.some((metric) => metric.key === "woIssuedValue") &&
+    section.kpis.some((metric) => /delay/i.test(metric.key) || /delay/i.test(metric.label))
+      ? section.kpis.filter((metric) => !(/delay/i.test(metric.key) || /delay/i.test(metric.label)))
+      : section.kpis;
+
   return (
     <div className="grid grid-cols-3 gap-2 mt-4">
-      {section.kpis.slice(0, 3).map((m) => (
+      {kpis.slice(0, 3).map((m) => (
         <div key={m.key} className="rounded-xl px-3 py-2.5"
           style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)" }}>
           <div className="text-[9px] font-bold uppercase tracking-[0.2em] mb-1"
@@ -456,14 +627,31 @@ function ItemList({ title, icon: Icon, items, onNavigate }: {
 
 // ─── Pillar Section Column ────────────────────────────────────────────────────
 
-function PillarColumn({ pillarKey, section, onNavigate, isDark }: {
+function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview }: {
   pillarKey: keyof typeof PILLAR;
   section: ExecutiveSection;
   onNavigate: (route?: string) => void;
   isDark: boolean;
+  progressPreview?: {
+    projectId: number;
+    projectName: string;
+    subtitle?: string;
+  } | null;
 }) {
   const theme = PILLAR[pillarKey];
   const Icon = theme.icon;
+  const delayedMetric = section.kpis.find(
+    (metric) => /delay/i.test(metric.key) || /delay/i.test(metric.label),
+  );
+  const displayMetrics =
+    pillarKey === "progressExecution"
+      ? ["budgetValue", "woIssuedValue", "burnValue"]
+          .map((key) => section.kpis.find((metric) => metric.key === key))
+          .filter((metric): metric is ExecutiveMetric => Boolean(metric))
+      : delayedMetric
+        ? [...section.kpis.filter((metric) => metric.key !== delayedMetric.key), delayedMetric]
+        : section.kpis;
+  const previewMetrics = displayMetrics;
 
   return (
     <div className="flex flex-col overflow-hidden rounded-3xl"
@@ -497,13 +685,33 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark }: {
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-4 p-4">
-        {/* Metric cards grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {section.kpis.map((m) => (
-            <MetricDetailCard key={m.key} metric={m} pillarKey={pillarKey}
-              onClick={() => onNavigate(m.route)} />
-          ))}
-        </div>
+        {pillarKey === "progressExecution" && progressPreview ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="row-span-2 overflow-hidden rounded-2xl"
+              style={{ background: "var(--color-surface-base)", border: "1px solid var(--color-border-subtle)" }}>
+              <ProjectProgress3DPanel
+                projectId={progressPreview.projectId}
+                projectName={progressPreview.projectName}
+                subtitle={progressPreview.subtitle}
+                autoRotate
+                autoRotateSpeed={2.2}
+                viewerClassName="h-[344px]"
+              />
+            </div>
+
+            {previewMetrics.map((m) => (
+              <MetricDetailCard key={m.key} metric={m} pillarKey={pillarKey}
+                onClick={() => onNavigate(m.route)} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {displayMetrics.map((m) => (
+              <MetricDetailCard key={m.key} metric={m} pillarKey={pillarKey}
+                onClick={() => onNavigate(m.route)} />
+            ))}
+          </div>
+        )}
 
         {/* Trend chart */}
         <TrendPanel section={section} pillarKey={pillarKey} isDark={isDark} />
@@ -609,9 +817,11 @@ export default function ExecutiveDashboard() {
   const [dateFrom, setDateFrom] = useState(getMonthStart());
   const [dateTo, setDateTo] = useState(getToday());
   const [summary, setSummary] = useState<ExecutiveSummary | null>(null);
+  const [recentInsightRun, setRecentInsightRun] = useState<InsightRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
 
   const loadCompanies = async () => { const r = await executiveDashboardApi.getCompanies(); setCompanyOptions(r.data); };
   const loadProjects = async (cid?: number | null) => {
@@ -621,7 +831,9 @@ export default function ExecutiveDashboard() {
   };
 
   useEffect(() => { loadCompanies().catch(() => undefined); }, []);
-  useEffect(() => { loadProjects(selectedCompanyId).catch(() => undefined); }, [selectedCompanyId]);
+  useEffect(() => {
+    loadProjects(tab === "enterprise" ? null : selectedCompanyId).catch(() => undefined);
+  }, [tab, selectedCompanyId]);
   useEffect(() => {
     if (tab === "company" && !selectedCompanyId && companyOptions.length > 0)
       setSelectedCompanyId(companyOptions[0].id);
@@ -650,11 +862,85 @@ export default function ExecutiveDashboard() {
 
   const refreshAll = async () => {
     setLoading(true); setError(null);
-    try { await Promise.all([loadCompanies(), loadProjects(selectedCompanyId)]); setRefreshTick((v) => v + 1); }
+    try {
+      await Promise.all([
+        loadCompanies(),
+        loadProjects(tab === "enterprise" ? null : selectedCompanyId),
+      ]);
+      setRefreshTick((v) => v + 1);
+    }
     finally { setLoading(false); }
   };
 
   const onNavigate = (route?: string) => { if (route) navigate(route); };
+  const previewProjects = useMemo(() => {
+    if (tab === "project") {
+      if (selectedProjectId) {
+        const selectedProject = projectOptions.find((project) => project.id === selectedProjectId);
+        if (selectedProject) return [selectedProject];
+      }
+      if (summary?.scope.projectId && summary.scope.projectName) {
+        return [{
+          id: summary.scope.projectId,
+          name: summary.scope.projectName,
+          companyName: summary.scope.companyName,
+        }];
+      }
+      return [];
+    }
+    return projectOptions;
+  }, [projectOptions, selectedProjectId, summary, tab]);
+  const activePreviewProject = previewProjects[activePreviewIndex] ?? null;
+  const activePreviewSubtitle = useMemo(() => {
+    if (!activePreviewProject) return "";
+    if (tab === "enterprise") return activePreviewProject.companyName || "Enterprise 3D progress preview";
+    if (tab === "company") return summary?.scope.companyName || activePreviewProject.companyName || "Company 3D progress preview";
+    return "Project 3D progress preview";
+  }, [activePreviewProject, summary, tab]);
+  useEffect(() => {
+    const loadRecentInsight = async () => {
+      try {
+        const params =
+          tab === "project" && selectedProjectId
+            ? { projectId: selectedProjectId, page: 1, limit: 8 }
+            : { page: 1, limit: 8 };
+        const response = await aiInsightsService.listRuns(params);
+        const latestCompleted = response.runs.find((run) => run.status === "COMPLETED" && run.result);
+        setRecentInsightRun(latestCompleted || null);
+      } catch {
+        setRecentInsightRun(null);
+      }
+    };
+    void loadRecentInsight();
+  }, [tab, selectedProjectId, refreshTick]);
+  const executiveHeadlineMetrics = useMemo(() => {
+    const headline = summary?.headline ?? [];
+    return headline.filter(
+      (metric) =>
+        !/companies/i.test(metric.key) &&
+        !/companies/i.test(metric.label) &&
+        !/projects/i.test(metric.key) &&
+        !/projects/i.test(metric.label) &&
+        !/delayedprojects/i.test(metric.key) &&
+        !/delayed projects/i.test(metric.label),
+    );
+  }, [summary]);
+  const recentInsightBulletin = useMemo(
+    () => buildAiInsightBulletin(recentInsightRun),
+    [recentInsightRun],
+  );
+
+  useEffect(() => {
+    setActivePreviewIndex(0);
+  }, [previewProjects.map((project) => project.id).join("|")]);
+
+  useEffect(() => {
+    if (tab === "project" || previewProjects.length <= 1) return;
+    const intervalId = window.setInterval(() => {
+      setActivePreviewIndex((current) => (current + 1) % previewProjects.length);
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [previewProjects, tab]);
 
   const TAB_ITEMS = useMemo(() => [
     { key: "enterprise" as const, label: "Enterprise", icon: Building2 },
@@ -786,16 +1072,40 @@ export default function ExecutiveDashboard() {
               </div>
 
               {/* KPI chips strip */}
-              <div className="flex gap-3 overflow-x-auto pb-1">
-                {summary.headline.map((m) => (
-                  <KpiChip key={m.key} metric={m} onClick={() => onNavigate(m.route)} />
-                ))}
+              <div className="flex items-stretch gap-3 pb-1">
+                <div className="flex shrink-0 gap-3">
+                  {executiveHeadlineMetrics.map((m) => (
+                    <KpiChip key={m.key} metric={m} onClick={() => onNavigate(m.route)} />
+                  ))}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <AiInsightBulletinChip
+                    bulletin={recentInsightBulletin}
+                    onClick={() =>
+                      navigate(
+                        recentInsightBulletin
+                          ? `/dashboard/ai-insights/runs/${recentInsightBulletin.runId}`
+                          : "/dashboard/ai-insights",
+                      )
+                    }
+                  />
+                </div>
               </div>
             </div>
 
             {/* 3 Pillar Columns */}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <PillarColumn pillarKey="progressExecution" section={summary.progressExecution} onNavigate={onNavigate} isDark={isDarkTheme} />
+              <PillarColumn
+                pillarKey="progressExecution"
+                section={summary.progressExecution}
+                onNavigate={onNavigate}
+                isDark={isDarkTheme}
+                progressPreview={activePreviewProject ? {
+                  projectId: activePreviewProject.id,
+                  projectName: activePreviewProject.name,
+                  subtitle: activePreviewSubtitle,
+                } : null}
+              />
               <PillarColumn pillarKey="quality"           section={summary.quality}           onNavigate={onNavigate} isDark={isDarkTheme} />
               <PillarColumn pillarKey="ehs"               section={summary.ehs}               onNavigate={onNavigate} isDark={isDarkTheme} />
             </div>

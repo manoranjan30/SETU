@@ -18,6 +18,8 @@ import { MicroDailyLogService } from './micro-daily-log.service';
 import { MicroLedgerService } from './micro-ledger.service';
 import { MicroScheduleController } from './micro-schedule.controller';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
+import { ExecutionProgressEntry } from '../execution/entities/execution-progress-entry.entity';
+import { ExecutionProgressAdjustment } from '../execution/entities/execution-progress-adjustment.entity';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
       EpsNode,
       User,
       WoActivityPlan,
+      ExecutionProgressEntry,
+      ExecutionProgressAdjustment,
     ]),
   ],
   controllers: [MicroScheduleController],

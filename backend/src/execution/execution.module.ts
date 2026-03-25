@@ -19,6 +19,9 @@ import { EpsNode } from '../eps/eps.entity';
 import { WorkOrderItem } from '../workdoc/entities/work-order-item.entity';
 import { WorkOrder } from '../workdoc/entities/work-order.entity';
 import { Vendor } from '../workdoc/entities/vendor.entity';
+import { ExecutionProgressEntry } from './entities/execution-progress-entry.entity';
+import { ExecutionProgressAdjustment } from './entities/execution-progress-adjustment.entity';
+import { WbsNode } from '../wbs/entities/wbs.entity';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
       WorkOrderItem,
       WorkOrder,
       Vendor,
+      ExecutionProgressEntry,
+      ExecutionProgressAdjustment,
+      WbsNode,
     ]),
     BoqModule,
     MicroScheduleModule,

@@ -157,10 +157,9 @@ export class TowerProgressService {
         .where('act.projectId = :projectId', { projectId })
         .andWhere(
           new Brackets((qb) => {
-            qb.where('boqItem.epsNodeId IN (:...scopeIds)', { scopeIds }).orWhere(
-              'meas.epsNodeId IN (:...scopeIds)',
-              { scopeIds },
-            );
+            qb.where('plan.execution_eps_node_id IN (:...scopeIds)', { scopeIds })
+              .orWhere('boqItem.epsNodeId IN (:...scopeIds)', { scopeIds })
+              .orWhere('meas.epsNodeId IN (:...scopeIds)', { scopeIds });
           }),
         )
         .select([

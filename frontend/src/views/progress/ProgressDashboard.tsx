@@ -91,6 +91,27 @@ const ProgressDashboard = () => {
       setInsights(insightsRes.data);
     } catch (err) {
       console.error("Failed to fetch progress dashboard data", err);
+      setBurnStats({
+        today: 0,
+        thisWeek: 0,
+        thisMonth: 0,
+        total: 0,
+        trends: {},
+      });
+      setPlanVsAchieved({
+        planned: 0,
+        achieved: 0,
+        variance: 0,
+        status: "Unavailable",
+      });
+      setScheduleDiff({
+        revisions: { v1: "Baseline", v2: "Rev 1" },
+        changes: [],
+      });
+      setInsights({
+        topBurners: [],
+        alerts: [],
+      });
     } finally {
       setLoading(false);
     }

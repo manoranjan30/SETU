@@ -387,7 +387,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     // Fetch activities for this EPS node from the backend.
     // GET /planning/:epsNodeId/execution-ready — same endpoint the web app uses.
     try {
-      final response = await _apiClient.getExecutionReadyActivities(event.node.id);
+      final response = await _apiClient.getExecutionReadyActivities(currentState.project.id, event.node.id);
       final seen = <int>{};
       final activities = response
           .map<Activity>((raw) {
@@ -526,7 +526,7 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
       // Re-fetch activities for the CURRENT node — same endpoint as navigation.
       // (The old code wrongly called getProjectActivities which is deprecated.)
       final activitiesResponse = await _apiClient
-          .getExecutionReadyActivities(currentState.currentNode.id);
+          .getExecutionReadyActivities(currentState.project.id, currentState.currentNode.id);
       final seen = <int>{};
       final activities = activitiesResponse
           .map<Activity>((raw) {

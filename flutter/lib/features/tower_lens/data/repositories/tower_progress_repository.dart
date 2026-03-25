@@ -137,7 +137,7 @@ class TowerProgressRepository {
       // Each call is wrapped in catchError so one failure doesn't block others
       final results = await Future.wait([
         _api
-            .getExecutionReadyActivities(epsNodeId)
+            .getExecutionReadyActivities(projectId, epsNodeId)
             .catchError((_) => <dynamic>[]),
         _api
             .getQualitySiteObs(projectId: projectId, limit: 200)

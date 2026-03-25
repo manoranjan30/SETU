@@ -13,6 +13,7 @@ import { Vendor } from '../../workdoc/entities/vendor.entity';
 import { BoqItem } from '../../boq/entities/boq-item.entity';
 import { Activity } from '../../wbs/entities/activity.entity';
 import { MeasurementElement } from '../../boq/entities/measurement-element.entity';
+import { EpsNode } from '../../eps/eps.entity';
 
 export enum PlanningBasis {
   INITIAL = 'INITIAL',
@@ -84,6 +85,13 @@ export class WoActivityPlan {
 
   @Column({ name: 'measurement_id', nullable: true })
   measurementId: number;
+
+  @ManyToOne(() => EpsNode, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'execution_eps_node_id' })
+  executionEpsNode: EpsNode | null;
+
+  @Column({ name: 'execution_eps_node_id', nullable: true })
+  executionEpsNodeId: number | null;
 
   // Sub-item level granularity (backward compat with planning service)
   @Column({ nullable: true })
