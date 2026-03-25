@@ -165,118 +165,150 @@ class IsometricBuildingPainter extends CustomPainter {
   void _drawSolidFloor(Canvas canvas, int i, double cx, double baseY) {
     final isSelected = model.selectedFloorIndex == i;
     final lift = isSelected ? selectedLift : 0.0;
-    final v = _getVertices(i, cx, baseY, liftPx: lift);
     final floor = model.floors[i];
-
     final topColor = model.resolveTopColor(i);
     final outlineColor = model.resolveOutlineColor(i);
 
-    // Ghost floors (0% and no activities) still draw as solid but transparent
     if (model.isGhost(i)) {
       _drawGhostFloor(canvas, i, cx, baseY);
       return;
     }
 
-    // ── Right visible face (front-right) ──────────────────────────
-    // Vertices: back → right → rightBot → backBot  (right side of building)
+    final outlinePaint = Paint()
+      ..color = outlineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = isSelected ? 1.8 : 0.8;
+
+    // ── Try real-coordinate polygon path ──────────────────────────
+    final polygon = _parsePolygon(floor.coordinatesText);
+    if (polygon != null && polygon.length >= 3) {
+      final uom = floor.coordinateUom ?? 'mm';
+      final isoScale = _computeIsoScale(polygon, uom, _floorWidth);
+      final zTop = ((i + 1) * _floorHeight + lift);
+      final zBot = (i * _floorHeight + lift);
+      final projected = _projectPolygon(
+          polygon, uom, cx, baseY, zTop, zTop - zBot, isoScale);
+
+      // Draw side faces first (painter's algorithm — behind top)
+      _drawPolygonSides(
+          canvas, projected.topPts, projected.botPts, topColor, outlinePaint);
+
+      // Top face fill
+      canvas.drawPath(projected.top, Paint()
+        ..color = topColor
+        ..style = PaintingStyle.fill);
+      canvas.drawPath(projected.top, outlinePaint);
+
+      hitAreas.add(FloorHitArea(
+        floorIndex: i,
+        topFacePath: projected.top,
+        frontFacePath: projected.top,
+      ));
+      return;
+    }
+
+    // ── Fallback: hardcoded diamond ───────────────────────────────
+    final v = _getVertices(i, cx, baseY, liftPx: lift);
+
     final rightFacePath = Path()
       ..moveTo(v.back.dx,     v.back.dy)
       ..lineTo(v.right.dx,    v.right.dy)
       ..lineTo(v.rightBot.dx, v.rightBot.dy)
       ..lineTo(v.backBot.dx,  v.backBot.dy)
       ..close();
-
-    final rightColor = _darken(topColor, 0.45);
     canvas.drawPath(rightFacePath, Paint()
-      ..color = rightColor
+      ..color = _darken(topColor, 0.45)
       ..style = PaintingStyle.fill);
 
-    // ── Left visible face (front-left) ────────────────────────────
-    // Vertices: left → front → frontBot → leftBot  (left side of building)
     final leftFacePath = Path()
       ..moveTo(v.left.dx,     v.left.dy)
       ..lineTo(v.front.dx,    v.front.dy)
       ..lineTo(v.frontBot.dx, v.frontBot.dy)
       ..lineTo(v.leftBot.dx,  v.leftBot.dy)
       ..close();
-
-    final leftColor = _darken(topColor, 0.28);
     canvas.drawPath(leftFacePath, Paint()
-      ..color = leftColor
+      ..color = _darken(topColor, 0.28)
       ..style = PaintingStyle.fill);
 
-    // ── Top face (rhombus / diamond) ──────────────────────────────
     final topFacePath = Path()
       ..moveTo(v.back.dx,  v.back.dy)
       ..lineTo(v.right.dx, v.right.dy)
       ..lineTo(v.front.dx, v.front.dy)
       ..lineTo(v.left.dx,  v.left.dy)
       ..close();
-
     canvas.drawPath(topFacePath, Paint()
       ..color = topColor
       ..style = PaintingStyle.fill);
 
-    // ── Progress fill bar on front face (visible when zoomed in) ──
     if (scale > 1.3 && floor.progressPct > 0 && floor.progressPct < 100) {
       _drawProgressFillBar(canvas, i, v, floor.progressPct);
     }
 
-    // ── Outline strokes ───────────────────────────────────────────
-    final outlinePaint = Paint()
-      ..color = outlineColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = isSelected ? 1.8 : 0.8;
-
-    // Top face outline
     canvas.drawPath(topFacePath, outlinePaint);
-
-    // Visible vertical edges (right and left)
     canvas.drawLine(v.back, v.backBot, outlinePaint);
     canvas.drawLine(v.right, v.rightBot, outlinePaint);
     canvas.drawLine(v.left, v.leftBot, outlinePaint);
     canvas.drawLine(v.front, v.frontBot, outlinePaint);
-
-    // Bottom edge of visible faces
     canvas.drawLine(v.backBot, v.rightBot, outlinePaint);
     canvas.drawLine(v.leftBot, v.frontBot, outlinePaint);
     canvas.drawLine(v.rightBot, v.frontBot, outlinePaint);
 
-    // ── Register hit area for tap detection ───────────────────────
     hitAreas.add(FloorHitArea(
       floorIndex: i,
       topFacePath: topFacePath,
-      frontFacePath: leftFacePath, // front-left is the most tapable face
+      frontFacePath: leftFacePath,
     ));
   }
 
   // ─── Ghost (wireframe) floor ──────────────────────────────────────────────
 
   void _drawGhostFloor(Canvas canvas, int i, double cx, double baseY) {
-    final v = _getVertices(i, cx, baseY);
-
+    final floor = model.floors.length > i ? model.floors[i] : null;
     final ghostPaint = Paint()
       ..color = const Color(0xFF9CA3AF).withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
 
-    // Draw dashed outline for top face diamond
+    // Use real polygon outline when coordinates are available
+    final polygon = _parsePolygon(floor?.coordinatesText);
+    if (polygon != null && polygon.length >= 3) {
+      final uom = floor?.coordinateUom ?? 'mm';
+      final isoScale = _computeIsoScale(polygon, uom, _floorWidth);
+      final zTop = (i + 1) * _floorHeight.toDouble();
+      final zBot = i * _floorHeight.toDouble();
+      final projected = _projectPolygon(
+          polygon, uom, cx, baseY, zTop, zTop - zBot, isoScale);
+
+      // Top and bottom outlines
+      _drawDashedPath(canvas, projected.topPts, ghostPaint);
+      _drawDashedPath(canvas, projected.botPts, ghostPaint);
+      // Vertical edges (sample 4 corners evenly)
+      final step = math.max(1, projected.topPts.length ~/ 4);
+      for (int k = 0; k < projected.topPts.length; k += step) {
+        _drawDashedLine(
+            canvas, projected.topPts[k], projected.botPts[k], ghostPaint);
+      }
+      hitAreas.add(FloorHitArea(
+        floorIndex: i,
+        topFacePath: projected.top,
+        frontFacePath: projected.top,
+      ));
+      return;
+    }
+
+    // Fallback: diamond ghost
+    final v = _getVertices(i, cx, baseY);
     _drawDashedLine(canvas, v.back, v.right, ghostPaint);
     _drawDashedLine(canvas, v.right, v.front, ghostPaint);
     _drawDashedLine(canvas, v.front, v.left, ghostPaint);
     _drawDashedLine(canvas, v.left, v.back, ghostPaint);
-
-    // Vertical edges
     _drawDashedLine(canvas, v.back, v.backBot, ghostPaint);
     _drawDashedLine(canvas, v.right, v.rightBot, ghostPaint);
     _drawDashedLine(canvas, v.left, v.leftBot, ghostPaint);
     _drawDashedLine(canvas, v.front, v.frontBot, ghostPaint);
-
-    // Bottom edges
     _drawDashedLine(canvas, v.backBot, v.rightBot, ghostPaint);
     _drawDashedLine(canvas, v.leftBot, v.frontBot, ghostPaint);
 
-    // Register hit area so ghost floors are also tappable
     final topFacePath = Path()
       ..moveTo(v.back.dx, v.back.dy)
       ..lineTo(v.right.dx, v.right.dy)
@@ -288,6 +320,14 @@ class IsometricBuildingPainter extends CustomPainter {
       topFacePath: topFacePath,
       frontFacePath: topFacePath,
     ));
+  }
+
+  /// Draws a dashed polygon outline through a list of screen points.
+  void _drawDashedPath(Canvas canvas, List<Offset> pts, Paint paint) {
+    if (pts.length < 2) return;
+    for (int i = 0; i < pts.length; i++) {
+      _drawDashedLine(canvas, pts[i], pts[(i + 1) % pts.length], paint);
+    }
   }
 
   // ─── Overlay markers ─────────────────────────────────────────────────────
@@ -468,6 +508,152 @@ class IsometricBuildingPainter extends CustomPainter {
       (color.green * factor).round().clamp(0, 255),
       (color.blue * factor).round().clamp(0, 255),
     );
+  }
+
+  // ─── Coordinate helpers ───────────────────────────────────────────────────
+
+  /// Converts a UOM-specific value to metres.
+  static double _toMetres(double value, String uom) {
+    switch (uom.toLowerCase()) {
+      case 'mm':
+        return value / 1000.0;
+      case 'cm':
+        return value / 100.0;
+      default:
+        return value; // already metres
+    }
+  }
+
+  /// Parses a [coordinatesText] JSON string (e.g. "[[0,0],[25000,0],[25000,20000],[0,20000]]"
+  /// or a flat array "[0,0,25000,0,25000,20000,0,20000]") into a list of [Offset]
+  /// world points in the floor's own UOM.  Returns null when text is empty or
+  /// yields fewer than 3 points (not a polygon).
+  static List<Offset>? _parsePolygon(String? text) {
+    if (text == null || text.trim().isEmpty) return null;
+    final nums = RegExp(r'-?\d+(?:\.\d+)?')
+        .allMatches(text)
+        .map((m) => double.parse(m.group(0)!))
+        .toList();
+    if (nums.length < 6) return null; // need at least 3 (x,y) pairs
+    final pts = <Offset>[];
+    for (int i = 0; i + 1 < nums.length; i += 2) {
+      pts.add(Offset(nums[i], nums[i + 1]));
+    }
+    return pts;
+  }
+
+  /// Projects a world polygon (UOM → metres → screen px) onto isometric 2.5D.
+  ///
+  /// Isometric projection (same camera angle as the web THREE.js viewer):
+  ///   screenX = cx + (wx - wy) * isoScale * cos30
+  ///   screenY = (baseY - z) + (wx + wy) * isoScale * sin30
+  /// where cos30 ≈ 0.866, sin30 = 0.5 and [isoScale] maps metres to pixels.
+  ///
+  /// Returns a projected [Path] for the TOP face at elevation [zPx] and a
+  /// separate projected [Path] for the BOTTOM face at elevation [zPx - fh].
+  ({Path top, Path bottom, List<Offset> topPts, List<Offset> botPts})
+      _projectPolygon(
+    List<Offset> worldPts,
+    String uom,
+    double cx,
+    double baseY,
+    double zPx,
+    double floorHeightPx,
+    double isoScale,
+  ) {
+    const cos30 = 0.8660254;
+    const sin30 = 0.5;
+
+    List<Offset> project(double z) => worldPts.map((p) {
+          final wx = _toMetres(p.dx, uom);
+          final wy = _toMetres(p.dy, uom);
+          return Offset(
+            cx + (wx - wy) * isoScale * cos30,
+            (baseY - z) + (wx + wy) * isoScale * sin30,
+          );
+        }).toList();
+
+    final topPts = project(zPx);
+    final botPts = project(zPx - floorHeightPx);
+
+    Path toPath(List<Offset> pts) {
+      final path = Path();
+      if (pts.isEmpty) return path;
+      path.moveTo(pts.first.dx, pts.first.dy);
+      for (int i = 1; i < pts.length; i++) {
+        path.lineTo(pts[i].dx, pts[i].dy);
+      }
+      path.close();
+      return path;
+    }
+
+    return (
+      top: toPath(topPts),
+      bottom: toPath(botPts),
+      topPts: topPts,
+      botPts: botPts,
+    );
+  }
+
+  /// Computes [isoScale]: pixels per metre so the polygon fits in [targetPx].
+  /// The polygon's world bounding box diagonal maps to [targetPx] on screen.
+  static double _computeIsoScale(
+      List<Offset> worldPts, String uom, double targetPx) {
+    if (worldPts.isEmpty) return 1.0;
+    double minX = worldPts.first.dx, maxX = worldPts.first.dx;
+    double minY = worldPts.first.dy, maxY = worldPts.first.dy;
+    for (final p in worldPts) {
+      if (p.dx < minX) minX = p.dx;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+    final wM = _toMetres(maxX - minX, uom);
+    final dM = _toMetres(maxY - minY, uom);
+    final diagonal = math.sqrt(wM * wM + dM * dM);
+    if (diagonal == 0) return 1.0;
+    return targetPx / (diagonal * 1.2); // slight padding factor
+  }
+
+  /// Draws visible side faces for a polygon floor (edges facing the viewer).
+  /// In standard isometric view, the "front" half of the bottom edge is visible.
+  void _drawPolygonSides(
+    Canvas canvas,
+    List<Offset> topPts,
+    List<Offset> botPts,
+    Color topColor,
+    Paint outlinePaint,
+  ) {
+    if (topPts.length != botPts.length || topPts.isEmpty) return;
+    final n = topPts.length;
+
+    // Draw a side quad for every edge of the polygon.
+    // Colour the right-facing side darker and the left-facing side darkest.
+    for (int i = 0; i < n; i++) {
+      final j = (i + 1) % n;
+      final t0 = topPts[i];
+      final t1 = topPts[j];
+      final b0 = botPts[i];
+      final b1 = botPts[j];
+
+      // Edges going to the right (positive dx) are the "right" face (darker);
+      // edges going left are the "left" face (slightly lighter).
+      final dx = t1.dx - t0.dx;
+      final shadeFactor = dx >= 0 ? 0.45 : 0.28;
+
+      final faceColor = _darken(topColor, shadeFactor);
+      final facePath = Path()
+        ..moveTo(t0.dx, t0.dy)
+        ..lineTo(t1.dx, t1.dy)
+        ..lineTo(b1.dx, b1.dy)
+        ..lineTo(b0.dx, b0.dy)
+        ..close();
+
+      canvas.drawPath(facePath, Paint()
+        ..color = faceColor
+        ..style = PaintingStyle.fill);
+      canvas.drawPath(facePath, outlinePaint);
+    }
   }
 
   @override

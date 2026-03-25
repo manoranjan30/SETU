@@ -35,10 +35,12 @@ class SetuApiClient {
         // Base URL resolved from ApiEndpoints (compile-time dart-define or
         // runtime override set by ServerConfigService before this constructor runs).
         baseUrl: ApiEndpoints.baseUrl,
-        // 30 s timeouts cover slow mobile connections without hanging the UI forever.
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 30),
+        // 10 s timeouts: if no response in 10 s the device is effectively offline.
+        // The _ErrorInterceptor maps connectionTimeout/receiveTimeout to
+        // ApiException.networkError so BLoCs treat them as offline → queue.
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 10),
         headers: {
           // Tell the backend we are sending and expecting JSON for all requests.
           'Content-Type': 'application/json',
@@ -228,6 +230,15 @@ class SetuApiClient {
       },
     );
     return response.data;
+  }
+
+  /// Marks a planning activity as fully COMPLETED.
+  ///
+  /// Sets the activity status to COMPLETED and records today as the actual
+  /// finish date on the backend. Mirrors the web app's "Mark Complete" button.
+  /// Throws [ApiException] if the user lacks permission or the request fails.
+  Future<void> markActivityComplete(int activityId) async {
+    await _dio.post(ApiEndpoints.activityComplete(activityId));
   }
 
   /// Returns all progress logs awaiting approval by the current user's role.
@@ -1104,7 +1115,19 @@ class SetuApiClient {
       final response = await _dio.get(ApiEndpoints.towerProgress(projectId));
       return response.data as Map<String, dynamic>?;
     } catch (_) {
-      // Endpoint may not exist yet — repository falls back to parallel calls
+      return null;
+    }
+  }
+
+  /// Fetches building coordinate polygons for every EPS node in the project.
+  /// Returns the nested tree with [coordinatesText], [coordinateUom], and
+  /// [heightMeters] per node. Returns null on failure (coordinates optional).
+  Future<Map<String, dynamic>?> getBuildingLineCoordinates(int projectId) async {
+    try {
+      final response =
+          await _dio.get(ApiEndpoints.buildingLineCoordinates(projectId));
+      return response.data as Map<String, dynamic>?;
+    } catch (_) {
       return null;
     }
   }

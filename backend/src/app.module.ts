@@ -127,6 +127,7 @@ import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
 import { DrawingRegister } from './design/entities/drawing-register.entity';
 import { DrawingRevision } from './design/entities/drawing-revision.entity';
+import { DrawingOpenReceipt } from './design/entities/drawing-open-receipt.entity';
 import { WorkDocModule } from './workdoc/workdoc.module';
 import { Vendor } from './workdoc/entities/vendor.entity';
 import { WorkOrder } from './workdoc/entities/work-order.entity';
@@ -299,6 +300,7 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
         DrawingCategory,
         DrawingRegister,
         DrawingRevision,
+        DrawingOpenReceipt,
         SystemSetting,
         // WorkDoc
         Vendor,

@@ -31,6 +31,12 @@ class ConnectivitySyncService extends ChangeNotifier {
   /// Holds the connectivity subscription so it can be cancelled on [dispose].
   StreamSubscription<bool>? _connectivitySubscription;
 
+  /// Periodic timer that retries pending sync items every 5 minutes when online.
+  /// Prevents items from staying stuck in the queue if the auto-sync on
+  /// reconnect was missed (e.g. app was already online but items were queued
+  /// by background code while the sync loop was not running).
+  Timer? _retryTimer;
+
   bool _isOnline = true;
   bool _isSyncing = false;
   int _pendingCount = 0;
@@ -109,6 +115,17 @@ class ConnectivitySyncService extends ChangeNotifier {
     // are reflected here without SyncService needing a reference back to this
     // class (avoids a circular dependency).
     _syncService.onStatusChanged = (status) => _onSyncStatusChanged(status);
+
+    // Periodic retry every 5 minutes — catches items that were queued while
+    // the app was already online (e.g. background blocs adding to the queue
+    // between auto-sync cycles) or items that soft-failed on the previous
+    // attempt.
+    _retryTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (_isOnline && !_isSyncing && _pendingCount > 0) {
+        _logger.i('Periodic retry: syncing $_pendingCount pending items...');
+        syncNow();
+      }
+    });
 
     _logger.i(
         'ConnectivitySyncService initialized. Online: $_isOnline, Pending: $_pendingCount');
@@ -272,6 +289,7 @@ class ConnectivitySyncService extends ChangeNotifier {
     // Cancel the connectivity stream subscription to avoid memory leaks and
     // callbacks arriving after the service has been disposed.
     _connectivitySubscription?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 }

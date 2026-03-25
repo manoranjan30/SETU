@@ -363,6 +363,26 @@ class BackgroundDownloadService {
         bytesUsed += await _downloadEhsSiteObs(bytesUsed);
       }
 
+      if (bytesUsed < maxStorageBytes) {
+        // P6: Tower progress (aggregated floor progress per project).
+        // Used by the 3D Tower Lens feature when offline.
+        _emit(DownloadProgress(
+            status: DownloadStatus.downloading,
+            stepLabel: 'Tower progress…',
+            bytesUsed: bytesUsed));
+        bytesUsed += await _downloadTowerProgress(bytesUsed);
+      }
+
+      if (bytesUsed < maxStorageBytes) {
+        // P7: Building coordinate polygons per project.
+        // Used to render actual building footprints in Tower Lens when offline.
+        _emit(DownloadProgress(
+            status: DownloadStatus.downloading,
+            stepLabel: 'Building coordinates…',
+            bytesUsed: bytesUsed));
+        bytesUsed += await _downloadBuildingCoordinates(bytesUsed);
+      }
+
       // Persist the final byte count so the cap guard works on the next run,
       // and record the completion timestamp for the 6-hour cooldown checks.
       await prefs.setInt(prefTotalBytes, bytesUsed);
@@ -495,6 +515,56 @@ class BackgroundDownloadService {
         await _database.cacheEhsSiteObs(
             raw.cast<Map<String, dynamic>>(), projectId);
         totalBytes += jsonEncode(raw).length;
+        if (alreadyUsedBytes + totalBytes >= maxStorageBytes) return totalBytes;
+      }
+      return totalBytes;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Download aggregated tower/floor progress for all known projects.
+  ///
+  /// The response is stored in SharedPreferences (keyed per project) because
+  /// it is read-only cached data — no Drift table is needed. The Tower Lens
+  /// bloc reads from this cache when the network is unavailable.
+  Future<int> _downloadTowerProgress(int alreadyUsedBytes) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final projectIds = await _database.selectOnlyDistinctProjectIds();
+      int totalBytes = 0;
+      for (final projectId in projectIds) {
+        final raw = await _apiClient.getTowerProgress(projectId);
+        if (raw != null) {
+          final encoded = jsonEncode(raw);
+          // Persist as JSON string under a per-project key.
+          await prefs.setString('tower_progress_$projectId', encoded);
+          totalBytes += encoded.length;
+        }
+        if (alreadyUsedBytes + totalBytes >= maxStorageBytes) return totalBytes;
+      }
+      return totalBytes;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Download building coordinate polygons for all known projects.
+  ///
+  /// Stored in SharedPreferences alongside tower progress so the Tower Lens
+  /// painter can render real building footprints without a network call.
+  Future<int> _downloadBuildingCoordinates(int alreadyUsedBytes) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final projectIds = await _database.selectOnlyDistinctProjectIds();
+      int totalBytes = 0;
+      for (final projectId in projectIds) {
+        final raw = await _apiClient.getBuildingLineCoordinates(projectId);
+        if (raw != null) {
+          final encoded = jsonEncode(raw);
+          await prefs.setString('building_coords_$projectId', encoded);
+          totalBytes += encoded.length;
+        }
         if (alreadyUsedBytes + totalBytes >= maxStorageBytes) return totalBytes;
       }
       return totalBytes;

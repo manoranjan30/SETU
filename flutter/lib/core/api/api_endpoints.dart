@@ -227,6 +227,12 @@ class ApiEndpoints {
   static String executionReady(int projectId) =>
       '/planning/$projectId/execution-ready';
 
+  /// POST /planning/activities/:id/complete
+  /// Marks an activity as fully COMPLETED and sets today as the actual finish date.
+  /// Mirrors the web app's "Mark Complete" button on each activity card.
+  static String activityComplete(int activityId) =>
+      '/planning/activities/$activityId/complete';
+
   /// GET /planning/projects/:projectId/activities (NOT USED - endpoint does not exist)
   ///
   /// Kept for reference only. Use [executionReady] instead.
@@ -506,4 +512,11 @@ class ApiEndpoints {
   /// Single optimized endpoint replacing N×3 parallel client-side calls.
   static String towerProgress(int projectId) =>
       '/planning/$projectId/tower-progress';
+
+  /// GET /planning/:projectId/building-line-coordinates
+  /// Returns the EPS node tree with coordinate polygon, UOM, and height data
+  /// for each node (BLOCK / TOWER / FLOOR / UNIT / ROOM).
+  /// Used by [IsometricBuildingPainter] to render real building footprints.
+  static String buildingLineCoordinates(int projectId) =>
+      '/planning/$projectId/building-line-coordinates';
 }
