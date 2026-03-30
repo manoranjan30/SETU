@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/inspection_detail_page.dart';
@@ -175,8 +176,18 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
             return const Center(child: CircularProgressIndicator());
           }
 
+          final isFromCache =
+              state is InspectionsLoaded && state.fromCache;
+
           return Stack(
             children: [
+              if (isFromCache)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: OfflineBanner(),
+                ),
               TabBarView(
                 controller: _tabCtrl,
                 physics: const NeverScrollableScrollPhysics(),

@@ -13,6 +13,9 @@ import UploadModal from "./components/UploadModal";
 import CreateDrawingModal from "./components/CreateDrawingModal";
 import RevisionHistoryModal from "./components/RevisionHistoryModal";
 import PreviewModal from "./components/PreviewModal";
+import { downloadBlob, withFileExtension } from "../../utils/file-download.utils";
+import { resolveRegisteredExportFileName } from "../../utils/export.registry";
+import { exportUtils } from "../../utils/export.utils";
 
 // Register modules
 ModuleRegistry.registerModules([ClientSideRowModelModule, ValidationModule]);
@@ -139,18 +142,77 @@ const DrawingRegister = () => {
           responseType: "blob",
         },
       );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      downloadBlob(
+        new Blob([response.data]),
+        withFileExtension(filename || "drawing", ".pdf"),
+      );
     } catch (e) {
       console.error("Download failed", e);
       alert("Failed to download file");
     }
+  };
+
+  const exportRows = useMemo(
+    () =>
+      rowData.map((item) => ({
+        drawingNumber: item.drawingNumber,
+        title: item.title,
+        categoryName: item.category?.name || "-",
+        status: STATUS_LABELS[item.status] || item.status,
+        statusUpdatedAt: item.statusUpdatedAt,
+        latestRevisionNumber: item.currentRevision?.revisionNumber || "-",
+        latestRevisionDate: item.latestRevisionDate,
+        latestRevisionUploadedAt: item.latestRevisionUploadedAt,
+        latestRevisionUploadedBy: item.currentRevision?.uploadedBy?.username || "-",
+        latestFileName: item.currentRevision?.originalFileName || "-",
+      })),
+    [rowData],
+  );
+
+  const exportColumns = [
+    { key: "drawingNumber", label: "Drawing No" },
+    { key: "title", label: "Title" },
+    { key: "categoryName", label: "Category" },
+    { key: "status", label: "Status" },
+    {
+      key: "statusUpdatedAt",
+      label: "Status Updated",
+      formatter: (value: unknown) =>
+        typeof value === "string" ? formatDateTime(value) : "-",
+    },
+    { key: "latestRevisionNumber", label: "Latest Revision" },
+    {
+      key: "latestRevisionDate",
+      label: "Revision Date",
+      formatter: (value: unknown) =>
+        typeof value === "string" ? formatDateOnly(value) : "-",
+    },
+    {
+      key: "latestRevisionUploadedAt",
+      label: "Latest Revision Uploaded",
+      formatter: (value: unknown) =>
+        typeof value === "string" ? formatDateTime(value) : "-",
+    },
+    { key: "latestRevisionUploadedBy", label: "Uploaded By" },
+    { key: "latestFileName", label: "Latest File" },
+  ] as const;
+
+  const handleExport = (format: "EXCEL" | "CSV") => {
+    const fileName = resolveRegisteredExportFileName("design.drawing-register", {
+      projectId,
+    });
+
+    if (format === "EXCEL") {
+      exportUtils.toExcel(exportRows, fileName, {
+        sheetName: "Drawing Register",
+        columns: [...exportColumns],
+      });
+      return;
+    }
+
+    exportUtils.toCsv(exportRows, fileName, {
+      columns: [...exportColumns],
+    });
   };
 
   const canDownload = (item: RegisterItem) =>
@@ -426,6 +488,20 @@ const DrawingRegister = () => {
           Drawing Register
         </h2>
         <div className="flex gap-2">
+          <button
+            onClick={() => handleExport("CSV")}
+            className="px-3 py-1.5 text-sm bg-surface-card border border-border-strong rounded hover:bg-surface-base flex items-center gap-2"
+          >
+            <Download size={16} />
+            Export CSV
+          </button>
+          <button
+            onClick={() => handleExport("EXCEL")}
+            className="px-3 py-1.5 text-sm bg-surface-card border border-border-strong rounded hover:bg-surface-base flex items-center gap-2"
+          >
+            <FileText size={16} />
+            Export Excel
+          </button>
           <button
             onClick={() => {
               setSelectedItem(null);

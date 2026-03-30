@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:setu_mobile/core/media/full_screen_photo_viewer.dart';
+import 'package:setu_mobile/core/media/photo_cache_manager.dart';
 
 /// Horizontal scrollable strip of photo thumbnails.
 ///
@@ -17,6 +19,10 @@ class PhotoThumbnailStrip extends StatelessWidget {
     this.canDelete = false,
     this.onDelete,
   });
+
+  /// Returns true when [url] is a local file path (not a remote URL).
+  static bool isLocalPath(String url) =>
+      url.startsWith('/') || url.startsWith('file://');
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +67,7 @@ class _Thumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLocal = PhotoThumbnailStrip.isLocalPath(url);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -68,26 +75,41 @@ class _Thumbnail extends StatelessWidget {
           onTap: onTap,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: CachedNetworkImage(
-              imageUrl: url,
-              width: 72,
-              height: 72,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
-                width: 72,
-                height: 72,
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.photo_outlined,
-                    color: Colors.grey, size: 28),
-              ),
-              errorWidget: (_, __, ___) => Container(
-                width: 72,
-                height: 72,
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.broken_image_outlined,
-                    color: Colors.grey, size: 28),
-              ),
-            ),
+            child: isLocal
+                ? Image.file(
+                    File(url.replaceFirst('file://', '')),
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 72,
+                      height: 72,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image_outlined,
+                          color: Colors.grey, size: 28),
+                    ),
+                  )
+                : CachedNetworkImage(
+                    imageUrl: url,
+                    cacheManager: SetuPhotoCacheManager(),
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(
+                      width: 72,
+                      height: 72,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.photo_outlined,
+                          color: Colors.grey, size: 28),
+                    ),
+                    errorWidget: (_, __, ___) => Container(
+                      width: 72,
+                      height: 72,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image_outlined,
+                          color: Colors.grey, size: 28),
+                    ),
+                  ),
           ),
         ),
         if (canDelete && onDelete != null)

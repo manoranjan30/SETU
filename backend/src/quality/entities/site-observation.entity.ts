@@ -37,6 +37,11 @@ export class SiteObservation {
   @JoinColumn({ name: 'epsNodeId' })
   epsNode: EpsNode;
 
+  /** Denormalised breadcrumb captured at creation time, e.g. "Block A › Tower 1 › Floor 3".
+   *  Allows display of the location even when the EPS node has been renamed or deleted. */
+  @Column({ type: 'text', nullable: true })
+  locationLabel: string;
+
   @Column({
     type: 'enum',
     enum: SiteObservationSeverity,

@@ -55,6 +55,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const [formData, setFormData] = useState({
     projectId: projectId,
     epsNodeId: null as number | null,
+    locationLabel: "",
     severity: "MINOR",
     category: "Structural",
     description: "",
@@ -219,6 +220,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
       setFormData({
         projectId,
         epsNodeId: null,
+        locationLabel: "",
         severity: "MINOR",
         category: categories[0] || "Structural",
         description: "",
@@ -440,9 +442,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                       <MapPin className="w-4 h-4 text-success shrink-0" />
                       <span
                         className="truncate"
-                        title={item.epsNode?.name || "General Site"}
+                        title={item.locationLabel || item.epsNode?.name || "General Site"}
                       >
-                        {item.epsNode?.name || "General Site (No Location)"}
+                        {item.locationLabel || item.epsNode?.name || "General Site (No Location)"}
                       </span>
                     </div>
                     {item.targetDate && (
@@ -645,8 +647,8 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                       <EpsLocationPicker
                         projectId={projectId}
                         value={formData.epsNodeId}
-                        onChange={(id) =>
-                          setFormData({ ...formData, epsNodeId: id })
+                        onChange={(id, label) =>
+                          setFormData({ ...formData, epsNodeId: id, locationLabel: label })
                         }
                       />
                     </div>
@@ -928,7 +930,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     Location
                   </p>
                   <p className="text-sm font-bold text-text-primary">
-                    {selectedRecord.epsNode?.name || "General"}
+                    {selectedRecord.locationLabel || selectedRecord.epsNode?.name || "General"}
                   </p>
                 </div>
                 <div>

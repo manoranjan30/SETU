@@ -1,0 +1,84 @@
+
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: C:\Users\omano\OneDrive - Puravankara Limited\Manoranjan\Antigravity Experiment\000 Project PM\SETU\load-tests\k6\scenarios\smoke-auth.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 1 max VUs, 45s max duration (incl. graceful stop):
+              * default: 1 looping VUs for 15s (gracefulStop: 30s)
+
+
+running (01.0s), 1/1 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 1 VUs  01.0s/15s
+
+running (02.0s), 1/1 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 1 VUs  02.0s/15s
+
+running (03.0s), 1/1 VUs, 1 complete and 0 interrupted iterations
+default   [  20% ] 1 VUs  03.0s/15s
+
+running (04.0s), 1/1 VUs, 2 complete and 0 interrupted iterations
+default   [  27% ] 1 VUs  04.0s/15s
+
+running (05.0s), 1/1 VUs, 2 complete and 0 interrupted iterations
+default   [  33% ] 1 VUs  05.0s/15s
+
+running (06.0s), 1/1 VUs, 3 complete and 0 interrupted iterations
+default   [  40% ] 1 VUs  06.0s/15s
+
+running (07.0s), 1/1 VUs, 3 complete and 0 interrupted iterations
+default   [  47% ] 1 VUs  07.0s/15s
+
+running (08.0s), 1/1 VUs, 4 complete and 0 interrupted iterations
+default   [  53% ] 1 VUs  08.0s/15s
+
+running (09.0s), 1/1 VUs, 4 complete and 0 interrupted iterations
+default   [  60% ] 1 VUs  09.0s/15s
+
+running (10.1s), 1/1 VUs, 5 complete and 0 interrupted iterations
+default   [  68% ] 1 VUs  10.1s/15s
+
+running (11.0s), 1/1 VUs, 6 complete and 0 interrupted iterations
+default   [  73% ] 1 VUs  11.0s/15s
+
+running (12.0s), 1/1 VUs, 6 complete and 0 interrupted iterations
+default   [  80% ] 1 VUs  12.0s/15s
+
+running (13.0s), 1/1 VUs, 7 complete and 0 interrupted iterations
+default   [  87% ] 1 VUs  13.0s/15s
+
+running (14.0s), 1/1 VUs, 7 complete and 0 interrupted iterations
+default   [  93% ] 1 VUs  14.0s/15s
+
+running (15.0s), 1/1 VUs, 8 complete and 0 interrupted iterations
+default   [ 100% ] 1 VUs  15.0s/15s
+
+     ✓ login status is 2xx
+     ✓ profile status is 2xx
+
+     checks.........................: 100.00% ✓ 18       ✗ 0  
+     data_received..................: 203 kB  13 kB/s
+     data_sent......................: 82 kB   5.2 kB/s
+     http_req_blocked...............: avg=3.11ms   min=0s     med=0s       max=56.09ms p(90)=0s       p(95)=8.41ms  
+     http_req_connecting............: avg=83.32µs  min=0s     med=0s       max=1.49ms  p(90)=0s       p(95)=224.96µs
+   ✓ http_req_duration..............: avg=370.96ms min=8.64ms med=251.46ms max=1.19s   p(90)=804.13ms p(95)=874.63ms
+       { expected_response:true }...: avg=370.96ms min=8.64ms med=251.46ms max=1.19s   p(90)=804.13ms p(95)=874.63ms
+   ✓ http_req_failed................: 0.00%   ✓ 0        ✗ 18 
+     http_req_receiving.............: avg=448.88µs min=0s     med=431.35µs max=1.58ms  p(90)=1.15ms   p(95)=1.55ms  
+     http_req_sending...............: avg=350.31µs min=0s     med=344.4µs  max=1.02ms  p(90)=762.39µs p(95)=1ms     
+     http_req_tls_handshaking.......: avg=0s       min=0s     med=0s       max=0s      p(90)=0s       p(95)=0s      
+     http_req_waiting...............: avg=370.16ms min=7.53ms med=250.85ms max=1.19s   p(90)=803.98ms p(95)=874.06ms
+     http_reqs......................: 18      1.134392/s
+     iteration_duration.............: avg=1.76s    min=1.48s  med=1.73s    max=2.29s   p(90)=1.94s    p(95)=2.12s   
+     iterations.....................: 9       0.567196/s
+     vus............................: 1       min=1      max=1
+     vus_max........................: 1       min=1      max=1
+
+
+running (15.9s), 0/1 VUs, 9 complete and 0 interrupted iterations
+default ✓ [ 100% ] 1 VUs  15s

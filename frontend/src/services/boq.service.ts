@@ -1,4 +1,5 @@
 import api from "../api/axios";
+import { downloadBlob, withFileExtension } from "../utils/file-download.utils";
 
 export interface BoqSubItem {
   id: number;
@@ -87,13 +88,10 @@ export const boqService = {
     const response = await api.get("/boq/template", {
       responseType: "blob", // Important for file download
     });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "BOQ_Import_Template.xlsx");
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    downloadBlob(
+      new Blob([response.data]),
+      withFileExtension("BOQ_Import_Template", ".xlsx"),
+    );
   },
 
   // Export BOQ (CSV)
@@ -101,13 +99,10 @@ export const boqService = {
     const response = await api.get(`/boq/export/${projectId}`, {
       responseType: "blob",
     });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `BOQ_Export_${projectId}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    downloadBlob(
+      new Blob([response.data]),
+      withFileExtension(`BOQ_Export_${projectId}`, ".csv"),
+    );
   },
 
   // Import BOQ
@@ -184,13 +179,10 @@ export const boqService = {
     const response = await api.get("/boq/measurements/template", {
       responseType: "blob",
     });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "Measurement_Import_Template.xlsx");
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    downloadBlob(
+      new Blob([response.data]),
+      withFileExtension("Measurement_Import_Template", ".xlsx"),
+    );
   },
 
   // --- Progress Layer (Layer 4) ---

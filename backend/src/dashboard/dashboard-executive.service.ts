@@ -48,6 +48,7 @@ import {
   ExecutionProgressEntry,
   ExecutionProgressEntryStatus,
 } from '../execution/entities/execution-progress-entry.entity';
+import { isOperationalProjectStatus } from '../common/project-lifecycle.util';
 
 type ExecutiveMode = 'enterprise' | 'company' | 'project';
 type MetricFormat = 'number' | 'currency' | 'percent' | 'text';
@@ -1467,14 +1468,14 @@ export class DashboardExecutiveService {
     const projectWorkOrderPct =
       ((currentProject?.activeWorkOrderValue || 0) / projectBudget) * 100;
     const projectBurnPct = ((currentProject?.burnValue || 0) / projectBudget) * 100;
+    const projectActualProgressMetric = this.buildActualProgressMetric(
+      currentProject?.progressPercent || 0,
+      currentProject?.burnValue || 0,
+      currentProject?.approvedBudget || currentProject?.estimatedCost || 0,
+    );
 
     return [
-      {
-        key: 'actualProgress',
-        label: 'Actual Progress',
-        value: currentProject?.progressPercent || 0,
-        format: 'percent',
-      },
+      projectActualProgressMetric,
       {
         key: 'delayedActivities',
         label: 'Delayed Activities',
@@ -1552,6 +1553,15 @@ export class DashboardExecutiveService {
     const budgetBase = Math.max(totals.portfolioValue, 1);
     const workOrderCommitmentPct = (totals.workOrderValue / budgetBase) * 100;
     const burnCoveragePct = (totals.burnValue / budgetBase) * 100;
+    const scheduleProgress = projectRows.length
+      ? projectRows.reduce((sum, row) => sum + row.progressPercent, 0) /
+        projectRows.length
+      : 0;
+    const actualProgressMetric = this.buildActualProgressMetric(
+      scheduleProgress,
+      totals.burnValue,
+      totals.portfolioValue,
+    );
 
     return {
       kpis: [
@@ -1563,15 +1573,7 @@ export class DashboardExecutiveService {
           tone: totals.delayedActivities > 0 ? 'warning' : 'positive',
           helper: `${totals.delayedProjects} project(s) currently carrying delay`,
         },
-        {
-          key: 'actualProgress',
-          label: 'Actual Progress',
-          value: projectRows.length
-            ? projectRows.reduce((sum, row) => sum + row.progressPercent, 0) /
-              projectRows.length
-            : 0,
-          format: 'percent',
-        },
+        actualProgressMetric,
         {
           key: 'budgetValue',
           label: 'Budgeted Value',
@@ -1620,6 +1622,40 @@ export class DashboardExecutiveService {
       trend,
       alerts: this.buildProgressAlerts(projectRows),
       actions: this.buildProgressActions(projectRows, mode),
+    };
+  }
+
+  private buildActualProgressMetric(
+    schedulePercent: number,
+    burnValue: number,
+    budgetValue: number,
+  ): DashboardMetric {
+    const normalizedSchedulePercent = Math.min(
+      100,
+      Math.max(0, Number(schedulePercent || 0)),
+    );
+    const normalizedBurnValue = Math.max(0, Number(burnValue || 0));
+    const normalizedBudgetValue = Math.max(0, Number(budgetValue || 0));
+    const shouldUseBurnFallback =
+      normalizedSchedulePercent <= 0.0001 &&
+      normalizedBurnValue > 0 &&
+      normalizedBudgetValue > 0;
+    const fallbackPercent = shouldUseBurnFallback
+      ? Math.min(100, (normalizedBurnValue / normalizedBudgetValue) * 100)
+      : normalizedSchedulePercent;
+
+    return {
+      key: 'actualProgress',
+      label: 'Actual Progress',
+      value: Number(fallbackPercent.toFixed(1)),
+      format: 'percent',
+      helper: shouldUseBurnFallback
+        ? 'Derived from burn vs budget for this scope'
+        : 'Derived from approved schedule/activity progress',
+      visualPercent: fallbackPercent,
+      visualLabel: shouldUseBurnFallback
+        ? `${fallbackPercent.toFixed(1)}% inferred from burn value`
+        : 'Approved schedule progress',
     };
   }
 
@@ -2291,7 +2327,6 @@ export class DashboardExecutiveService {
   }
 
   private isActiveProject(status: string | null) {
-    const normalized = String(status || 'ACTIVE').toLowerCase();
-    return !['completed', 'closed', 'archived'].includes(normalized);
+    return isOperationalProjectStatus(status);
   }
 }

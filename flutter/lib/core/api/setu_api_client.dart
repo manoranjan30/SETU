@@ -35,10 +35,18 @@ class SetuApiClient {
         // Base URL resolved from ApiEndpoints (compile-time dart-define or
         // runtime override set by ServerConfigService before this constructor runs).
         baseUrl: ApiEndpoints.baseUrl,
-        // 30 s timeouts cover slow mobile connections without hanging the UI forever.
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 30),
+        // 5 s connect timeout: fail fast when the server is unreachable (no signal,
+        // firewall, etc.).  On construction floors the device may show "connected"
+        // (WiFi/4G icon) but the TCP handshake never completes — 5 s surfaces this
+        // quickly so the app can fall back to cached data instead of blocking the UI.
+        //
+        // 15 s receive timeout: once a connection IS established, allow slow signals
+        // (e.g. weak 4G on upper floors) enough time to stream the full response body.
+        // The _ErrorInterceptor maps both timeout types to ApiException.networkError
+        // so BLoCs treat them as offline → write to SyncQueue → retry later.
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 15),
+        sendTimeout: const Duration(seconds: 10),
         headers: {
           // Tell the backend we are sending and expecting JSON for all requests.
           'Content-Type': 'application/json',
@@ -228,6 +236,15 @@ class SetuApiClient {
       },
     );
     return response.data;
+  }
+
+  /// Marks a planning activity as fully COMPLETED.
+  ///
+  /// Sets the activity status to COMPLETED and records today as the actual
+  /// finish date on the backend. Mirrors the web app's "Mark Complete" button.
+  /// Throws [ApiException] if the user lacks permission or the request fails.
+  Future<void> markActivityComplete(int activityId) async {
+    await _dio.post(ApiEndpoints.activityComplete(activityId));
   }
 
   /// Returns all progress logs awaiting approval by the current user's role.
@@ -1104,7 +1121,19 @@ class SetuApiClient {
       final response = await _dio.get(ApiEndpoints.towerProgress(projectId));
       return response.data as Map<String, dynamic>?;
     } catch (_) {
-      // Endpoint may not exist yet — repository falls back to parallel calls
+      return null;
+    }
+  }
+
+  /// Fetches building coordinate polygons for every EPS node in the project.
+  /// Returns the nested tree with [coordinatesText], [coordinateUom], and
+  /// [heightMeters] per node. Returns null on failure (coordinates optional).
+  Future<Map<String, dynamic>?> getBuildingLineCoordinates(int projectId) async {
+    try {
+      final response =
+          await _dio.get(ApiEndpoints.buildingLineCoordinates(projectId));
+      return response.data as Map<String, dynamic>?;
+    } catch (_) {
       return null;
     }
   }

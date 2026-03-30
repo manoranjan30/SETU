@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { dashboardBuilderApi } from "../../services/dashboard-builder.service";
 import { exportUtils } from "../../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../../utils/export.registry";
 
 // Types
 interface ReportConfig {
@@ -122,9 +123,24 @@ export default function ReportViewer() {
 
   const handleExport = (type: "EXCEL" | "CSV") => {
     if (!report || rowData.length === 0) return;
-    const filename = `${report.name.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}`;
-    if (type === "EXCEL") exportUtils.toExcel(rowData, filename);
-    else exportUtils.toCsv(rowData, filename);
+    const filename = resolveRegisteredExportFileName("dashboard.report", {
+      reportName: report.name,
+      reportId: report.id,
+    });
+    const columns = report.columns.map((column) => ({
+      key: column.key,
+      label: column.label,
+    }));
+
+    if (type === "EXCEL") {
+      exportUtils.toExcel(rowData, filename, {
+        sheetName: report.name,
+        columns,
+      });
+      return;
+    }
+
+    exportUtils.toCsv(rowData, filename, { columns });
   };
 
   if (loading && !report) {

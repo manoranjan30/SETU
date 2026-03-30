@@ -17,6 +17,7 @@ import {
   ExecutionProgressEntry,
   ExecutionProgressEntryStatus,
 } from '../execution/entities/execution-progress-entry.entity';
+import { isOperationalProjectStatus } from '../common/project-lifecycle.util';
 
 @Injectable()
 export class DashboardService {
@@ -47,6 +48,9 @@ export class DashboardService {
     });
 
     const totalProjects = projects.length;
+    const activeProjects = projects.filter((project) =>
+      isOperationalProjectStatus(project.projectProfile?.projectStatus),
+    ).length;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -83,7 +87,7 @@ export class DashboardService {
 
     return {
       totalProjects,
-      activeProjects: totalProjects,
+      activeProjects,
       delayedActivities,
       thisWeekBurn: Number(weekProgress?.total || 0),
       todayManpower: Number(todayLabor?.total || 0),

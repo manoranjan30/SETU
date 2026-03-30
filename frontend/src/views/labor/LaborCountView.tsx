@@ -19,6 +19,8 @@ import api from "../../api/axios";
 import LaborCategoryModal from "../../components/labor/LaborCategoryModal";
 import LaborEntryModal from "../../components/labor/LaborEntryModal";
 import LaborImportModal from "../../components/labor/LaborImportModal";
+import { exportUtils } from "../../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../../utils/export.registry";
 
 type TabType = "daily" | "weekly" | "monthly" | "reconciliation";
 
@@ -195,6 +197,118 @@ const LaborCountView = () => {
     0,
   );
 
+  const buildDailyExportRows = () =>
+    filteredPresence.map((entry) => ({
+      date: entry.date || "",
+      category: entry.category?.name || "",
+      contractor: entry.contractorName || "",
+      type: entry.category?.categoryGroup || "General",
+      count: parseFloat(entry.count) || 0,
+      loggedBy: entry.updatedBy || "System",
+      updatedOn: entry.updatedOn
+        ? new Date(entry.updatedOn).toLocaleString()
+        : "",
+    }));
+
+  const buildWeeklyExportRows = () =>
+    getWeeklySummary().map((item) => ({
+      category: item.name,
+      type: item.group || "General",
+      totalSevenDays: item.total,
+      dailyAverage: Number((item.total / 7).toFixed(1)),
+    }));
+
+  const buildMonthlyExportRows = () =>
+    getMonthlySummary().map((item) => ({
+      category: item.name,
+      type: item.group || "General",
+      totalManDays: item.total,
+    }));
+
+  const buildReconciliationExportRows = () =>
+    getReconciliation().map((item) => ({
+      category: item.categoryName,
+      type: item.categoryGroup || "General",
+      present: item.present,
+      allocated: item.allocated,
+      unassigned: item.unassigned,
+      status: item.status,
+    }));
+
+  const getLaborExportConfig = () => {
+    const fileName = resolveRegisteredExportFileName("labor.counts", {
+      projectId,
+      tab: activeTab,
+    });
+
+    if (activeTab === "daily") {
+      return {
+        fileName,
+        sheetName: "Daily Register",
+        rows: buildDailyExportRows(),
+        columns: [
+          { key: "date", label: "Date" },
+          { key: "category", label: "Category" },
+          { key: "contractor", label: "Contractor" },
+          { key: "type", label: "Type" },
+          { key: "count", label: "Count" },
+          { key: "loggedBy", label: "Logged By" },
+          { key: "updatedOn", label: "Updated On" },
+        ],
+      };
+    }
+
+    if (activeTab === "weekly") {
+      return {
+        fileName,
+        sheetName: "Weekly Summary",
+        rows: buildWeeklyExportRows(),
+        columns: [
+          { key: "category", label: "Category" },
+          { key: "type", label: "Type" },
+          { key: "totalSevenDays", label: "Total (7 Days)" },
+          { key: "dailyAverage", label: "Daily Avg" },
+        ],
+      };
+    }
+
+    if (activeTab === "monthly") {
+      return {
+        fileName,
+        sheetName: "Monthly Report",
+        rows: buildMonthlyExportRows(),
+        columns: [
+          { key: "category", label: "Category" },
+          { key: "type", label: "Type" },
+          { key: "totalManDays", label: "Total Man-Days" },
+        ],
+      };
+    }
+
+    return {
+      fileName,
+      sheetName: "Reconciliation",
+      rows: buildReconciliationExportRows(),
+      columns: [
+        { key: "category", label: "Category" },
+        { key: "type", label: "Type" },
+        { key: "present", label: "Present" },
+        { key: "allocated", label: "Allocated" },
+        { key: "unassigned", label: "Unassigned" },
+        { key: "status", label: "Status" },
+      ],
+    };
+  };
+
+  const handleExport = (format: "EXCEL" | "CSV") => {
+    const { fileName, sheetName, rows, columns } = getLaborExportConfig();
+    if (format === "EXCEL") {
+      exportUtils.toExcel(rows, fileName, { sheetName, columns });
+      return;
+    }
+    exportUtils.toCsv(rows, fileName, { columns });
+  };
+
   return (
     <div className="h-full flex flex-col bg-surface-base">
       {/* Top Header */}
@@ -227,6 +341,20 @@ const LaborCountView = () => {
             >
               <FileSpreadsheet className="w-4 h-4" />
               Import
+            </button>
+            <button
+              onClick={() => handleExport("CSV")}
+              className="flex items-center gap-2 bg-surface-card hover:bg-surface-base text-text-secondary px-4 py-2.5 rounded-xl font-bold text-sm transition-all border border-border-default"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Export CSV
+            </button>
+            <button
+              onClick={() => handleExport("EXCEL")}
+              className="flex items-center gap-2 bg-surface-card hover:bg-surface-base text-text-secondary px-4 py-2.5 rounded-xl font-bold text-sm transition-all border border-border-default"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Export Excel
             </button>
             <button
               onClick={() => setShowEntryModal(true)}

@@ -14,22 +14,31 @@ import 'package:setu_mobile/core/sync/sync_service.dart';
 /// the UI (which must not drive sync directly). The pattern is:
 ///   NetworkInfo → ConnectivitySyncService → SyncService → AppDatabase + API
 ///
-/// [ChangeNotifier] is used rather than streams so that the UI layer can
-/// simply call `context.watch<ConnectivitySyncService>()` and rebuild
-/// automatically when any of the observable properties change.
+/// **Two-level connectivity:**
+///   - [isOnline] reflects the network interface status (from connectivity_plus).
+///     This is the fast path used for badges and UI indicators.
+///   - [isServerReachable] additionally probes the backend server (3 s HEAD
+///     request via ServerProbe).  Only when the server is actually reachable
+///     should the app attempt live API calls — devices on construction floors
+///     often show "connected" but cannot reach the server.
 ///
-/// Features:
-/// - Monitors connectivity changes
-/// - Auto-syncs when connection is restored
-/// - Notifies UI of sync status changes
-/// - Handles sync failures gracefully
+/// **Cache-invalidation on reconnect:**
+///   [onReconnected] is a broadcast stream that fires once per offline→online
+///   transition (only after the server probe confirms reachability).  BLoCs
+///   subscribe to this stream and add a "refresh" event to themselves so the
+///   UI always shows fresh server data rather than carrying stale cached data.
+///
+/// [ChangeNotifier] is used so the UI layer can call
+/// `context.watch<ConnectivitySyncService>()` and rebuild automatically.
 class ConnectivitySyncService extends ChangeNotifier {
   final NetworkInfo _networkInfo;
   final SyncService _syncService;
   final Logger _logger = Logger();
 
-  /// Holds the connectivity subscription so it can be cancelled on [dispose].
   StreamSubscription<bool>? _connectivitySubscription;
+
+  /// Periodic timer that retries pending sync items every 5 minutes when online.
+  Timer? _retryTimer;
 
   bool _isOnline = true;
   bool _isSyncing = false;
@@ -37,44 +46,34 @@ class ConnectivitySyncService extends ChangeNotifier {
   int _errorCount = 0;
   String? _lastError;
 
-  /// Current online status.
-  bool get isOnline => _isOnline;
-
-  /// Whether sync is currently in progress.
-  bool get isSyncing => _isSyncing;
-
-  /// Number of pending items to sync.
+  /// Broadcast stream that fires each time the device transitions from
+  /// offline → online AND the SETU server is confirmed reachable.
   ///
-  /// Shown in the UI as a badge to inform the user how much local data is
-  /// waiting to reach the server.
+  /// BLoCs should subscribe to this in their constructor and dispatch a
+  /// refresh event so users always see fresh data after reconnection instead
+  /// of carrying over stale cached data from when they were offline.
+  ///
+  /// Example in a BLoC:
+  /// ```dart
+  /// _connectivitySyncService.onReconnected.listen((_) {
+  ///   add(RefreshCurrentNode()); // or LoadProjects(), etc.
+  /// });
+  /// ```
+  final StreamController<void> _reconnectedCtrl =
+      StreamController<void>.broadcast();
+  Stream<void> get onReconnected => _reconnectedCtrl.stream;
+
+  bool get isOnline => _isOnline;
+  bool get isSyncing => _isSyncing;
   int get pendingCount => _pendingCount;
-
-  /// Number of items with sync errors (permanent failures requiring attention).
   int get errorCount => _errorCount;
-
-  /// Last sync error message, if any.
   String? get lastError => _lastError;
 
-  /// Computed sync status for UI display.
-  ///
-  /// Derived from the combination of [_isOnline], [_isSyncing], [_errorCount],
-  /// and [_pendingCount]. The priority order here matters: offline takes
-  /// precedence over all other states because nothing else is meaningful when
-  /// there is no network.
   SyncStatusInfo get syncStatus {
-    if (!_isOnline) {
-      return SyncStatusInfo.offline();
-    }
-    if (_isSyncing) {
-      return SyncStatusInfo.syncing();
-    }
-    if (_errorCount > 0) {
-      // Prefer the last known error message, or a generic fallback.
-      return SyncStatusInfo.error(_lastError ?? 'Sync errors');
-    }
-    if (_pendingCount > 0) {
-      return SyncStatusInfo.partial(_pendingCount);
-    }
+    if (!_isOnline) return SyncStatusInfo.offline();
+    if (_isSyncing) return SyncStatusInfo.syncing();
+    if (_errorCount > 0) return SyncStatusInfo.error(_lastError ?? 'Sync errors');
+    if (_pendingCount > 0) return SyncStatusInfo.partial(_pendingCount);
     return SyncStatusInfo.synced();
   }
 
@@ -83,93 +82,108 @@ class ConnectivitySyncService extends ChangeNotifier {
     required SyncService syncService,
   })  : _networkInfo = networkInfo,
         _syncService = syncService {
-    // Kick off async initialization immediately after construction so the
-    // service is ready by the time the first widget tree is built.
     _initialize();
   }
 
-  /// Bootstrap the service: check current connectivity, seed counts, and
-  /// attach listeners.
   Future<void> _initialize() async {
-    // Check initial connectivity
-    _isOnline = await _networkInfo.isConnected;
-    // Seed the pending/error counts from the database so the UI has accurate
-    // badge counts immediately on app launch, before the first sync attempt.
+    // Use server reachability (not just interface) for the initial state.
+    // This prevents the app from showing "online" on startup when the device
+    // has WiFi/4G but the server is not reachable.
+    _isOnline = await _networkInfo.isServerReachable;
     _pendingCount = await _syncService.getPendingSyncCount();
     _errorCount = await _syncService.getErrorSyncCount();
     notifyListeners();
 
-    // Listen for connectivity changes — the stream emits `true` when the
-    // device goes online and `false` when it goes offline.
+    // Listen to interface-level connectivity changes.  We use the raw
+    // interface stream here (not the server probe) so the UI responds
+    // instantly when the WiFi/4G icon disappears.  The server probe is used
+    // in [_onConnectivityChanged] only when transitioning to "connected" to
+    // decide whether to fire [onReconnected] and sync.
     _connectivitySubscription = _networkInfo.onConnectionStatusChanged.listen(
       _onConnectivityChanged,
     );
 
-    // Wire up the SyncService callback so state changes inside SyncService
-    // are reflected here without SyncService needing a reference back to this
-    // class (avoids a circular dependency).
     _syncService.onStatusChanged = (status) => _onSyncStatusChanged(status);
+
+    // Periodic retry every 5 minutes — catches items that were queued while
+    // the app was already online between auto-sync cycles.
+    _retryTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (_isOnline && !_isSyncing && _pendingCount > 0) {
+        _logger.i('Periodic retry: syncing $_pendingCount pending items…');
+        syncNow();
+      }
+    });
 
     _logger.i(
         'ConnectivitySyncService initialized. Online: $_isOnline, Pending: $_pendingCount');
   }
 
-  /// Handle connectivity changes.
+  /// Handle connectivity changes from the platform stream.
   ///
-  /// The key decision here is: only auto-sync when transitioning from offline
-  /// → online (not on every online event) AND only when there are pending
-  /// items. This avoids unnecessary network traffic when the device simply
-  /// switches between WiFi networks while already online.
-  Future<void> _onConnectivityChanged(bool isConnected) async {
+  /// When transitioning to "connected" the server is probed first:
+  ///   - If the server is reachable: fire [onReconnected] (so BLoCs refresh
+  ///     their cached data with fresh server data) and run any pending sync.
+  ///   - If the server is still unreachable (weak signal, server down): stay
+  ///     in the offline-indicator state without spamming API calls.
+  Future<void> _onConnectivityChanged(bool interfaceConnected) async {
     final wasOffline = !_isOnline;
-    _isOnline = isConnected;
+
+    if (!interfaceConnected) {
+      // Interface dropped — immediately mark offline without probing.
+      _isOnline = false;
+      _logger.i('Connectivity: interface lost → offline');
+      notifyListeners();
+      return;
+    }
+
+    // Interface says "connected" — probe the server before trusting it.
+    // Invalidate the cached probe result first so we get a fresh reading
+    // that reflects the new network interface state.
+    _networkInfo.invalidateProbe();
+    final serverReachable = await _networkInfo.isServerReachable;
+    _isOnline = serverReachable;
 
     _logger.i(
-        'Connectivity changed. Online: $isConnected, Was offline: $wasOffline');
+        'Connectivity: interface connected, server reachable: $serverReachable');
 
-    // Notify UI immediately so the offline/online banner updates before the
-    // sync completes.
+    // Notify the UI about the connectivity state immediately.
     notifyListeners();
 
-    // Only trigger auto-sync on the offline → online transition and only when
-    // there is actually something to send (avoids a no-op sync on every
-    // network re-attach, e.g. when switching WiFi networks).
-    if (wasOffline && isConnected && _pendingCount > 0) {
-      _logger.i(
-          'Connection restored. Auto-syncing $_pendingCount pending items...');
-      await syncNow();
+    if (wasOffline && serverReachable) {
+      // True offline → online transition confirmed by server probe.
+      _logger.i('Connection restored (server confirmed). Triggering actions…');
+
+      // 1. Sync any pending mutations up to the server.
+      if (_pendingCount > 0) {
+        _logger.i('Auto-syncing $_pendingCount pending items…');
+        await syncNow();
+      }
+
+      // 2. Fire onReconnected so BLoCs refresh their READ caches.
+      //    This ensures users never carry stale cached data — every screen
+      //    re-fetches fresh data from the server after coming back online.
+      if (!_reconnectedCtrl.isClosed) {
+        _reconnectedCtrl.add(null);
+      }
     }
   }
 
-  /// Handle sync status changes from SyncService.
-  ///
-  /// Called via the [SyncService.onStatusChanged] callback rather than a
-  /// stream to avoid introducing a StreamController inside SyncService, which
-  /// is intentionally kept non-Flutter.
   void _onSyncStatusChanged(SyncStatusInfo status) {
     _isSyncing = status.isSyncing;
-
     if (status.hasError) {
       _lastError = status.errorMessage;
     } else if (status.isSynced) {
-      // Clear the last error once a successful sync completes so stale errors
-      // don't persist in the UI after recovery.
       _lastError = null;
     }
-
-    // Re-query actual counts rather than deriving them from the status object,
-    // because [SyncStatusInfo.pendingCount] may be stale if items were added
-    // to the queue during the sync cycle.
     _refreshCounts();
   }
 
   /// Manually trigger sync.
   ///
-  /// Guards against double-triggering and offline attempts, returning an
-  /// appropriate error [SyncResult] rather than throwing — the caller decides
-  /// whether to surface the error to the user.
+  /// Uses [isServerReachable] rather than just [isOnline] so we do not
+  /// waste time attempting network calls when the interface says "connected"
+  /// but the server is actually unreachable (common on construction floors).
   Future<SyncResult> syncNow() async {
-    // Guard: do not stack multiple concurrent sync cycles.
     if (_isSyncing) {
       _logger.w('Sync already in progress');
       final result = SyncResult();
@@ -177,24 +191,33 @@ class ConnectivitySyncService extends ChangeNotifier {
       return result;
     }
 
+    // Two-level check: interface first (fast), then server probe (accurate).
     if (!_isOnline) {
-      _logger.w('Cannot sync: offline');
+      _logger.w('Cannot sync: offline (interface)');
       final result = SyncResult();
       result.error = 'No internet connection';
       return result;
     }
 
+    // Probe the server before starting a sync cycle to avoid the case where
+    // isOnline is stale (interface reconnected but server still unreachable).
+    final reachable = await _networkInfo.isServerReachable;
+    if (!reachable) {
+      // Do NOT set _isOnline = false here — the connectivity stream owns that
+      // state. A transient server-probe failure during sync should not flip the
+      // UI banner to "Offline" when the device still has a network interface.
+      _logger.w('Cannot sync: server unreachable (probe)');
+      final result = SyncResult();
+      result.error = 'Server unreachable';
+      return result;
+    }
+
     _isSyncing = true;
-    // Notify UI immediately so the sync spinner appears before the first
-    // network call is made.
     notifyListeners();
 
     try {
       final result = await _syncService.syncAll();
 
-      // Re-query counts after sync so the badge reflects the true DB state
-      // (some items may have moved from pending → synced, others may have
-      // entered a failed state).
       _pendingCount = await _syncService.getPendingSyncCount();
       _errorCount = await _syncService.getErrorSyncCount();
 
@@ -206,7 +229,6 @@ class ConnectivitySyncService extends ChangeNotifier {
 
       _logger.i(
           'Sync completed. Synced: ${result.totalSynced}, Failed: ${result.totalFailed}');
-
       return result;
     } catch (e) {
       _lastError = e.toString();
@@ -215,35 +237,20 @@ class ConnectivitySyncService extends ChangeNotifier {
       result.error = e.toString();
       return result;
     } finally {
-      // Always clear the syncing flag, even if an exception was thrown, so
-      // the UI spinner does not get stuck in the syncing state.
       _isSyncing = false;
       notifyListeners();
     }
   }
 
-  /// Retry failed syncs.
-  ///
-  /// Delegates to [SyncService.retryFailed] which resets failed rows to
-  /// pending and triggers a new sync cycle. Does not retry permanent errors
-  /// ([SyncStatus.error]) — those require the user to edit or delete the item.
   Future<void> retryFailed() async {
     if (!_isOnline) {
       _logger.w('Cannot retry: offline');
       return;
     }
-
     await _syncService.retryFailed();
-    // Refresh counts after the retry so the badge is accurate.
     await _refreshCounts();
   }
 
-  /// Refresh pending and error counts from the database.
-  ///
-  /// Called after any operation that may have changed queue depth:
-  /// sync completion, error resolution, or a new item being added.
-  /// [notifyListeners] is called at the end so the UI rebuilds once rather
-  /// than on each individual count update.
   Future<void> _refreshCounts() async {
     _pendingCount = await _syncService.getPendingSyncCount();
     _errorCount = await _syncService.getErrorSyncCount();
@@ -251,17 +258,9 @@ class ConnectivitySyncService extends ChangeNotifier {
   }
 
   /// Called when a new progress entry is saved locally.
-  ///
-  /// Optimistically increments [_pendingCount] before the DB write completes
-  /// so the UI badge updates immediately. If the device is already online and
-  /// no sync is in progress, triggers a sync right away rather than waiting
-  /// for the next periodic sync cycle — this gives a "near real-time" feel
-  /// when the user is connected.
   void onProgressSaved() {
     _pendingCount++;
     notifyListeners();
-
-    // If online, trigger sync
     if (_isOnline && !_isSyncing) {
       syncNow();
     }
@@ -269,9 +268,9 @@ class ConnectivitySyncService extends ChangeNotifier {
 
   @override
   void dispose() {
-    // Cancel the connectivity stream subscription to avoid memory leaks and
-    // callbacks arriving after the service has been disposed.
     _connectivitySubscription?.cancel();
+    _retryTimer?.cancel();
+    if (!_reconnectedCtrl.isClosed) _reconnectedCtrl.close();
     super.dispose();
   }
 }

@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
+import 'package:setu_mobile/core/media/photo_cache_manager.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 
 /// Full-screen pinch-zoom photo gallery.
 /// Swipe horizontally between multiple photos.
@@ -72,8 +75,15 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
         backgroundDecoration: const BoxDecoration(color: Colors.black),
         builder: (context, index) {
           final url = widget.photoUrls[index];
+          final isLocal = PhotoThumbnailStrip.isLocalPath(url);
+          final ImageProvider<Object> imageProvider = isLocal
+              ? FileImage(File(url.replaceFirst('file://', '')))
+                  as ImageProvider<Object>
+              : CachedNetworkImageProvider(url,
+                  cacheManager: SetuPhotoCacheManager())
+                  as ImageProvider<Object>;
           return PhotoViewGalleryPageOptions(
-            imageProvider: CachedNetworkImageProvider(url),
+            imageProvider: imageProvider,
             minScale: PhotoViewComputedScale.contained,
             maxScale: PhotoViewComputedScale.covered * 3,
             errorBuilder: (_, __, ___) => const Center(

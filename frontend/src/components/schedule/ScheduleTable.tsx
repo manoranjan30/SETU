@@ -49,6 +49,41 @@ const InnerElement = React.forwardRef(({ style, ...rest }: any, ref: any) => (
   />
 ));
 
+const tokenizeNaturalSort = (value: string) =>
+  (value || "")
+    .split(/(\d+)/)
+    .filter(Boolean)
+    .map((part) => {
+      const numeric = Number(part);
+      return Number.isNaN(numeric) ? part.toLowerCase() : numeric;
+    });
+
+const compareNaturalCode = (left?: string, right?: string) => {
+  const leftTokens = tokenizeNaturalSort(left || "");
+  const rightTokens = tokenizeNaturalSort(right || "");
+  const maxLength = Math.max(leftTokens.length, rightTokens.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftToken = leftTokens[index];
+    const rightToken = rightTokens[index];
+
+    if (leftToken === undefined) return -1;
+    if (rightToken === undefined) return 1;
+
+    if (typeof leftToken === "number" && typeof rightToken === "number") {
+      if (leftToken !== rightToken) return leftToken - rightToken;
+      continue;
+    }
+
+    const leftText = String(leftToken);
+    const rightText = String(rightToken);
+    const comparison = leftText.localeCompare(rightText);
+    if (comparison !== 0) return comparison;
+  }
+
+  return 0;
+};
+
 // --- 2. TYPES ---
 interface ScheduleTableProps {
   activities: any[];
@@ -301,10 +336,16 @@ const useScheduleData = (
 
   // 2. Build Tree Structure
   const treeData = useMemo(() => {
-    const rootNodes = wbsNodes.filter((n) => !n.parentId);
+    const sortWbsNodes = (nodes: any[]) =>
+      [...nodes].sort((a, b) =>
+        compareNaturalCode(a.wbsCode || a.code || "", b.wbsCode || b.code || ""),
+      );
+
+    const rootNodes = sortWbsNodes(wbsNodes.filter((n) => !n.parentId));
     const buildNode = (node: any, level: number): TreeRow => {
-      const childWbs = wbsNodes
-        .filter((n) => n.parentId === node.id)
+      const childWbs = sortWbsNodes(
+        wbsNodes.filter((n) => n.parentId === node.id),
+      )
         .map((n) => buildNode(n, level + 1));
       const childActs = activities
         .filter((a) => a.wbsNode?.id === node.id)
@@ -316,7 +357,12 @@ const useScheduleData = (
             ? new Date(b.startDatePlanned).getTime()
             : 0;
           if (dateA !== dateB) return dateA - dateB;
-          return (a.activityCode || "").localeCompare(b.activityCode || "");
+          const codeComparison = compareNaturalCode(
+            a.activityCode || "",
+            b.activityCode || "",
+          );
+          if (codeComparison !== 0) return codeComparison;
+          return (a.activityName || "").localeCompare(b.activityName || "");
         })
         .map(
           (a) =>

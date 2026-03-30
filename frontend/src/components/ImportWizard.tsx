@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect } from "react";
-import Papa from "papaparse";
 import { useDropzone } from "react-dropzone";
 import {
   Upload,
@@ -12,6 +11,16 @@ import {
 import { boqService, type ImportMapping } from "../services/boq.service";
 import api from "../api/axios";
 import { toast } from "react-hot-toast";
+import type {
+  ImportFieldDefinition,
+  ImportPreviewRow,
+} from "../types/data-transfer";
+import {
+  autoMapHeaders,
+  collectUniqueColumnValues,
+  readSpreadsheetPreview,
+  validateRequiredMappings,
+} from "../utils/import-staging.utils";
 
 interface Props {
   projectId: number;
@@ -30,11 +39,7 @@ interface EpsNode {
   type?: string;
 }
 
-interface CSVRow {
-  [key: string]: string;
-}
-
-const BOQ_FIELDS = [
+const BOQ_FIELDS: ImportFieldDefinition[] = [
   { key: "rowType", label: "Row Type (Main/Sub/Meas)", required: false },
   { key: "parentBoqCode", label: "Parent BOQ Code", required: false },
   { key: "boqCode", label: "Item Code", required: true },
@@ -54,7 +59,7 @@ const BOQ_FIELDS = [
   { key: "calculatedQty", label: "Calculated Qty", required: false },
 ];
 
-const MEASUREMENT_FIELDS = [
+const MEASUREMENT_FIELDS: ImportFieldDefinition[] = [
   { key: "epsName", label: "Location / EPS Name", required: true },
   { key: "elementName", label: "Element Name", required: true },
   { key: "elementCategory", label: "Element Category", required: false },
@@ -76,7 +81,7 @@ const MEASUREMENT_FIELDS = [
   { key: "plineAllLengths", label: "Pline All Lengths", required: false },
 ];
 
-const RESOURCE_FIELDS = [
+const RESOURCE_FIELDS: ImportFieldDefinition[] = [
   { key: "resourceCode", label: "Resource Code (Optional)", required: false },
   { key: "resourceName", label: "Resource Name*", required: true },
   { key: "uom", label: "UOM*", required: true },
@@ -102,7 +107,8 @@ export const ImportWizard: React.FC<Props> = ({
   // --- State ---
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [file, setFile] = useState<File | null>(null);
-  const [previewData, setPreviewData] = useState<CSVRow[]>([]);
+  const [previewData, setPreviewData] = useState<ImportPreviewRow[]>([]);
+  const [parsedRows, setParsedRows] = useState<ImportPreviewRow[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<ImportMapping>({});
   const [validationReport, setValidationReport] = useState<{
@@ -172,30 +178,18 @@ export const ImportWizard: React.FC<Props> = ({
     multiple: false,
   });
 
-  const parseFile = (file: File) => {
-    Papa.parse(file, {
-      preview: 10,
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        setHeaders(results.meta.fields || []);
-        setPreviewData(results.data as CSVRow[]);
-        setStep(2);
-
-        // Auto-map logic
-        const autoMap: ImportMapping = {};
-        const fields = results.meta.fields || [];
-        targetFields.forEach((field) => {
-          const match = fields.find(
-            (h) =>
-              h.toLowerCase().includes(field.key.toLowerCase()) ||
-              h.toLowerCase().includes(field.label.toLowerCase()),
-          );
-          if (match) autoMap[field.key as keyof ImportMapping] = match;
-        });
-        setMapping(autoMap);
-      },
-    });
+  const parseFile = async (selectedFile: File) => {
+    try {
+      const parsed = await readSpreadsheetPreview(selectedFile, 10);
+      setHeaders(parsed.headers);
+      setPreviewData(parsed.previewRows);
+      setParsedRows(parsed.rows);
+      setStep(2);
+      setMapping(autoMapHeaders(parsed.headers, targetFields) as ImportMapping);
+    } catch (error) {
+      console.error("Failed to parse import file", error);
+      toast.error("Failed to read the selected file.");
+    }
   };
 
   // --- Step 2: Mapping Logic ---
@@ -204,16 +198,16 @@ export const ImportWizard: React.FC<Props> = ({
   };
 
   const isMappingValid = () => {
-    const standardRequired = targetFields
-      .filter((f) => f.required && f.key !== "epsName")
-      .every((f) => mapping[f.key as keyof ImportMapping]);
+    const missingRequired = validateRequiredMappings(targetFields, mapping, [
+      "epsName",
+    ]);
 
     const hasLocation =
       mode === "RESOURCE_MASTER" ||
       mapping["epsName"] ||
       hierarchyMapping.level1 ||
       defaultEpsId;
-    return standardRequired && !!hasLocation;
+    return missingRequired.length === 0 && !!hasLocation;
   };
 
   // Transition Step 2 -> Step 3
@@ -235,20 +229,9 @@ export const ImportWizard: React.FC<Props> = ({
       return;
     }
 
-    if (file) {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          const values = new Set<string>();
-          (results.data as any[]).forEach((row) => {
-            const val = row[epsCol];
-            if (val) values.add(String(val).trim());
-          });
-          setUniqueValues(Array.from(values).sort());
-          setStep(3);
-        },
-      });
+    if (parsedRows.length > 0) {
+      setUniqueValues(collectUniqueColumnValues(parsedRows, epsCol));
+      setStep(3);
     }
   };
 
@@ -821,6 +804,10 @@ export const ImportWizard: React.FC<Props> = ({
               <button
                 onClick={() => {
                   setFile(null);
+                  setHeaders([]);
+                  setPreviewData([]);
+                  setParsedRows([]);
+                  setMapping({});
                   setStep(1);
                 }}
                 className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium"

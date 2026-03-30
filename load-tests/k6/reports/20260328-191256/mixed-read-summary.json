@@ -1,0 +1,460 @@
+{
+    "metrics": {
+        "iterations": {
+            "count": 9,
+            "rate": 0.023075958519607694
+        },
+        "http_req_tls_handshaking": {
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0
+        },
+        "http_req_sending": {
+            "p(95)": 1.7149399999999995,
+            "avg": 0.6570951126719343,
+            "min": 0,
+            "med": 0.525,
+            "max": 27.2506,
+            "p(90)": 1.1912200000000002
+        },
+        "vus_max": {
+            "value": 300,
+            "min": 300,
+            "max": 300
+        },
+        "http_req_blocked": {
+            "max": 74.6581,
+            "p(90)": 1.60236,
+            "p(95)": 2.5845399999999974,
+            "avg": 0.6434094820017555,
+            "min": 0,
+            "med": 0
+        },
+        "data_received": {
+            "count": 214419020,
+            "rate": 549769.3790372148
+        },
+        "http_reqs": {
+            "count": 3417,
+            "rate": 8.761172251277722
+        },
+        "vus": {
+            "value": 4,
+            "min": 1,
+            "max": 300
+        },
+        "http_req_waiting": {
+            "p(95)": 60004.26446,
+            "avg": 15614.701451185218,
+            "min": 15.8242,
+            "med": 8159.895,
+            "max": 60311.715,
+            "p(90)": 46553.89174000002
+        },
+        "http_req_connecting": {
+            "avg": 0.5642697980684815,
+            "min": 0,
+            "med": 0,
+            "max": 74.6581,
+            "p(90)": 1.3568600000000006,
+            "p(95)": 2.1404399999999995
+        },
+        "checks": {
+            "passes": 3107,
+            "fails": 310,
+            "value": 0.9092771436932983
+        },
+        "data_sent": {
+            "count": 30676918,
+            "rate": 78655.47636415629
+        },
+        "http_req_duration": {
+            "avg": 15636.797451477873,
+            "min": 16.4322,
+            "med": 8180.9952,
+            "max": 60311.715,
+            "p(90)": 46554.35438000002,
+            "p(95)": 60005.20488,
+            "thresholds": {
+                "p(95)<2500": true,
+                "p(99)<5000": true
+            }
+        },
+        "http_req_receiving": {
+            "min": 0,
+            "med": 0,
+            "max": 2191.7832,
+            "p(90)": 2.12102,
+            "p(95)": 18.64559999999993,
+            "avg": 21.43890517998242
+        },
+        "http_req_failed": {
+            "fails": 3107,
+            "passes": 310,
+            "value": 0.09072285630670178
+        },
+        "iteration_duration": {
+            "p(90)": 356291.5137,
+            "p(95)": 364989.0705,
+            "avg": 271309.33235555555,
+            "min": 144594.3324,
+            "med": 338010.6746,
+            "max": 373686.6273
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 12552.788829964556,
+            "min": 16.4322,
+            "med": 7621.4642,
+            "max": 59984.4953,
+            "p(90)": 33270.83686,
+            "p(95)": 41777.23746999999
+        }
+    },
+    "root_group": {
+        "groups": {},
+        "checks": {
+                "login status is 2xx": {
+                    "name": "login status is 2xx",
+                    "path": "::login status is 2xx",
+                    "id": "fc4ad0a473289fccc786b840f605bf12",
+                    "passes": 292,
+                    "fails": 0
+                },
+                "dashboard summary status is 2xx": {
+                    "name": "dashboard summary status is 2xx",
+                    "path": "::dashboard summary status is 2xx",
+                    "id": "a46f618aa87d25fbb8082749650bb4e1",
+                    "passes": 164,
+                    "fails": 77
+                },
+                "dashboard burn rate status is 2xx": {
+                    "fails": 0,
+                    "name": "dashboard burn rate status is 2xx",
+                    "path": "::dashboard burn rate status is 2xx",
+                    "id": "90c24920105dc97abb0f6e857b5b0cdf",
+                    "passes": 231
+                },
+                "dashboard manpower status is 2xx": {
+                    "name": "dashboard manpower status is 2xx",
+                    "path": "::dashboard manpower status is 2xx",
+                    "id": "6c3c68dcecdde86360258266b4a670c5",
+                    "passes": 224,
+                    "fails": 0
+                },
+                "dashboard milestones status is 2xx": {
+                    "name": "dashboard milestones status is 2xx",
+                    "path": "::dashboard milestones status is 2xx",
+                    "id": "dd699f79ea8bcb4e95fd4062eccfe857",
+                    "passes": 210,
+                    "fails": 0
+                },
+                "dashboard alerts status is 2xx": {
+                    "name": "dashboard alerts status is 2xx",
+                    "path": "::dashboard alerts status is 2xx",
+                    "id": "5405dc52b830c55d80728280e10bb5c0",
+                    "passes": 174,
+                    "fails": 0
+                },
+                "dashboard quality metrics status is 2xx": {
+                    "name": "dashboard quality metrics status is 2xx",
+                    "path": "::dashboard quality metrics status is 2xx",
+                    "id": "4c9f241005d60a686602fde4fc099fe9",
+                    "passes": 113,
+                    "fails": 32
+                },
+                "dashboard ehs metrics status is 2xx": {
+                    "name": "dashboard ehs metrics status is 2xx",
+                    "path": "::dashboard ehs metrics status is 2xx",
+                    "id": "16efda6dbe71ec34d5a2be6b38d546c1",
+                    "passes": 114,
+                    "fails": 21
+                },
+                "dashboard companies status is 2xx": {
+                    "name": "dashboard companies status is 2xx",
+                    "path": "::dashboard companies status is 2xx",
+                    "id": "01ec73ed73ac12d85d56360355a0f8e6",
+                    "passes": 129,
+                    "fails": 0
+                },
+                "dashboard projects status is 2xx": {
+                    "passes": 122,
+                    "fails": 0,
+                    "name": "dashboard projects status is 2xx",
+                    "path": "::dashboard projects status is 2xx",
+                    "id": "801c639161465e3dcb6993b245c4e65a"
+                },
+                "dashboard enterprise status is 2xx": {
+                    "name": "dashboard enterprise status is 2xx",
+                    "path": "::dashboard enterprise status is 2xx",
+                    "id": "c1ebef324448853ad89ac9452ff00835",
+                    "passes": 94,
+                    "fails": 12
+                },
+                "dashboard company status is 2xx": {
+                    "path": "::dashboard company status is 2xx",
+                    "id": "183206abe17d2f04b8ade27736e177dd",
+                    "passes": 80,
+                    "fails": 14,
+                    "name": "dashboard company status is 2xx"
+                },
+                "dashboard project status is 2xx": {
+                    "name": "dashboard project status is 2xx",
+                    "path": "::dashboard project status is 2xx",
+                    "id": "f5665759cc825807e4f1cecdb06342d4",
+                    "passes": 72,
+                    "fails": 15
+                },
+                "progress stats status is 2xx": {
+                    "name": "progress stats status is 2xx",
+                    "path": "::progress stats status is 2xx",
+                    "id": "db36b49b8560a893b431962a4e688a08",
+                    "passes": 86,
+                    "fails": 0
+                },
+                "progress plan-vs-achieved status is 2xx": {
+                    "name": "progress plan-vs-achieved status is 2xx",
+                    "path": "::progress plan-vs-achieved status is 2xx",
+                    "id": "37ad125285acf31ea56a9389a1b52b31",
+                    "passes": 86,
+                    "fails": 0
+                },
+                "progress insights status is 2xx": {
+                    "name": "progress insights status is 2xx",
+                    "path": "::progress insights status is 2xx",
+                    "id": "ae33d061035f9c10ff1d194f5e0cbde5",
+                    "passes": 85,
+                    "fails": 0
+                },
+                "progress approvals pending status is 2xx": {
+                    "name": "progress approvals pending status is 2xx",
+                    "path": "::progress approvals pending status is 2xx",
+                    "id": "03213419fb604794eac6af98c3671407",
+                    "passes": 79,
+                    "fails": 0
+                },
+                "eps tree status is 2xx": {
+                    "name": "eps tree status is 2xx",
+                    "path": "::eps tree status is 2xx",
+                    "id": "f95b6c1a7a54d06a96860bdb6e79e79f",
+                    "passes": 76,
+                    "fails": 0
+                },
+                "execution vendors status is 2xx": {
+                    "passes": 75,
+                    "fails": 0,
+                    "name": "execution vendors status is 2xx",
+                    "path": "::execution vendors status is 2xx",
+                    "id": "5c684f11fb954c3c974eeada3612e6c0"
+                },
+                "execution has-micro status is 2xx": {
+                    "name": "execution has-micro status is 2xx",
+                    "path": "::execution has-micro status is 2xx",
+                    "id": "71c6ae4905a1b294b0e718554318ada5",
+                    "passes": 68,
+                    "fails": 0
+                },
+                "execution breakdown status is 2xx": {
+                    "name": "execution breakdown status is 2xx",
+                    "path": "::execution breakdown status is 2xx",
+                    "id": "f8438b1f1cac1ba92f0ebdb9833b30c9",
+                    "passes": 12,
+                    "fails": 40
+                },
+                "wbs tree status is 2xx": {
+                    "name": "wbs tree status is 2xx",
+                    "path": "::wbs tree status is 2xx",
+                    "id": "62abb444ceb641cb9947f41969f1918a",
+                    "passes": 52,
+                    "fails": 0
+                },
+                "wbs activities status is 2xx": {
+                    "path": "::wbs activities status is 2xx",
+                    "id": "0a7bc16dd85708d8dc6f1919653d3836",
+                    "passes": 52,
+                    "fails": 0,
+                    "name": "wbs activities status is 2xx"
+                },
+                "project schedule status is 2xx": {
+                    "name": "project schedule status is 2xx",
+                    "path": "::project schedule status is 2xx",
+                    "id": "2fd3f8f87709d6e82fec3d43f8220006",
+                    "passes": 51,
+                    "fails": 0
+                },
+                "planning stats status is 2xx": {
+                    "fails": 15,
+                    "name": "planning stats status is 2xx",
+                    "path": "::planning stats status is 2xx",
+                    "id": "c1550f5baccaf2018e25736d646b901a",
+                    "passes": 35
+                },
+                "planning matrix status is 2xx": {
+                    "id": "5b6df99d9ed721af50f885db9cb0012e",
+                    "passes": 49,
+                    "fails": 0,
+                    "name": "planning matrix status is 2xx",
+                    "path": "::planning matrix status is 2xx"
+                },
+                "planning unlinked status is 2xx": {
+                    "name": "planning unlinked status is 2xx",
+                    "path": "::planning unlinked status is 2xx",
+                    "id": "b25e0fcc373d2348c2db40fd1dd7594d",
+                    "passes": 49,
+                    "fails": 0
+                },
+                "planning boq mapper status is 2xx": {
+                    "name": "planning boq mapper status is 2xx",
+                    "path": "::planning boq mapper status is 2xx",
+                    "id": "327defb4ad577a9ae00792e884ba4441",
+                    "passes": 47,
+                    "fails": 0
+                },
+                "planning gap analysis status is 2xx": {
+                    "fails": 0,
+                    "name": "planning gap analysis status is 2xx",
+                    "path": "::planning gap analysis status is 2xx",
+                    "id": "dffe5ed8bc6d08013bee7e4e0483dfa1",
+                    "passes": 45
+                },
+                "planning execution ready status is 2xx": {
+                    "id": "850da0f3153fb06bc2da7fcc57be3b7d",
+                    "passes": 7,
+                    "fails": 7,
+                    "name": "planning execution ready status is 2xx",
+                    "path": "::planning execution ready status is 2xx"
+                },
+                "planning distribution matrix status is 2xx": {
+                    "name": "planning distribution matrix status is 2xx",
+                    "path": "::planning distribution matrix status is 2xx",
+                    "id": "61d042f3a3015485b308c2826ef3bfb1",
+                    "passes": 12,
+                    "fails": 0
+                },
+                "planning relationships status is 2xx": {
+                    "name": "planning relationships status is 2xx",
+                    "path": "::planning relationships status is 2xx",
+                    "id": "9c6431fd77dca8c761ae3eff3e7e9467",
+                    "passes": 12,
+                    "fails": 0
+                },
+                "planning versions status is 2xx": {
+                    "name": "planning versions status is 2xx",
+                    "path": "::planning versions status is 2xx",
+                    "id": "f8dd6ab2206559b39a244b429fb12932",
+                    "passes": 12,
+                    "fails": 0
+                },
+                "workdoc vendors status is 2xx": {
+                    "fails": 0,
+                    "name": "workdoc vendors status is 2xx",
+                    "path": "::workdoc vendors status is 2xx",
+                    "id": "1589e0410110972a48589599d3ef9748",
+                    "passes": 12
+                },
+                "workdoc project work orders status is 2xx": {
+                    "fails": 0,
+                    "name": "workdoc project work orders status is 2xx",
+                    "path": "::workdoc project work orders status is 2xx",
+                    "id": "959cda91016cd0dddb3ee3331139dc38",
+                    "passes": 12
+                },
+                "workdoc linkage data status is 2xx": {
+                    "path": "::workdoc linkage data status is 2xx",
+                    "id": "ab308fa9617ebb8ff8f3779b9d7d98a0",
+                    "passes": 0,
+                    "fails": 12,
+                    "name": "workdoc linkage data status is 2xx"
+                },
+                "workdoc boq tree status is 2xx": {
+                    "passes": 12,
+                    "fails": 0,
+                    "name": "workdoc boq tree status is 2xx",
+                    "path": "::workdoc boq tree status is 2xx",
+                    "id": "3614d5ee37a73d2bf169c3c59c3796af"
+                },
+                "workdoc available boq qty status is 2xx": {
+                    "name": "workdoc available boq qty status is 2xx",
+                    "path": "::workdoc available boq qty status is 2xx",
+                    "id": "cdcdc90230b30ce4cdecbd3d7940c2c8",
+                    "passes": 12,
+                    "fails": 0
+                },
+                "quality summary status is 2xx": {
+                    "path": "::quality summary status is 2xx",
+                    "id": "879cf064135dbf851d79a010473517f2",
+                    "passes": 10,
+                    "fails": 2,
+                    "name": "quality summary status is 2xx"
+                },
+                "quality activity lists status is 2xx": {
+                    "passes": 0,
+                    "fails": 12,
+                    "name": "quality activity lists status is 2xx",
+                    "path": "::quality activity lists status is 2xx",
+                    "id": "cbf3cee29f1c4f1c83661bed09800164"
+                },
+                "quality inspections status is 2xx": {
+                    "name": "quality inspections status is 2xx",
+                    "path": "::quality inspections status is 2xx",
+                    "id": "ea0e035c35a9fe298c3b67a2fd3e585d",
+                    "passes": 0,
+                    "fails": 12
+                },
+                "quality my pending status is 2xx": {
+                    "name": "quality my pending status is 2xx",
+                    "path": "::quality my pending status is 2xx",
+                    "id": "d2aecafcf97bd1cd487f1fe082889580",
+                    "passes": 0,
+                    "fails": 12
+                },
+                "quality approval dashboard status is 2xx": {
+                    "name": "quality approval dashboard status is 2xx",
+                    "path": "::quality approval dashboard status is 2xx",
+                    "id": "b81566cd18626ef1fb169fdbb2d53cdb",
+                    "passes": 0,
+                    "fails": 12
+                },
+                "ehs summary status is 2xx": {
+                    "path": "::ehs summary status is 2xx",
+                    "id": "34c26cd94e66df94f6d10cbb8ddcfe01",
+                    "passes": 7,
+                    "fails": 4,
+                    "name": "ehs summary status is 2xx"
+                },
+                "ehs performance status is 2xx": {
+                    "name": "ehs performance status is 2xx",
+                    "path": "::ehs performance status is 2xx",
+                    "id": "90c269c728f05a8335245974168bccd0",
+                    "passes": 11,
+                    "fails": 0
+                },
+                "ehs manhours status is 2xx": {
+                    "name": "ehs manhours status is 2xx",
+                    "path": "::ehs manhours status is 2xx",
+                    "id": "9e89cb0108522ec4bc5aad8c7f81bc41",
+                    "passes": 11,
+                    "fails": 0
+                },
+                "ehs labor stats status is 2xx": {
+                    "path": "::ehs labor stats status is 2xx",
+                    "id": "fef4797f5873718b1a7c1c1061344089",
+                    "passes": 0,
+                    "fails": 11,
+                    "name": "ehs labor stats status is 2xx"
+                },
+                "ehs inspections status is 2xx": {
+                    "name": "ehs inspections status is 2xx",
+                    "path": "::ehs inspections status is 2xx",
+                    "id": "01ea641551b410c1eb45d67bee90fecf",
+                    "passes": 11,
+                    "fails": 0
+                }
+            },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+}

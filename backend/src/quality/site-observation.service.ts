@@ -14,6 +14,7 @@ import {
 import { QualityRatingConfig } from './entities/quality-rating-config.entity';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 import {
   CreateSiteObservationDto,
   RectifySiteObservationDto,
@@ -31,6 +32,7 @@ export class SiteObservationService {
     private readonly configRepo: Repository<QualityRatingConfig>,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
   ) {}
 
   private sanitizeObservationCategories(categories?: unknown): string[] {
@@ -105,7 +107,6 @@ export class SiteObservationService {
   }
 
   async create(dto: CreateSiteObservationDto, userId?: string) {
-    // Clean up empty strings for date fields to prevent DB errors
     const cleanedDto = { ...dto };
     if (cleanedDto.targetDate === '') {
       delete cleanedDto.targetDate;
@@ -119,22 +120,29 @@ export class SiteObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    // Alert QC supervisors for high-severity observations (project-scoped)
     if (
       dto.severity === SiteObservationSeverity.CRITICAL ||
       dto.severity === SiteObservationSeverity.MAJOR
     ) {
+      const notification =
+        await this.notificationComposer.composeObservationRaised({
+          moduleLabel: 'Quality',
+          projectId: dto.projectId,
+          epsNodeId: dto.epsNodeId,
+          severity: dto.severity,
+          category: dto.category,
+          subjectLabel: dto.category || 'Site observation',
+        });
+
       this.pushService
         .sendToProjectPermission(
           dto.projectId,
           'QUALITY.OBSERVATION.RESOLVE',
-          `${dto.severity} Quality Observation Raised`,
-          `A ${dto.severity.toLowerCase()} quality observation has been raised${dto.category ? ` — ${dto.category}` : ''}.`,
+          notification.title,
+          notification.body,
           {
-            type: 'QUALITY_OBS_RAISED',
             observationId: String(saved.id),
-            projectId: String(dto.projectId),
-            severity: dto.severity,
+            ...notification.data,
           },
         )
         .catch(() => {
@@ -175,14 +183,27 @@ export class SiteObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    // Notify the raiser that their observation has been rectified
     if (obs.raisedById) {
+      const notification =
+        await this.notificationComposer.composeObservationUpdate({
+          moduleLabel: 'Quality',
+          projectId: obs.projectId,
+          epsNodeId: obs.epsNodeId,
+          severity: obs.severity,
+          category: obs.category,
+          subjectLabel: obs.category || 'Site observation',
+          statusLabel: 'Quality Observation Rectified',
+        });
+
       this.pushService
         .sendToUsers(
           [parseInt(obs.raisedById, 10)],
-          'Quality Observation Rectified',
-          `Observation has been rectified. Please review and close.`,
-          { type: 'OBS_RECTIFIED', observationId: String(saved.id) },
+          notification.title,
+          `${notification.body} | Please review and close.`,
+          {
+            observationId: String(saved.id),
+            ...notification.data,
+          },
         )
         .catch(() => {
           /* non-fatal */
@@ -210,7 +231,6 @@ export class SiteObservationService {
       throw new BadRequestException('Observation is already CLOSED');
     }
 
-    // INFO severity can be closed directly from OPEN
     if (
       obs.severity !== SiteObservationSeverity.INFO &&
       obs.status === SiteObservationStatus.OPEN
@@ -231,14 +251,27 @@ export class SiteObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    // Notify the raiser that their observation has been closed
     if (obs.raisedById) {
+      const notification =
+        await this.notificationComposer.composeObservationUpdate({
+          moduleLabel: 'Quality',
+          projectId: obs.projectId,
+          epsNodeId: obs.epsNodeId,
+          severity: obs.severity,
+          category: obs.category,
+          subjectLabel: obs.category || 'Site observation',
+          statusLabel: 'Quality Observation Closed',
+        });
+
       this.pushService
         .sendToUsers(
           [parseInt(obs.raisedById, 10)],
-          'Quality Observation Closed',
-          `Your quality observation has been closed.`,
-          { type: 'OBS_CLOSED', observationId: String(saved.id) },
+          notification.title,
+          notification.body,
+          {
+            observationId: String(saved.id),
+            ...notification.data,
+          },
         )
         .catch(() => {
           /* non-fatal */

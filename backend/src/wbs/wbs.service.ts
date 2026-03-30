@@ -554,19 +554,20 @@ export class WbsService {
     projectId: number,
     data: any[],
     createdBy: string,
-  ): Promise<void> {
-    // 1. Get Root Prefix
-    const profile = await this.profileRepo.findOne({
-      where: { epsNode: { id: projectId } },
-    });
-    const rootPrefix = profile?.projectCode || `PROJ-${projectId}`;
+  ): Promise<{
+    createdWbsCount: number;
+    skippedExistingWbsCount: number;
+    createdActivityCount: number;
+    skippedActivityCount: number;
+    skippedRows: Array<{ rowNumber?: number; code?: string; reason: string }>;
+  }> {
+    const normalizedData = (data || []).filter(
+      (row) => row && row.importStatus !== 'ERROR',
+    );
 
-    // 2. Separate Data: WBS Nodes vs Activities
-    const wbsRows = data.filter((d) => !d.activitycode);
-    const activityRows = data.filter((d) => d.activitycode);
+    const wbsRows = normalizedData.filter((d) => !d.activitycode);
+    const activityRows = normalizedData.filter((d) => d.activitycode);
 
-    // 3. Process WBS Nodes
-    // Sort by WBS Code length to ensure parents come first
     wbsRows.sort((a, b) => {
       const partsA = a.wbscode.toString().split('.').length;
       const partsB = b.wbscode.toString().split('.').length;
@@ -574,75 +575,142 @@ export class WbsService {
       return a.wbscode.toString().localeCompare(b.wbscode.toString());
     });
 
-    // Map Input Code -> Created Node ID
     const codeMap = new Map<string, WbsNode>();
+    const skippedRows: Array<{
+      rowNumber?: number;
+      code?: string;
+      reason: string;
+    }> = [];
+
+    const existingNodes = await this.wbsRepo.find({
+      where: { projectId },
+      select: {
+        id: true,
+        wbsCode: true,
+        wbsName: true,
+        parentId: true,
+        wbsLevel: true,
+      },
+    });
+
+    for (const node of existingNodes) {
+      codeMap.set(node.wbsCode, node);
+    }
+
+    let createdWbsCount = 0;
+    let skippedExistingWbsCount = 0;
+    let createdActivityCount = 0;
+    let skippedActivityCount = 0;
+
+    const existingActivityCodes = new Set(
+      (
+        await this.activityRepo.find({
+          where: { projectId },
+          select: { activityCode: true },
+        })
+      )
+        .map((activity) => activity.activityCode)
+        .filter(Boolean),
+    );
 
     for (const row of wbsRows) {
-      const inputCode = row.wbscode.toString();
-      const parts = inputCode.split('.');
-      let parentNode: WbsNode | null = null;
+      const inputCode = row.wbscode.toString().trim();
+      const explicitParentCode = row.parentwbscode?.toString().trim();
+      const inferredParentCode = inputCode.includes('.')
+        ? inputCode.split('.').slice(0, -1).join('.')
+        : '';
+      const parentCodeInput = explicitParentCode || inferredParentCode;
 
-      if (parts.length > 1) {
-        const parentCodeInput = parts.slice(0, -1).join('.');
-        parentNode = codeMap.get(parentCodeInput) || null;
+      if (codeMap.has(inputCode)) {
+        skippedExistingWbsCount += 1;
+        skippedRows.push({
+          rowNumber: row.__rowNumber,
+          code: inputCode,
+          reason: `WBS Code '${inputCode}' already exists and was skipped.`,
+        });
+        continue;
       }
 
-      const siblingsCount = await this.wbsRepo.count({
-        where: { projectId, parentId: parentNode ? parentNode.id : IsNull() },
-      });
-      const seq = siblingsCount + 1;
-      const systemWbsCode = this.generateWbsCode(
-        parentNode?.wbsCode,
-        seq,
-        rootPrefix,
-      );
+      const parentNode = parentCodeInput ? codeMap.get(parentCodeInput) || null : null;
+      const lastSibling = await this.wbsRepo
+        .createQueryBuilder('wbs')
+        .where('wbs.project_id = :projectId', { projectId })
+        .andWhere(
+          parentNode ? 'wbs.parent_id = :parentId' : 'wbs.parent_id IS NULL',
+          { parentId: parentNode?.id },
+        )
+        .orderBy('wbs.sequence_no', 'DESC')
+        .getOne();
+      const sequenceNo = (lastSibling?.sequenceNo ?? 0) + 1;
 
       const newNode = this.wbsRepo.create({
         projectId,
         parentId: parentNode?.id,
-        wbsCode: systemWbsCode,
+        wbsCode: inputCode,
         wbsName: row.wbsname,
         isControlAccount:
-          row.iscontrolaccount === 'TRUE' || row.iscontrolaccount === true,
-        wbsLevel: (parentNode?.wbsLevel ?? 0) + 1,
-        sequenceNo: seq,
+          String(row.iscontrolaccount).toUpperCase() === 'TRUE' ||
+          row.iscontrolaccount === true,
+        wbsLevel:
+          (parentNode?.wbsLevel ?? 0) +
+          1,
+        sequenceNo,
         createdBy,
       });
 
       const saved = await this.wbsRepo.save(newNode);
       codeMap.set(inputCode, saved);
+      createdWbsCount += 1;
     }
 
-    // 4. Process Activities
     for (const row of activityRows) {
-      // Find Parent WBS (based on `wbscode` column)
-      // Input `wbscode` -> Mapped System Node
-      const wbsCodeInput = row.wbscode.toString();
+      const wbsCodeInput = (
+        row.parentwbscode?.toString().trim() || row.wbscode?.toString().trim()
+      );
       const parentWbs = codeMap.get(wbsCodeInput);
 
       if (!parentWbs) {
-        // If not in this file, maybe it's an existing System WBS Code?
-        // Unlikely in this import flow unless we look up via System Code match?
-        // But we are generating new System Codes.
-        // So if `wbscode` refers to something not in this file, we can't link it easily unless we searched DB by previous external code?
-        // Assumption: Activities must link to WBS defined IN THIS SAME FILE or we fail.
-        console.warn(
-          `Activity ${row.activitycode} skipped. Parent WBS ${wbsCodeInput} not found in import batch.`,
-        );
+        skippedActivityCount += 1;
+        skippedRows.push({
+          rowNumber: row.__rowNumber,
+          code: row.activitycode,
+          reason: `Parent WBS '${wbsCodeInput}' was not found for activity '${row.activitycode}'.`,
+        });
+        continue;
+      }
+
+      const activityCode = row.activitycode.toString().trim();
+      if (existingActivityCodes.has(activityCode)) {
+        skippedActivityCount += 1;
+        skippedRows.push({
+          rowNumber: row.__rowNumber,
+          code: activityCode,
+          reason: `Activity Code '${activityCode}' already exists and was skipped.`,
+        });
         continue;
       }
 
       const activity = this.activityRepo.create({
         projectId,
         wbsNode: parentWbs,
-        activityCode: row.activitycode,
-        activityName: row.activityname || row.activitycode,
+        activityCode,
+        activityName: row.activityname || activityCode,
         activityType: row.type || 'TASK',
         durationPlanned: row.duration ? Number(row.duration) : 0,
         status: ActivityStatus.NOT_STARTED,
         createdBy,
       });
       await this.activityRepo.save(activity);
+      existingActivityCodes.add(activityCode);
+      createdActivityCount += 1;
     }
+
+    return {
+      createdWbsCount,
+      skippedExistingWbsCount,
+      createdActivityCount,
+      skippedActivityCount,
+      skippedRows,
+    };
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:setu_mobile/core/api/api_exceptions.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
@@ -294,14 +295,34 @@ class QualityRequestBloc
   Future<void> _onLoadEpsTree(
       LoadEpsTree event, Emitter<QualityRequestState> emit) async {
     emit(const QualityRequestLoading());
+    final prefsKey = 'eps_tree_${event.projectId}';
     try {
       final raw = await _apiClient.getEpsTreeForProject(event.projectId);
+      // Cache for offline use
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(prefsKey, jsonEncode(raw));
       final nodes = raw
           .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
           .toList();
       emit(EpsTreeLoaded(nodes: nodes, projectId: event.projectId));
     } catch (e) {
-      emit(QualityRequestError(_friendly(e)));
+      if (_isNonNetworkError(e)) {
+        emit(QualityRequestError(_friendly(e)));
+        return;
+      }
+      // Network failure — serve from cache
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(prefsKey);
+      if (cached != null) {
+        final raw = jsonDecode(cached) as List<dynamic>;
+        final nodes = raw
+            .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
+            .toList();
+        emit(EpsTreeLoaded(nodes: nodes, projectId: event.projectId));
+      } else {
+        emit(const QualityRequestError(
+            'No connection and no cached EPS tree. Connect to load locations.'));
+      }
     }
   }
 

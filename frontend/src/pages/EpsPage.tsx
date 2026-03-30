@@ -27,6 +27,9 @@ import ProjectPropertiesModal from "../components/eps/ProjectPropertiesModal";
 import ProjectTeamModal from "../components/eps/ProjectTeamModal";
 import clsx from "clsx"; // Make sure to install clsx if not present, or use template literals
 import { useAuth } from "../context/AuthContext";
+import { exportUtils } from "../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../utils/export.registry";
+import { downloadBlob, withFileExtension } from "../utils/file-download.utils";
 
 // Types
 interface EpsNode {
@@ -220,13 +223,48 @@ const EpsPage = () => {
     const csvContent =
       "Company,Project,Block,Tower,Floor,Unit,Room\nMyCompany,Project A,Block 1,Tower A,Level 1,Unit 101,Kitchen";
     const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "eps_template.csv";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadBlob(blob, withFileExtension("eps_template", ".csv"));
+  };
+
+  const flattenNodes = (
+    treeNodes: EpsNode[],
+    parentName = "",
+    level = 1,
+  ): Array<Record<string, unknown>> =>
+    treeNodes.flatMap((node) => {
+      const current = {
+        name: node.name,
+        type: node.type,
+        parentName,
+        level,
+      };
+      return [
+        current,
+        ...flattenNodes(node.children || [], node.name, level + 1),
+      ];
+    });
+
+  const handleExport = (format: "EXCEL" | "CSV") => {
+    const exportRows = flattenNodes(nodes);
+    const fileName = resolveRegisteredExportFileName("eps.structure", {
+      scope: "Tree",
+    });
+    const columns = [
+      { key: "name", label: "Name" },
+      { key: "type", label: "Type" },
+      { key: "parentName", label: "Parent" },
+      { key: "level", label: "Level" },
+    ];
+
+    if (format === "EXCEL") {
+      exportUtils.toExcel(exportRows, fileName, {
+        sheetName: "EPS",
+        columns,
+      });
+      return;
+    }
+
+    exportUtils.toCsv(exportRows, fileName, { columns });
   };
 
   // Recursive Tree Renderer
@@ -428,6 +466,20 @@ const EpsPage = () => {
               >
                 <Download className="w-4 h-4 mr-2" />
                 Template
+              </button>
+              <button
+                onClick={() => handleExport("CSV")}
+                className="ui-btn-secondary px-4 py-2.5 text-sm shadow-sm flex items-center"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </button>
+              <button
+                onClick={() => handleExport("EXCEL")}
+                className="ui-btn-secondary px-4 py-2.5 text-sm shadow-sm flex items-center"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Excel
               </button>
               <label className="bg-success text-white px-4 py-2.5 rounded-xl shadow-md hover:brightness-95 flex items-center cursor-pointer text-sm font-semibold">
                 <Upload className="w-4 h-4 mr-2" />

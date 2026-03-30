@@ -19,6 +19,8 @@ import {
 } from '../workdoc/entities/work-order-item.entity';
 import { MicroScheduleActivity } from '../micro-schedule/entities/micro-schedule-activity.entity';
 import { MicroQuantityLedger } from '../micro-schedule/entities/micro-quantity-ledger.entity';
+import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 
 type Manager = EntityManager;
 
@@ -52,6 +54,8 @@ export class ExecutionService {
     private readonly executionEntryRepo: Repository<ExecutionProgressEntry>,
     @InjectRepository(ExecutionProgressAdjustment)
     private readonly executionAdjustmentRepo: Repository<ExecutionProgressAdjustment>,
+    private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
   ) {}
 
   async batchSaveMeasurements(
@@ -60,7 +64,14 @@ export class ExecutionService {
     userId: number,
     autoApprove = false,
   ) {
-    return this.dataSource.transaction(async (manager) => {
+    const notificationSeeds: Array<{
+      projectId: number;
+      epsNodeId: number | null;
+      activityId: number | null;
+      qty: number;
+    }> = [];
+
+    const results = await this.dataSource.transaction(async (manager) => {
       const results: any[] = [];
 
       for (const rawEntry of entries) {
@@ -114,6 +125,13 @@ export class ExecutionService {
 
         const saved = await manager.save(ExecutionProgressEntry, executionEntry);
 
+        notificationSeeds.push({
+          projectId: effectiveProjectId,
+          epsNodeId: selectedExecutionEpsNodeId,
+          activityId: context.plan.activityId,
+          qty: entryQty,
+        });
+
         if (saved.status === ExecutionProgressEntryStatus.APPROVED) {
           await this.syncDerivedState(
             manager,
@@ -129,6 +147,33 @@ export class ExecutionService {
 
       return results;
     });
+
+    if (!autoApprove && notificationSeeds.length) {
+      const aggregate = this.aggregateProgressNotificationSeed(notificationSeeds);
+      const notification =
+        await this.notificationComposer.composeProgressEntrySubmitted({
+          projectId: aggregate.projectId,
+          epsNodeId: aggregate.epsNodeId,
+          activityId: aggregate.activityId,
+          activityLabel: aggregate.activityLabel,
+          qty: aggregate.qty,
+          lineCount: aggregate.lineCount,
+        });
+
+      this.pushService
+        .sendToProjectPermission(
+          aggregate.projectId,
+          'EXECUTION.ENTRY.APPROVE',
+          notification.title,
+          notification.body,
+          notification.data,
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
+
+    return results;
   }
 
   async getProjectProgressLogs(projectId: number) {
@@ -324,23 +369,143 @@ export class ExecutionService {
         Array.from(boqSubItemIds),
       );
 
+      await this.notifyProgressDecision(
+        logs,
+        'Progress Approved',
+        manager,
+      );
+
       return { success: true, count: logs.length };
     });
   }
 
   async rejectProgress(logIds: number[], userId: number, reason: string) {
-    const result = await this.dataSource.manager.update(
-      ExecutionProgressEntry,
-      { id: In(logIds), status: ExecutionProgressEntryStatus.PENDING },
-      {
-        status: ExecutionProgressEntryStatus.REJECTED,
-        approvedBy: String(userId),
-        approvedAt: new Date(),
-        rejectionReason: reason,
-      },
-    );
+    return this.dataSource.transaction(async (manager) => {
+      const logs = await manager.find(ExecutionProgressEntry, {
+        where: {
+          id: In(logIds),
+          status: ExecutionProgressEntryStatus.PENDING,
+        },
+      });
 
-    return { success: true, affected: result.affected ?? 0 };
+      for (const log of logs) {
+        log.status = ExecutionProgressEntryStatus.REJECTED;
+        log.approvedBy = String(userId);
+        log.approvedAt = new Date();
+        log.rejectionReason = reason;
+        await manager.save(ExecutionProgressEntry, log);
+      }
+
+      await this.notifyProgressDecision(logs, 'Progress Rejected', manager, reason);
+      return { success: true, affected: logs.length };
+    });
+  }
+
+  private aggregateProgressNotificationSeed(
+    seeds: Array<{
+      projectId: number;
+      epsNodeId: number | null;
+      activityId: number | null;
+      qty: number;
+    }>,
+  ) {
+    const uniqueProjectIds = [...new Set(seeds.map((seed) => seed.projectId))];
+    const uniqueEpsIds = [
+      ...new Set(
+        seeds
+          .map((seed) => seed.epsNodeId)
+          .filter((value): value is number => value != null),
+      ),
+    ];
+    const uniqueActivityIds = [
+      ...new Set(
+        seeds
+          .map((seed) => seed.activityId)
+          .filter((value): value is number => value != null),
+      ),
+    ];
+
+    return {
+      projectId: uniqueProjectIds[0],
+      epsNodeId: uniqueEpsIds.length === 1 ? uniqueEpsIds[0] : null,
+      activityId: uniqueActivityIds.length === 1 ? uniqueActivityIds[0] : null,
+      activityLabel:
+        uniqueActivityIds.length > 1 ? 'Multiple activities' : null,
+      qty: seeds.reduce((sum, seed) => sum + Number(seed.qty || 0), 0),
+      lineCount: seeds.length,
+    };
+  }
+
+  private async notifyProgressDecision(
+    logs: ExecutionProgressEntry[],
+    decisionLabel: string,
+    manager: Manager,
+    reason?: string,
+  ) {
+    const grouped = new Map<
+      number,
+      {
+        projectId: number;
+        epsNodeId: number | null;
+        activityId: number | null;
+        qty: number;
+        lineCount: number;
+      }
+    >();
+
+    for (const log of logs) {
+      const userId = Number(log.createdBy || 0);
+      if (!Number.isFinite(userId) || userId <= 0) {
+        continue;
+      }
+
+      const existing = grouped.get(userId);
+      if (existing) {
+        existing.qty += Number(log.enteredQty || 0);
+        existing.lineCount += 1;
+        if (existing.activityId !== log.activityId) {
+          existing.activityId = null;
+        }
+        if (existing.epsNodeId !== log.executionEpsNodeId) {
+          existing.epsNodeId = null;
+        }
+        continue;
+      }
+
+      grouped.set(userId, {
+        projectId: log.projectId,
+        epsNodeId: log.executionEpsNodeId ?? null,
+        activityId: log.activityId ?? null,
+        qty: Number(log.enteredQty || 0),
+        lineCount: 1,
+      });
+    }
+
+    for (const [recipientUserId, summary] of grouped.entries()) {
+      const notification =
+        await this.notificationComposer.composeProgressEntryDecision({
+          projectId: await this.resolveRootProjectId(
+            manager,
+            Number(summary.projectId || 0),
+          ),
+          epsNodeId: summary.epsNodeId,
+          activityId: summary.activityId,
+          activityLabel: summary.activityId ? null : 'Multiple activities',
+          qty: summary.qty,
+          lineCount: summary.lineCount,
+          decisionLabel,
+        });
+
+      const body = reason
+        ? `${notification.body} | Remarks: ${reason}`
+        : notification.body;
+
+      this.pushService
+        .sendToUsers([recipientUserId], notification.title, body, notification.data)
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
   }
 
   private async resolvePlanContext(

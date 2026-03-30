@@ -22,6 +22,7 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
 import { ExecutionProgressEntry } from './entities/execution-progress-entry.entity';
 import { ExecutionProgressAdjustment } from './entities/execution-progress-adjustment.entity';
 import { WbsNode } from '../wbs/entities/wbs.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { WbsNode } from '../wbs/entities/wbs.entity';
     ]),
     BoqModule,
     MicroScheduleModule,
+    NotificationsModule,
   ],
   controllers: [ExecutionController],
   providers: [

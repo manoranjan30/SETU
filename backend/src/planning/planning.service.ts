@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Like, IsNull, Brackets } from 'typeorm';
+import * as XLSX from 'xlsx';
 import {
   BoqActivityPlan,
   PlanningBasis,
@@ -28,12 +29,143 @@ import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { CpmService } from '../wbs/cpm.service';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
 import { ExecutionProgressEntry, ExecutionProgressEntryStatus } from '../execution/entities/execution-progress-entry.entity';
 import { WorkOrderItemNodeType } from '../workdoc/entities/work-order-item.entity';
 
+type DistributionImportColumnMapping = Record<string, string>;
+
+type DistributionImportStatus =
+  | 'READY'
+  | 'PARTIAL'
+  | 'SKIP_EXISTING'
+  | 'IGNORED'
+  | 'ERROR';
+
+interface DistributionImportFieldDefinition {
+  key: string;
+  label: string;
+  required?: boolean;
+  aliases: string[];
+}
+
+interface DistributionImportPreviewRow {
+  __rowIndex: number;
+  __rowNumber: number;
+  activitycode?: string;
+  activityname?: string;
+  wbspath?: string;
+  availablefloorcodes?: string;
+  availablefloornames?: string;
+  linkedfloorcodes?: string;
+  linkedfloornames?: string;
+  notes?: string;
+  targetfloorcode?: string;
+  targetfloorname?: string;
+  targetepspath?: string;
+  linked?: string;
+  resolvednewfloorcodes?: string;
+  resolvednewfloornames?: string;
+  alreadylinkedfloorcodes?: string;
+  invalidfloorcodes?: string;
+  importStatus?: DistributionImportStatus;
+  importMessage?: string;
+}
+
+interface DistributionImportValidation {
+  isValid: boolean;
+  errors: string[];
+}
+
+interface DistributionImportSummary {
+  totalRows: number;
+  readyRows: number;
+  partialRows: number;
+  skippedExistingRows: number;
+  ignoredRows: number;
+  errorRows: number;
+}
+
 @Injectable()
 export class PlanningService {
+  private readonly distributionImportFields: DistributionImportFieldDefinition[] = [
+    {
+      key: 'activitycode',
+      label: 'Activity Code',
+      required: true,
+      aliases: ['activity code', 'activitycode', 'code'],
+    },
+    {
+      key: 'activityname',
+      label: 'Activity Name',
+      aliases: ['activity name', 'activityname', 'name'],
+    },
+    {
+      key: 'wbspath',
+      label: 'WBS Path',
+      aliases: ['wbs path', 'wbspath'],
+    },
+    {
+      key: 'availablefloorcodes',
+      label: 'Available Floor Codes',
+      aliases: ['available floor codes', 'availablefloorcodes'],
+    },
+    {
+      key: 'availablefloornames',
+      label: 'Available Floor Names',
+      aliases: ['available floor names', 'availablefloornames'],
+    },
+    {
+      key: 'linkedfloorcodes',
+      label: 'Linked Floor Codes',
+      aliases: [
+        'linked floor codes',
+        'linkedfloorcodes',
+        'floor codes to link',
+        'floors to link',
+      ],
+    },
+    {
+      key: 'linkedfloornames',
+      label: 'Linked Floor Names',
+      aliases: ['linked floor names', 'linkedfloornames'],
+    },
+    {
+      key: 'notes',
+      label: 'Notes',
+      aliases: ['notes', 'remarks', 'comments'],
+    },
+    {
+      key: 'targetfloorcode',
+      label: 'Target Floor Code',
+      aliases: [
+        'target floor code',
+        'targetfloorcode',
+        'target floor id',
+        'targetfloorid',
+        'floor code',
+        'floor id',
+      ],
+    },
+    {
+      key: 'targetfloorname',
+      label: 'Target Floor Name',
+      aliases: ['target floor name', 'targetfloorname', 'floor name'],
+    },
+    {
+      key: 'targetepspath',
+      label: 'Target EPS Path',
+      aliases: ['target eps path', 'targetepspath', 'eps path'],
+    },
+    {
+      key: 'linked',
+      label: 'Linked',
+      required: true,
+      aliases: ['linked', 'link', 'is linked'],
+    },
+  ];
+
   constructor(
     @InjectRepository(BoqActivityPlan)
     private planRepo: Repository<BoqActivityPlan>,
@@ -64,8 +196,254 @@ export class PlanningService {
     private cpmService: CpmService,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
     private readonly customerMilestoneService: CustomerMilestoneService,
   ) {}
+
+  private normalizeImportHeader(value: string): string {
+    return (value || '')
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  private normalizeImportCell(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value).trim();
+    }
+    return String(value).trim();
+  }
+
+  private buildDistributionImportAutoMapping(
+    headers: string[],
+  ): DistributionImportColumnMapping {
+    const mapping: DistributionImportColumnMapping = {};
+    const normalizedHeaders = headers.map((header) => ({
+      source: header,
+      normalized: this.normalizeImportHeader(header),
+    }));
+
+    for (const field of this.distributionImportFields) {
+      const exact = normalizedHeaders.find((header) =>
+        field.aliases.includes(header.normalized),
+      );
+      if (exact) {
+        mapping[field.key] = exact.source;
+        continue;
+      }
+
+      const fuzzy = normalizedHeaders.find((header) =>
+        field.aliases.some(
+          (candidate) =>
+            header.normalized.includes(candidate) ||
+            candidate.includes(header.normalized),
+        ),
+      );
+      if (fuzzy) {
+        mapping[field.key] = fuzzy.source;
+      }
+    }
+
+    return mapping;
+  }
+
+  private parseImportWorkbookRows(
+    fileBuffer: Buffer,
+  ): Record<string, unknown>[] {
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+    });
+  }
+
+  private canonicalizeDistributionImportRows(
+    rawRows: Record<string, unknown>[],
+    mapping: DistributionImportColumnMapping,
+  ): DistributionImportPreviewRow[] {
+    return rawRows.map((row, index) => {
+      const normalizedRow: DistributionImportPreviewRow = {
+        __rowIndex: index,
+        __rowNumber: index + 2,
+      };
+
+      for (const field of this.distributionImportFields) {
+        const sourceHeader = mapping[field.key];
+        if (!sourceHeader) continue;
+        ((normalizedRow as unknown) as Record<string, unknown>)[field.key] =
+          this.normalizeImportCell(row[sourceHeader]);
+      }
+
+      return normalizedRow;
+    });
+  }
+
+  private normalizeLinkedFlag(value: string): boolean | null {
+    const normalized = this.normalizeImportHeader(value);
+    if (!normalized) return null;
+    if (['yes', 'true', '1', 'y'].includes(normalized)) return true;
+    if (['no', 'false', '0', 'n'].includes(normalized)) return false;
+    return null;
+  }
+
+  private summarizeDistributionImportRows(
+    rows: DistributionImportPreviewRow[],
+  ): DistributionImportSummary {
+    return rows.reduce<DistributionImportSummary>(
+      (summary, row) => {
+        summary.totalRows += 1;
+        if (row.importStatus === 'READY') summary.readyRows += 1;
+        if (row.importStatus === 'PARTIAL') summary.partialRows += 1;
+        if (row.importStatus === 'SKIP_EXISTING') {
+          summary.skippedExistingRows += 1;
+        }
+        if (row.importStatus === 'IGNORED') summary.ignoredRows += 1;
+        if (row.importStatus === 'ERROR') summary.errorRows += 1;
+        return summary;
+      },
+      {
+        totalRows: 0,
+        readyRows: 0,
+        partialRows: 0,
+        skippedExistingRows: 0,
+        ignoredRows: 0,
+        errorRows: 0,
+      },
+    );
+  }
+
+  private buildCsvBuffer(rows: Record<string, unknown>[]): Buffer {
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    return Buffer.from(`\ufeff${csv}`, 'utf8');
+  }
+
+  private async getProjectDistributionTargets(projectId: number) {
+    const epsNodes = await this.epsRepo.find({
+      order: { order: 'ASC', id: 'ASC' },
+    });
+    const nodeMap = new Map<number, EpsNode>();
+    const childrenMap = new Map<number, EpsNode[]>();
+
+    epsNodes.forEach((node) => {
+      nodeMap.set(node.id, node);
+      childrenMap.set(node.id, []);
+    });
+
+    epsNodes.forEach((node) => {
+      if (node.parentId && childrenMap.has(node.parentId)) {
+        childrenMap.get(node.parentId)!.push(node);
+      }
+    });
+
+    const projectNode = nodeMap.get(projectId);
+    if (!projectNode) {
+      throw new NotFoundException('Project EPS node not found');
+    }
+
+    const descendants: EpsNode[] = [];
+    const visit = (nodeId: number) => {
+      const children = childrenMap.get(nodeId) || [];
+      children.forEach((child) => {
+        descendants.push(child);
+        visit(child.id);
+      });
+    };
+    visit(projectId);
+
+    const floorTargets = descendants.filter(
+      (node) => node.type === EpsNodeType.FLOOR,
+    );
+    const leafTargets =
+      floorTargets.length > 0
+        ? floorTargets
+        : descendants.filter(
+            (node) => (childrenMap.get(node.id) || []).length === 0,
+          );
+
+    const buildPath = (nodeId: number) => {
+      const parts: string[] = [];
+      let current = nodeMap.get(nodeId) || null;
+      while (current && current.id !== projectId) {
+        parts.unshift(current.name);
+        current = current.parentId ? nodeMap.get(current.parentId) || null : null;
+      }
+      return parts.join(' > ');
+    };
+
+    const targetMeta = leafTargets.map((node) => ({
+      id: node.id,
+      code: String(node.id),
+      name: node.name,
+      path: buildPath(node.id),
+    }));
+
+    const targetByCode = new Map(
+      targetMeta.map((target) => [target.code, target]),
+    );
+    const targetsByName = new Map<string, typeof targetMeta>();
+    targetMeta.forEach((target) => {
+      const key = target.name.trim().toLowerCase();
+      const existing = targetsByName.get(key) || [];
+      existing.push(target);
+      targetsByName.set(key, existing);
+    });
+
+    return {
+      targetMeta,
+      targetByCode,
+      targetsByName,
+    };
+  }
+
+  private async getDistributionSourceActivities(projectId: number) {
+    const [wbsNodes, activities] = await Promise.all([
+      this.wbsRepo.find({ where: { projectId } }),
+      this.activityRepo.find({
+        where: { projectId },
+        relations: ['wbsNode'],
+        order: { activityCode: 'ASC' },
+      }),
+    ]);
+
+    const wbsMap = new Map<number, WbsNode>();
+    wbsNodes.forEach((node) => wbsMap.set(node.id, node));
+
+    const buildWbsPath = (wbsNodeId?: number | null) => {
+      if (!wbsNodeId) return '';
+      const parts: string[] = [];
+      let current = wbsMap.get(wbsNodeId) || null;
+      while (current) {
+        parts.unshift(current.wbsName);
+        current = current.parentId ? wbsMap.get(current.parentId) || null : null;
+      }
+      return parts.join(' > ');
+    };
+
+    const activityMeta = activities.map((activity) => ({
+      id: activity.id,
+      activityCode: activity.activityCode,
+      activityName: activity.activityName,
+      wbsPath: buildWbsPath(activity.wbsNode?.id),
+    }));
+
+    const activityByCode = new Map(
+      activityMeta.map((activity) => [
+        activity.activityCode.trim().toLowerCase(),
+        activity,
+      ]),
+    );
+
+    return {
+      activityMeta,
+      activityByCode,
+    };
+  }
 
   async unlinkBoq(
     boqItemId: number,
@@ -654,16 +1032,21 @@ export class PlanningService {
 
     // 2. Notify project-scoped progress approvers (fire-and-forget)
     if (savedRecord.projectId) {
+      const notification = await this.notificationComposer.composeProgressEntrySubmitted({
+        projectId: savedRecord.projectId,
+        epsNodeId: savedRecord.executionEpsNodeId,
+        activityId: savedRecord.activityId,
+        qty: Number(savedRecord.enteredQty || 0),
+      });
       this.pushService
         .sendToProjectPermission(
           savedRecord.projectId,
           'EXECUTION.ENTRY.APPROVE',
-          'Progress Entry Submitted',
-          `New progress recorded for activity #${savedRecord.activityId}`,
+          notification.title,
+          notification.body,
           {
-            type: 'PROGRESS_SUBMITTED',
-            projectId: String(savedRecord.projectId),
             recordId: String(savedRecord.id),
+            ...notification.data,
           },
         )
         .catch(() => {
@@ -1410,6 +1793,382 @@ export class PlanningService {
       }
     }
     return matrix;
+  }
+
+  async exportDistributionMatrixCsv(
+    projectId: number,
+    mode: 'linked' | 'template' = 'template',
+  ): Promise<Buffer> {
+    const [{ activityMeta }, { targetMeta }, matrix] = await Promise.all([
+      this.getDistributionSourceActivities(projectId),
+      this.getProjectDistributionTargets(projectId),
+      this.getDistributionMatrix(projectId),
+    ]);
+
+    const rows: Array<Record<string, unknown>> = [];
+    const availableFloorCodes = targetMeta.map((target) => target.code).join(', ');
+    const availableFloorNames = targetMeta
+      .map((target) => `${target.code}:${target.name}`)
+      .join(', ');
+
+    for (const activity of activityMeta) {
+      const linkedTargets = new Set(matrix[String(activity.id)] || []);
+      const linkedFloorTargets = targetMeta.filter((target) =>
+        linkedTargets.has(target.id),
+      );
+
+      if (mode === 'linked' && linkedFloorTargets.length === 0) {
+        continue;
+      }
+
+      rows.push({
+        'Activity Code': activity.activityCode,
+        'Activity Name': activity.activityName,
+        'WBS Path': activity.wbsPath,
+        'Available Floor Codes': availableFloorCodes,
+        'Available Floor Names': availableFloorNames,
+        'Linked Floor Codes': linkedFloorTargets
+          .map((target) => target.code)
+          .join(', '),
+        'Linked Floor Names': linkedFloorTargets
+          .map((target) => `${target.code}:${target.name}`)
+          .join(', '),
+        Notes: '',
+      });
+    }
+
+    return this.buildCsvBuffer(rows);
+  }
+
+  async previewDistributionImport(
+    projectId: number,
+    fileBuffer: Buffer,
+    mapping?: DistributionImportColumnMapping,
+  ) {
+    const rawRows = this.parseImportWorkbookRows(fileBuffer);
+    if (rawRows.length === 0) {
+      throw new BadRequestException('Sheet is empty');
+    }
+
+    const headers = Object.keys(rawRows[0] || {});
+    const effectiveMapping =
+      mapping && Object.keys(mapping).length > 0
+        ? mapping
+        : this.buildDistributionImportAutoMapping(headers);
+
+    const missingRequired = this.distributionImportFields
+      .filter((field) => field.required)
+      .filter((field) => !effectiveMapping[field.key])
+      .map((field) => field.label);
+
+    if (
+      !effectiveMapping.linkedfloorcodes &&
+      !effectiveMapping.targetfloorcode &&
+      !effectiveMapping.targetfloorname
+    ) {
+      missingRequired.push(
+        'Linked Floor Codes or Target Floor Code / Target Floor Name',
+      );
+    }
+
+    if (missingRequired.length > 0) {
+      throw new BadRequestException(
+        `Missing required columns: ${missingRequired.join(', ')}`,
+      );
+    }
+
+    const normalizedRows = this.canonicalizeDistributionImportRows(
+      rawRows,
+      effectiveMapping,
+    );
+
+    const [{ activityByCode }, { targetByCode, targetsByName }, matrix] =
+      await Promise.all([
+        this.getDistributionSourceActivities(projectId),
+        this.getProjectDistributionTargets(projectId),
+        this.getDistributionMatrix(projectId),
+      ]);
+
+    const seenPairs = new Set<string>();
+    const validationErrors: string[] = [];
+
+    const data = normalizedRows.map((row) => {
+      const normalizedActivityCode = this.normalizeImportCell(row.activitycode)
+        .toLowerCase();
+      const activity = activityByCode.get(normalizedActivityCode);
+
+      if (!activity) {
+        const message = `Activity Code "${row.activitycode || ''}" was not found in this project.`;
+        validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+        return {
+          ...row,
+          importStatus: 'ERROR' as DistributionImportStatus,
+          importMessage: message,
+        };
+      }
+
+      const requestedCodes = new Set<string>();
+      const linkedFloorCodesCell = this.normalizeImportCell(row.linkedfloorcodes);
+      if (linkedFloorCodesCell) {
+        linkedFloorCodesCell
+          .split(/[,\n;]+/)
+          .map((value) => this.normalizeImportCell(value))
+          .filter(Boolean)
+          .forEach((code) => requestedCodes.add(code));
+      } else {
+        const fallbackTargetCode = this.normalizeImportCell(row.targetfloorcode);
+        const fallbackTargetName = this.normalizeImportCell(row.targetfloorname);
+        const linkedFlag = this.normalizeLinkedFlag(row.linked || '');
+        if (fallbackTargetCode || fallbackTargetName) {
+          if (linkedFlag === null) {
+            const message = `Linked value "${row.linked || ''}" is invalid. Use Yes/No, True/False, or 1/0.`;
+            validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+            return {
+              ...row,
+              activitycode: activity.activityCode,
+              activityname: activity.activityName,
+              wbspath: activity.wbsPath,
+              importStatus: 'ERROR' as DistributionImportStatus,
+              importMessage: message,
+            };
+          }
+          if (linkedFlag) {
+            if (fallbackTargetCode) {
+              requestedCodes.add(fallbackTargetCode);
+            } else if (fallbackTargetName) {
+              const matchingTargets =
+                targetsByName.get(fallbackTargetName.toLowerCase()) || [];
+              if (matchingTargets.length === 1) {
+                requestedCodes.add(matchingTargets[0].code);
+              } else if (matchingTargets.length > 1) {
+                const message = `Target Floor Name "${fallbackTargetName}" matched multiple floors.`;
+                validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+                return {
+                  ...row,
+                  activitycode: activity.activityCode,
+                  activityname: activity.activityName,
+                  wbspath: activity.wbsPath,
+                  importStatus: 'ERROR' as DistributionImportStatus,
+                  importMessage: message,
+                };
+              } else {
+                requestedCodes.add(`__INVALID_NAME__:${fallbackTargetName}`);
+              }
+            }
+          }
+        }
+      }
+
+      const currentLinkedTargets = (matrix[String(activity.id)] || [])
+        .map((targetId) => targetByCode.get(String(targetId)))
+        .filter(
+          (
+            target,
+          ): target is { id: number; code: string; name: string; path: string } =>
+            Boolean(target),
+        );
+
+      const newTargets: Array<{
+        id: number;
+        code: string;
+        name: string;
+        path: string;
+      }> = [];
+      const alreadyLinkedTargets: Array<{
+        id: number;
+        code: string;
+        name: string;
+        path: string;
+      }> = [];
+      const invalidCodes: string[] = [];
+
+      for (const requestedCode of requestedCodes) {
+        if (requestedCode.startsWith('__INVALID_NAME__:')) {
+          invalidCodes.push(requestedCode.replace('__INVALID_NAME__:', ''));
+          continue;
+        }
+
+        const target = targetByCode.get(requestedCode);
+        if (!target) {
+          invalidCodes.push(requestedCode);
+          continue;
+        }
+
+        const pairKey = `${activity.id}::${target.id}`;
+        if (seenPairs.has(pairKey)) {
+          invalidCodes.push(`${requestedCode} (duplicate in file)`);
+          continue;
+        }
+        seenPairs.add(pairKey);
+
+        if ((matrix[String(activity.id)] || []).includes(target.id)) {
+          alreadyLinkedTargets.push(target);
+        } else {
+          newTargets.push(target);
+        }
+      }
+
+      const normalizedBase = {
+        ...row,
+        activitycode: activity.activityCode,
+        activityname: activity.activityName,
+        wbspath: activity.wbsPath,
+        availablefloorcodes: Array.from(targetByCode.keys()).join(', '),
+        availablefloornames: Array.from(targetByCode.values())
+          .map((target) => `${target.code}:${target.name}`)
+          .join(', '),
+        linkedfloorcodes: Array.from(requestedCodes)
+          .filter((code) => !code.startsWith('__INVALID_NAME__:'))
+          .join(', '),
+        linkedfloornames: Array.from(requestedCodes)
+          .filter((code) => !code.startsWith('__INVALID_NAME__:'))
+          .map((code) => {
+            const target = targetByCode.get(code);
+            return target ? `${target.code}:${target.name}` : code;
+          })
+          .join(', '),
+        resolvednewfloorcodes: newTargets.map((target) => target.code).join(', '),
+        resolvednewfloornames: newTargets
+          .map((target) => `${target.code}:${target.name}`)
+          .join(', '),
+        alreadylinkedfloorcodes: alreadyLinkedTargets
+          .map((target) => target.code)
+          .join(', '),
+        invalidfloorcodes: invalidCodes.join(', '),
+      };
+
+      if (requestedCodes.size === 0) {
+        return {
+          ...normalizedBase,
+          linkedfloorcodes: currentLinkedTargets.map((target) => target.code).join(', '),
+          linkedfloornames: currentLinkedTargets
+            .map((target) => `${target.code}:${target.name}`)
+            .join(', '),
+          importStatus: 'IGNORED' as DistributionImportStatus,
+          importMessage: 'No new floor codes provided. Edit only the Linked Floor Codes column to add links.',
+        };
+      }
+
+      if (newTargets.length === 0 && invalidCodes.length === 0) {
+        return {
+          ...normalizedBase,
+          importStatus: 'SKIP_EXISTING' as DistributionImportStatus,
+          importMessage: 'All requested floors are already linked.',
+        };
+      }
+
+      if (newTargets.length === 0 && invalidCodes.length > 0) {
+        const message = `No valid new floors found. Invalid floor codes: ${invalidCodes.join(', ')}.`;
+        validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+        return {
+          ...normalizedBase,
+          importStatus: 'ERROR' as DistributionImportStatus,
+          importMessage: message,
+        };
+      }
+
+      if (invalidCodes.length > 0 || alreadyLinkedTargets.length > 0) {
+        const parts: string[] = [];
+        if (alreadyLinkedTargets.length > 0) {
+          parts.push(
+            `${alreadyLinkedTargets.length} floor(s) already linked`,
+          );
+        }
+        if (newTargets.length > 0) {
+          parts.push(`${newTargets.length} new floor(s) will be added`);
+        }
+        if (invalidCodes.length > 0) {
+          parts.push(`Invalid floor codes: ${invalidCodes.join(', ')}`);
+        }
+        return {
+          ...normalizedBase,
+          importStatus: 'PARTIAL' as DistributionImportStatus,
+          importMessage: parts.join('. ') + '.',
+        };
+      }
+
+      return {
+        ...normalizedBase,
+        importStatus: 'READY' as DistributionImportStatus,
+        importMessage: `Will add ${newTargets.length} new floor(s).`,
+      };
+    });
+
+    const summary = this.summarizeDistributionImportRows(data);
+    const validation: DistributionImportValidation = {
+      isValid: summary.errorRows === 0,
+      errors: validationErrors,
+    };
+
+    return {
+      data,
+      summary,
+      validation,
+      mapping: effectiveMapping,
+    };
+  }
+
+  async commitDistributionImport(
+    projectId: number,
+    data: DistributionImportPreviewRow[],
+    user: any,
+  ) {
+    const actionableRows = (Array.isArray(data) ? data : []).filter(
+      (row) => row.importStatus === 'READY' || row.importStatus === 'PARTIAL',
+    );
+
+    const groupedByFloor = new Map<number, number[]>();
+    const { activityByCode } = await this.getDistributionSourceActivities(projectId);
+
+    for (const row of actionableRows) {
+      const activity = activityByCode.get(
+        this.normalizeImportCell(row.activitycode).toLowerCase(),
+      );
+      if (!activity) {
+        continue;
+      }
+
+      const resolvedCodes = this.normalizeImportCell(
+        row.resolvednewfloorcodes,
+      )
+        .split(/[,\n;]+/)
+        .map((value) => this.normalizeImportCell(value))
+        .filter(Boolean);
+
+      for (const resolvedCode of resolvedCodes) {
+        const targetId = Number(resolvedCode);
+        if (!Number.isFinite(targetId)) continue;
+        const existing = groupedByFloor.get(targetId) || [];
+        existing.push(activity.id);
+        groupedByFloor.set(targetId, existing);
+      }
+    }
+
+    let createdLinkCount = 0;
+    let skippedByServiceCount = 0;
+
+    for (const [targetId, activityIds] of groupedByFloor.entries()) {
+      const uniqueActivityIds = [...new Set(activityIds)];
+      const result = await this.distributeActivitiesToEps(
+        uniqueActivityIds,
+        [targetId],
+        user,
+      );
+      createdLinkCount += Number(result?.created || 0);
+      skippedByServiceCount += Number(result?.skipped || 0);
+    }
+
+    return {
+      processedRows: actionableRows.length,
+      createdLinkCount,
+      skippedByServiceCount,
+      partialRows: data.filter((row) => row.importStatus === 'PARTIAL').length,
+      skippedExistingRows: data.filter(
+        (row) => row.importStatus === 'SKIP_EXISTING',
+      ).length,
+      ignoredRows: data.filter((row) => row.importStatus === 'IGNORED').length,
+      errorRows: data.filter((row) => row.importStatus === 'ERROR').length,
+    };
   }
 
   // --- Activity-Centric Execution Logic ---

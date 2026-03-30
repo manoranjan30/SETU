@@ -30,6 +30,7 @@ import { executiveDashboardApi } from "../../services/executive-dashboard.servic
 import { aiInsightsService } from "../../services/aiInsights.service";
 import { useTheme } from "../../context/ThemeContext";
 import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
+import { filterOperationalProjects } from "../../utils/project-lifecycle.utils";
 import type {
   ExecutiveListItem,
   ExecutiveMetric,
@@ -180,6 +181,13 @@ function ProgressRing({ percent, color, size = 42 }: { percent: number; color: s
     </div>
   );
 }
+
+const metricNumber = (metric?: ExecutiveMetric | null) => {
+  if (!metric) return 0;
+  if (typeof metric.value === "number") return metric.value;
+  const parsed = Number(metric.value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 // ─── KPI Headline Chip ────────────────────────────────────────────────────────
 
@@ -365,8 +373,9 @@ function AiInsightBulletinChip({
 
 // ─── Pillar Top KPI Bar ───────────────────────────────────────────────────────
 
-function PillarKpiBar({ section }: {
+function PillarKpiBar({ section, pillarKey }: {
   section: ExecutiveSection;
+  pillarKey: keyof typeof PILLAR;
 }) {
   const kpis =
     section.kpis.some((metric) => metric.key === "woIssuedValue") &&
@@ -378,12 +387,23 @@ function PillarKpiBar({ section }: {
     <div className="grid grid-cols-3 gap-2 mt-4">
       {kpis.slice(0, 3).map((m) => (
         <div key={m.key} className="rounded-xl px-3 py-2.5"
-          style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)" }}>
+          style={{
+            background: "rgba(255,255,255,0.18)",
+            border: "1px solid rgba(255,255,255,0.25)",
+            minHeight: pillarKey === "progressExecution" && m.key === "actualProgress" ? 74 : undefined,
+          }}>
           <div className="text-[9px] font-bold uppercase tracking-[0.2em] mb-1"
             style={{ color: "rgba(255,255,255,0.65)" }}>
             {m.label}
           </div>
-          <div className="text-lg font-black text-white">
+          <div
+            className="font-black text-white"
+            style={{
+              fontSize:
+                pillarKey === "progressExecution" && m.key === "actualProgress" ? "1.5rem" : "1.125rem",
+              lineHeight: 1.1,
+            }}
+          >
             {formatValue(m)}
           </div>
           {m.tone && m.tone !== "default" && (
@@ -395,6 +415,156 @@ function PillarKpiBar({ section }: {
         </div>
       ))}
     </div>
+  );
+}
+
+function MetricMiniCard({ metric, pillarKey, onClick }: {
+  metric: ExecutiveMetric;
+  pillarKey: keyof typeof PILLAR;
+  onClick?: () => void;
+}) {
+  const clickable = Boolean(onClick && metric.route);
+  const color = toneColor(metric.tone);
+  const pct =
+    typeof metric.visualPercent === "number"
+      ? Math.min(100, Math.max(0, metric.visualPercent))
+      : metric.format === "percent" && typeof metric.value === "number"
+        ? Math.min(100, Math.max(0, metric.value))
+        : null;
+
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={clickable ? onClick : undefined}
+      className="group relative overflow-hidden rounded-2xl p-4 text-left transition"
+      style={{
+        background: "var(--color-surface-raised)",
+        border: "1px solid var(--color-border-subtle)",
+        minHeight: 96,
+        cursor: clickable ? "pointer" : "default",
+      }}
+    >
+      <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.16em]"
+        style={{ color: "var(--color-text-muted)" }}>
+        {metric.label}
+      </div>
+      <div className="text-[1.7rem] font-black leading-none" style={{ color }}>
+        {formatValue(metric)}
+      </div>
+      {pct !== null ? (
+        <div className="mt-2.5">
+          <div className="h-1.5 overflow-hidden rounded-full"
+            style={{ background: "var(--color-border-default)" }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${pct}%`, backgroundColor: `var(${PILLAR[pillarKey].accentVar})` }}
+            />
+          </div>
+          {metric.visualLabel && (
+            <div className="mt-1 text-[9px] leading-4"
+              style={{ color: "var(--color-text-muted)" }}>
+              {metric.visualLabel}
+            </div>
+          )}
+        </div>
+      ) : (
+        metric.helper && (
+          <div className="mt-2 text-[9px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+            {metric.helper}
+          </div>
+        )
+      )}
+    </button>
+  );
+}
+
+function ExecutionComparisonCard({
+  burnMetric,
+  budgetMetric,
+  woIssuedMetric,
+  onClick,
+}: {
+  burnMetric?: ExecutiveMetric | null;
+  budgetMetric?: ExecutiveMetric | null;
+  woIssuedMetric?: ExecutiveMetric | null;
+  onClick?: (route?: string) => void;
+}) {
+  if (!burnMetric) return null;
+
+  const burn = metricNumber(burnMetric);
+  const budget = metricNumber(budgetMetric);
+  const woIssued = metricNumber(woIssuedMetric);
+  const budgetRatio = budget > 0 ? Math.min(100, (burn / budget) * 100) : 0;
+  const woRatio = woIssued > 0 ? Math.min(100, (burn / woIssued) * 100) : 0;
+  const clickable = Boolean(onClick && burnMetric.route);
+
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={clickable ? () => onClick?.(burnMetric.route) : undefined}
+      className="group rounded-2xl p-4 text-left transition"
+      style={{
+        background: "var(--color-surface-raised)",
+        border: "1px solid var(--color-border-subtle)",
+        cursor: clickable ? "pointer" : "default",
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[9px] font-semibold uppercase tracking-[0.16em]"
+            style={{ color: "var(--color-text-muted)" }}>
+            {burnMetric.label}
+          </div>
+          <div className="mt-2 text-[1.8rem] font-black leading-none" style={{ color: toneColor(burnMetric.tone) }}>
+            {formatValue(burnMetric)}
+          </div>
+        </div>
+        <div className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase"
+          style={{ background: toneMutedBg(burnMetric.tone), color: toneColor(burnMetric.tone) }}>
+          Live
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl p-3" style={{ background: "var(--color-surface-card)" }}>
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: "var(--color-text-muted)" }}>
+            Burn vs Budget Value
+          </div>
+          <div className="mt-1 text-[13px] font-bold leading-5" style={{ color: "var(--color-text-primary)" }}>
+            {budget > 0 ? `${budgetRatio.toFixed(1)}% of budget consumed` : "Budget baseline unavailable"}
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full" style={{ background: "var(--color-border-default)" }}>
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${budgetRatio}%` }} />
+          </div>
+          {budgetMetric && (
+            <div className="mt-2 text-[9px]" style={{ color: "var(--color-text-muted)" }}>
+              Budget: {formatValue(budgetMetric)}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl p-3" style={{ background: "var(--color-surface-card)" }}>
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: "var(--color-text-muted)" }}>
+            WO Issued vs Burn Value
+          </div>
+          <div className="mt-1 text-[13px] font-bold leading-5" style={{ color: "var(--color-text-primary)" }}>
+            {woIssued > 0 ? `${woRatio.toFixed(1)}% of issued value consumed` : "WO issued value unavailable"}
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full" style={{ background: "var(--color-border-default)" }}>
+            <div className="h-full rounded-full bg-sky-500" style={{ width: `${woRatio}%` }} />
+          </div>
+          {woIssuedMetric && (
+            <div className="mt-2 text-[9px]" style={{ color: "var(--color-text-muted)" }}>
+              WO Issued: {formatValue(woIssuedMetric)}
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -651,7 +821,10 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
       : delayedMetric
         ? [...section.kpis.filter((metric) => metric.key !== delayedMetric.key), delayedMetric]
         : section.kpis;
-  const previewMetrics = displayMetrics;
+  const actualProgressMetric = section.kpis.find((metric) => metric.key === "actualProgress");
+  const budgetMetric = section.kpis.find((metric) => metric.key === "budgetValue");
+  const woIssuedMetric = section.kpis.find((metric) => metric.key === "woIssuedValue");
+  const burnMetric = section.kpis.find((metric) => metric.key === "burnValue");
 
   return (
     <div className="flex flex-col overflow-hidden rounded-3xl"
@@ -680,14 +853,14 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
             Live
           </div>
         </div>
-        <PillarKpiBar section={section} />
+        <PillarKpiBar section={section} pillarKey={pillarKey} />
       </div>
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-4 p-4">
         {pillarKey === "progressExecution" && progressPreview ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="row-span-2 overflow-hidden rounded-2xl"
+          <div className="grid gap-3 lg:grid-cols-[1.02fr_0.98fr]">
+            <div className="overflow-hidden rounded-2xl"
               style={{ background: "var(--color-surface-base)", border: "1px solid var(--color-border-subtle)" }}>
               <ProjectProgress3DPanel
                 projectId={progressPreview.projectId}
@@ -695,14 +868,28 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
                 subtitle={progressPreview.subtitle}
                 autoRotate
                 autoRotateSpeed={2.2}
-                viewerClassName="h-[344px]"
+                viewerClassName="h-[372px]"
               />
             </div>
 
-            {previewMetrics.map((m) => (
-              <MetricDetailCard key={m.key} metric={m} pillarKey={pillarKey}
-                onClick={() => onNavigate(m.route)} />
-            ))}
+            <div className="grid content-start gap-3">
+              {actualProgressMetric && (
+                <div className="grid grid-cols-1">
+                  <MetricMiniCard
+                    metric={actualProgressMetric}
+                    pillarKey={pillarKey}
+                    onClick={() => onNavigate(actualProgressMetric.route)}
+                  />
+                </div>
+              )}
+
+              <ExecutionComparisonCard
+                burnMetric={burnMetric}
+                budgetMetric={budgetMetric}
+                woIssuedMetric={woIssuedMetric}
+                onClick={onNavigate}
+              />
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -713,8 +900,9 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
           </div>
         )}
 
-        {/* Trend chart */}
-        <TrendPanel section={section} pillarKey={pillarKey} isDark={isDark} />
+        {pillarKey !== "progressExecution" && (
+          <TrendPanel section={section} pillarKey={pillarKey} isDark={isDark} />
+        )}
 
         {/* Alerts + Actions side by side */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -826,8 +1014,9 @@ export default function ExecutiveDashboard() {
   const loadCompanies = async () => { const r = await executiveDashboardApi.getCompanies(); setCompanyOptions(r.data); };
   const loadProjects = async (cid?: number | null) => {
     const r = await executiveDashboardApi.getProjects(cid);
-    setProjectOptions(r.data);
-    setSelectedProjectId((cur) => (r.data.some((p) => p.id === cur) ? cur : null));
+    const activeProjects = filterOperationalProjects(r.data);
+    setProjectOptions(activeProjects);
+    setSelectedProjectId((cur) => (activeProjects.some((p) => p.id === cur) ? cur : null));
   };
 
   useEffect(() => { loadCompanies().catch(() => undefined); }, []);

@@ -8,7 +8,8 @@ import {
   Map,
 } from "lucide-react";
 import api from "../../api/axios";
-import * as XLSX from "xlsx";
+import type { ImportPreviewResult } from "../../types/data-transfer";
+import { readSpreadsheetPreview } from "../../utils/import-staging.utils";
 
 interface Props {
   isOpen: boolean;
@@ -28,6 +29,8 @@ const LaborImportModal = ({
   const [_file, _setFile] = useState<File | null>(null);
   const [excelData, setExcelData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  const [localPreview, setLocalPreview] = useState<ImportPreviewResult | null>(null);
+  const [preflightErrors, setPreflightErrors] = useState<string[]>([]);
   const [mappings, setMappings] = useState<Record<string, number>>({});
   const [step, setStep] = useState(1); // 1: Upload, 2: Map, 3: Verify
   const [loading, setLoading] = useState(false);
@@ -37,20 +40,41 @@ const LaborImportModal = ({
     if (!file) return;
 
     _setFile(file);
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: "binary" });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws);
-      if (data.length > 0) {
-        setExcelData(data);
-        setHeaders(Object.keys(data[0] as object));
-        setStep(2);
-      }
-    };
-    reader.readAsBinaryString(file);
+    setLocalPreview(null);
+    setPreflightErrors([]);
+    setExcelData([]);
+    setHeaders([]);
+    setMappings({});
+    setStep(1);
+
+    readSpreadsheetPreview(file, 5)
+      .then((parsed) => {
+        const normalizedHeaders = parsed.headers.map((header) =>
+          header.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(),
+        );
+        const hasDateColumn = normalizedHeaders.some(
+          (header) =>
+            header === "date" ||
+            header.includes("date") ||
+            header.includes("attendance date"),
+        );
+
+        setLocalPreview(parsed);
+        setExcelData(parsed.rows);
+        setHeaders(parsed.headers);
+        setPreflightErrors(
+          hasDateColumn
+            ? []
+            : ["No date column was detected. Please include a Date column in the sheet."],
+        );
+        if (parsed.rows.length > 0 && hasDateColumn) {
+          setStep(2);
+        }
+      })
+      .catch(() => {
+        setLocalPreview(null);
+        setPreflightErrors(["Failed to read the selected spreadsheet."]);
+      });
   };
 
   const handleMap = (header: string, categoryId: number) => {
@@ -189,6 +213,47 @@ const LaborImportModal = ({
                 >
                   Browse Files
                 </label>
+                {localPreview && (
+                  <div className="mt-6 w-full max-w-2xl rounded-2xl border border-border-default bg-surface-card p-4 text-left shadow-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-bold text-text-primary">
+                          Client-side preflight
+                        </p>
+                        <p className="text-xs text-text-muted">
+                          {localPreview.totalRows} rows detected • {localPreview.headers.length} columns
+                          {localPreview.sheetName ? ` • ${localPreview.sheetName}` : ""}
+                        </p>
+                      </div>
+                      {preflightErrors.length === 0 ? (
+                        <span className="rounded-full bg-success-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-success">
+                          Ready
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-error-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-error">
+                          Needs Fix
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {localPreview.headers.map((header) => (
+                        <span
+                          key={header}
+                          className="rounded-full border border-border-default bg-surface-base px-2 py-1 text-[11px] text-text-secondary"
+                        >
+                          {header}
+                        </span>
+                      ))}
+                    </div>
+                    {preflightErrors.length > 0 && (
+                      <div className="mt-3 rounded-md border border-red-200 bg-error-muted px-3 py-2 text-xs text-error">
+                        {preflightErrors.map((error) => (
+                          <div key={error}>{error}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -333,7 +398,7 @@ const LaborImportModal = ({
             {step === 2 && (
               <button
                 onClick={() => setStep(3)}
-                disabled={Object.keys(mappings).length === 0}
+                disabled={Object.keys(mappings).length === 0 || preflightErrors.length > 0}
                 className="px-10 py-2.5 bg-secondary text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-100 hover:bg-secondary-dark transition-all flex items-center gap-2"
               >
                 Next: Verify

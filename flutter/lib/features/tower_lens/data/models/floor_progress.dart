@@ -46,6 +46,17 @@ class FloorProgress extends Equatable {
   /// True if any progress entry was logged today — drives the pulse animation.
   final bool hasActiveWork;
 
+  /// Coordinate polygon for this floor from the building-line-coordinates API.
+  /// JSON string — e.g. "[[0,0],[25000,0],[25000,20000],[0,20000]]"
+  /// Null when the admin has not yet drawn coordinates for this floor.
+  final String? coordinatesText;
+
+  /// Unit of measurement for [coordinatesText] values — 'mm', 'cm', or 'm'.
+  final String? coordinateUom;
+
+  /// Floor-to-ceiling height in metres (used for isometric extrusion depth).
+  final double? heightMeters;
+
   const FloorProgress({
     required this.epsNodeId,
     required this.floorName,
@@ -60,6 +71,9 @@ class FloorProgress extends Equatable {
     required this.pendingRfis,
     required this.rejectedRfis,
     required this.hasActiveWork,
+    this.coordinatesText,
+    this.coordinateUom,
+    this.heightMeters,
   });
 
   // ─── Computed getters ────────────────────────────────────────────────────────
@@ -89,6 +103,9 @@ class FloorProgress extends Equatable {
     String floorName,
     int floorIndex, {
     double progressPct = 0.0,
+    String? coordinatesText,
+    String? coordinateUom,
+    double? heightMeters,
   }) =>
       FloorProgress(
         epsNodeId: epsNodeId,
@@ -104,6 +121,9 @@ class FloorProgress extends Equatable {
         pendingRfis: 0,
         rejectedRfis: 0,
         hasActiveWork: false,
+        coordinatesText: coordinatesText,
+        coordinateUom: coordinateUom,
+        heightMeters: heightMeters,
       );
 
   /// Parse from the optimized backend endpoint response.
@@ -143,6 +163,15 @@ class FloorProgress extends Equatable {
       hasActiveWork: json['hasActiveWork'] as bool? ??
           json['has_active_work'] as bool? ??
           false,
+      // Coordinates are merged in by the repository after fetching the
+      // building-line-coordinates endpoint — not present in tower-progress JSON.
+      coordinatesText: json['coordinatesText']?.toString() ??
+          json['coordinates_text']?.toString(),
+      coordinateUom: json['coordinateUom']?.toString() ??
+          json['coordinate_uom']?.toString(),
+      heightMeters:
+          (json['heightMeters'] as num? ?? json['height_meters'] as num?)
+              ?.toDouble(),
     );
   }
 
@@ -160,6 +189,9 @@ class FloorProgress extends Equatable {
     int? pendingRfis,
     int? rejectedRfis,
     bool? hasActiveWork,
+    String? coordinatesText,
+    String? coordinateUom,
+    double? heightMeters,
   }) =>
       FloorProgress(
         epsNodeId: epsNodeId ?? this.epsNodeId,
@@ -175,6 +207,9 @@ class FloorProgress extends Equatable {
         pendingRfis: pendingRfis ?? this.pendingRfis,
         rejectedRfis: rejectedRfis ?? this.rejectedRfis,
         hasActiveWork: hasActiveWork ?? this.hasActiveWork,
+        coordinatesText: coordinatesText ?? this.coordinatesText,
+        coordinateUom: coordinateUom ?? this.coordinateUom,
+        heightMeters: heightMeters ?? this.heightMeters,
       );
 
   @override

@@ -14,6 +14,7 @@ import {
 import { EhsProjectConfig } from './entities/ehs-project-config.entity';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 import {
   CreateEhsObservationDto,
   RectifyEhsObservationDto,
@@ -31,6 +32,7 @@ export class EhsObservationService {
     private readonly configRepo: Repository<EhsProjectConfig>,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
   ) {}
 
   private sanitizeObservationCategories(categories?: unknown): string[] {
@@ -106,7 +108,6 @@ export class EhsObservationService {
   }
 
   async create(dto: CreateEhsObservationDto, userId?: string) {
-    // Clean up empty strings for date fields to prevent DB errors
     const cleanedDto = { ...dto };
     if (cleanedDto.targetDate === '') {
       delete cleanedDto.targetDate;
@@ -120,22 +121,29 @@ export class EhsObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    // Alert EHS supervisors for safety-critical observations (project-scoped)
     if (
       dto.severity === EhsObservationSeverity.CRITICAL ||
       dto.severity === EhsObservationSeverity.MAJOR
     ) {
+      const notification =
+        await this.notificationComposer.composeObservationRaised({
+          moduleLabel: 'EHS',
+          projectId: dto.projectId,
+          epsNodeId: dto.epsNodeId,
+          severity: dto.severity,
+          category: dto.category,
+          subjectLabel: dto.category || 'EHS observation',
+        });
+
       this.pushService
         .sendToProjectPermission(
           dto.projectId,
           'EHS.OBSERVATION.CLOSE',
-          `${dto.severity} EHS Observation Raised`,
-          `A ${dto.severity.toLowerCase()} EHS observation has been raised${dto.category ? ` — ${dto.category}` : ''}. Immediate attention required.`,
+          notification.title,
+          notification.body,
           {
-            type: 'EHS_OBS_CRITICAL',
             observationId: String(saved.id),
-            projectId: String(dto.projectId),
-            severity: dto.severity,
+            ...notification.data,
           },
         )
         .catch(() => {
@@ -176,14 +184,27 @@ export class EhsObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    // Notify the raiser that the observation has been rectified
     if (obs.raisedById) {
+      const notification =
+        await this.notificationComposer.composeObservationUpdate({
+          moduleLabel: 'EHS',
+          projectId: obs.projectId,
+          epsNodeId: obs.epsNodeId,
+          severity: obs.severity,
+          category: obs.category,
+          subjectLabel: obs.category || 'EHS observation',
+          statusLabel: 'EHS Observation Rectified',
+        });
+
       this.pushService
         .sendToUsers(
           [parseInt(obs.raisedById, 10)],
-          'EHS Observation Rectified',
-          `Your EHS observation has been rectified. Please review and close.`,
-          { type: 'EHS_OBS_RECTIFIED', observationId: String(saved.id) },
+          notification.title,
+          `${notification.body} | Please review and close.`,
+          {
+            observationId: String(saved.id),
+            ...notification.data,
+          },
         )
         .catch(() => {
           /* non-fatal */
@@ -211,7 +232,6 @@ export class EhsObservationService {
       throw new BadRequestException('Observation is already CLOSED');
     }
 
-    // INFO severity can be closed directly from OPEN
     if (
       obs.severity !== EhsObservationSeverity.INFO &&
       obs.status === EhsObservationStatus.OPEN
@@ -232,14 +252,27 @@ export class EhsObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    // Notify the raiser that the observation has been closed
     if (obs.raisedById) {
+      const notification =
+        await this.notificationComposer.composeObservationUpdate({
+          moduleLabel: 'EHS',
+          projectId: obs.projectId,
+          epsNodeId: obs.epsNodeId,
+          severity: obs.severity,
+          category: obs.category,
+          subjectLabel: obs.category || 'EHS observation',
+          statusLabel: 'EHS Observation Closed',
+        });
+
       this.pushService
         .sendToUsers(
           [parseInt(obs.raisedById, 10)],
-          'EHS Observation Closed',
-          `Your EHS observation has been closed.`,
-          { type: 'EHS_OBS_CLOSED', observationId: String(saved.id) },
+          notification.title,
+          notification.body,
+          {
+            observationId: String(saved.id),
+            ...notification.data,
+          },
         )
         .catch(() => {
           /* non-fatal */

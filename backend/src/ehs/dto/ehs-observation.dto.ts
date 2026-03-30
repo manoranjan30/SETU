@@ -3,6 +3,8 @@ import { EhsObservationSeverity } from '../entities/ehs-observation.entity';
 export class CreateEhsObservationDto {
   projectId: number;
   epsNodeId?: number;
+  /** Human-readable breadcrumb path, e.g. "Block A › Tower 1 › Floor 3". */
+  locationLabel?: string;
   severity: EhsObservationSeverity;
   category: string;
   description: string;

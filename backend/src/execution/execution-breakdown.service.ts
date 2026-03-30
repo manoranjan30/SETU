@@ -319,20 +319,14 @@ export class ExecutionBreakdownService {
       let totalMicroAllocatedQty = 0;
 
       for (const ma of microActivities) {
-        const executionScopeIds = await this.resolveEpsScopeIds(
-          Number(ma.epsNodeId || epsNodeId),
-        );
         const executedResult = await this.executionEntryRepo
           .createQueryBuilder('entry')
           .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
           .where('entry.microActivityId = :microActivityId', {
             microActivityId: ma.id,
           })
-          .andWhere('entry.executionEpsNodeId IN (:...executionScopeIds)', {
-            executionScopeIds,
-          })
-          .andWhere('entry.status = :status', {
-            status: ExecutionProgressEntryStatus.APPROVED,
+          .andWhere('entry.status != :rejected', {
+            rejected: ExecutionProgressEntryStatus.REJECTED,
           })
           .getRawOne<{ total: string }>();
 
@@ -371,7 +365,10 @@ export class ExecutionBreakdownService {
             .join(' | '),
           allocatedQty: Number(ma.allocatedQty),
           executedQty: Number(executedQty),
-          balanceQty: Number(ma.allocatedQty) - Number(executedQty),
+          balanceQty: Math.max(
+            0,
+            Number(ma.allocatedQty) - Number(executedQty),
+          ),
         });
       }
 
@@ -401,7 +398,7 @@ export class ExecutionBreakdownService {
           subtitle: workOrderItem.description || null,
           allocatedQty: balanceQty,
           executedQty: Number(directExecutedQty),
-          balanceQty: balanceQty - Number(directExecutedQty),
+          balanceQty: Math.max(0, balanceQty - Number(directExecutedQty)),
         });
       }
 
@@ -505,17 +502,13 @@ export class ExecutionBreakdownService {
     woActivityPlanId: number,
     epsNodeId: number,
   ): Promise<number> {
-    const epsScopeIds = await this.resolveEpsScopeIds(epsNodeId);
     const qb = this.executionEntryRepo
       .createQueryBuilder('entry')
       .select('COALESCE(SUM(entry.enteredQty), 0)', 'total')
       .where('entry.woActivityPlanId = :woActivityPlanId', { woActivityPlanId })
-      .andWhere('entry.executionEpsNodeId IN (:...epsScopeIds)', {
-        epsScopeIds,
-      })
       .andWhere('entry.microActivityId IS NULL')
-      .andWhere('entry.status = :status', {
-        status: ExecutionProgressEntryStatus.APPROVED,
+      .andWhere('entry.status != :rejected', {
+        rejected: ExecutionProgressEntryStatus.REJECTED,
       });
 
     const result = await qb.getRawOne<{ total: string }>();

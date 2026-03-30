@@ -66,6 +66,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
   // Local unsynced qty per boqItemId (pending/failed in Drift DB)
   final Map<int, double> _localPendingQty = {};
 
+  // True while the "Mark as Complete" API call is in flight
+  bool _markCompleteLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -234,6 +237,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               double.tryParse(_microControllers[key]?.text ?? '') ?? 0;
           if (qty <= 0) continue;
           entries.add({
+            // vendorId matches the web app's submission payload so the backend
+            // can attribute progress to the correct vendor/work-order.
+            if (vb.vendorId != null) 'vendorId': vb.vendorId,
             'boqItemId': boqBd.boqItemId,
             if (boqBd.workOrderItemId != null)
               'workOrderItemId': boqBd.workOrderItemId,
@@ -286,6 +292,57 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     ));
   }
 
+  // ── Mark as Complete ─────────────────────────────────────────────────────────
+
+  /// Confirms with the user, then calls [SetuApiClient.markActivityComplete].
+  /// On success shows a snack and pops back (activity is done — no more entry).
+  /// Mirrors the web app's "Mark Complete" action on activity cards.
+  Future<void> _handleMarkComplete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark as Complete'),
+        content: Text(
+          'Are you sure you want to mark "${widget.activity.name}" as fully COMPLETED?\n\n'
+          'This will set the actual finish date to today and lock further progress entries.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+            child: const Text('Mark Complete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _markCompleteLoading = true);
+    try {
+      await sl<SetuApiClient>().markActivityComplete(widget.activity.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Activity marked as Complete'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Failed to mark complete: $e'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _markCompleteLoading = false);
+    }
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
@@ -294,6 +351,24 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       appBar: AppBar(
         title: const Text('Progress Entry'),
         actions: [
+          // Mark as Complete — shown only when activity is not already COMPLETED.
+          // Mirrors the web app's "Mark Complete" button on each activity card.
+          if (widget.activity.status != 'COMPLETED')
+            _markCompleteLoading
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    tooltip: 'Mark as Complete',
+                    color: AppColors.success,
+                    onPressed: _handleMarkComplete,
+                  ),
           // Live sync status indicator — tapping navigates to the sync log
           widgets.LiveSyncStatusIndicator(
             onTap: () => Navigator.push(

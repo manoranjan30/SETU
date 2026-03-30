@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:drift/drift.dart';
 import 'package:dio/dio.dart';
@@ -450,6 +451,7 @@ class SyncService {
       'quality_rfi',
       'quality_obs_resolve',
       'quality_stage_save',
+      'quality_stage_approve',
       'quality_approve',
       'quality_obs_raise',
       'quality_obs_close',
@@ -577,6 +579,7 @@ class SyncService {
               t.entityType.equals('quality_rfi') |
               t.entityType.equals('quality_obs_resolve') |
               t.entityType.equals('quality_stage_save') |
+              t.entityType.equals('quality_stage_approve') |
               t.entityType.equals('quality_approve') |
               t.entityType.equals('quality_obs_raise') |
               t.entityType.equals('quality_obs_close') |
@@ -636,14 +639,15 @@ class SyncService {
             break;
 
           case 'quality_obs_resolve':
-            // Submit closure evidence for an existing observation.
+            // Upload any locally-saved rectification photos, then resolve.
+            final resolveEvidence = await _resolvePhotos(
+                (payload['closureEvidence'] as List?) ?? []);
             await _apiClient.resolveObservation(
               activityId: payload['activityId'] as int,
               obsId: payload['obsId'] as String,
               closureText: payload['closureText'] as String,
-              closureEvidence: (payload['closureEvidence'] as List?)
-                  ?.map((e) => e as String)
-                  .toList(),
+              closureEvidence:
+                  resolveEvidence.isEmpty ? null : resolveEvidence,
             );
             break;
 
@@ -653,6 +657,18 @@ class SyncService {
               stageId: payload['stageId'] as int,
               status: payload['status'] as String,
               items: (payload['items'] as List).cast<Map<String, dynamic>>(),
+            );
+            break;
+
+          case 'quality_stage_approve':
+            // Approve a single checklist stage at its next pending release level.
+            // queued_after: quality_stage_save to ensure items are persisted first.
+            await _apiClient.approveInspectionStage(
+              inspectionId: payload['inspectionId'] as int,
+              stageId: payload['stageId'] as int,
+              comments: payload['comments'] as String?,
+              signatureData: payload['signatureData'] as String?,
+              signedBy: payload['signedBy'] as String?,
             );
             break;
 
@@ -685,16 +701,18 @@ class SyncService {
             break;
 
           case 'quality_obs_raise':
-            // Create a new observation (non-conformance) on an activity.
+            // Upload any locally-saved photos first, then raise the observation.
+            // Local paths are produced when the user captures photos offline;
+            // _resolvePhotos uploads them and returns the server URLs.
+            final obsPhotos = await _resolvePhotos(
+                (payload['photos'] as List?) ?? []);
             await _apiClient.raiseObservation(
               activityId: payload['activityId'] as int,
               observationText: payload['observationText'] as String,
               inspectionId: payload['inspectionId'] as int,
               stageId: payload['stageId'] as int?,
               type: payload['type'] as String?,
-              photos: (payload['photos'] as List?)
-                  ?.map((e) => e as String)
-                  .toList(),
+              photos: obsPhotos.isEmpty ? null : obsPhotos,
             );
             break;
 
@@ -707,7 +725,9 @@ class SyncService {
             break;
 
           case 'quality_site_obs_create':
-            // Raise a new quality site observation.
+            // Upload local photos then raise the quality site observation.
+            final qSitePhotos = await _resolvePhotos(
+                (payload['photoUrls'] as List?) ?? []);
             await _apiClient.createQualitySiteObs(
               projectId: payload['projectId'] as int,
               epsNodeId: payload['epsNodeId'] as int?,
@@ -715,22 +735,18 @@ class SyncService {
               severity: payload['severity'] as String,
               category: payload['category'] as String?,
               locationLabel: payload['locationLabel'] as String?,
-              photoUrls: (payload['photoUrls'] as List?)
-                      ?.map((e) => e as String)
-                      .toList() ??
-                  [],
+              photoUrls: qSitePhotos,
             );
             break;
 
           case 'quality_site_obs_rectify':
-            // Submit rectification evidence for an open quality site obs.
+            // Upload local photos then submit rectification evidence.
+            final qRectifyPhotos = await _resolvePhotos(
+                (payload['photoUrls'] as List?) ?? []);
             await _apiClient.rectifyQualitySiteObs(
               id: payload['id'] as String,
               notes: payload['notes'] as String,
-              photoUrls: (payload['photoUrls'] as List?)
-                      ?.map((e) => e as String)
-                      .toList() ??
-                  [],
+              photoUrls: qRectifyPhotos,
             );
             break;
 
@@ -743,7 +759,9 @@ class SyncService {
             break;
 
           case 'ehs_site_obs_create':
-            // Raise a new EHS (Health, Safety, Environment) site observation.
+            // Upload local photos then raise the EHS site observation.
+            final ehsPhotos = await _resolvePhotos(
+                (payload['photoUrls'] as List?) ?? []);
             await _apiClient.createEhsSiteObs(
               projectId: payload['projectId'] as int,
               epsNodeId: payload['epsNodeId'] as int?,
@@ -751,21 +769,18 @@ class SyncService {
               severity: payload['severity'] as String,
               category: payload['category'] as String?,
               locationLabel: payload['locationLabel'] as String?,
-              photoUrls: (payload['photoUrls'] as List?)
-                      ?.map((e) => e as String)
-                      .toList() ??
-                  [],
+              photoUrls: ehsPhotos,
             );
             break;
 
           case 'ehs_site_obs_rectify':
+            // Upload local photos then submit EHS rectification evidence.
+            final ehsRectifyPhotos = await _resolvePhotos(
+                (payload['photoUrls'] as List?) ?? []);
             await _apiClient.rectifyEhsSiteObs(
               id: payload['id'] as String,
               notes: payload['notes'] as String,
-              photoUrls: (payload['photoUrls'] as List?)
-                      ?.map((e) => e as String)
-                      .toList() ??
-                  [],
+              photoUrls: ehsRectifyPhotos,
             );
             break;
 
@@ -977,6 +992,46 @@ class SyncService {
   /// combination, not globally unique across all devices.
   static String generateIdempotencyKey() {
     return '${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}';
+  }
+
+  /// Resolves a list of photo paths/URLs for a sync payload.
+  ///
+  /// Any entry that is a local absolute file path (saved offline when the
+  /// device had no connectivity) is uploaded to the server first and replaced
+  /// with the resulting server URL. Remote URLs are passed through unchanged.
+  ///
+  /// This keeps the SyncService as the single responsibility owner for
+  /// local→server photo migration — callers never need to know whether a
+  /// stored photo is local or remote.
+  Future<List<String>> _resolvePhotos(List<dynamic> rawPhotos) async {
+    final resolved = <String>[];
+    for (final entry in rawPhotos) {
+      final path = entry as String;
+      if (path.startsWith('/') || path.startsWith('file://')) {
+        // Local file — upload now.
+        try {
+          final localPath = path.replaceFirst('file://', '');
+          final result = await _apiClient.uploadFile(filePath: localPath);
+          final url =
+              result['url'] as String? ?? result['path'] as String? ?? '';
+          if (url.isNotEmpty) {
+            resolved.add(url);
+            // Clean up the local file after successful upload.
+            try {
+              await File(localPath).delete();
+            } catch (_) {}
+          }
+        } catch (_) {
+          // Upload failed — keep the local path so the item stays in the
+          // retry queue and the photo isn't lost.
+          resolved.add(path);
+          rethrow; // propagate so the sync item is not marked as done
+        }
+      } else {
+        resolved.add(path); // already a server URL
+      }
+    }
+    return resolved;
   }
 }
 

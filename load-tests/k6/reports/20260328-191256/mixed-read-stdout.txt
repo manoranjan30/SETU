@@ -1,0 +1,1512 @@
+
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: C:\Users\omano\OneDrive - Puravankara Limited\Manoranjan\Antigravity Experiment\000 Project PM\SETU\load-tests\k6\scenarios\mixed-read.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 300 max VUs, 6m30s max duration (incl. graceful stop):
+              * default: Up to 300 looping VUs for 6m0s over 4 stages (gracefulRampDown: 30s, gracefulStop: 30s)
+
+
+running (0m00.4s), 001/300 VUs, 0 complete and 0 interrupted iterations
+default   [   0% ] 001/300 VUs  0m00.4s/6m00.0s
+
+running (0m01.4s), 002/300 VUs, 0 complete and 0 interrupted iterations
+default   [   0% ] 002/300 VUs  0m01.4s/6m00.0s
+
+running (0m02.4s), 002/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 002/300 VUs  0m02.4s/6m00.0s
+
+running (0m03.4s), 003/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 003/300 VUs  0m03.4s/6m00.0s
+
+running (0m04.4s), 004/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 004/300 VUs  0m04.4s/6m00.0s
+
+running (0m05.4s), 005/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 005/300 VUs  0m05.4s/6m00.0s
+
+running (0m06.4s), 006/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 006/300 VUs  0m06.4s/6m00.0s
+
+running (0m07.4s), 007/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 007/300 VUs  0m07.4s/6m00.0s
+
+running (0m08.4s), 007/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 007/300 VUs  0m08.4s/6m00.0s
+
+running (0m09.4s), 008/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 008/300 VUs  0m09.4s/6m00.0s
+
+running (0m10.4s), 009/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 009/300 VUs  0m10.4s/6m00.0s
+
+running (0m11.4s), 010/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 010/300 VUs  0m11.4s/6m00.0s
+
+running (0m12.4s), 011/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 011/300 VUs  0m12.4s/6m00.0s
+
+running (0m13.4s), 011/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 011/300 VUs  0m13.4s/6m00.0s
+
+running (0m14.4s), 012/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 012/300 VUs  0m14.4s/6m00.0s
+
+running (0m15.4s), 013/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 013/300 VUs  0m15.4s/6m00.0s
+
+running (0m16.4s), 014/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 014/300 VUs  0m16.4s/6m00.0s
+
+running (0m17.4s), 015/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 015/300 VUs  0m17.4s/6m00.0s
+
+running (0m18.4s), 015/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 015/300 VUs  0m18.4s/6m00.0s
+
+running (0m19.4s), 016/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 016/300 VUs  0m19.4s/6m00.0s
+
+running (0m20.4s), 017/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 017/300 VUs  0m20.4s/6m00.0s
+
+running (0m21.4s), 018/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 018/300 VUs  0m21.4s/6m00.0s
+
+running (0m22.4s), 019/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 019/300 VUs  0m22.4s/6m00.0s
+
+running (0m23.4s), 020/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 020/300 VUs  0m23.4s/6m00.0s
+
+running (0m24.4s), 020/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 020/300 VUs  0m24.4s/6m00.0s
+
+running (0m25.4s), 021/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 021/300 VUs  0m25.4s/6m00.0s
+
+running (0m26.4s), 022/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 022/300 VUs  0m26.4s/6m00.0s
+
+running (0m27.4s), 023/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 023/300 VUs  0m27.4s/6m00.0s
+
+running (0m28.4s), 024/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 024/300 VUs  0m28.4s/6m00.0s
+
+running (0m29.4s), 024/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 024/300 VUs  0m29.4s/6m00.0s
+
+running (0m30.4s), 025/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 025/300 VUs  0m30.4s/6m00.0s
+
+running (0m31.4s), 026/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 026/300 VUs  0m31.4s/6m00.0s
+
+running (0m32.4s), 027/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 027/300 VUs  0m32.4s/6m00.0s
+
+running (0m33.4s), 028/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 028/300 VUs  0m33.4s/6m00.0s
+
+running (0m34.4s), 029/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 029/300 VUs  0m34.4s/6m00.0s
+
+running (0m35.4s), 029/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 029/300 VUs  0m35.4s/6m00.0s
+
+running (0m36.4s), 030/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 030/300 VUs  0m36.4s/6m00.0s
+
+running (0m37.4s), 031/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 031/300 VUs  0m37.4s/6m00.0s
+
+running (0m38.4s), 032/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 032/300 VUs  0m38.4s/6m00.0s
+
+running (0m39.4s), 033/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 033/300 VUs  0m39.4s/6m00.0s
+
+running (0m40.4s), 033/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 033/300 VUs  0m40.4s/6m00.0s
+
+running (0m41.4s), 034/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 034/300 VUs  0m41.4s/6m00.0s
+
+running (0m42.4s), 035/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 035/300 VUs  0m42.4s/6m00.0s
+
+running (0m43.4s), 036/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 036/300 VUs  0m43.4s/6m00.0s
+
+running (0m44.4s), 037/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 037/300 VUs  0m44.4s/6m00.0s
+
+running (0m45.4s), 038/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 038/300 VUs  0m45.4s/6m00.0s
+
+running (0m46.4s), 038/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 038/300 VUs  0m46.4s/6m00.0s
+
+running (0m47.4s), 039/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 039/300 VUs  0m47.4s/6m00.0s
+
+running (0m48.4s), 040/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 040/300 VUs  0m48.4s/6m00.0s
+
+running (0m49.4s), 041/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 041/300 VUs  0m49.4s/6m00.0s
+
+running (0m50.4s), 042/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 042/300 VUs  0m50.4s/6m00.0s
+
+running (0m51.4s), 042/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 042/300 VUs  0m51.4s/6m00.0s
+
+running (0m52.4s), 043/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 043/300 VUs  0m52.4s/6m00.0s
+
+running (0m53.4s), 044/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 044/300 VUs  0m53.4s/6m00.0s
+
+running (0m54.4s), 045/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 045/300 VUs  0m54.4s/6m00.0s
+
+running (0m55.4s), 046/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 046/300 VUs  0m55.4s/6m00.0s
+
+running (0m56.4s), 047/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 047/300 VUs  0m56.4s/6m00.0s
+
+running (0m57.4s), 047/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 047/300 VUs  0m57.4s/6m00.0s
+
+running (0m58.4s), 048/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 048/300 VUs  0m58.4s/6m00.0s
+
+running (0m59.4s), 049/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 049/300 VUs  0m59.4s/6m00.0s
+
+running (1m00.4s), 050/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 050/300 VUs  1m00.4s/6m00.0s
+
+running (1m01.4s), 051/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 051/300 VUs  1m01.4s/6m00.0s
+
+running (1m02.4s), 051/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 051/300 VUs  1m02.4s/6m00.0s
+
+running (1m03.4s), 052/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 052/300 VUs  1m03.4s/6m00.0s
+
+running (1m04.4s), 053/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 053/300 VUs  1m04.4s/6m00.0s
+
+running (1m05.4s), 054/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 054/300 VUs  1m05.4s/6m00.0s
+
+running (1m06.4s), 055/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 055/300 VUs  1m06.4s/6m00.0s
+
+running (1m07.4s), 056/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 056/300 VUs  1m07.4s/6m00.0s
+
+running (1m08.4s), 056/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 056/300 VUs  1m08.4s/6m00.0s
+
+running (1m09.4s), 057/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 057/300 VUs  1m09.4s/6m00.0s
+
+running (1m10.4s), 058/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 058/300 VUs  1m10.4s/6m00.0s
+
+running (1m11.4s), 059/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 059/300 VUs  1m11.4s/6m00.0s
+
+running (1m12.4s), 060/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 060/300 VUs  1m12.4s/6m00.0s
+
+running (1m13.4s), 061/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 061/300 VUs  1m13.4s/6m00.0s
+
+running (1m14.4s), 061/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 061/300 VUs  1m14.4s/6m00.0s
+
+running (1m15.4s), 062/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 062/300 VUs  1m15.4s/6m00.0s
+
+running (1m16.4s), 063/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 063/300 VUs  1m16.4s/6m00.0s
+
+running (1m17.4s), 064/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 064/300 VUs  1m17.4s/6m00.0s
+
+running (1m18.4s), 065/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 065/300 VUs  1m18.4s/6m00.0s
+
+running (1m19.4s), 066/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 066/300 VUs  1m19.4s/6m00.0s
+
+running (1m20.4s), 066/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 066/300 VUs  1m20.4s/6m00.0s
+
+running (1m21.4s), 067/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 067/300 VUs  1m21.4s/6m00.0s
+
+running (1m22.4s), 068/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 068/300 VUs  1m22.4s/6m00.0s
+
+running (1m23.4s), 069/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 069/300 VUs  1m23.4s/6m00.0s
+
+running (1m24.4s), 070/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 070/300 VUs  1m24.4s/6m00.0s
+
+running (1m25.4s), 071/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 071/300 VUs  1m25.4s/6m00.0s
+
+running (1m26.4s), 071/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 071/300 VUs  1m26.4s/6m00.0s
+
+running (1m27.4s), 072/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 072/300 VUs  1m27.4s/6m00.0s
+
+running (1m28.4s), 073/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 073/300 VUs  1m28.4s/6m00.0s
+
+running (1m29.4s), 074/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 074/300 VUs  1m29.4s/6m00.0s
+
+running (1m30.4s), 075/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 075/300 VUs  1m30.4s/6m00.0s
+
+running (1m31.4s), 076/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 076/300 VUs  1m31.4s/6m00.0s
+
+running (1m32.4s), 076/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 076/300 VUs  1m32.4s/6m00.0s
+
+running (1m33.4s), 077/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 077/300 VUs  1m33.4s/6m00.0s
+
+running (1m34.4s), 078/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 078/300 VUs  1m34.4s/6m00.0s
+
+running (1m35.4s), 079/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 079/300 VUs  1m35.4s/6m00.0s
+
+running (1m36.4s), 080/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 080/300 VUs  1m36.4s/6m00.0s
+
+running (1m37.4s), 081/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 081/300 VUs  1m37.4s/6m00.0s
+
+running (1m38.4s), 081/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 081/300 VUs  1m38.4s/6m00.0s
+
+running (1m39.4s), 082/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 082/300 VUs  1m39.4s/6m00.0s
+
+running (1m40.4s), 083/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 083/300 VUs  1m40.4s/6m00.0s
+
+running (1m41.4s), 084/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 084/300 VUs  1m41.4s/6m00.0s
+
+running (1m42.4s), 085/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 085/300 VUs  1m42.4s/6m00.0s
+
+running (1m43.4s), 086/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 086/300 VUs  1m43.4s/6m00.0s
+
+running (1m44.4s), 086/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 086/300 VUs  1m44.4s/6m00.0s
+
+running (1m45.4s), 087/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 087/300 VUs  1m45.4s/6m00.0s
+
+running (1m46.4s), 088/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 088/300 VUs  1m46.4s/6m00.0s
+
+running (1m47.5s), 089/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 089/300 VUs  1m47.5s/6m00.0s
+
+running (1m48.4s), 090/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 090/300 VUs  1m48.4s/6m00.0s
+
+running (1m49.4s), 091/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 091/300 VUs  1m49.4s/6m00.0s
+
+running (1m50.4s), 091/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 091/300 VUs  1m50.4s/6m00.0s
+
+running (1m51.4s), 092/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 092/300 VUs  1m51.4s/6m00.0s
+
+running (1m52.4s), 093/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 093/300 VUs  1m52.4s/6m00.0s
+
+running (1m53.4s), 094/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 094/300 VUs  1m53.4s/6m00.0s
+
+running (1m54.4s), 095/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 095/300 VUs  1m54.4s/6m00.0s
+
+running (1m55.4s), 096/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 096/300 VUs  1m55.4s/6m00.0s
+
+running (1m56.4s), 096/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 096/300 VUs  1m56.4s/6m00.0s
+
+running (1m57.4s), 097/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 097/300 VUs  1m57.4s/6m00.0s
+
+running (1m58.4s), 098/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 098/300 VUs  1m58.4s/6m00.0s
+
+running (1m59.4s), 099/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 099/300 VUs  1m59.4s/6m00.0s
+
+running (2m00.4s), 100/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 100/300 VUs  2m00.4s/6m00.0s
+
+running (2m01.4s), 101/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 101/300 VUs  2m01.4s/6m00.0s
+
+running (2m02.4s), 101/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 101/300 VUs  2m02.4s/6m00.0s
+
+running (2m03.4s), 102/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 102/300 VUs  2m03.4s/6m00.0s
+
+running (2m04.4s), 103/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 103/300 VUs  2m04.4s/6m00.0s
+
+running (2m05.4s), 104/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 104/300 VUs  2m05.4s/6m00.0s
+
+running (2m06.4s), 105/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 105/300 VUs  2m06.4s/6m00.0s
+
+running (2m07.4s), 106/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 106/300 VUs  2m07.4s/6m00.0s
+
+running (2m08.4s), 106/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 106/300 VUs  2m08.4s/6m00.0s
+
+running (2m09.4s), 107/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 107/300 VUs  2m09.4s/6m00.0s
+
+running (2m10.4s), 108/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 108/300 VUs  2m10.4s/6m00.0s
+
+running (2m11.4s), 109/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 109/300 VUs  2m11.4s/6m00.0s
+
+running (2m12.4s), 110/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 110/300 VUs  2m12.4s/6m00.0s
+
+running (2m13.4s), 111/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 111/300 VUs  2m13.4s/6m00.0s
+
+running (2m14.4s), 111/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 111/300 VUs  2m14.4s/6m00.0s
+
+running (2m15.4s), 112/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 112/300 VUs  2m15.4s/6m00.0s
+
+running (2m16.4s), 113/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 113/300 VUs  2m16.4s/6m00.0s
+
+running (2m17.4s), 114/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 114/300 VUs  2m17.4s/6m00.0s
+
+running (2m18.4s), 115/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 115/300 VUs  2m18.4s/6m00.0s
+
+running (2m19.4s), 116/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 116/300 VUs  2m19.4s/6m00.0s
+
+running (2m20.4s), 116/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 116/300 VUs  2m20.4s/6m00.0s
+
+running (2m21.4s), 117/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 117/300 VUs  2m21.4s/6m00.0s
+
+running (2m22.4s), 118/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 118/300 VUs  2m22.4s/6m00.0s
+
+running (2m23.4s), 119/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 119/300 VUs  2m23.4s/6m00.0s
+
+running (2m24.4s), 120/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 120/300 VUs  2m24.4s/6m00.0s
+
+running (2m25.4s), 121/300 VUs, 1 complete and 0 interrupted iterations
+default   [  40% ] 121/300 VUs  2m25.4s/6m00.0s
+
+running (2m26.4s), 121/300 VUs, 1 complete and 0 interrupted iterations
+default   [  41% ] 121/300 VUs  2m26.4s/6m00.0s
+
+running (2m27.4s), 122/300 VUs, 2 complete and 0 interrupted iterations
+default   [  41% ] 122/300 VUs  2m27.4s/6m00.0s
+
+running (2m28.4s), 123/300 VUs, 2 complete and 0 interrupted iterations
+default   [  41% ] 123/300 VUs  2m28.4s/6m00.0s
+
+running (2m29.4s), 124/300 VUs, 2 complete and 0 interrupted iterations
+default   [  41% ] 124/300 VUs  2m29.4s/6m00.0s
+
+running (2m30.4s), 125/300 VUs, 2 complete and 0 interrupted iterations
+default   [  42% ] 125/300 VUs  2m30.4s/6m00.0s
+
+running (2m31.4s), 126/300 VUs, 2 complete and 0 interrupted iterations
+default   [  42% ] 126/300 VUs  2m31.4s/6m00.0s
+
+running (2m32.4s), 126/300 VUs, 2 complete and 0 interrupted iterations
+default   [  42% ] 126/300 VUs  2m32.4s/6m00.0s
+
+running (2m33.4s), 127/300 VUs, 2 complete and 0 interrupted iterations
+default   [  43% ] 127/300 VUs  2m33.4s/6m00.0s
+
+running (2m34.4s), 128/300 VUs, 2 complete and 0 interrupted iterations
+default   [  43% ] 128/300 VUs  2m34.4s/6m00.0s
+
+running (2m35.4s), 129/300 VUs, 2 complete and 0 interrupted iterations
+default   [  43% ] 129/300 VUs  2m35.4s/6m00.0s
+
+running (2m36.4s), 130/300 VUs, 2 complete and 0 interrupted iterations
+default   [  43% ] 130/300 VUs  2m36.4s/6m00.0s
+
+running (2m37.4s), 131/300 VUs, 3 complete and 0 interrupted iterations
+default   [  44% ] 131/300 VUs  2m37.4s/6m00.0s
+
+running (2m38.4s), 131/300 VUs, 3 complete and 0 interrupted iterations
+default   [  44% ] 131/300 VUs  2m38.4s/6m00.0s
+
+running (2m39.4s), 132/300 VUs, 3 complete and 0 interrupted iterations
+default   [  44% ] 132/300 VUs  2m39.4s/6m00.0s
+
+running (2m40.4s), 133/300 VUs, 3 complete and 0 interrupted iterations
+default   [  45% ] 133/300 VUs  2m40.4s/6m00.0s
+
+running (2m41.4s), 134/300 VUs, 3 complete and 0 interrupted iterations
+default   [  45% ] 134/300 VUs  2m41.4s/6m00.0s
+
+running (2m42.4s), 135/300 VUs, 3 complete and 0 interrupted iterations
+default   [  45% ] 135/300 VUs  2m42.4s/6m00.0s
+
+running (2m43.4s), 136/300 VUs, 3 complete and 0 interrupted iterations
+default   [  45% ] 136/300 VUs  2m43.4s/6m00.0s
+
+running (2m44.4s), 136/300 VUs, 3 complete and 0 interrupted iterations
+default   [  46% ] 136/300 VUs  2m44.4s/6m00.0s
+
+running (2m45.4s), 137/300 VUs, 3 complete and 0 interrupted iterations
+default   [  46% ] 137/300 VUs  2m45.4s/6m00.0s
+
+running (2m46.4s), 138/300 VUs, 3 complete and 0 interrupted iterations
+default   [  46% ] 138/300 VUs  2m46.4s/6m00.0s
+
+running (2m47.4s), 139/300 VUs, 3 complete and 0 interrupted iterations
+default   [  46% ] 139/300 VUs  2m47.4s/6m00.0s
+
+running (2m48.4s), 140/300 VUs, 3 complete and 0 interrupted iterations
+default   [  47% ] 140/300 VUs  2m48.4s/6m00.0s
+
+running (2m49.4s), 141/300 VUs, 3 complete and 0 interrupted iterations
+default   [  47% ] 141/300 VUs  2m49.4s/6m00.0s
+
+running (2m50.4s), 141/300 VUs, 3 complete and 0 interrupted iterations
+default   [  47% ] 141/300 VUs  2m50.4s/6m00.0s
+
+running (2m51.4s), 142/300 VUs, 3 complete and 0 interrupted iterations
+default   [  48% ] 142/300 VUs  2m51.4s/6m00.0s
+
+running (2m52.4s), 143/300 VUs, 3 complete and 0 interrupted iterations
+default   [  48% ] 143/300 VUs  2m52.4s/6m00.0s
+
+running (2m53.4s), 144/300 VUs, 3 complete and 0 interrupted iterations
+default   [  48% ] 144/300 VUs  2m53.4s/6m00.0s
+
+running (2m54.4s), 145/300 VUs, 3 complete and 0 interrupted iterations
+default   [  48% ] 145/300 VUs  2m54.4s/6m00.0s
+
+running (2m55.4s), 146/300 VUs, 3 complete and 0 interrupted iterations
+default   [  49% ] 146/300 VUs  2m55.4s/6m00.0s
+
+running (2m56.4s), 146/300 VUs, 3 complete and 0 interrupted iterations
+default   [  49% ] 146/300 VUs  2m56.4s/6m00.0s
+
+running (2m57.4s), 147/300 VUs, 3 complete and 0 interrupted iterations
+default   [  49% ] 147/300 VUs  2m57.4s/6m00.0s
+
+running (2m58.4s), 148/300 VUs, 3 complete and 0 interrupted iterations
+default   [  50% ] 148/300 VUs  2m58.4s/6m00.0s
+
+running (2m59.4s), 149/300 VUs, 3 complete and 0 interrupted iterations
+default   [  50% ] 149/300 VUs  2m59.4s/6m00.0s
+
+running (3m00.4s), 150/300 VUs, 3 complete and 0 interrupted iterations
+default   [  50% ] 150/300 VUs  3m00.4s/6m00.0s
+
+running (3m01.4s), 151/300 VUs, 3 complete and 0 interrupted iterations
+default   [  50% ] 151/300 VUs  3m01.4s/6m00.0s
+
+running (3m02.4s), 152/300 VUs, 3 complete and 0 interrupted iterations
+default   [  51% ] 152/300 VUs  3m02.4s/6m00.0s
+
+running (3m03.4s), 154/300 VUs, 3 complete and 0 interrupted iterations
+default   [  51% ] 154/300 VUs  3m03.4s/6m00.0s
+
+running (3m04.4s), 155/300 VUs, 3 complete and 0 interrupted iterations
+default   [  51% ] 155/300 VUs  3m04.4s/6m00.0s
+
+running (3m05.4s), 156/300 VUs, 3 complete and 0 interrupted iterations
+default   [  51% ] 156/300 VUs  3m05.4s/6m00.0s
+
+running (3m06.4s), 157/300 VUs, 3 complete and 0 interrupted iterations
+default   [  52% ] 157/300 VUs  3m06.4s/6m00.0s
+
+running (3m07.4s), 159/300 VUs, 3 complete and 0 interrupted iterations
+default   [  52% ] 159/300 VUs  3m07.4s/6m00.0s
+
+running (3m08.4s), 160/300 VUs, 3 complete and 0 interrupted iterations
+default   [  52% ] 160/300 VUs  3m08.4s/6m00.0s
+
+running (3m09.4s), 161/300 VUs, 3 complete and 0 interrupted iterations
+default   [  53% ] 161/300 VUs  3m09.4s/6m00.0s
+
+running (3m10.4s), 162/300 VUs, 3 complete and 0 interrupted iterations
+default   [  53% ] 162/300 VUs  3m10.4s/6m00.0s
+
+running (3m11.4s), 164/300 VUs, 3 complete and 0 interrupted iterations
+default   [  53% ] 164/300 VUs  3m11.4s/6m00.0s
+
+running (3m12.4s), 165/300 VUs, 3 complete and 0 interrupted iterations
+default   [  53% ] 165/300 VUs  3m12.4s/6m00.0s
+
+running (3m13.4s), 166/300 VUs, 3 complete and 0 interrupted iterations
+default   [  54% ] 166/300 VUs  3m13.4s/6m00.0s
+
+running (3m14.4s), 167/300 VUs, 3 complete and 0 interrupted iterations
+default   [  54% ] 167/300 VUs  3m14.4s/6m00.0s
+
+running (3m15.4s), 169/300 VUs, 3 complete and 0 interrupted iterations
+default   [  54% ] 169/300 VUs  3m15.4s/6m00.0s
+
+running (3m16.4s), 170/300 VUs, 3 complete and 0 interrupted iterations
+default   [  55% ] 170/300 VUs  3m16.4s/6m00.0s
+
+running (3m17.4s), 171/300 VUs, 3 complete and 0 interrupted iterations
+default   [  55% ] 171/300 VUs  3m17.4s/6m00.0s
+
+running (3m18.4s), 172/300 VUs, 3 complete and 0 interrupted iterations
+default   [  55% ] 172/300 VUs  3m18.4s/6m00.0s
+
+running (3m19.4s), 174/300 VUs, 3 complete and 0 interrupted iterations
+default   [  55% ] 174/300 VUs  3m19.4s/6m00.0s
+
+running (3m20.4s), 175/300 VUs, 3 complete and 0 interrupted iterations
+default   [  56% ] 175/300 VUs  3m20.4s/6m00.0s
+
+running (3m21.4s), 176/300 VUs, 3 complete and 0 interrupted iterations
+default   [  56% ] 176/300 VUs  3m21.4s/6m00.0s
+
+running (3m22.4s), 177/300 VUs, 3 complete and 0 interrupted iterations
+default   [  56% ] 177/300 VUs  3m22.4s/6m00.0s
+
+running (3m23.4s), 179/300 VUs, 3 complete and 0 interrupted iterations
+default   [  56% ] 179/300 VUs  3m23.4s/6m00.0s
+
+running (3m24.4s), 180/300 VUs, 3 complete and 0 interrupted iterations
+default   [  57% ] 180/300 VUs  3m24.4s/6m00.0s
+
+running (3m25.4s), 181/300 VUs, 3 complete and 0 interrupted iterations
+default   [  57% ] 181/300 VUs  3m25.4s/6m00.0s
+
+running (3m26.4s), 182/300 VUs, 3 complete and 0 interrupted iterations
+default   [  57% ] 182/300 VUs  3m26.4s/6m00.0s
+
+running (3m27.4s), 184/300 VUs, 3 complete and 0 interrupted iterations
+default   [  58% ] 184/300 VUs  3m27.4s/6m00.0s
+
+running (3m28.4s), 185/300 VUs, 3 complete and 0 interrupted iterations
+default   [  58% ] 185/300 VUs  3m28.4s/6m00.0s
+
+running (3m29.4s), 186/300 VUs, 3 complete and 0 interrupted iterations
+default   [  58% ] 186/300 VUs  3m29.4s/6m00.0s
+
+running (3m30.4s), 187/300 VUs, 3 complete and 0 interrupted iterations
+default   [  58% ] 187/300 VUs  3m30.4s/6m00.0s
+
+running (3m31.4s), 189/300 VUs, 3 complete and 0 interrupted iterations
+default   [  59% ] 189/300 VUs  3m31.4s/6m00.0s
+
+running (3m32.4s), 190/300 VUs, 3 complete and 0 interrupted iterations
+default   [  59% ] 190/300 VUs  3m32.4s/6m00.0s
+
+running (3m33.4s), 191/300 VUs, 3 complete and 0 interrupted iterations
+default   [  59% ] 191/300 VUs  3m33.4s/6m00.0s
+
+running (3m34.4s), 192/300 VUs, 3 complete and 0 interrupted iterations
+default   [  60% ] 192/300 VUs  3m34.4s/6m00.0s
+
+running (3m35.4s), 194/300 VUs, 3 complete and 0 interrupted iterations
+default   [  60% ] 194/300 VUs  3m35.4s/6m00.0s
+
+running (3m36.4s), 195/300 VUs, 3 complete and 0 interrupted iterations
+default   [  60% ] 195/300 VUs  3m36.4s/6m00.0s
+
+running (3m37.4s), 196/300 VUs, 3 complete and 0 interrupted iterations
+default   [  60% ] 196/300 VUs  3m37.4s/6m00.0s
+
+running (3m38.4s), 197/300 VUs, 3 complete and 0 interrupted iterations
+default   [  61% ] 197/300 VUs  3m38.4s/6m00.0s
+
+running (3m39.4s), 199/300 VUs, 3 complete and 0 interrupted iterations
+default   [  61% ] 199/300 VUs  3m39.4s/6m00.0s
+
+running (3m40.4s), 200/300 VUs, 3 complete and 0 interrupted iterations
+default   [  61% ] 200/300 VUs  3m40.4s/6m00.0s
+
+running (3m41.4s), 201/300 VUs, 3 complete and 0 interrupted iterations
+default   [  61% ] 201/300 VUs  3m41.4s/6m00.0s
+
+running (3m42.4s), 202/300 VUs, 3 complete and 0 interrupted iterations
+default   [  62% ] 202/300 VUs  3m42.4s/6m00.0s
+
+running (3m43.4s), 204/300 VUs, 3 complete and 0 interrupted iterations
+default   [  62% ] 204/300 VUs  3m43.4s/6m00.0s
+
+running (3m44.4s), 205/300 VUs, 3 complete and 0 interrupted iterations
+default   [  62% ] 205/300 VUs  3m44.4s/6m00.0s
+
+running (3m45.4s), 206/300 VUs, 3 complete and 0 interrupted iterations
+default   [  63% ] 206/300 VUs  3m45.4s/6m00.0s
+
+running (3m46.4s), 207/300 VUs, 3 complete and 0 interrupted iterations
+default   [  63% ] 207/300 VUs  3m46.4s/6m00.0s
+
+running (3m47.4s), 209/300 VUs, 3 complete and 0 interrupted iterations
+default   [  63% ] 209/300 VUs  3m47.4s/6m00.0s
+
+running (3m48.4s), 210/300 VUs, 3 complete and 0 interrupted iterations
+default   [  63% ] 210/300 VUs  3m48.4s/6m00.0s
+
+running (3m49.4s), 211/300 VUs, 3 complete and 0 interrupted iterations
+default   [  64% ] 211/300 VUs  3m49.4s/6m00.0s
+
+running (3m50.4s), 212/300 VUs, 3 complete and 0 interrupted iterations
+default   [  64% ] 212/300 VUs  3m50.4s/6m00.0s
+
+running (3m51.4s), 214/300 VUs, 3 complete and 0 interrupted iterations
+default   [  64% ] 214/300 VUs  3m51.4s/6m00.0s
+
+running (3m52.4s), 215/300 VUs, 3 complete and 0 interrupted iterations
+default   [  65% ] 215/300 VUs  3m52.4s/6m00.0s
+
+running (3m53.4s), 216/300 VUs, 3 complete and 0 interrupted iterations
+default   [  65% ] 216/300 VUs  3m53.4s/6m00.0s
+
+running (3m54.4s), 217/300 VUs, 3 complete and 0 interrupted iterations
+default   [  65% ] 217/300 VUs  3m54.4s/6m00.0s
+
+running (3m55.4s), 219/300 VUs, 3 complete and 0 interrupted iterations
+default   [  65% ] 219/300 VUs  3m55.4s/6m00.0s
+
+running (3m56.4s), 220/300 VUs, 3 complete and 0 interrupted iterations
+default   [  66% ] 220/300 VUs  3m56.4s/6m00.0s
+
+running (3m57.4s), 221/300 VUs, 3 complete and 0 interrupted iterations
+default   [  66% ] 221/300 VUs  3m57.4s/6m00.0s
+
+running (3m58.4s), 222/300 VUs, 3 complete and 0 interrupted iterations
+default   [  66% ] 222/300 VUs  3m58.4s/6m00.0s
+
+running (3m59.4s), 224/300 VUs, 3 complete and 0 interrupted iterations
+default   [  66% ] 224/300 VUs  3m59.4s/6m00.0s
+
+running (4m00.4s), 225/300 VUs, 4 complete and 0 interrupted iterations
+default   [  67% ] 225/300 VUs  4m00.4s/6m00.0s
+
+running (4m01.4s), 226/300 VUs, 4 complete and 0 interrupted iterations
+default   [  67% ] 226/300 VUs  4m01.4s/6m00.0s
+
+running (4m02.4s), 227/300 VUs, 4 complete and 0 interrupted iterations
+default   [  67% ] 227/300 VUs  4m02.4s/6m00.0s
+
+running (4m03.4s), 229/300 VUs, 4 complete and 0 interrupted iterations
+default   [  68% ] 229/300 VUs  4m03.4s/6m00.0s
+
+running (4m04.4s), 230/300 VUs, 4 complete and 0 interrupted iterations
+default   [  68% ] 230/300 VUs  4m04.4s/6m00.0s
+
+running (4m05.4s), 231/300 VUs, 4 complete and 0 interrupted iterations
+default   [  68% ] 231/300 VUs  4m05.4s/6m00.0s
+
+running (4m06.4s), 232/300 VUs, 4 complete and 0 interrupted iterations
+default   [  68% ] 232/300 VUs  4m06.4s/6m00.0s
+
+running (4m07.4s), 234/300 VUs, 4 complete and 0 interrupted iterations
+default   [  69% ] 234/300 VUs  4m07.4s/6m00.0s
+
+running (4m08.4s), 235/300 VUs, 4 complete and 0 interrupted iterations
+default   [  69% ] 235/300 VUs  4m08.4s/6m00.0s
+
+running (4m09.4s), 236/300 VUs, 4 complete and 0 interrupted iterations
+default   [  69% ] 236/300 VUs  4m09.4s/6m00.0s
+
+running (4m10.4s), 237/300 VUs, 4 complete and 0 interrupted iterations
+default   [  70% ] 237/300 VUs  4m10.4s/6m00.0s
+
+running (4m11.4s), 239/300 VUs, 4 complete and 0 interrupted iterations
+default   [  70% ] 239/300 VUs  4m11.4s/6m00.0s
+
+running (4m12.4s), 240/300 VUs, 4 complete and 0 interrupted iterations
+default   [  70% ] 240/300 VUs  4m12.4s/6m00.0s
+
+running (4m13.4s), 241/300 VUs, 4 complete and 0 interrupted iterations
+default   [  70% ] 241/300 VUs  4m13.4s/6m00.0s
+
+running (4m14.4s), 242/300 VUs, 4 complete and 0 interrupted iterations
+default   [  71% ] 242/300 VUs  4m14.4s/6m00.0s
+
+running (4m15.4s), 244/300 VUs, 4 complete and 0 interrupted iterations
+default   [  71% ] 244/300 VUs  4m15.4s/6m00.0s
+
+running (4m16.4s), 245/300 VUs, 4 complete and 0 interrupted iterations
+default   [  71% ] 245/300 VUs  4m16.4s/6m00.0s
+
+running (4m17.4s), 246/300 VUs, 4 complete and 0 interrupted iterations
+default   [  71% ] 246/300 VUs  4m17.4s/6m00.0s
+
+running (4m18.4s), 247/300 VUs, 4 complete and 0 interrupted iterations
+default   [  72% ] 247/300 VUs  4m18.4s/6m00.0s
+
+running (4m19.4s), 249/300 VUs, 4 complete and 0 interrupted iterations
+default   [  72% ] 249/300 VUs  4m19.4s/6m00.0s
+
+running (4m20.4s), 250/300 VUs, 4 complete and 0 interrupted iterations
+default   [  72% ] 250/300 VUs  4m20.4s/6m00.0s
+
+running (4m21.4s), 251/300 VUs, 4 complete and 0 interrupted iterations
+default   [  73% ] 251/300 VUs  4m21.4s/6m00.0s
+
+running (4m22.4s), 252/300 VUs, 4 complete and 0 interrupted iterations
+default   [  73% ] 252/300 VUs  4m22.4s/6m00.0s
+
+running (4m23.4s), 254/300 VUs, 4 complete and 0 interrupted iterations
+default   [  73% ] 254/300 VUs  4m23.4s/6m00.0s
+
+running (4m24.4s), 255/300 VUs, 4 complete and 0 interrupted iterations
+default   [  73% ] 255/300 VUs  4m24.4s/6m00.0s
+
+running (4m25.4s), 256/300 VUs, 4 complete and 0 interrupted iterations
+default   [  74% ] 256/300 VUs  4m25.4s/6m00.0s
+
+running (4m26.4s), 257/300 VUs, 4 complete and 0 interrupted iterations
+default   [  74% ] 257/300 VUs  4m26.4s/6m00.0s
+
+running (4m27.4s), 259/300 VUs, 4 complete and 0 interrupted iterations
+default   [  74% ] 259/300 VUs  4m27.4s/6m00.0s
+
+running (4m28.4s), 260/300 VUs, 4 complete and 0 interrupted iterations
+default   [  75% ] 260/300 VUs  4m28.4s/6m00.0s
+
+running (4m29.4s), 261/300 VUs, 4 complete and 0 interrupted iterations
+default   [  75% ] 261/300 VUs  4m29.4s/6m00.0s
+
+running (4m30.4s), 262/300 VUs, 4 complete and 0 interrupted iterations
+default   [  75% ] 262/300 VUs  4m30.4s/6m00.0s
+
+running (4m31.4s), 264/300 VUs, 4 complete and 0 interrupted iterations
+default   [  75% ] 264/300 VUs  4m31.4s/6m00.0s
+
+running (4m32.4s), 265/300 VUs, 4 complete and 0 interrupted iterations
+default   [  76% ] 265/300 VUs  4m32.4s/6m00.0s
+
+running (4m33.4s), 266/300 VUs, 4 complete and 0 interrupted iterations
+default   [  76% ] 266/300 VUs  4m33.4s/6m00.0s
+
+running (4m34.4s), 267/300 VUs, 4 complete and 0 interrupted iterations
+default   [  76% ] 267/300 VUs  4m34.4s/6m00.0s
+
+running (4m35.4s), 269/300 VUs, 4 complete and 0 interrupted iterations
+default   [  76% ] 269/300 VUs  4m35.4s/6m00.0s
+
+running (4m36.4s), 270/300 VUs, 4 complete and 0 interrupted iterations
+default   [  77% ] 270/300 VUs  4m36.4s/6m00.0s
+
+running (4m37.4s), 271/300 VUs, 4 complete and 0 interrupted iterations
+default   [  77% ] 271/300 VUs  4m37.4s/6m00.0s
+
+running (4m38.4s), 272/300 VUs, 4 complete and 0 interrupted iterations
+default   [  77% ] 272/300 VUs  4m38.4s/6m00.0s
+
+running (4m39.4s), 274/300 VUs, 4 complete and 0 interrupted iterations
+default   [  78% ] 274/300 VUs  4m39.4s/6m00.0s
+
+running (4m40.4s), 275/300 VUs, 4 complete and 0 interrupted iterations
+default   [  78% ] 275/300 VUs  4m40.4s/6m00.0s
+
+running (4m41.4s), 276/300 VUs, 4 complete and 0 interrupted iterations
+default   [  78% ] 276/300 VUs  4m41.4s/6m00.0s
+
+running (4m42.4s), 277/300 VUs, 4 complete and 0 interrupted iterations
+default   [  78% ] 277/300 VUs  4m42.4s/6m00.0s
+
+running (4m43.4s), 279/300 VUs, 4 complete and 0 interrupted iterations
+default   [  79% ] 279/300 VUs  4m43.4s/6m00.0s
+
+running (4m44.4s), 280/300 VUs, 4 complete and 0 interrupted iterations
+default   [  79% ] 280/300 VUs  4m44.4s/6m00.0s
+
+running (4m45.4s), 281/300 VUs, 4 complete and 0 interrupted iterations
+default   [  79% ] 281/300 VUs  4m45.4s/6m00.0s
+
+running (4m46.4s), 282/300 VUs, 4 complete and 0 interrupted iterations
+default   [  80% ] 282/300 VUs  4m46.4s/6m00.0s
+
+running (4m47.4s), 284/300 VUs, 4 complete and 0 interrupted iterations
+default   [  80% ] 284/300 VUs  4m47.4s/6m00.0s
+
+running (4m48.4s), 285/300 VUs, 4 complete and 0 interrupted iterations
+default   [  80% ] 285/300 VUs  4m48.4s/6m00.0s
+
+running (4m49.4s), 286/300 VUs, 4 complete and 0 interrupted iterations
+default   [  80% ] 286/300 VUs  4m49.4s/6m00.0s
+
+running (4m50.4s), 287/300 VUs, 4 complete and 0 interrupted iterations
+default   [  81% ] 287/300 VUs  4m50.4s/6m00.0s
+
+running (4m51.4s), 289/300 VUs, 4 complete and 0 interrupted iterations
+default   [  81% ] 289/300 VUs  4m51.4s/6m00.0s
+
+running (4m52.4s), 290/300 VUs, 4 complete and 0 interrupted iterations
+default   [  81% ] 290/300 VUs  4m52.4s/6m00.0s
+
+running (4m53.4s), 291/300 VUs, 4 complete and 0 interrupted iterations
+default   [  81% ] 291/300 VUs  4m53.4s/6m00.0s
+
+running (4m54.4s), 292/300 VUs, 4 complete and 0 interrupted iterations
+default   [  82% ] 292/300 VUs  4m54.4s/6m00.0s
+
+running (4m55.4s), 294/300 VUs, 4 complete and 0 interrupted iterations
+default   [  82% ] 294/300 VUs  4m55.4s/6m00.0s
+
+running (4m56.4s), 295/300 VUs, 4 complete and 0 interrupted iterations
+default   [  82% ] 295/300 VUs  4m56.4s/6m00.0s
+
+running (4m57.4s), 296/300 VUs, 4 complete and 0 interrupted iterations
+default   [  83% ] 296/300 VUs  4m57.4s/6m00.0s
+
+running (4m58.4s), 297/300 VUs, 4 complete and 0 interrupted iterations
+default   [  83% ] 297/300 VUs  4m58.4s/6m00.0s
+
+running (4m59.4s), 299/300 VUs, 4 complete and 0 interrupted iterations
+default   [  83% ] 299/300 VUs  4m59.4s/6m00.0s
+
+running (5m00.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  83% ] 300/300 VUs  5m00.4s/6m00.0s
+
+running (5m01.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  84% ] 300/300 VUs  5m01.4s/6m00.0s
+
+running (5m02.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  84% ] 300/300 VUs  5m02.4s/6m00.0s
+
+running (5m03.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  84% ] 300/300 VUs  5m03.4s/6m00.0s
+
+running (5m04.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  85% ] 300/300 VUs  5m04.4s/6m00.0s
+
+running (5m05.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  85% ] 300/300 VUs  5m05.4s/6m00.0s
+
+running (5m06.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  85% ] 300/300 VUs  5m06.4s/6m00.0s
+
+running (5m07.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  85% ] 300/300 VUs  5m07.4s/6m00.0s
+
+running (5m08.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  86% ] 300/300 VUs  5m08.4s/6m00.0s
+
+running (5m09.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  86% ] 300/300 VUs  5m09.4s/6m00.0s
+
+running (5m10.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  86% ] 300/300 VUs  5m10.4s/6m00.0s
+
+running (5m11.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  86% ] 300/300 VUs  5m11.4s/6m00.0s
+
+running (5m12.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  87% ] 300/300 VUs  5m12.4s/6m00.0s
+
+running (5m13.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  87% ] 300/300 VUs  5m13.4s/6m00.0s
+
+running (5m14.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  87% ] 300/300 VUs  5m14.4s/6m00.0s
+
+running (5m15.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  88% ] 300/300 VUs  5m15.4s/6m00.0s
+
+running (5m16.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  88% ] 300/300 VUs  5m16.4s/6m00.0s
+
+running (5m17.5s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  88% ] 300/300 VUs  5m17.5s/6m00.0s
+
+running (5m18.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  88% ] 300/300 VUs  5m18.4s/6m00.0s
+
+running (5m19.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  89% ] 300/300 VUs  5m19.4s/6m00.0s
+
+running (5m20.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  89% ] 300/300 VUs  5m20.4s/6m00.0s
+
+running (5m21.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  89% ] 300/300 VUs  5m21.4s/6m00.0s
+
+running (5m22.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  90% ] 300/300 VUs  5m22.4s/6m00.0s
+
+running (5m23.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  90% ] 300/300 VUs  5m23.4s/6m00.0s
+
+running (5m24.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  90% ] 300/300 VUs  5m24.4s/6m00.0s
+
+running (5m25.5s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  90% ] 300/300 VUs  5m25.5s/6m00.0s
+
+running (5m26.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  91% ] 300/300 VUs  5m26.4s/6m00.0s
+
+running (5m27.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  91% ] 300/300 VUs  5m27.4s/6m00.0s
+
+running (5m28.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  91% ] 300/300 VUs  5m28.4s/6m00.0s
+
+running (5m29.4s), 300/300 VUs, 4 complete and 0 interrupted iterations
+default   [  91% ] 300/300 VUs  5m29.4s/6m00.0s
+
+running (5m30.4s), 299/300 VUs, 4 complete and 1 interrupted iterations
+default   [  92% ] 299/300 VUs  5m30.4s/6m00.0s
+
+running (5m31.4s), 294/300 VUs, 4 complete and 6 interrupted iterations
+default   [  92% ] 294/300 VUs  5m31.4s/6m00.0s
+
+running (5m32.5s), 288/300 VUs, 4 complete and 12 interrupted iterations
+default   [  92% ] 288/300 VUs  5m32.5s/6m00.0s
+
+running (5m33.4s), 284/300 VUs, 4 complete and 16 interrupted iterations
+default   [  93% ] 284/300 VUs  5m33.4s/6m00.0s
+
+running (5m34.4s), 279/300 VUs, 4 complete and 21 interrupted iterations
+default   [  93% ] 279/300 VUs  5m34.4s/6m00.0s
+
+running (5m35.4s), 274/300 VUs, 4 complete and 26 interrupted iterations
+default   [  93% ] 274/300 VUs  5m35.4s/6m00.0s
+
+running (5m36.4s), 269/300 VUs, 4 complete and 31 interrupted iterations
+default   [  93% ] 269/300 VUs  5m36.4s/6m00.0s
+
+running (5m37.4s), 264/300 VUs, 4 complete and 36 interrupted iterations
+default   [  94% ] 264/300 VUs  5m37.4s/6m00.0s
+
+running (5m38.4s), 259/300 VUs, 4 complete and 41 interrupted iterations
+default   [  94% ] 259/300 VUs  5m38.4s/6m00.0s
+
+running (5m39.4s), 254/300 VUs, 4 complete and 46 interrupted iterations
+default   [  94% ] 254/300 VUs  5m39.4s/6m00.0s
+
+running (5m40.4s), 249/300 VUs, 4 complete and 51 interrupted iterations
+default   [  95% ] 249/300 VUs  5m40.4s/6m00.0s
+
+running (5m41.4s), 244/300 VUs, 4 complete and 56 interrupted iterations
+default   [  95% ] 244/300 VUs  5m41.4s/6m00.0s
+
+running (5m42.4s), 239/300 VUs, 4 complete and 61 interrupted iterations
+default   [  95% ] 239/300 VUs  5m42.4s/6m00.0s
+
+running (5m43.4s), 234/300 VUs, 5 complete and 66 interrupted iterations
+default   [  95% ] 234/300 VUs  5m43.4s/6m00.0s
+
+running (5m44.4s), 229/300 VUs, 5 complete and 71 interrupted iterations
+default   [  96% ] 229/300 VUs  5m44.4s/6m00.0s
+
+running (5m45.4s), 224/300 VUs, 5 complete and 76 interrupted iterations
+default   [  96% ] 224/300 VUs  5m45.4s/6m00.0s
+
+running (5m46.4s), 219/300 VUs, 5 complete and 81 interrupted iterations
+default   [  96% ] 219/300 VUs  5m46.4s/6m00.0s
+
+running (5m47.4s), 214/300 VUs, 5 complete and 86 interrupted iterations
+default   [  96% ] 214/300 VUs  5m47.4s/6m00.0s
+
+running (5m48.4s), 209/300 VUs, 5 complete and 91 interrupted iterations
+default   [  97% ] 209/300 VUs  5m48.4s/6m00.0s
+
+running (5m49.4s), 204/300 VUs, 5 complete and 96 interrupted iterations
+default   [  97% ] 204/300 VUs  5m49.4s/6m00.0s
+
+running (5m50.4s), 199/300 VUs, 5 complete and 101 interrupted iterations
+default   [  97% ] 199/300 VUs  5m50.4s/6m00.0s
+
+running (5m51.4s), 194/300 VUs, 5 complete and 106 interrupted iterations
+default   [  98% ] 194/300 VUs  5m51.4s/6m00.0s
+
+running (5m52.4s), 189/300 VUs, 5 complete and 111 interrupted iterations
+default   [  98% ] 189/300 VUs  5m52.4s/6m00.0s
+
+running (5m53.4s), 184/300 VUs, 5 complete and 116 interrupted iterations
+default   [  98% ] 184/300 VUs  5m53.4s/6m00.0s
+
+running (5m54.4s), 179/300 VUs, 6 complete and 121 interrupted iterations
+default   [  98% ] 179/300 VUs  5m54.4s/6m00.0s
+
+running (5m55.4s), 174/300 VUs, 6 complete and 126 interrupted iterations
+default   [  99% ] 174/300 VUs  5m55.4s/6m00.0s
+
+running (5m56.4s), 169/300 VUs, 7 complete and 131 interrupted iterations
+default   [  99% ] 169/300 VUs  5m56.4s/6m00.0s
+
+running (5m57.4s), 164/300 VUs, 7 complete and 136 interrupted iterations
+default   [  99% ] 164/300 VUs  5m57.4s/6m00.0s
+
+running (5m58.4s), 159/300 VUs, 7 complete and 141 interrupted iterations
+default   [ 100% ] 159/300 VUs  5m58.4s/6m00.0s
+
+running (5m59.4s), 154/300 VUs, 7 complete and 146 interrupted iterations
+default   [ 100% ] 154/300 VUs  5m59.4s/6m00.0s
+
+running (6m00.4s), 149/300 VUs, 7 complete and 151 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m01.4s), 143/300 VUs, 8 complete and 156 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m02.4s), 138/300 VUs, 8 complete and 161 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m03.4s), 133/300 VUs, 8 complete and 166 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m04.4s), 128/300 VUs, 8 complete and 171 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m05.4s), 123/300 VUs, 8 complete and 176 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m06.4s), 118/300 VUs, 8 complete and 181 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m07.4s), 113/300 VUs, 8 complete and 186 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m08.4s), 108/300 VUs, 8 complete and 191 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m09.4s), 103/300 VUs, 8 complete and 196 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m10.4s), 098/300 VUs, 8 complete and 201 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m11.4s), 093/300 VUs, 8 complete and 206 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m12.4s), 088/300 VUs, 8 complete and 211 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m13.4s), 083/300 VUs, 8 complete and 216 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m14.4s), 078/300 VUs, 8 complete and 221 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m15.4s), 073/300 VUs, 8 complete and 226 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m16.4s), 068/300 VUs, 8 complete and 231 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m17.4s), 063/300 VUs, 8 complete and 236 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m18.4s), 058/300 VUs, 8 complete and 241 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m19.4s), 053/300 VUs, 8 complete and 246 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m20.4s), 048/300 VUs, 8 complete and 251 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m21.4s), 043/300 VUs, 8 complete and 256 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m22.4s), 038/300 VUs, 8 complete and 261 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m23.4s), 033/300 VUs, 8 complete and 266 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m24.4s), 027/300 VUs, 9 complete and 271 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m25.4s), 022/300 VUs, 9 complete and 276 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m26.4s), 017/300 VUs, 9 complete and 281 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m27.4s), 012/300 VUs, 9 complete and 286 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m28.4s), 007/300 VUs, 9 complete and 291 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+running (6m29.4s), 004/300 VUs, 9 complete and 294 interrupted iterations
+default ↓ [ 100% ] 151/300 VUs  6m0s
+
+     ✓ login status is 2xx
+     ✗ dashboard summary status is 2xx
+      ↳  68% — ✓ 164 / ✗ 77
+     ✓ dashboard burn rate status is 2xx
+     ✓ dashboard manpower status is 2xx
+     ✓ dashboard milestones status is 2xx
+     ✓ dashboard alerts status is 2xx
+     ✗ dashboard quality metrics status is 2xx
+      ↳  77% — ✓ 113 / ✗ 32
+     ✗ dashboard ehs metrics status is 2xx
+      ↳  84% — ✓ 114 / ✗ 21
+     ✓ dashboard companies status is 2xx
+     ✓ dashboard projects status is 2xx
+     ✗ dashboard enterprise status is 2xx
+      ↳  88% — ✓ 94 / ✗ 12
+     ✗ dashboard company status is 2xx
+      ↳  85% — ✓ 80 / ✗ 14
+     ✗ dashboard project status is 2xx
+      ↳  82% — ✓ 72 / ✗ 15
+     ✓ progress stats status is 2xx
+     ✓ progress plan-vs-achieved status is 2xx
+     ✓ progress insights status is 2xx
+     ✓ progress approvals pending status is 2xx
+     ✓ eps tree status is 2xx
+     ✓ execution vendors status is 2xx
+     ✓ execution has-micro status is 2xx
+     ✗ execution breakdown status is 2xx
+      ↳  23% — ✓ 12 / ✗ 40
+     ✓ wbs tree status is 2xx
+     ✓ wbs activities status is 2xx
+     ✓ project schedule status is 2xx
+     ✗ planning stats status is 2xx
+      ↳  70% — ✓ 35 / ✗ 15
+     ✓ planning matrix status is 2xx
+     ✓ planning unlinked status is 2xx
+     ✓ planning boq mapper status is 2xx
+     ✓ planning gap analysis status is 2xx
+     ✗ planning execution ready status is 2xx
+      ↳  50% — ✓ 7 / ✗ 7
+     ✓ planning distribution matrix status is 2xx
+     ✓ planning relationships status is 2xx
+     ✓ planning versions status is 2xx
+     ✓ workdoc vendors status is 2xx
+     ✓ workdoc project work orders status is 2xx
+     ✗ workdoc linkage data status is 2xx
+      ↳  0% — ✓ 0 / ✗ 12
+     ✓ workdoc boq tree status is 2xx
+     ✓ workdoc available boq qty status is 2xx
+     ✗ quality summary status is 2xx
+      ↳  83% — ✓ 10 / ✗ 2
+     ✗ quality activity lists status is 2xx
+      ↳  0% — ✓ 0 / ✗ 12
+     ✗ quality inspections status is 2xx
+      ↳  0% — ✓ 0 / ✗ 12
+     ✗ quality my pending status is 2xx
+      ↳  0% — ✓ 0 / ✗ 12
+     ✗ quality approval dashboard status is 2xx
+      ↳  0% — ✓ 0 / ✗ 12
+     ✗ ehs summary status is 2xx
+      ↳  63% — ✓ 7 / ✗ 4
+     ✓ ehs performance status is 2xx
+     ✓ ehs manhours status is 2xx
+     ✗ ehs labor stats status is 2xx
+      ↳  0% — ✓ 0 / ✗ 11
+     ✓ ehs inspections status is 2xx
+
+     checks.........................: 90.92% ✓ 3107     ✗ 310  
+     data_received..................: 214 MB 550 kB/s
+     data_sent......................: 31 MB  79 kB/s
+     http_req_blocked...............: avg=643.4µs  min=0s      med=0s    max=74.65ms p(90)=1.6ms  p(95)=2.58ms 
+     http_req_connecting............: avg=564.26µs min=0s      med=0s    max=74.65ms p(90)=1.35ms p(95)=2.14ms 
+   ✗ http_req_duration..............: avg=15.63s   min=16.43ms med=8.18s max=1m0s    p(90)=46.55s p(95)=1m0s   
+       { expected_response:true }...: avg=12.55s   min=16.43ms med=7.62s max=59.98s  p(90)=33.27s p(95)=41.77s 
+     http_req_failed................: 9.07%  ✓ 310      ✗ 3107 
+     http_req_receiving.............: avg=21.43ms  min=0s      med=0s    max=2.19s   p(90)=2.12ms p(95)=18.64ms
+     http_req_sending...............: avg=657.09µs min=0s      med=525µs max=27.25ms p(90)=1.19ms p(95)=1.71ms 
+     http_req_tls_handshaking.......: avg=0s       min=0s      med=0s    max=0s      p(90)=0s     p(95)=0s     
+     http_req_waiting...............: avg=15.61s   min=15.82ms med=8.15s max=1m0s    p(90)=46.55s p(95)=1m0s   
+     http_reqs......................: 3417   8.761172/s
+     iteration_duration.............: avg=4m31s    min=2m24s   med=5m38s max=6m13s   p(90)=5m56s  p(95)=6m4s   
+     iterations.....................: 9      0.023076/s
+     vus............................: 4      min=1      max=300
+     vus_max........................: 300    min=300    max=300
+
+
+running (6m30.0s), 000/300 VUs, 9 complete and 298 interrupted iterations
+default ✓ [ 100% ] 001/300 VUs  6m0s
+time="2026-03-28T19:21:54+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:21:54+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:22:02+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:22:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:24+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:26+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:22:28+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:30+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:35+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:41+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:42+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:43+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:47+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:51+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:22:57+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:03+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:04+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:07+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:29+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:23:34+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:43+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:47+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:23:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:23:50+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:23:52+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:23:53+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:23:54+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:23:54+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:23:57+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:23:57+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:23:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:23:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:23:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:00+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/quality/2/summary\": request timeout"
+time="2026-03-28T19:24:05+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:10+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:10+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:10+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:24:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:24:12+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:12+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:13+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:13+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:13+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:14+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:14+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:16+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/ehs/2/summary\": request timeout"
+time="2026-03-28T19:24:19+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:19+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:21+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:24+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:25+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:25+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:25+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:25+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:26+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:27+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:27+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:29+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:29+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:29+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:29+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:30+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:30+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:31+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:31+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:31+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:31+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:24:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:34+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:35+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:37+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:38+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:39+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:39+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:39+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:40+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:40+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:40+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:40+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:24:41+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:41+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:41+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:42+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:42+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:42+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:43+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:43+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:44+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:44+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:44+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:24:45+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:45+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:46+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:46+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:46+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:46+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:47+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:48+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:48+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:48+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:24:48+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/ehs/2/summary\": request timeout"
+time="2026-03-28T19:24:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:49+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:50+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/ehs/2/summary\": request timeout"
+time="2026-03-28T19:24:50+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:50+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:51+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:24:51+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:52+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:53+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:53+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:54+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:55+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:55+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:55+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:56+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:57+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:24:58+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:59+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:59+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:24:59+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:24:59+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:24:59+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:24:59+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:25:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:25:01+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:25:02+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:25:03+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:03+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:03+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:03+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:04+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:05+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:05+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:05+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:06+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/ehs/2/summary\": request timeout"
+time="2026-03-28T19:25:08+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:09+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:25:10+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:10+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:10+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:11+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:12+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:12+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:12+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:25:12+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:13+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:13+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:25:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/quality/2/summary\": request timeout"
+time="2026-03-28T19:25:16+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:25:16+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:16+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-03-28T19:25:17+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:25:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:25:19+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:20+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:20+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:20+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:20+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:25:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:25:22+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:24+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-03-28T19:25:25+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:26+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:26+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:26+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-03-28T19:25:27+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-03-28T19:25:31+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:25:32+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:25:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:25:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:37+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:37+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/execution-ready\": request timeout"
+time="2026-03-28T19:25:37+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-03-28T19:25:38+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-03-28T19:25:40+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-03-28T19:25:43+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:25:54+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-03-28T19:26:16+05:30" level=error msg="thresholds on metrics 'http_req_duration' have been crossed"

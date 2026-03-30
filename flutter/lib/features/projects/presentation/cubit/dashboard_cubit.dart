@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/database/app_database.dart';
 
 // ═══════════════════════════════════════ STATES ══════════════════════════════
 
@@ -48,21 +49,44 @@ class DashboardError extends DashboardState {
 
 class DashboardCubit extends Cubit<DashboardState> {
   final SetuApiClient _apiClient;
+  final AppDatabase _database;
   final int projectId;
 
-  DashboardCubit({required SetuApiClient apiClient, required this.projectId})
-      : _apiClient = apiClient,
+  DashboardCubit({
+    required SetuApiClient apiClient,
+    required AppDatabase database,
+    required this.projectId,
+  })  : _apiClient = apiClient,
+        _database = database,
         super(DashboardLoading());
 
   Future<void> load() async {
     if (state is! DashboardLoaded) emit(DashboardLoading());
 
-    // Load all counts in parallel; each silently returns 0 on error
+    // Load all counts in parallel. Each count first tries the live API;
+    // on failure it falls back to the local Drift cache so the dashboard
+    // always shows a meaningful number rather than 0.
     final results = await Future.wait([
-      _safeCount(() => _apiClient.getMyPendingInspections(projectId)),
-      _safeCount(() => _apiClient.getPendingApprovals(projectId)),
-      _safeCount(() => _apiClient.getEhsSiteObs(projectId: projectId, status: 'OPEN')),
-      _safeCount(() => _apiClient.getQualitySiteObs(projectId: projectId, status: 'OPEN')),
+      _safeCount(
+        () => _apiClient.getMyPendingInspections(projectId),
+        cacheCount: null, // no cache for inspections
+      ),
+      _safeCount(
+        () => _apiClient.getPendingApprovals(projectId),
+        cacheCount: null, // no cache for approvals
+      ),
+      _safeCount(
+        () => _apiClient.getEhsSiteObs(projectId: projectId, status: 'OPEN'),
+        cacheCount: () => _database
+            .getCachedEhsSiteObs(projectId, 'OPEN')
+            .then((list) => list.length),
+      ),
+      _safeCount(
+        () => _apiClient.getQualitySiteObs(projectId: projectId, status: 'OPEN'),
+        cacheCount: () => _database
+            .getCachedQualitySiteObs(projectId, 'OPEN')
+            .then((list) => list.length),
+      ),
     ]);
 
     emit(DashboardLoaded(
@@ -75,11 +99,23 @@ class DashboardCubit extends Cubit<DashboardState> {
 
   Future<void> refresh() => load();
 
-  Future<int> _safeCount(Future<List<dynamic>> Function() fn) async {
+  /// Tries the live API first. On any error, falls back to [cacheCount] if
+  /// provided, or returns 0 as a last resort.
+  Future<int> _safeCount(
+    Future<List<dynamic>> Function() fn, {
+    required Future<int> Function()? cacheCount,
+  }) async {
     try {
       final list = await fn();
       return list.length;
     } catch (_) {
+      if (cacheCount != null) {
+        try {
+          return await cacheCount();
+        } catch (_) {
+          return 0;
+        }
+      }
       return 0;
     }
   }

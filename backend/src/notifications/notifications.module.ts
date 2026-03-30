@@ -10,6 +10,10 @@ import { InspectionWorkflowStep } from '../quality/entities/inspection-workflow-
 import { ActivityObservation } from '../quality/entities/activity-observation.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { Role } from '../roles/role.entity';
+import { EpsNode } from '../eps/eps.entity';
+import { Activity } from '../wbs/entities/activity.entity';
+import { NotificationContextService } from './notification-context.service';
+import { NotificationComposerService } from './notification-composer.service';
 
 @Module({
   imports: [
@@ -21,10 +25,22 @@ import { Role } from '../roles/role.entity';
       ActivityObservation,
       TempUser,
       Role,
+      EpsNode,
+      Activity,
     ]),
   ],
-  providers: [PushNotificationService, PendingTasksService],
+  providers: [
+    PushNotificationService,
+    PendingTasksService,
+    NotificationContextService,
+    NotificationComposerService,
+  ],
   controllers: [PendingTasksController],
-  exports: [PushNotificationService, PendingTasksService],
+  exports: [
+    PushNotificationService,
+    PendingTasksService,
+    NotificationContextService,
+    NotificationComposerService,
+  ],
 })
 export class NotificationsModule {}

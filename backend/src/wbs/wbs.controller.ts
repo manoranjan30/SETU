@@ -180,11 +180,21 @@ export class WbsController {
   @Post('import/preview')
   @Permissions('WBS.NODE.CREATE')
   @UseInterceptors(FileInterceptor('file'))
-  async previewImport(@UploadedFile() file: Express.Multer.File) {
+  async previewImport(
+    @Param('projectId') projectId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mapping') mappingRaw?: string,
+  ) {
     if (!file) throw new BadRequestException('File is required');
-    const data = await this.importService.parseAndPreview(file.buffer);
-    const validation = this.importService.validateHierarchy(data);
-    return { data, validation };
+    let mapping: Record<string, string> | undefined;
+    if (mappingRaw) {
+      try {
+        mapping = JSON.parse(mappingRaw);
+      } catch {
+        throw new BadRequestException('Invalid column mapping payload');
+      }
+    }
+    return this.importService.parseAndPreview(+projectId, file.buffer, mapping);
   }
 
   @Post('import/commit')
@@ -194,16 +204,6 @@ export class WbsController {
     @Body() body: { data: any[] },
     @Request() req: any,
   ) {
-    // We need a bulk create method in WbsService.
-    // For now, let's just loop (not efficient but works).
-    // Or implement bulk logic later.
-
-    // Actually, let's delegate to WbsService
-    // return this.wbsService.bulkCreate(+projectId, body.data, req.user.username);
-
-    // Wait, bulkCreate is not implemented yet.
-    // Let's implement a simple loop here or better add bulkCreate to Service.
-    // For iteration 1: Implement bulkCreate in Service
     return this.wbsService.bulkCreate(+projectId, body.data, req.user.username);
   }
 }
