@@ -168,30 +168,31 @@ export class QualityInspectionService {
   }
 
   async getActiveVendors(projectId: number) {
+    // Return all vendors that have any work order for this project.
+    // We do not filter by status or expiry — even a CLOSED or expired work
+    // order means the vendor has been engaged on this project and should
+    // appear as a valid selection when raising an RFI.
     const workOrders = await this.workOrderRepo.find({
-      where: [
-        { projectId, status: 'ACTIVE' },
-        { projectId, status: 'IN_PROGRESS' },
-      ],
+      where: { projectId },
       relations: ['vendor'],
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const validWOs = workOrders.filter((wo) => {
-      if (!wo.orderValidityEnd) return false;
-      const expiry = new Date(wo.orderValidityEnd);
-      expiry.setHours(0, 0, 0, 0);
-      return expiry >= today;
-    });
-
     const vendorMap = new Map<number, Vendor>();
-    for (const wo of validWOs) {
+    for (const wo of workOrders) {
       if (wo.vendor && !vendorMap.has(wo.vendor.id)) {
         vendorMap.set(wo.vendor.id, wo.vendor);
       }
     }
+
+    // If no project-specific work orders exist, fall back to all vendors in
+    // the system so the picker is never empty for a valid project.
+    if (vendorMap.size === 0) {
+      const allVendors = await this.vendorRepo.find({
+        order: { name: 'ASC' },
+      });
+      return allVendors;
+    }
+
     return Array.from(vendorMap.values());
   }
 

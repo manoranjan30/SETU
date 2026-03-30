@@ -546,8 +546,9 @@ const ScheduleDistributionMatrix: React.FC = () => {
           <p className="text-xs text-text-muted">
             <b>Top-Down Linking:</b> Click the intersection of a Parent WBS and
             Parent Block to link ALL sub-activities to ALL sub-floors. For
-            bulk updates, download the simple link sheet, edit only the Linked
-            Floor Codes column, and import it back.
+            bulk updates, download the matrix link sheet, mark <b>1</b> under
+            the floor name columns you want, and import it back. Floor codes
+            stay in separate columns for reference.
           </p>
         </div>
         <div className="flex items-center gap-4 text-sm text-text-secondary">
@@ -562,7 +563,7 @@ const ScheduleDistributionMatrix: React.FC = () => {
             ) : (
               <Download size={14} />
             )}
-            Download Simple Link Sheet
+            Download Matrix Link Sheet
           </button>
           <button
             type="button"

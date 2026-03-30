@@ -82,6 +82,7 @@ const DrawingRegister = () => {
     type: string;
   } | null>(null);
   const [previewCanDownload, setPreviewCanDownload] = useState(false);
+  const [previewRevisionId, setPreviewRevisionId] = useState<number | undefined>(undefined);
 
   const fetchData = async () => {
     if (!projectId) return;
@@ -251,6 +252,7 @@ const DrawingRegister = () => {
       setPreviewUrl(url);
       setPreviewFile({ name: filename, type: fileType });
       setPreviewCanDownload(allowDownload);
+      setPreviewRevisionId(revisionId);
       setIsPreviewModalOpen(true);
       await markOpened(registerId);
     } catch (e) {
@@ -579,11 +581,14 @@ const DrawingRegister = () => {
           if (previewUrl) window.URL.revokeObjectURL(previewUrl);
           setPreviewUrl(null);
           setPreviewCanDownload(false);
+          setPreviewRevisionId(undefined);
         }}
         fileUrl={previewUrl}
         fileName={previewFile?.name || ""}
         fileType={previewFile?.type || ""}
         canDownload={previewCanDownload}
+        revisionId={previewRevisionId}
+        projectId={projectId}
       />
     </div>
   );

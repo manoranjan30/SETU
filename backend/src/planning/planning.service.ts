@@ -61,6 +61,7 @@ interface DistributionImportPreviewRow {
   linkedfloorcodes?: string;
   linkedfloornames?: string;
   notes?: string;
+  requestedfloormarks?: string;
   targetfloorcode?: string;
   targetfloorname?: string;
   targetepspath?: string;
@@ -79,6 +80,48 @@ interface DistributionImportValidation {
 }
 
 interface DistributionImportSummary {
+  totalRows: number;
+  readyRows: number;
+  partialRows: number;
+  skippedExistingRows: number;
+  ignoredRows: number;
+  errorRows: number;
+}
+
+type WoMapperImportColumnMapping = Record<string, string>;
+
+interface WoMapperImportFieldDefinition {
+  key: string;
+  label: string;
+  required?: boolean;
+  aliases: string[];
+}
+
+interface WoMapperImportPreviewRow {
+  __rowIndex: number;
+  __rowNumber: number;
+  activitycode?: string;
+  activityname?: string;
+  wbspath?: string;
+  currentlinkedwocodes?: string;
+  currentlinkedwonames?: string;
+  notes?: string;
+  requestedwomarks?: string;
+  resolvednewwoids?: string;
+  resolvednewwocodes?: string;
+  resolvednewwonames?: string;
+  alreadylinkedwocodes?: string;
+  invalidwocolumns?: string;
+  importStatus?: DistributionImportStatus;
+  importMessage?: string;
+}
+
+interface WoMapperImportValidation {
+  isValid: boolean;
+  errors: string[];
+}
+
+interface WoMapperImportSummary {
   totalRows: number;
   readyRows: number;
   partialRows: number;
@@ -163,6 +206,48 @@ export class PlanningService {
       label: 'Linked',
       required: true,
       aliases: ['linked', 'link', 'is linked'],
+    },
+  ];
+
+  private readonly woMapperImportFields: WoMapperImportFieldDefinition[] = [
+    {
+      key: 'activitycode',
+      label: 'Activity Code',
+      required: true,
+      aliases: ['activity code', 'activitycode', 'code'],
+    },
+    {
+      key: 'activityname',
+      label: 'Activity Name',
+      aliases: ['activity name', 'activityname', 'name'],
+    },
+    {
+      key: 'wbspath',
+      label: 'WBS Path',
+      aliases: ['wbs path', 'wbspath'],
+    },
+    {
+      key: 'currentlinkedwocodes',
+      label: 'Current Linked WO Codes',
+      aliases: [
+        'current linked wo codes',
+        'currentlinkedwocodes',
+        'linked wo codes',
+      ],
+    },
+    {
+      key: 'currentlinkedwonames',
+      label: 'Current Linked WO Names',
+      aliases: [
+        'current linked wo names',
+        'currentlinkedwonames',
+        'linked wo names',
+      ],
+    },
+    {
+      key: 'notes',
+      label: 'Notes',
+      aliases: ['notes', 'remarks', 'comments'],
     },
   ];
 
@@ -286,9 +371,42 @@ export class PlanningService {
   private normalizeLinkedFlag(value: string): boolean | null {
     const normalized = this.normalizeImportHeader(value);
     if (!normalized) return null;
-    if (['yes', 'true', '1', 'y'].includes(normalized)) return true;
+    if (['yes', 'true', '1', 'y', 'x', 'checked', 'link'].includes(normalized))
+      return true;
     if (['no', 'false', '0', 'n'].includes(normalized)) return false;
     return null;
+  }
+
+  private buildFloorColumnHeader(target: {
+    code: string;
+    name: string;
+    path?: string;
+  }): string {
+    const readablePath = this.normalizeImportCell(target.path || '');
+    if (readablePath) {
+      return `Floor ${readablePath}`;
+    }
+    return `Floor ${target.name}`;
+  }
+
+  private buildFloorColumnAliases(
+    target: { code: string; name: string; path?: string },
+    projectId: number,
+  ): string[] {
+    const normalizedName = target.name.trim();
+    const normalizedPath = this.normalizeImportCell(target.path || '');
+    return [
+      this.normalizeImportHeader(this.buildFloorColumnHeader(target)),
+      this.normalizeImportHeader(`${target.code}`),
+      this.normalizeImportHeader(`floor ${target.code}`),
+      this.normalizeImportHeader(`${normalizedName}`),
+      this.normalizeImportHeader(`floor ${normalizedName}`),
+      this.normalizeImportHeader(`${normalizedName} (${target.code})`),
+      this.normalizeImportHeader(`${normalizedName} [${target.code}]`),
+      this.normalizeImportHeader(`${normalizedPath}`),
+      this.normalizeImportHeader(`floor ${normalizedPath}`),
+      this.normalizeImportHeader(`${projectId}.${target.code}`),
+    ];
   }
 
   private summarizeDistributionImportRows(
@@ -317,10 +435,173 @@ export class PlanningService {
     );
   }
 
+  private buildWoMapperImportAutoMapping(
+    headers: string[],
+  ): WoMapperImportColumnMapping {
+    const mapping: WoMapperImportColumnMapping = {};
+    const normalizedHeaders = headers.map((header) => ({
+      source: header,
+      normalized: this.normalizeImportHeader(header),
+    }));
+
+    for (const field of this.woMapperImportFields) {
+      const exact = normalizedHeaders.find((header) =>
+        field.aliases.includes(header.normalized),
+      );
+      if (exact) {
+        mapping[field.key] = exact.source;
+        continue;
+      }
+
+      const fuzzy = normalizedHeaders.find((header) =>
+        field.aliases.some(
+          (candidate) =>
+            header.normalized.includes(candidate) ||
+            candidate.includes(header.normalized),
+        ),
+      );
+      if (fuzzy) {
+        mapping[field.key] = fuzzy.source;
+      }
+    }
+
+    return mapping;
+  }
+
+  private canonicalizeWoMapperImportRows(
+    rawRows: Record<string, unknown>[],
+    mapping: WoMapperImportColumnMapping,
+  ): WoMapperImportPreviewRow[] {
+    return rawRows.map((row, index) => {
+      const normalizedRow: WoMapperImportPreviewRow = {
+        __rowIndex: index,
+        __rowNumber: index + 2,
+      };
+
+      for (const field of this.woMapperImportFields) {
+        const sourceHeader = mapping[field.key];
+        if (!sourceHeader) continue;
+        ((normalizedRow as unknown) as Record<string, unknown>)[field.key] =
+          this.normalizeImportCell(row[sourceHeader]);
+      }
+
+      return normalizedRow;
+    });
+  }
+
+  private summarizeWoMapperImportRows(
+    rows: WoMapperImportPreviewRow[],
+  ): WoMapperImportSummary {
+    return rows.reduce<WoMapperImportSummary>(
+      (summary, row) => {
+        summary.totalRows += 1;
+        if (row.importStatus === 'READY') summary.readyRows += 1;
+        if (row.importStatus === 'PARTIAL') summary.partialRows += 1;
+        if (row.importStatus === 'SKIP_EXISTING') {
+          summary.skippedExistingRows += 1;
+        }
+        if (row.importStatus === 'IGNORED') summary.ignoredRows += 1;
+        if (row.importStatus === 'ERROR') summary.errorRows += 1;
+        return summary;
+      },
+      {
+        totalRows: 0,
+        readyRows: 0,
+        partialRows: 0,
+        skippedExistingRows: 0,
+        ignoredRows: 0,
+        errorRows: 0,
+      },
+    );
+  }
+
   private buildCsvBuffer(rows: Record<string, unknown>[]): Buffer {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const csv = XLSX.utils.sheet_to_csv(worksheet);
     return Buffer.from(`\ufeff${csv}`, 'utf8');
+  }
+
+  private buildWoMapperColumnHeader(target: {
+    id: number;
+    path: string;
+    name: string;
+  }): string {
+    return `WO ${target.path || target.name || target.id}`;
+  }
+
+  private buildWoMapperColumnAliases(target: {
+    id: number;
+    code: string;
+    name: string;
+    path: string;
+  }): string[] {
+    const safePath = this.normalizeImportCell(target.path || '');
+    const safeName = this.normalizeImportCell(target.name || '');
+    return [
+      this.normalizeImportHeader(this.buildWoMapperColumnHeader(target)),
+      this.normalizeImportHeader(safePath),
+      this.normalizeImportHeader(`wo ${safePath}`),
+      this.normalizeImportHeader(safeName),
+      this.normalizeImportHeader(`wo ${safeName}`),
+      this.normalizeImportHeader(target.code),
+      this.normalizeImportHeader(`wo ${target.code}`),
+      this.normalizeImportHeader(String(target.id)),
+    ].filter(Boolean);
+  }
+
+  private async getWoMapperTargets(projectId: number) {
+    const items = await this.woItemRepo
+      .createQueryBuilder('woItem')
+      .leftJoinAndSelect('woItem.workOrder', 'workOrder')
+      .leftJoinAndSelect('workOrder.vendor', 'vendor')
+      .leftJoinAndSelect('woItem.boqItem', 'boqItem')
+      .leftJoinAndSelect('woItem.boqSubItem', 'boqSubItem')
+      .leftJoinAndSelect('woItem.measurementElement', 'measurementElement')
+      .where('workOrder.projectId = :projectId', { projectId })
+      .andWhere('workOrder.status IN (:...statuses)', {
+        statuses: ['ACTIVE', 'IN_PROGRESS'],
+      })
+      .orderBy('vendor.name', 'ASC')
+      .addOrderBy('workOrder.woNumber', 'ASC')
+      .addOrderBy('woItem.id', 'ASC')
+      .getMany();
+
+    const itemMap = new Map<number, WorkOrderItem>();
+    items.forEach((item) => itemMap.set(item.id, item));
+
+    const buildLeafPath = (item: WorkOrderItem) => {
+      const parts: string[] = [];
+      const visited = new Set<number>();
+      let current: WorkOrderItem | undefined = item;
+      while (current && !visited.has(current.id)) {
+        parts.unshift(current.description || `WO Item ${current.id}`);
+        visited.add(current.id);
+        current = current.parentWorkOrderItemId
+          ? itemMap.get(current.parentWorkOrderItemId)
+          : undefined;
+      }
+      const woNumber = item.workOrder?.woNumber || `WO-${item.workOrder?.id || ''}`;
+      const vendorName = item.workOrder?.vendor?.name || 'Unknown Vendor';
+      return `${vendorName} > ${woNumber} > ${parts.join(' > ')}`;
+    };
+
+    const targets = items
+      .filter((item) => item.nodeType === WorkOrderItemNodeType.MEASUREMENT)
+      .map((item) => ({
+        id: item.id,
+        code: item.materialCode || `WOI-${item.id}`,
+        name: item.description || `WO Item ${item.id}`,
+        path: buildLeafPath(item),
+        workOrderNumber: item.workOrder?.woNumber || '',
+        vendorName: item.workOrder?.vendor?.name || '',
+        allocatedQty: Number(item.allocatedQty || 0),
+        uom: item.uom || '',
+      }));
+
+    return {
+      targets,
+      targetById: new Map(targets.map((target) => [String(target.id), target])),
+    };
   }
 
   private async getProjectDistributionTargets(projectId: number) {
@@ -386,6 +667,7 @@ export class PlanningService {
     const targetByCode = new Map(
       targetMeta.map((target) => [target.code, target]),
     );
+    const targetById = new Map(targetMeta.map((target) => [String(target.id), target]));
     const targetsByName = new Map<string, typeof targetMeta>();
     targetMeta.forEach((target) => {
       const key = target.name.trim().toLowerCase();
@@ -397,6 +679,7 @@ export class PlanningService {
     return {
       targetMeta,
       targetByCode,
+      targetById,
       targetsByName,
     };
   }
@@ -651,6 +934,11 @@ export class PlanningService {
     });
 
     if (!woItem) throw new NotFoundException('Work Order Item not found');
+    if (woItem.nodeType !== WorkOrderItemNodeType.MEASUREMENT) {
+      throw new BadRequestException(
+        'Only measurement work order items can be linked to schedule activities.',
+      );
+    }
 
     const executionEpsNodeId = await this.resolveFloorExecutionNodeId(activity);
     const leafItems = await this.expandWoExecutionLeaves(woItem);
@@ -762,6 +1050,318 @@ export class PlanningService {
     for (const id of activityIds) {
       await this.updateActivityFinancials(id);
     }
+  }
+
+  async exportWoMapperMatrixWorkbook(projectId: number): Promise<Buffer> {
+    const [{ activityMeta }, { targets }, existingPlans] = await Promise.all([
+      this.getDistributionSourceActivities(projectId),
+      this.getWoMapperTargets(projectId),
+      this.planRepo.find({
+        where: { projectId },
+        relations: ['activity'],
+      }),
+    ]);
+
+    const activityWoMap = new Map<number, Set<string>>();
+    existingPlans.forEach((plan) => {
+      if (!activityWoMap.has(plan.activityId)) {
+        activityWoMap.set(plan.activityId, new Set<string>());
+      }
+      activityWoMap.get(plan.activityId)!.add(String(plan.workOrderItemId));
+    });
+
+    const matrixRows = activityMeta.map((activity) => {
+      const linkedTargetIds = activityWoMap.get(activity.id) || new Set<string>();
+      const linkedTargets = targets.filter((target) =>
+        linkedTargetIds.has(String(target.id)),
+      );
+
+      return {
+        'Activity Code': activity.activityCode,
+        'Activity Name': activity.activityName,
+        'WBS Path': activity.wbsPath,
+        'Current Linked WO Codes': linkedTargets.map((target) => target.code).join(', '),
+        'Current Linked WO Names': linkedTargets.map((target) => target.path).join(', '),
+        Notes: '',
+        ...Object.fromEntries(
+          targets.map((target) => [
+            this.buildWoMapperColumnHeader(target),
+            linkedTargetIds.has(String(target.id)) ? '1' : '',
+          ]),
+        ),
+      };
+    });
+
+    const referenceRows = targets.map((target) => ({
+      'WO Item ID': target.id,
+      'WO Item Code': target.code,
+      'WO Item Name': target.name,
+      'WO Path': target.path,
+      'Work Order': target.workOrderNumber,
+      Vendor: target.vendorName,
+      'Allocated Qty': target.allocatedQty,
+      UOM: target.uom,
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(matrixRows),
+      'WO Link Matrix',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(referenceRows),
+      'WO Reference',
+    );
+
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  }
+
+  async previewWoMapperImport(
+    projectId: number,
+    fileBuffer: Buffer,
+    mapping?: WoMapperImportColumnMapping,
+  ) {
+    const rawRows = this.parseImportWorkbookRows(fileBuffer);
+    if (rawRows.length === 0) {
+      throw new BadRequestException('Sheet is empty');
+    }
+
+    const headers = Object.keys(rawRows[0] || {});
+    const { activityByCode } = await this.getDistributionSourceActivities(projectId);
+    const { targets, targetById } = await this.getWoMapperTargets(projectId);
+    const existingPlans = await this.planRepo.find({ where: { projectId } });
+
+    const woHeaderLookup = new Map<string, string>();
+    targets.forEach((target) => {
+      this.buildWoMapperColumnAliases(target).forEach((alias) =>
+        woHeaderLookup.set(alias, String(target.id)),
+      );
+    });
+
+    const hasDynamicWoHeaders = headers.some((header) =>
+      woHeaderLookup.has(this.normalizeImportHeader(header)),
+    );
+
+    const effectiveMapping =
+      mapping && Object.keys(mapping).length > 0
+        ? mapping
+        : this.buildWoMapperImportAutoMapping(headers);
+
+    const missingRequired = this.woMapperImportFields
+      .filter((field) => field.required)
+      .filter((field) => !effectiveMapping[field.key])
+      .map((field) => field.label);
+
+    if (!hasDynamicWoHeaders) {
+      missingRequired.push('WO Matrix Columns');
+    }
+
+    if (missingRequired.length > 0) {
+      throw new BadRequestException(
+        `Missing required columns: ${Array.from(new Set(missingRequired)).join(', ')}`,
+      );
+    }
+
+    const normalizedRows = this.canonicalizeWoMapperImportRows(
+      rawRows,
+      effectiveMapping,
+    );
+
+    const dynamicWoHeaderMap = new Map<string, string>();
+    headers.forEach((header) => {
+      const normalizedHeader = this.normalizeImportHeader(header);
+      if (
+        !Object.values(effectiveMapping).includes(header) &&
+        woHeaderLookup.has(normalizedHeader)
+      ) {
+        dynamicWoHeaderMap.set(header, woHeaderLookup.get(normalizedHeader)!);
+      }
+    });
+
+    const activityLinkedWoMap = new Map<number, Set<string>>();
+    existingPlans.forEach((plan) => {
+      if (!activityLinkedWoMap.has(plan.activityId)) {
+        activityLinkedWoMap.set(plan.activityId, new Set<string>());
+      }
+      activityLinkedWoMap.get(plan.activityId)!.add(String(plan.workOrderItemId));
+    });
+
+    const validationErrors: string[] = [];
+    const seenActivityCodes = new Set<string>();
+
+    const data = normalizedRows.map((row) => {
+      const normalizedActivityCode = this.normalizeImportCell(row.activitycode)
+        .toLowerCase();
+      const activity = activityByCode.get(normalizedActivityCode);
+
+      if (!normalizedActivityCode) {
+        const message = 'Activity Code is required.';
+        validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+        return {
+          ...row,
+          importStatus: 'ERROR' as DistributionImportStatus,
+          importMessage: message,
+        };
+      }
+
+      if (seenActivityCodes.has(normalizedActivityCode)) {
+        const message = `Duplicate Activity Code "${row.activitycode}" found in the uploaded file.`;
+        validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+        return {
+          ...row,
+          importStatus: 'ERROR' as DistributionImportStatus,
+          importMessage: message,
+        };
+      }
+      seenActivityCodes.add(normalizedActivityCode);
+
+      if (!activity) {
+        const message = `Activity Code "${row.activitycode}" was not found in this project.`;
+        validationErrors.push(`Row ${row.__rowNumber}: ${message}`);
+        return {
+          ...row,
+          importStatus: 'ERROR' as DistributionImportStatus,
+          importMessage: message,
+        };
+      }
+
+      const requestedTargetIds = new Set<string>();
+      const requestedMarks: string[] = [];
+      const rawSourceRow = rawRows[row.__rowIndex] || {};
+      dynamicWoHeaderMap.forEach((targetId, sourceHeader) => {
+        const rawValue = this.normalizeImportCell(rawSourceRow[sourceHeader]);
+        const linkedFlag = this.normalizeLinkedFlag(rawValue);
+        if (linkedFlag) {
+          requestedTargetIds.add(targetId);
+          const target = targetById.get(targetId);
+          requestedMarks.push(target?.path || sourceHeader);
+        }
+      });
+
+      const currentLinkedIds = activityLinkedWoMap.get(activity.id) || new Set<string>();
+      const alreadyLinkedTargets: Array<(typeof targets)[number]> = [];
+      const newTargets: Array<(typeof targets)[number]> = [];
+
+      requestedTargetIds.forEach((targetId) => {
+        const target = targetById.get(targetId);
+        if (!target) return;
+        if (currentLinkedIds.has(String(target.id))) {
+          alreadyLinkedTargets.push(target);
+        } else {
+          newTargets.push(target);
+        }
+      });
+
+      const normalizedBase: WoMapperImportPreviewRow = {
+        ...row,
+        activitycode: activity.activityCode,
+        activityname: activity.activityName,
+        wbspath: activity.wbsPath,
+        currentlinkedwocodes: Array.from(currentLinkedIds)
+          .map((id) => targetById.get(id)?.code)
+          .filter(Boolean)
+          .join(', '),
+        currentlinkedwonames: Array.from(currentLinkedIds)
+          .map((id) => targetById.get(id)?.path)
+          .filter(Boolean)
+          .join(', '),
+        requestedwomarks: requestedMarks.join(', '),
+        resolvednewwoids: newTargets.map((target) => String(target.id)).join(', '),
+        resolvednewwocodes: newTargets.map((target) => target.code).join(', '),
+        resolvednewwonames: newTargets.map((target) => target.path).join(', '),
+        alreadylinkedwocodes: alreadyLinkedTargets
+          .map((target) => target.code)
+          .join(', '),
+        invalidwocolumns: '',
+      };
+
+      if (requestedTargetIds.size === 0) {
+        return {
+          ...normalizedBase,
+          importStatus: 'IGNORED' as DistributionImportStatus,
+          importMessage: 'No WO columns were marked with 1.',
+        };
+      }
+
+      if (newTargets.length === 0 && alreadyLinkedTargets.length > 0) {
+        return {
+          ...normalizedBase,
+          importStatus: 'SKIP_EXISTING' as DistributionImportStatus,
+          importMessage: 'All marked WO links already exist.',
+        };
+      }
+
+      if (newTargets.length > 0 && alreadyLinkedTargets.length > 0) {
+        return {
+          ...normalizedBase,
+          importStatus: 'PARTIAL' as DistributionImportStatus,
+          importMessage: `${newTargets.length} new link(s) will be created, ${alreadyLinkedTargets.length} already exist.`,
+        };
+      }
+
+      return {
+        ...normalizedBase,
+        importStatus: 'READY' as DistributionImportStatus,
+        importMessage: `${newTargets.length} new WO link(s) will be created.`,
+      };
+    });
+
+    const summary = this.summarizeWoMapperImportRows(data);
+    const validation: WoMapperImportValidation = {
+      isValid: summary.errorRows === 0,
+      errors: validationErrors,
+    };
+
+    return {
+      data,
+      summary,
+      validation,
+      mapping: effectiveMapping,
+    };
+  }
+
+  async commitWoMapperImport(
+    projectId: number,
+    data: WoMapperImportPreviewRow[],
+  ) {
+    const actionableRows = (Array.isArray(data) ? data : []).filter(
+      (row) => row.importStatus === 'READY' || row.importStatus === 'PARTIAL',
+    );
+    const { activityByCode } = await this.getDistributionSourceActivities(projectId);
+    const { targetById } = await this.getWoMapperTargets(projectId);
+
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const row of actionableRows) {
+      const activity = activityByCode.get(
+        this.normalizeImportCell(row.activitycode).toLowerCase(),
+      );
+      if (!activity) continue;
+
+      const targetIds = this.normalizeImportCell(row.resolvednewwoids)
+        .split(',')
+        .map((value) => this.normalizeImportCell(value))
+        .filter(Boolean);
+
+      for (const targetId of targetIds) {
+        const target = targetById.get(targetId);
+        if (!target) {
+          skippedCount += 1;
+          continue;
+        }
+        await this.distributeWoItemToActivity(target.id, activity.id, -1);
+        createdCount += 1;
+      }
+    }
+
+    return {
+      createdCount,
+      skippedCount,
+      processedRows: actionableRows.length,
+    };
   }
 
   private async expandWoExecutionLeaves(
@@ -1808,13 +2408,18 @@ export class PlanningService {
     const rows: Array<Record<string, unknown>> = [];
     const availableFloorCodes = targetMeta.map((target) => target.code).join(', ');
     const availableFloorNames = targetMeta
-      .map((target) => `${target.code}:${target.name}`)
+      .map((target) => target.path || target.name)
       .join(', ');
+    const floorColumnHeaders = targetMeta.map((target) =>
+      this.buildFloorColumnHeader(target),
+    );
 
     for (const activity of activityMeta) {
-      const linkedTargets = new Set(matrix[String(activity.id)] || []);
+      const linkedTargetIds = new Set(
+        (matrix[String(activity.id)] || []).map((targetId) => String(targetId)),
+      );
       const linkedFloorTargets = targetMeta.filter((target) =>
-        linkedTargets.has(target.id),
+        linkedTargetIds.has(String(target.id)),
       );
 
       if (mode === 'linked' && linkedFloorTargets.length === 0) {
@@ -1831,9 +2436,15 @@ export class PlanningService {
           .map((target) => target.code)
           .join(', '),
         'Linked Floor Names': linkedFloorTargets
-          .map((target) => `${target.code}:${target.name}`)
+          .map((target) => target.path || target.name)
           .join(', '),
         Notes: '',
+        ...Object.fromEntries(
+          floorColumnHeaders.map((header, index) => {
+            const target = targetMeta[index];
+            return [header, linkedTargetIds.has(String(target.id)) ? '1' : ''];
+          }),
+        ),
       });
     }
 
@@ -1851,6 +2462,17 @@ export class PlanningService {
     }
 
     const headers = Object.keys(rawRows[0] || {});
+    const { targetByCode, targetById, targetsByName } =
+      await this.getProjectDistributionTargets(projectId);
+    const floorHeaderLookup = new Map<string, string>();
+    for (const target of Array.from(targetByCode.values())) {
+      const aliases = this.buildFloorColumnAliases(target, projectId);
+      aliases.forEach((alias) => floorHeaderLookup.set(alias, target.code));
+    }
+    const hasDynamicFloorHeaders = headers.some((header) =>
+      floorHeaderLookup.has(this.normalizeImportHeader(header)),
+    );
+
     const effectiveMapping =
       mapping && Object.keys(mapping).length > 0
         ? mapping
@@ -1862,6 +2484,7 @@ export class PlanningService {
       .map((field) => field.label);
 
     if (
+      !hasDynamicFloorHeaders &&
       !effectiveMapping.linkedfloorcodes &&
       !effectiveMapping.targetfloorcode &&
       !effectiveMapping.targetfloorname
@@ -1882,12 +2505,22 @@ export class PlanningService {
       effectiveMapping,
     );
 
-    const [{ activityByCode }, { targetByCode, targetsByName }, matrix] =
+    const [{ activityByCode }, matrix] =
       await Promise.all([
         this.getDistributionSourceActivities(projectId),
-        this.getProjectDistributionTargets(projectId),
         this.getDistributionMatrix(projectId),
       ]);
+
+    const dynamicFloorHeaderMap = new Map<string, string>();
+    headers.forEach((header) => {
+      const normalizedHeader = this.normalizeImportHeader(header);
+      if (
+        !Object.values(effectiveMapping).includes(header) &&
+        floorHeaderLookup.has(normalizedHeader)
+      ) {
+        dynamicFloorHeaderMap.set(header, floorHeaderLookup.get(normalizedHeader)!);
+      }
+    });
 
     const seenPairs = new Set<string>();
     const validationErrors: string[] = [];
@@ -1915,7 +2548,32 @@ export class PlanningService {
           .map((value) => this.normalizeImportCell(value))
           .filter(Boolean)
           .forEach((code) => requestedCodes.add(code));
-      } else {
+      }
+
+      if (requestedCodes.size === 0 && dynamicFloorHeaderMap.size > 0) {
+        const rawSourceRow = rawRows[row.__rowIndex] || {};
+        const markedFloorCodes: string[] = [];
+        const markedFloorNames: string[] = [];
+        dynamicFloorHeaderMap.forEach((floorCode, sourceHeader) => {
+          const rawValue = this.normalizeImportCell(rawSourceRow[sourceHeader]);
+          const linkedFlag = this.normalizeLinkedFlag(rawValue);
+          if (linkedFlag) {
+            requestedCodes.add(floorCode);
+            markedFloorCodes.push(floorCode);
+            const target = targetByCode.get(floorCode.toLowerCase());
+            if (target) {
+              markedFloorNames.push(target.path || target.name);
+            }
+          }
+        });
+        if (markedFloorNames.length > 0) {
+          row.requestedfloormarks = markedFloorNames.join(', ');
+        } else if (markedFloorCodes.length > 0) {
+          row.requestedfloormarks = markedFloorCodes.join(', ');
+        }
+      }
+
+      if (requestedCodes.size === 0) {
         const fallbackTargetCode = this.normalizeImportCell(row.targetfloorcode);
         const fallbackTargetName = this.normalizeImportCell(row.targetfloorname);
         const linkedFlag = this.normalizeLinkedFlag(row.linked || '');
@@ -1959,8 +2617,11 @@ export class PlanningService {
         }
       }
 
-      const currentLinkedTargets = (matrix[String(activity.id)] || [])
-        .map((targetId) => targetByCode.get(String(targetId)))
+      const currentLinkedTargetIds = new Set(
+        (matrix[String(activity.id)] || []).map((targetId) => String(targetId)),
+      );
+      const currentLinkedTargets = Array.from(currentLinkedTargetIds)
+        .map((targetId) => targetById.get(targetId))
         .filter(
           (
             target,
@@ -2001,7 +2662,7 @@ export class PlanningService {
         }
         seenPairs.add(pairKey);
 
-        if ((matrix[String(activity.id)] || []).includes(target.id)) {
+        if (currentLinkedTargetIds.has(String(target.id))) {
           alreadyLinkedTargets.push(target);
         } else {
           newTargets.push(target);
@@ -2015,7 +2676,7 @@ export class PlanningService {
         wbspath: activity.wbsPath,
         availablefloorcodes: Array.from(targetByCode.keys()).join(', '),
         availablefloornames: Array.from(targetByCode.values())
-          .map((target) => `${target.code}:${target.name}`)
+          .map((target) => target.path || target.name)
           .join(', '),
         linkedfloorcodes: Array.from(requestedCodes)
           .filter((code) => !code.startsWith('__INVALID_NAME__:'))
@@ -2024,12 +2685,13 @@ export class PlanningService {
           .filter((code) => !code.startsWith('__INVALID_NAME__:'))
           .map((code) => {
             const target = targetByCode.get(code);
-            return target ? `${target.code}:${target.name}` : code;
+            return target ? target.path || target.name : code;
           })
           .join(', '),
+        requestedfloormarks: row.requestedfloormarks || '',
         resolvednewfloorcodes: newTargets.map((target) => target.code).join(', '),
         resolvednewfloornames: newTargets
-          .map((target) => `${target.code}:${target.name}`)
+          .map((target) => target.path || target.name)
           .join(', '),
         alreadylinkedfloorcodes: alreadyLinkedTargets
           .map((target) => target.code)
@@ -2042,7 +2704,7 @@ export class PlanningService {
           ...normalizedBase,
           linkedfloorcodes: currentLinkedTargets.map((target) => target.code).join(', '),
           linkedfloornames: currentLinkedTargets
-            .map((target) => `${target.code}:${target.name}`)
+            .map((target) => target.path || target.name)
             .join(', '),
           importStatus: 'IGNORED' as DistributionImportStatus,
           importMessage: 'No new floor codes provided. Edit only the Linked Floor Codes column to add links.',

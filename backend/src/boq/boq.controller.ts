@@ -5,6 +5,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -44,8 +45,12 @@ export class BoqController {
   @Get('template')
   @Permissions('BOQ.ITEM.IMPORT')
   @ApiOperation({ summary: 'Download BOQ Import Excel Template' })
-  async downloadTemplate(@Res() res: Response) {
-    const buffer = this.boqImportService.getTemplateBuffer();
+  async downloadTemplate(
+    @Query('projectId') projectIdStr: string | undefined,
+    @Res() res: Response,
+  ) {
+    const projectId = projectIdStr ? parseInt(projectIdStr, 10) : undefined;
+    const buffer = await this.boqImportService.getTemplateBuffer(projectId);
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -126,8 +131,22 @@ export class BoqController {
   @Get('measurements/template')
   @Permissions('BOQ.MEASUREMENT.IMPORT')
   @ApiOperation({ summary: 'Download Measurement Import Template' })
-  async downloadMeasurementTemplate(@Res() res: Response) {
-    const buffer = this.boqImportService.getMeasurementTemplate();
+  async downloadMeasurementTemplate(
+    @Query('projectId') projectIdStr: string | undefined,
+    @Query('boqItemId') boqItemIdStr: string | undefined,
+    @Query('boqSubItemId') boqSubItemIdStr: string | undefined,
+    @Res() res: Response,
+  ) {
+    const projectId = projectIdStr ? parseInt(projectIdStr, 10) : undefined;
+    const boqItemId = boqItemIdStr ? parseInt(boqItemIdStr, 10) : undefined;
+    const boqSubItemId = boqSubItemIdStr
+      ? parseInt(boqSubItemIdStr, 10)
+      : undefined;
+    const buffer = await this.boqImportService.getMeasurementTemplate(
+      projectId,
+      boqItemId,
+      boqSubItemId,
+    );
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -278,6 +297,18 @@ export class BoqController {
   async getForProject(@Param('projectId', ParseIntPipe) projectId: number) {
     // Return the new Layer 1 Items
     return await this.boqService.getProjectBoq(projectId);
+  }
+
+  @Post('project/:projectId/recalculate')
+  @Permissions('BOQ.ITEM.UPDATE')
+  @ApiOperation({
+    summary:
+      'Recalculate BOQ main-item and sub-item quantities from child measurements',
+  })
+  async recalculateProjectBoq(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return await this.boqService.recalculateProjectQuantities(projectId);
   }
 
   @Patch(':id')

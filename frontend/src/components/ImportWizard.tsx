@@ -60,7 +60,10 @@ const BOQ_FIELDS: ImportFieldDefinition[] = [
 ];
 
 const MEASUREMENT_FIELDS: ImportFieldDefinition[] = [
+  { key: "parentBoqCode", label: "Parent BOQ Code", required: false },
+  { key: "parentSubItem", label: "Parent Sub-Item", required: false },
   { key: "epsName", label: "Location / EPS Name", required: true },
+  { key: "epsPath", label: "EPS Path", required: false },
   { key: "elementName", label: "Element Name", required: true },
   { key: "elementCategory", label: "Element Category", required: false },
   { key: "elementType", label: "Element Type", required: false },
@@ -148,7 +151,7 @@ export const ImportWizard: React.FC<Props> = ({
       setLocalNodes(epsNodes);
     } else if (projectId) {
       boqService
-        .getEpsList()
+        .getProjectEpsList(projectId)
         .then((nodes) => {
           setLocalNodes(nodes);
         })
@@ -326,8 +329,12 @@ export const ImportWizard: React.FC<Props> = ({
         <button
           onClick={() =>
             mode === "MEASUREMENT"
-              ? boqService.getMeasurementTemplate()
-              : boqService.getBoqTemplate()
+              ? boqService.getMeasurementTemplate(
+                  projectId,
+                  boqItemId,
+                  boqSubItemId,
+                )
+              : boqService.getBoqTemplate(projectId)
           }
           className="px-3 py-1.5 text-sm bg-primary-muted text-primary rounded-md hover:bg-info-muted flex items-center gap-2 font-medium transition-colors"
         >

@@ -6,6 +6,8 @@ import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/core/network/connectivity_banner.dart';
+import 'package:setu_mobile/features/auth/data/models/user_model.dart';
+import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart'
     hide SubmitRectification;
@@ -294,6 +296,13 @@ class _ActivityListBody extends StatelessWidget {
   /// Opens the Raise RFI dialog, passing the activity and the required context
   /// (project, EPS node, list) for the [RaiseRfi] event.
   void _showRfiDialog(BuildContext context, QualityActivity activity) {
+    // Capture the current user before entering the dialog builder so we can
+    // decide whether to show the vendor picker (internal user) or auto-select
+    // the vendor from the user's own company (temp/vendor user).
+    final authState = context.read<AuthBloc>().state;
+    final currentUser =
+        authState is AuthAuthenticated ? authState.user : null;
+
     showDialog(
       context: context,
       builder: (ctx) {
@@ -304,6 +313,7 @@ class _ActivityListBody extends StatelessWidget {
           listId: listId,
           // Pass the parent bloc by reference so the dialog can dispatch events
           bloc: context.read<QualityRequestBloc>(),
+          currentUser: currentUser,
         );
       },
     );
@@ -705,12 +715,18 @@ class _RaiseRfiDialog extends StatefulWidget {
   final int listId;
   final QualityRequestBloc bloc;
 
+  /// The currently logged-in user. Used to distinguish vendor (temp) users
+  /// from internal users so we can auto-select their company as the vendor
+  /// instead of showing the picker.
+  final User? currentUser;
+
   const _RaiseRfiDialog({
     required this.activity,
     required this.projectId,
     required this.epsNodeId,
     required this.listId,
     required this.bloc,
+    this.currentUser,
   });
 
   @override
@@ -753,6 +769,21 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
   }
 
   Future<void> _loadVendors() async {
+    final user = widget.currentUser;
+
+    // Vendor (temp) users: auto-select their own company — no API call needed.
+    if (user != null && user.isTempUser && user.vendorId != null) {
+      setState(() {
+        _selectedVendor = {
+          'id': user.vendorId,
+          'name': user.vendorName ?? 'My Company',
+        };
+        _vendorLoading = false;
+      });
+      return;
+    }
+
+    // Internal users: fetch the project's active vendor list.
     try {
       final vendors =
           await sl<SetuApiClient>().getActiveVendors(widget.projectId);
@@ -893,6 +924,36 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                 SizedBox(width: 8),
                 Text('Loading vendors…', style: TextStyle(fontSize: 13)),
               ])
+            // Vendor (temp) user: show their company as read-only — no picker.
+            else if (widget.currentUser?.isTempUser == true &&
+                _selectedVendor != null) ...[
+              const Text('Vendor / Contractor',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.grey.shade100,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.business, size: 16,
+                        color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedVendor!['name'] as String? ?? 'My Company',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ]
             else if (_vendorError != null)
               Text('$_vendorError — will submit without vendor.',
                   style: const TextStyle(fontSize: 12, color: Colors.orange))

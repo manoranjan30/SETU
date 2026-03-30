@@ -37,6 +37,7 @@ interface DistributionImportRow {
   linkedfloorcodes?: string;
   linkedfloornames?: string;
   notes?: string;
+  requestedfloormarks?: string;
   resolvednewfloorcodes?: string;
   resolvednewfloornames?: string;
   alreadylinkedfloorcodes?: string;
@@ -142,14 +143,21 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateMappings = (mapping: ImportColumnMapping) => {
+  const hasDynamicFloorHeaders = (headers: string[] = []) =>
+    headers.some((header) => /^floor\s+/i.test(header.trim()));
+
+  const validateMappings = (
+    mapping: ImportColumnMapping,
+    headers: string[] = [],
+  ) => {
     const errors: string[] = [];
     if (!mapping.activitycode) errors.push("Activity Code");
     if (
+      !hasDynamicFloorHeaders(headers) &&
       !mapping.linkedfloorcodes &&
       !(mapping.targetfloorcode || mapping.targetfloorname)
     ) {
-      errors.push("Linked Floor Codes");
+      errors.push("Linked Floor Codes or Floor Columns");
     }
     return errors;
   };
@@ -172,7 +180,7 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
           DISTRIBUTION_IMPORT_FIELDS,
         );
         setColumnMapping(autoMapping);
-        const missing = validateMappings(autoMapping);
+        const missing = validateMappings(autoMapping, parsed.headers);
         setPreflightErrors(
           missing.length > 0
             ? [`Missing required columns: ${missing.join(", ")}`]
@@ -188,7 +196,7 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
 
   const handlePreview = async () => {
     if (!file) return;
-    const missing = validateMappings(columnMapping);
+    const missing = validateMappings(columnMapping, localPreview?.headers || []);
     if (missing.length > 0) {
       const message = `Missing required columns: ${missing.join(", ")}`;
       setPreflightErrors([message]);
@@ -247,7 +255,10 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const missingMappings = validateMappings(columnMapping);
+  const missingMappings = validateMappings(
+    columnMapping,
+    localPreview?.headers || [],
+  );
   const canPreview = !!file && !loading && missingMappings.length === 0;
   const previewRowsToShow = previewData.slice(0, 12);
 
@@ -292,8 +303,10 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
               <div className="rounded-lg border border-blue-200 bg-info-muted p-4 text-sm text-blue-800">
                 <div className="font-semibold">How to fill this file</div>
                 <div className="mt-1">
-                  Edit only the <b>Linked Floor Codes</b> column and use
-                  comma-separated floor codes like <b>410, 411, 412</b>.
+                  Use the floor name columns like the frontend matrix and put{" "}
+                  <b>1</b> under the floors you want to link. The separate{" "}
+                  <b>Available Floor Codes</b> and <b>Linked Floor Codes</b>{" "}
+                  columns stay in the sheet for reference and debugging.
                 </div>
               </div>
 
@@ -371,7 +384,8 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
                   </div>
                   <div className="mt-1 text-xs text-text-muted">
                     The downloaded sheet should auto-map. Use this only if your
-                    columns are different.
+                    columns are different. For the exported sheet, the floor
+                    columns are detected automatically.
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     {DISTRIBUTION_IMPORT_FIELDS.map((field) => (
@@ -398,7 +412,10 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
                               const next = { ...current };
                               if (!value) delete next[field.key];
                               else next[field.key] = value;
-                              const missing = validateMappings(next);
+                              const missing = validateMappings(
+                                next,
+                                localPreview?.headers || [],
+                              );
                               setPreflightErrors(
                                 missing.length > 0
                                   ? [
@@ -507,6 +524,7 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
                       <th className="px-3 py-2">Status</th>
                       <th className="px-3 py-2">Activity</th>
                       <th className="px-3 py-2">Requested Floors</th>
+                      <th className="px-3 py-2">Marked With 1</th>
                       <th className="px-3 py-2">New Floors</th>
                       <th className="px-3 py-2">Message</th>
                     </tr>
@@ -548,6 +566,11 @@ const ScheduleDistributionImportWizard: React.FC<Props> = ({
                           </div>
                           <div className="mt-1 text-[11px] text-text-muted">
                             {row.linkedfloornames || ""}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <div className="font-mono text-xs">
+                            {row.requestedfloormarks || "-"}
                           </div>
                         </td>
                         <td className="px-3 py-2 align-top">

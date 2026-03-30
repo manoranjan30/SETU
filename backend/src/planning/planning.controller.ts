@@ -683,6 +683,57 @@ export class PlanningController {
     );
   }
 
+  @Get(':projectId/wo-mapper/export')
+  @Permissions('PLANNING.MATRIX.READ')
+  async exportWoMapperMatrix(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.planningService.exportWoMapperMatrixWorkbook(
+      projectId,
+    );
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="wo_qty_mapper_${projectId}_matrix.xlsx"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Post(':projectId/wo-mapper/import/preview')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  @UseInterceptors(FileInterceptor('file'))
+  async previewWoMapperImport(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mapping') mappingRaw?: string,
+  ): Promise<any> {
+    if (!file) throw new BadRequestException('File is required');
+    let mapping: Record<string, string> | undefined;
+    if (mappingRaw) {
+      try {
+        mapping = JSON.parse(mappingRaw);
+      } catch {
+        throw new BadRequestException('Invalid column mapping payload');
+      }
+    }
+    return this.planningService.previewWoMapperImport(
+      projectId,
+      file.buffer,
+      mapping,
+    );
+  }
+
+  @Post(':projectId/wo-mapper/import/commit')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  async commitWoMapperImport(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: { data: any[] },
+  ): Promise<any> {
+    return this.planningService.commitWoMapperImport(projectId, body.data || []);
+  }
+
   @Get('activities/repair-links')
   @Permissions('ADMIN.SETTINGS.MANAGE')
   async repairLinks() {

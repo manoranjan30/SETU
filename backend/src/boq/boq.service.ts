@@ -230,6 +230,71 @@ export class BoqService {
     }
   }
 
+  async recalculateProjectQuantities(projectId: number) {
+    const boqItems = await this.boqItemRepo.find({
+      where: { projectId },
+      relations: ['subItems'],
+      order: { id: 'ASC' },
+    });
+
+    let recalculatedSubItemCount = 0;
+    let recalculatedMainItemCount = 0;
+
+    for (const boqItem of boqItems) {
+      const subItems = boqItem.subItems || [];
+
+      if (subItems.length > 0) {
+        for (const subItem of subItems) {
+          const { sum } = await this.measurementRepo
+            .createQueryBuilder('m')
+            .select('SUM(m.qty)', 'sum')
+            .where('m.boqSubItemId = :id', { id: subItem.id })
+            .getRawOne();
+
+          subItem.qty = Number(sum || 0);
+          subItem.amount = Number(subItem.qty || 0) * Number(subItem.rate || 0);
+          await this.boqSubItemRepo.save(subItem);
+          recalculatedSubItemCount++;
+        }
+
+        const { totalQty, totalAmount } = await this.boqSubItemRepo
+          .createQueryBuilder('s')
+          .select('SUM(s.qty)', 'totalQty')
+          .addSelect('SUM(s.amount)', 'totalAmount')
+          .where('s.boqItemId = :id', { id: boqItem.id })
+          .getRawOne();
+
+        boqItem.qtyMode = BoqQtyMode.DERIVED;
+        boqItem.qty = Number(totalQty || 0);
+        boqItem.amount = Number(totalAmount || 0);
+        boqItem.rate =
+          boqItem.qty > 0 ? Number(boqItem.amount || 0) / Number(boqItem.qty) : 0;
+      } else {
+        const { sum } = await this.measurementRepo
+          .createQueryBuilder('m')
+          .select('SUM(m.qty)', 'sum')
+          .where('m.boqItemId = :id', { id: boqItem.id })
+          .andWhere('m.boqSubItemId IS NULL')
+          .getRawOne();
+
+        boqItem.qtyMode = BoqQtyMode.DERIVED;
+        boqItem.qty = Number(sum || 0);
+        boqItem.amount = Number(boqItem.qty || 0) * Number(boqItem.rate || 0);
+      }
+
+      await this.boqItemRepo.save(boqItem);
+      await this.planningService.updateActivitiesByBoqItem(boqItem.id);
+      recalculatedMainItemCount++;
+    }
+
+    return {
+      projectId,
+      recalculatedMainItemCount,
+      recalculatedSubItemCount,
+      message: `Recalculated ${recalculatedMainItemCount} main items and ${recalculatedSubItemCount} sub-items.`,
+    };
+  }
+
   private async aggregateToBoqItem(boqItemId: number) {
     const boqItem = await this.boqItemRepo.findOne({
       where: { id: boqItemId },
