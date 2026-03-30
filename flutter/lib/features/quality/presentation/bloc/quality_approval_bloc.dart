@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/sync/background_download_service.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 
@@ -230,17 +233,20 @@ class QualityApprovalInitial extends QualityApprovalState {}
 class QualityApprovalLoading extends QualityApprovalState {}
 
 /// The inspection list has been loaded and filtered.
+/// [fromCache] is true when data came from SharedPreferences rather than the server.
 class InspectionsLoaded extends QualityApprovalState {
   final List<QualityInspection> inspections;
   final String activeFilter;
   final int projectId;
+  final bool fromCache;
   const InspectionsLoaded({
     required this.inspections,
     required this.activeFilter,
     required this.projectId,
+    this.fromCache = false,
   });
   @override
-  List<Object?> get props => [inspections, activeFilter, projectId];
+  List<Object?> get props => [inspections, activeFilter, projectId, fromCache];
 }
 
 /// Full inspection detail is loaded — the inspector can interact with checklist items.
@@ -249,17 +255,20 @@ class InspectionsLoaded extends QualityApprovalState {
 /// Item toggles ([SetChecklistItemStatus]) mutate this list and re-emit this state
 /// without hitting the server — the changes are only persisted when the inspector
 /// explicitly calls [SaveChecklistProgress] or an approval action.
+/// [fromCache] is true when data came from SharedPreferences rather than the server.
 class InspectionDetailLoaded extends QualityApprovalState {
   final QualityInspection inspection;
   final List<InspectionStage> stages; // mutable local copy for checkbox toggling
   final List<ActivityObservation> observations;
   final InspectionWorkflowRun? workflow; // null when no workflow configured
+  final bool fromCache;
 
   const InspectionDetailLoaded({
     required this.inspection,
     required this.stages,
     required this.observations,
     this.workflow,
+    this.fromCache = false,
   });
 
   /// True when every checklist item across all stages has been evaluated.
@@ -283,17 +292,19 @@ class InspectionDetailLoaded extends QualityApprovalState {
     List<InspectionStage>? stages,
     List<ActivityObservation>? observations,
     InspectionWorkflowRun? workflow,
+    bool? fromCache,
   }) {
     return InspectionDetailLoaded(
       inspection: inspection,
       stages: stages ?? this.stages,
       observations: observations ?? this.observations,
       workflow: workflow ?? this.workflow,
+      fromCache: fromCache ?? this.fromCache,
     );
   }
 
   @override
-  List<Object?> get props => [inspection, stages, observations, workflow];
+  List<Object?> get props => [inspection, stages, observations, workflow, fromCache];
 }
 
 /// Checklist progress was persisted (or queued for offline sync).
@@ -345,22 +356,25 @@ class ObservationActionQueued extends QualityApprovalState {
   List<Object?> get props => [action, isOffline];
 }
 
-/// A stage-level approval was successfully submitted.
+/// A stage-level approval was successfully submitted (or queued offline).
 ///
 /// [stageName] and [pendingDisplay] come from the updated stage response
 /// so the UI can show "Stage X approved — Level Y pending" feedback.
+/// [isOffline] is true when the action was queued locally and will sync later.
 class StageApproveSuccess extends QualityApprovalState {
   final int stageId;
   final String? stageName;
   final bool stageFullyApproved;
   final bool inspectionFullyApproved;
   final String? pendingDisplay;
+  final bool isOffline;
   const StageApproveSuccess({
     required this.stageId,
     this.stageName,
     this.stageFullyApproved = false,
     this.inspectionFullyApproved = false,
     this.pendingDisplay,
+    this.isOffline = false,
   });
   @override
   List<Object?> get props => [
@@ -368,6 +382,7 @@ class StageApproveSuccess extends QualityApprovalState {
         stageFullyApproved,
         inspectionFullyApproved,
         pendingDisplay,
+        isOffline,
       ];
 }
 
@@ -442,6 +457,10 @@ class QualityApprovalBloc
   }
 
   /// Fetches all inspections for a project and filters by status.
+  ///
+  /// On network failure, falls back to the SharedPreferences cache written by
+  /// [BackgroundDownloadService._downloadQualityInspections]. A [fromCache]
+  /// flag on [InspectionsLoaded] tells the UI to show the offline indicator.
   Future<void> _onLoadInspections(
       LoadInspections event, Emitter<QualityApprovalState> emit) async {
     emit(QualityApprovalLoading());
@@ -453,8 +472,12 @@ class QualityApprovalBloc
           .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // Client-side filter — server returns ALL for performance,
-      // we slice the result here to support instant filter tab switching.
+      // Persist for next offline session.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          BackgroundDownloadService.qualityInspectionsKey(event.projectId),
+          jsonEncode(raw));
+
       final filtered = _filter(all, event.filter);
       emit(InspectionsLoaded(
         inspections: filtered,
@@ -462,12 +485,45 @@ class QualityApprovalBloc
         projectId: event.projectId,
       ));
     } catch (e) {
+      // Network failed — try the SharedPreferences cache.
+      // Only use cache for connectivity errors; surface server errors directly.
+      final isNetworkError = e is DioException
+          ? (e.response == null)
+          : e.toString().toLowerCase().contains('connection') ||
+              e.toString().toLowerCase().contains('socket');
+      if (isNetworkError) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final cached = prefs.getString(
+              BackgroundDownloadService.qualityInspectionsKey(event.projectId));
+          if (cached != null) {
+            final list = jsonDecode(cached) as List<dynamic>;
+            final all = list
+                .map((e) =>
+                    QualityInspection.fromJson(e as Map<String, dynamic>))
+                .toList();
+            final filtered = _filter(all, event.filter);
+            emit(InspectionsLoaded(
+              inspections: filtered,
+              activeFilter: event.filter,
+              projectId: event.projectId,
+              fromCache: true,
+            ));
+            return;
+          }
+        } catch (_) {
+          // Cache read failed — fall through to error.
+        }
+      }
       emit(QualityApprovalError(_friendly(e)));
     }
   }
 
   /// Loads full inspection detail: stages, observations, and workflow in parallel.
   /// Also stashes the inspection for later use by refresh/observation handlers.
+  ///
+  /// On success, saves the raw JSON to SharedPreferences so the detail is
+  /// available offline. On network failure, falls back to the cached data.
   Future<void> _onLoadInspectionDetail(
       LoadInspectionDetail event,
       Emitter<QualityApprovalState> emit) async {
@@ -502,6 +558,21 @@ class QualityApprovalBloc
           ? InspectionWorkflowRun.fromJson(workflowRaw)
           : null;
 
+      // Persist for next offline session.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          BackgroundDownloadService.inspectionDetailKey(event.inspection.id),
+          jsonEncode({
+            'detail': detailRaw,
+            'observations': obsRaw,
+            'workflow': workflowRaw,
+          }),
+        );
+      } catch (_) {
+        // Cache write failure is non-fatal — proceed with live data.
+      }
+
       emit(InspectionDetailLoaded(
         inspection: detail,
         // Create a separate list instance so the BLoC can mutate it
@@ -511,36 +582,74 @@ class QualityApprovalBloc
         workflow: workflow,
       ));
     } catch (e) {
+      // Network failed — try the SharedPreferences cache.
+      final isNetworkError = e is DioException
+          ? (e.response == null)
+          : e.toString().toLowerCase().contains('connection') ||
+              e.toString().toLowerCase().contains('socket');
+      if (isNetworkError) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final cached = prefs.getString(
+              BackgroundDownloadService.inspectionDetailKey(event.inspection.id));
+          if (cached != null) {
+            final map = jsonDecode(cached) as Map<String, dynamic>;
+            final detailRaw = map['detail'] as Map<String, dynamic>;
+            final obsRaw = map['observations'] as List<dynamic>;
+            final workflowRaw = map['workflow'] as Map<String, dynamic>?;
+
+            final detail = QualityInspection.fromJson(detailRaw);
+            _currentInspection = detail;
+            final observations = obsRaw
+                .map((e) => ActivityObservation.fromJson(e as Map<String, dynamic>))
+                .toList();
+            final workflow = workflowRaw != null
+                ? InspectionWorkflowRun.fromJson(workflowRaw)
+                : null;
+
+            emit(InspectionDetailLoaded(
+              inspection: detail,
+              stages: List<InspectionStage>.from(detail.stages),
+              observations: observations,
+              workflow: workflow,
+              fromCache: true,
+            ));
+            return;
+          }
+        } catch (_) {
+          // Cache read failed — fall through to error.
+        }
+      }
       emit(QualityApprovalError(_friendly(e)));
     }
   }
 
   /// Approves a single checklist stage at its next pending release level.
   ///
-  /// Direct API call (not queued) — stage approval requires server-side
-  /// release-strategy evaluation that cannot be performed offline.
+  /// Strategy:
+  ///   1. Try the API directly (online path) — saves stage items then approves.
+  ///   2. On network failure, queue both operations via [SyncService] (offline path).
+  ///      The approval will be pushed automatically when connectivity is restored.
   ///
-  /// Saves the stage items directly before calling approveStage to avoid a
-  /// race condition where the user toggles items locally but hasn't tapped
-  /// "Save Progress" yet — the backend fetches fresh from DB, so items must
-  /// be persisted first.
+  /// Saves the stage items before calling approveStage to avoid a race condition
+  /// where the user toggles items locally but hasn't tapped "Save Progress" yet —
+  /// the backend fetches fresh from DB, so items must be persisted first.
   ///
-  /// On success, [StageApproveSuccess] is emitted with the updated stage
-  /// state. The UI should then refresh the detail view to get the latest
-  /// `stageApproval` matrices. When `inspectionFullyApproved` is true,
-  /// the inspection status has been auto-set to APPROVED by the backend.
+  /// On success/queue, [StageApproveSuccess] is emitted. [isOffline] distinguishes
+  /// the two paths for the UI toast. When `inspectionFullyApproved` is true on
+  /// the online path, the backend has auto-set the inspection status to APPROVED.
   Future<void> _onApproveStage(
       ApproveStage event, Emitter<QualityApprovalState> emit) async {
     final current = state;
     if (current is! InspectionDetailLoaded) return;
 
+    final stage = current.stages.firstWhere(
+      (s) => s.id == event.stageId,
+      orElse: () => throw Exception('Stage not found in local state'),
+    );
+
     try {
-      // Save the stage items to DB before approval to ensure backend sees the
-      // current checked state (avoids "items not checked" error from race cond).
-      final stage = current.stages.firstWhere(
-        (s) => s.id == event.stageId,
-        orElse: () => throw Exception('Stage not found in local state'),
-      );
+      // Online path: save items first, then approve.
       await _apiClient.saveInspectionStage(
         stageId: stage.id,
         status: stage.status,
@@ -568,9 +677,51 @@ class QualityApprovalBloc
             result['inspectionStatus'] == 'APPROVED' ||
             result['allStagesApproved'] == true,
         pendingDisplay: stageApproval?.pendingDisplay,
+        isOffline: false,
       ));
     } catch (e) {
-      emit(QualityApprovalError(_friendly(e)));
+      // Offline path — queue both operations; they will sync on next connection.
+      final isNetworkError = e is DioException
+          ? (e.response == null)
+          : e.toString().toLowerCase().contains('connection') ||
+              e.toString().toLowerCase().contains('socket');
+      if (!isNetworkError) {
+        emit(QualityApprovalError(_friendly(e)));
+        return;
+      }
+
+      try {
+        await _syncService.addToQueue(
+          entityType: 'quality_stage_save',
+          entityId: stage.id,
+          operation: 'update',
+          payload: {
+            'stageId': stage.id,
+            'status': stage.status,
+            'items': stage.items.map((i) => i.toApiPayload()).toList(),
+          },
+          priority: 3,
+        );
+        await _syncService.addToQueue(
+          entityType: 'quality_stage_approve',
+          entityId: event.stageId,
+          operation: 'update',
+          payload: {
+            'inspectionId': current.inspection.id,
+            'stageId': event.stageId,
+            if (event.comments != null) 'comments': event.comments,
+            if (event.signatureData != null) 'signatureData': event.signatureData,
+            if (event.signedBy != null) 'signedBy': event.signedBy,
+          },
+          priority: 3,
+        );
+        emit(StageApproveSuccess(
+          stageId: event.stageId,
+          isOffline: true,
+        ));
+      } catch (queueError) {
+        emit(QualityApprovalError(_friendly(queueError)));
+      }
     }
   }
 
@@ -748,6 +899,9 @@ class QualityApprovalBloc
       RefreshInspectionDetail event,
       Emitter<QualityApprovalState> emit) async {
     if (_currentInspection == null) return;
+    // If already showing detail data (e.g. after an optimistic update), keep
+    // the current state visible while the reload happens in the background.
+    // This prevents the screen from blanking when offline and the reload fails.
     add(LoadInspectionDetail(_currentInspection!));
   }
 
@@ -991,6 +1145,26 @@ class QualityApprovalBloc
         priority: 2,
       );
       final syncResult = await _syncService.syncAll();
+
+      // Optimistic update: add the new observation to local state immediately
+      // so it's visible without waiting for a server round-trip. When synced,
+      // RefreshInspectionDetail will replace it with the server-assigned ID.
+      final current = state;
+      if (current is InspectionDetailLoaded) {
+        final placeholder = ActivityObservation(
+          id: 'pending_${DateTime.now().millisecondsSinceEpoch}',
+          activityId: _currentInspection!.activityId,
+          observationText: event.observationText,
+          type: event.type,
+          photos: event.photos,
+          status: ObservationStatus.pending,
+          createdAt: DateTime.now(),
+        );
+        emit(current.copyWith(
+          observations: [...current.observations, placeholder],
+        ));
+      }
+
       emit(ObservationActionQueued(
           action: 'raise', isOffline: !syncResult.success));
     } catch (e) {

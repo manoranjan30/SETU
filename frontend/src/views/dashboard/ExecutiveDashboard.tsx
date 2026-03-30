@@ -30,6 +30,7 @@ import { executiveDashboardApi } from "../../services/executive-dashboard.servic
 import { aiInsightsService } from "../../services/aiInsights.service";
 import { useTheme } from "../../context/ThemeContext";
 import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
+import { filterOperationalProjects } from "../../utils/project-lifecycle.utils";
 import type {
   ExecutiveListItem,
   ExecutiveMetric,
@@ -440,19 +441,19 @@ function MetricMiniCard({ metric, pillarKey, onClick }: {
       style={{
         background: "var(--color-surface-raised)",
         border: "1px solid var(--color-border-subtle)",
-        minHeight: 106,
+        minHeight: 96,
         cursor: clickable ? "pointer" : "default",
       }}
     >
-      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
+      <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.16em]"
         style={{ color: "var(--color-text-muted)" }}>
         {metric.label}
       </div>
-      <div className="text-[1.9rem] font-black leading-none" style={{ color }}>
+      <div className="text-[1.7rem] font-black leading-none" style={{ color }}>
         {formatValue(metric)}
       </div>
       {pct !== null ? (
-        <div className="mt-3">
+        <div className="mt-2.5">
           <div className="h-1.5 overflow-hidden rounded-full"
             style={{ background: "var(--color-border-default)" }}>
             <div
@@ -461,7 +462,7 @@ function MetricMiniCard({ metric, pillarKey, onClick }: {
             />
           </div>
           {metric.visualLabel && (
-            <div className="mt-1.5 text-[10px] leading-4"
+            <div className="mt-1 text-[9px] leading-4"
               style={{ color: "var(--color-text-muted)" }}>
               {metric.visualLabel}
             </div>
@@ -469,7 +470,7 @@ function MetricMiniCard({ metric, pillarKey, onClick }: {
         </div>
       ) : (
         metric.helper && (
-          <div className="mt-3 text-[10px] leading-4" style={{ color: "var(--color-text-muted)" }}>
+          <div className="mt-2 text-[9px] leading-4" style={{ color: "var(--color-text-muted)" }}>
             {metric.helper}
           </div>
         )
@@ -512,11 +513,11 @@ function ExecutionComparisonCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+          <div className="text-[9px] font-semibold uppercase tracking-[0.16em]"
             style={{ color: "var(--color-text-muted)" }}>
             {burnMetric.label}
           </div>
-          <div className="mt-2 text-[2rem] font-black leading-none" style={{ color: toneColor(burnMetric.tone) }}>
+          <div className="mt-2 text-[1.8rem] font-black leading-none" style={{ color: toneColor(burnMetric.tone) }}>
             {formatValue(burnMetric)}
           </div>
         </div>
@@ -526,38 +527,38 @@ function ExecutionComparisonCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded-xl p-3" style={{ background: "var(--color-surface-card)" }}>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em]"
             style={{ color: "var(--color-text-muted)" }}>
             Burn vs Budget Value
           </div>
-          <div className="mt-1 text-sm font-bold" style={{ color: "var(--color-text-primary)" }}>
+          <div className="mt-1 text-[13px] font-bold leading-5" style={{ color: "var(--color-text-primary)" }}>
             {budget > 0 ? `${budgetRatio.toFixed(1)}% of budget consumed` : "Budget baseline unavailable"}
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full" style={{ background: "var(--color-border-default)" }}>
             <div className="h-full rounded-full bg-emerald-500" style={{ width: `${budgetRatio}%` }} />
           </div>
           {budgetMetric && (
-            <div className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+            <div className="mt-2 text-[9px]" style={{ color: "var(--color-text-muted)" }}>
               Budget: {formatValue(budgetMetric)}
             </div>
           )}
         </div>
 
         <div className="rounded-xl p-3" style={{ background: "var(--color-surface-card)" }}>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em]"
             style={{ color: "var(--color-text-muted)" }}>
             WO Issued vs Burn Value
           </div>
-          <div className="mt-1 text-sm font-bold" style={{ color: "var(--color-text-primary)" }}>
+          <div className="mt-1 text-[13px] font-bold leading-5" style={{ color: "var(--color-text-primary)" }}>
             {woIssued > 0 ? `${woRatio.toFixed(1)}% of issued value consumed` : "WO issued value unavailable"}
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full" style={{ background: "var(--color-border-default)" }}>
             <div className="h-full rounded-full bg-sky-500" style={{ width: `${woRatio}%` }} />
           </div>
           {woIssuedMetric && (
-            <div className="mt-2 text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+            <div className="mt-2 text-[9px]" style={{ color: "var(--color-text-muted)" }}>
               WO Issued: {formatValue(woIssuedMetric)}
             </div>
           )}
@@ -871,7 +872,7 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
               />
             </div>
 
-            <div className="grid gap-3">
+            <div className="grid content-start gap-3">
               {actualProgressMetric && (
                 <div className="grid grid-cols-1">
                   <MetricMiniCard
@@ -881,23 +882,6 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
                   />
                 </div>
               )}
-
-              <div className="grid grid-cols-2 gap-3">
-                {budgetMetric && (
-                  <MetricMiniCard
-                    metric={budgetMetric}
-                    pillarKey={pillarKey}
-                    onClick={() => onNavigate(budgetMetric.route)}
-                  />
-                )}
-                {woIssuedMetric && (
-                  <MetricMiniCard
-                    metric={woIssuedMetric}
-                    pillarKey={pillarKey}
-                    onClick={() => onNavigate(woIssuedMetric.route)}
-                  />
-                )}
-              </div>
 
               <ExecutionComparisonCard
                 burnMetric={burnMetric}
@@ -1030,8 +1014,9 @@ export default function ExecutiveDashboard() {
   const loadCompanies = async () => { const r = await executiveDashboardApi.getCompanies(); setCompanyOptions(r.data); };
   const loadProjects = async (cid?: number | null) => {
     const r = await executiveDashboardApi.getProjects(cid);
-    setProjectOptions(r.data);
-    setSelectedProjectId((cur) => (r.data.some((p) => p.id === cur) ? cur : null));
+    const activeProjects = filterOperationalProjects(r.data);
+    setProjectOptions(activeProjects);
+    setSelectedProjectId((cur) => (activeProjects.some((p) => p.id === cur) ? cur : null));
   };
 
   useEffect(() => { loadCompanies().catch(() => undefined); }, []);

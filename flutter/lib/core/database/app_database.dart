@@ -108,11 +108,12 @@ class AppDatabase extends _$AppDatabase {
   /// Delete cached rows older than [daysOld] days from all cache tables.
   ///
   /// Called on app start (after DB init) to prevent unbounded local growth.
-  /// 30 days is chosen as a balance: long enough for a site engineer who works
-  /// intermittently, short enough to avoid the DB growing too large on devices
-  /// with limited storage. Only cache tables are evicted — user-authored data
-  /// (progress entries, daily logs, sync queue) is never automatically deleted.
-  Future<void> evictStaleCaches({int daysOld = 30}) async {
+  /// 90 days is chosen because construction site engineers may be offline for
+  /// weeks at a stretch (remote sites, intermittent connectivity). 30 days was
+  /// too aggressive and caused data loss for infrequent users. Only cache tables
+  /// are evicted — user-authored data (progress entries, daily logs, sync queue)
+  /// is never automatically deleted.
+  Future<void> evictStaleCaches({int daysOld = 90}) async {
     final cutoff = DateTime.now().subtract(Duration(days: daysOld));
     // Each delete is a separate statement because Drift's typed DSL does not
     // support multi-table deletes. The operations are sequential rather than
@@ -284,6 +285,59 @@ class AppDatabase extends _$AppDatabase {
                 (activity['actual_progress'] as num?)?.toDouble() ??
                 0.0),
             rawData: jsonEncode(activity),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  // ==================== BOQ CACHE QUERIES ====================
+
+  /// Get cached BOQ items for a project.
+  ///
+  /// Used by the progress entry page when the device is offline so field
+  /// engineers can still select BOQ items and enter quantities without a
+  /// live API call.
+  Future<List<CachedBoqItem>> getCachedBoqItems(int projectId) async {
+    return (select(cachedBoqItems)
+          ..where((t) => t.projectId.equals(projectId)))
+        .get();
+  }
+
+  /// Cache BOQ items from API response.
+  ///
+  /// Uses [InsertMode.insertOrReplace] so subsequent calls act as a full
+  /// refresh — any stale local data is overwritten. BOQ items include the
+  /// full server JSON in [rawData] so the progress entry form can reconstruct
+  /// all fields (unit, planned quantity, work-order references, etc.) offline.
+  Future<void> cacheBoqItems(
+      List<Map<String, dynamic>> items, int projectId) async {
+    await batch((b) {
+      for (final item in items) {
+        // Defensive id extraction — server may return id as int or num.
+        final rawId = item['id'];
+        final id = rawId is int
+            ? rawId
+            : rawId is num
+                ? rawId.toInt()
+                : int.tryParse(rawId.toString()) ?? 0;
+        if (id == 0) continue; // Skip malformed rows
+
+        b.insert(
+          cachedBoqItems,
+          CachedBoqItemsCompanion.insert(
+            id: Value(id),
+            projectId: projectId,
+            name: item['name'] as String? ??
+                item['description'] as String? ??
+                'BOQ Item',
+            unit: Value(item['unit'] as String?),
+            quantity: (item['quantity'] as num?)?.toDouble() ??
+                (item['totalQuantity'] as num?)?.toDouble() ??
+                0.0,
+            rate: Value((item['rate'] as num?)?.toDouble()),
+            rawData: jsonEncode(item),
           ),
           mode: InsertMode.insertOrReplace,
         );
@@ -484,23 +538,44 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Return distinct projectIds that have cached activity lists.
+  /// Return distinct projectIds across all cached tables.
   ///
   /// Used by [BackgroundDownloadService] to know which projects to refresh
-  /// during background downloads. Using [selectOnly] with [distinct: true]
-  /// avoids loading full rows just to extract IDs, keeping memory usage
-  /// proportional to the number of projects rather than the number of lists.
+  /// during background downloads. Collects IDs from three sources so that a
+  /// project opened in any feature (quality, progress, EHS) is included even
+  /// if not all tables have been populated yet.
+  ///
+  /// Sources:
+  /// - [CachedProjects]             — projects the user has ever opened
+  /// - [CachedActivities]           — projects with cached planning activities
+  /// - [CachedQualityActivityLists] — projects with cached QC data
   Future<List<int>> selectOnlyDistinctProjectIds() async {
-    final query = selectOnly(cachedQualityActivityLists, distinct: true)
+    final Set<int> ids = {};
+
+    // Source 1: cached projects list
+    final projectQuery = selectOnly(cachedProjects, distinct: true)
+      ..addColumns([cachedProjects.id]);
+    final projectRows = await projectQuery.get();
+    ids.addAll(
+        projectRows.map((r) => r.read(cachedProjects.id)).whereType<int>());
+
+    // Source 2: cached activities (projectId column)
+    final activityQuery = selectOnly(cachedActivities, distinct: true)
+      ..addColumns([cachedActivities.projectId]);
+    final activityRows = await activityQuery.get();
+    ids.addAll(activityRows
+        .map((r) => r.read(cachedActivities.projectId))
+        .whereType<int>());
+
+    // Source 3: quality activity lists (original source — kept for backwards compat)
+    final qualityQuery = selectOnly(cachedQualityActivityLists, distinct: true)
       ..addColumns([cachedQualityActivityLists.projectId]);
-    final rows = await query.get();
-    // whereType<int> silently drops any null projectId rows that should not
-    // exist but could appear if a race condition during caching left a partial
-    // row.
-    return rows
+    final qualityRows = await qualityQuery.get();
+    ids.addAll(qualityRows
         .map((r) => r.read(cachedQualityActivityLists.projectId))
-        .whereType<int>()
-        .toList();
+        .whereType<int>());
+
+    return ids.toList();
   }
 
   // ==================== SYNC STATUS QUERIES ====================

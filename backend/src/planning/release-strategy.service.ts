@@ -34,6 +34,7 @@ import {
 } from './entities/release-strategy-step.entity';
 import { ReleaseStrategyVersionAudit } from './entities/release-strategy-version-audit.entity';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 
 type EligibleApproverDto = {
   userId: number;
@@ -71,6 +72,7 @@ export class ReleaseStrategyService {
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
   ) {}
 
   async listStrategies(
@@ -252,17 +254,20 @@ export class ReleaseStrategyService {
     await this.createAuditSnapshot(saved.id, saved.version, userId, saved, new Date());
 
     // Notify project members who manage approvals that a new strategy is live
+    const notification = await this.notificationComposer.composeStrategyActivated({
+      projectId,
+      strategyName: saved.name,
+      processCode: saved.processCode,
+    });
     this.pushService
       .sendToProjectPermission(
         projectId,
         'RELEASE_STRATEGY.READ',
-        'Approval Strategy Activated',
-        `Release strategy "${saved.name}" is now active for ${saved.processCode} approvals.`,
+        notification.title,
+        notification.body,
         {
-          type: 'STRATEGY_ACTIVATED',
-          projectId: String(projectId),
           strategyId: String(saved.id),
-          strategyName: saved.name,
+          ...notification.data,
         },
       )
       .catch(() => {

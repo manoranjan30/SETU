@@ -16,6 +16,7 @@ import {
 } from "../../services/dashboard-builder.service";
 import WidgetRenderer from "./components/WidgetRenderer";
 import { exportUtils } from "../../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../../utils/export.registry";
 import "react-grid-layout/css/styles.css";
 
 const ResponsiveGridLayout = withWidth(Responsive);
@@ -200,7 +201,14 @@ export default function DashboardViewer() {
             <RefreshCw size={14} /> Refresh
           </button>
           <button
-            onClick={() => exportUtils.toPdf()}
+            onClick={() =>
+              exportUtils.toPdf(
+                resolveRegisteredExportFileName("dashboard.viewer", {
+                  dashboardName: dashboard.name,
+                  dashboardId: dashboard.id,
+                }),
+              )
+            }
             style={{
               display: "flex",
               alignItems: "center",

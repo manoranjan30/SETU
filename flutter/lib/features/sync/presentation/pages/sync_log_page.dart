@@ -83,6 +83,12 @@ String _entityTypeLabel(String entityType) {
       return 'RFI Rejection';
     case 'quality_stage_save':
       return 'Checklist Save';
+    case 'quality_stage_approve':
+      return 'Stage Approval';
+    case 'quality_rfi':
+      return 'Raise RFI';
+    case 'quality_approve':
+      return 'Inspection Approval';
     case 'progress':
       return 'Progress Entry';
     case 'daily_log':

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dart';
 
@@ -136,17 +137,25 @@ class _EhsIncidentsPageState extends State<EhsIncidentsPage> {
           }
 
           // Pull-to-refresh wraps the incident card list
-          return RefreshIndicator(
-            onRefresh: () async => _refresh(),
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
-              itemCount: incidents.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              // RepaintBoundary isolates each card for scroll performance
-              itemBuilder: (_, i) => RepaintBoundary(
-                child: _IncidentCard(incident: incidents[i]),
+          final fromCache =
+              state is EhsIncidentLoaded && state.fromCache;
+          return Column(
+            children: [
+              if (fromCache) const OfflineBanner(),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () async => _refresh(),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
+                    itemCount: incidents.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) => RepaintBoundary(
+                      child: _IncidentCard(incident: incidents[i]),
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           );
         },
       ),

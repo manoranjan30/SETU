@@ -13,8 +13,12 @@ import {
   AlertCircle,
   Copy,
   Network,
+  FileSpreadsheet,
 } from "lucide-react";
 import api from "../../api/axios";
+import { exportUtils } from "../../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../../utils/export.registry";
+import { filterOperationalProjects } from "../../utils/project-lifecycle.utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -351,7 +355,7 @@ const CopyListModal = ({
     setLoading(true);
     try {
       const res = await api.get("/dashboard/summary");
-      setProjects(res.data.projects || []);
+      setProjects(filterOperationalProjects(res.data.projects || []));
     } catch {
       setError("Failed to load projects");
     } finally {
@@ -540,6 +544,36 @@ const ActivityListsPage = () => {
     l.name.toLowerCase().includes(search.toLowerCase()),
   );
 
+  const handleExport = (format: "EXCEL" | "CSV") => {
+    const exportRows = filtered.map((list) => ({
+      name: list.name,
+      description: list.description || "",
+      epsNode: list.epsNode?.nodeName || "",
+      activityCount: (list as any).activityCount ?? 0,
+      createdAt: new Date(list.createdAt).toLocaleDateString(),
+    }));
+    const fileName = resolveRegisteredExportFileName("quality.activity-lists", {
+      projectId,
+    });
+    const columns = [
+      { key: "name", label: "List Name" },
+      { key: "description", label: "Description" },
+      { key: "epsNode", label: "EPS Node" },
+      { key: "activityCount", label: "Activities" },
+      { key: "createdAt", label: "Created" },
+    ];
+
+    if (format === "EXCEL") {
+      exportUtils.toExcel(exportRows, fileName, {
+        sheetName: "Activity Lists",
+        columns,
+      });
+      return;
+    }
+
+    exportUtils.toCsv(exportRows, fileName, { columns });
+  };
+
   return (
     <div className="h-full flex bg-surface-base">
       {/* EPS Sidebar */}
@@ -593,6 +627,18 @@ const ActivityListsPage = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => handleExport("CSV")}
+              className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-border-default text-secondary rounded-xl text-sm font-semibold hover:bg-secondary-muted transition-colors shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Export CSV
+            </button>
+            <button
+              onClick={() => handleExport("EXCEL")}
+              className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-border-default text-secondary rounded-xl text-sm font-semibold hover:bg-secondary-muted transition-colors shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Export Excel
+            </button>
             <button
               onClick={() =>
                 navigate(`/dashboard/projects/${projectId}/quality/workflow`)

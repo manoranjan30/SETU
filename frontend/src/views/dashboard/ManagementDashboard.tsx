@@ -22,6 +22,7 @@ import {
   Tooltip
 } from "recharts";
 import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
+import { filterOperationalProjects } from "../../utils/project-lifecycle.utils";
 
 interface SummaryData {
   totalProjects: number;
@@ -129,7 +130,7 @@ const ManagementDashboard = () => {
         api.get("/dashboard/ehs-metrics").catch(() => ({ data: MOCK_EHS })),
       ]);
 
-      let filteredProjects = summaryRes.data.projects || [];
+      let filteredProjects = filterOperationalProjects(summaryRes.data.projects || []);
       if (user && !user.roles.includes("Admin")) {
         const allowedIds = user.project_ids || [];
         filteredProjects = filteredProjects.filter((p: any) =>

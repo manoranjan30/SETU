@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/tower_lens/data/repositories/tower_progress_repository.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/bloc/tower_lens_bloc.dart';
@@ -277,6 +278,11 @@ class _TowerLensPageState extends State<TowerLensPage>
                   ),
                 ),
                 actions: [
+                  if (state.isFromCache)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                      child: OfflineChip(),
+                    ),
                   ViewModeSwitcher(
                     activeMode: state.activeMode,
                     onChanged: (mode) {

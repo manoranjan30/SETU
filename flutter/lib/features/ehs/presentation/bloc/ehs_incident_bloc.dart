@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/sync/background_download_service.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 
 // ═══════════════════════════════════════════ EVENTS ══════════════════════════
@@ -82,11 +85,14 @@ class EhsIncidentLoading extends EhsIncidentState {
 }
 
 /// The incident list has been loaded.
+/// [fromCache] is true when data came from the local SharedPreferences cache
+/// rather than a live server response — the UI shows an offline indicator.
 class EhsIncidentLoaded extends EhsIncidentState {
   final List<EhsIncident> incidents;
-  const EhsIncidentLoaded(this.incidents);
+  final bool fromCache;
+  const EhsIncidentLoaded(this.incidents, {this.fromCache = false});
   @override
-  List<Object?> get props => [incidents];
+  List<Object?> get props => [incidents, fromCache];
 }
 
 /// An error occurred while loading incidents.
@@ -152,6 +158,10 @@ class EhsIncidentBloc extends Bloc<EhsIncidentEvent, EhsIncidentState> {
   }
 
   /// Shared fetch implementation called by both Load and Refresh handlers.
+  ///
+  /// On network failure, falls back to the SharedPreferences cache written by
+  /// [BackgroundDownloadService._downloadEhsIncidents]. A [fromCache] flag on
+  /// the loaded state tells the UI to show the offline indicator.
   Future<void> _fetch(
     int projectId,
     Emitter<EhsIncidentState> emit,
@@ -161,9 +171,31 @@ class EhsIncidentBloc extends Bloc<EhsIncidentEvent, EhsIncidentState> {
       final incidents = raw
           .map((e) => EhsIncident.fromJson(e as Map<String, dynamic>))
           .toList();
+      // Persist for next offline session.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          BackgroundDownloadService.ehsIncidentsKey(projectId),
+          jsonEncode(raw));
       emit(EhsIncidentLoaded(incidents));
-    } catch (e) {
-      emit(EhsIncidentError('Failed to load incidents. $e'));
+    } catch (_) {
+      // Network failed — try the cache written by BackgroundDownloadService.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs
+            .getString(BackgroundDownloadService.ehsIncidentsKey(projectId));
+        if (cached != null) {
+          final list = jsonDecode(cached) as List<dynamic>;
+          final incidents = list
+              .map((e) => EhsIncident.fromJson(e as Map<String, dynamic>))
+              .toList();
+          emit(EhsIncidentLoaded(incidents, fromCache: true));
+          return;
+        }
+      } catch (_) {
+        // Cache read failed — fall through to error state.
+      }
+      emit(const EhsIncidentError(
+          'No connection and no cached data. Connect to load incidents.'));
     }
   }
 

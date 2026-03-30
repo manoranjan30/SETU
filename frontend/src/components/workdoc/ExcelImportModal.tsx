@@ -5,6 +5,12 @@ import {
   type ColumnMapping,
   type ConfirmWorkOrderData,
 } from "../../services/work-doc.service";
+import type { ImportFieldDefinition, ImportPreviewResult } from "../../types/data-transfer";
+import {
+  autoMapHeaders,
+  readSpreadsheetPreview,
+  validateRequiredMappings,
+} from "../../utils/import-staging.utils";
 import { toast } from "react-hot-toast";
 import {
   FileSpreadsheet,
@@ -64,6 +70,53 @@ const COLUMN_OPTIONS = [
   { key: "amount", label: "Amount", required: true },
 ];
 
+const WORK_ORDER_IMPORT_FIELDS: ImportFieldDefinition[] = [
+  {
+    key: "serialNumber",
+    label: "Serial No.",
+    required: true,
+    aliases: ["serial no", "serial number", "item no", "item number"],
+  },
+  {
+    key: "shortDescription",
+    label: "Short Description",
+    required: true,
+    aliases: ["short text", "description", "item description"],
+  },
+  {
+    key: "uom",
+    label: "Unit of Measurement",
+    required: true,
+    aliases: ["unit", "unit of measurement", "uom"],
+  },
+  {
+    key: "amount",
+    label: "Amount",
+    required: true,
+    aliases: ["value", "line amount", "item amount"],
+  },
+  {
+    key: "quantity",
+    label: "Quantity",
+    aliases: ["qty", "quantity"],
+  },
+  {
+    key: "rate",
+    label: "Rate",
+    aliases: ["unit rate", "basic rate"],
+  },
+  {
+    key: "sapItemNumber",
+    label: "SAP Item No.",
+    aliases: ["sap item no", "sap item number", "sap code", "material code"],
+  },
+  {
+    key: "detailDescription",
+    label: "Detail Description",
+    aliases: ["long text", "detail description", "long description"],
+  },
+];
+
 const ExcelImportModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -82,6 +135,10 @@ const ExcelImportModal: React.FC<Props> = ({
     totalRows: number;
     fileName: string;
   } | null>(null);
+  const [localPreview, setLocalPreview] = useState<ImportPreviewResult | null>(
+    null,
+  );
+  const [preflightErrors, setPreflightErrors] = useState<string[]>([]);
 
   // Mapping
   const [headerRow, setHeaderRow] = useState(1);
@@ -99,6 +156,8 @@ const ExcelImportModal: React.FC<Props> = ({
       setStep("upload");
       setFile(null);
       setPreviewData(null);
+      setLocalPreview(null);
+      setPreflightErrors([]);
       setColumnMapping({});
       setItems([]);
       setCollapsedParents(new Set());
@@ -109,8 +168,29 @@ const ExcelImportModal: React.FC<Props> = ({
   const handleFileSelect = async (selectedFile: File) => {
     setFile(selectedFile);
     setLoading(true);
+    setPreviewData(null);
+    setLocalPreview(null);
+    setPreflightErrors([]);
 
     try {
+      const parsed = await readSpreadsheetPreview(selectedFile, 8);
+      const autoMapping = autoMapHeaders(parsed.headers, WORK_ORDER_IMPORT_FIELDS);
+      const missingRequired = validateRequiredMappings(
+        WORK_ORDER_IMPORT_FIELDS,
+        autoMapping,
+      );
+      setLocalPreview(parsed);
+      setPreflightErrors(
+        missingRequired.length > 0
+          ? [`Missing required columns: ${missingRequired.join(", ")}`]
+          : [],
+      );
+
+      if (missingRequired.length > 0) {
+        toast.error(`Missing required columns: ${missingRequired.join(", ")}`);
+        return;
+      }
+
       const data = await WorkDocService.previewExcelFn(
         Number(projectId),
         selectedFile,
@@ -402,6 +482,48 @@ const ExcelImportModal: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          {localPreview && (
+            <div className="rounded-xl border border-border-default bg-surface-card p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-text-primary">
+                    Client-side preflight
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    {localPreview.totalRows} rows detected • {localPreview.headers.length} columns
+                    {localPreview.sheetName ? ` • ${localPreview.sheetName}` : ""}
+                  </div>
+                </div>
+                {preflightErrors.length === 0 ? (
+                  <span className="rounded-full bg-success-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-success">
+                    Ready
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-error-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-error">
+                    Needs Fix
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {localPreview.headers.map((header) => (
+                  <span
+                    key={header}
+                    className="rounded-full border border-border-default bg-surface-base px-2 py-1 text-[11px] text-text-secondary"
+                  >
+                    {header}
+                  </span>
+                ))}
+              </div>
+              {preflightErrors.length > 0 && (
+                <div className="mt-3 rounded-md border border-red-200 bg-error-muted px-3 py-2 text-xs text-error">
+                  {preflightErrors.map((error) => (
+                    <div key={error}>{error}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="bg-warning-muted border border-amber-200 rounded-xl p-4">
             <h4 className="font-bold text-amber-800 flex items-center gap-2">

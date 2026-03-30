@@ -14,6 +14,7 @@ import {
   UploadedFile,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { PlanningService } from './planning.service';
 import { PlanningBasis } from './entities/boq-activity-plan.entity';
@@ -619,6 +620,65 @@ export class PlanningController {
     return this.planningService.undistributeActivities(
       body.activityIds,
       body.targetEpsIds,
+      req.user,
+    );
+  }
+
+  @Get(':projectId/distribution-matrix/export')
+  @Permissions('PLANNING.MATRIX.READ')
+  async exportDistributionMatrix(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('mode') mode: 'linked' | 'template' = 'template',
+    @Res() res: Response,
+  ) {
+    const effectiveMode = mode === 'linked' ? 'linked' : 'template';
+    const buffer = await this.planningService.exportDistributionMatrixCsv(
+      projectId,
+      effectiveMode,
+    );
+    const suffix = effectiveMode === 'linked' ? 'linked' : 'template';
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="schedule_distribution_${projectId}_${suffix}.csv"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Post(':projectId/distribution-matrix/import/preview')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  @UseInterceptors(FileInterceptor('file'))
+  async previewDistributionMatrixImport(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mapping') mappingRaw?: string,
+  ): Promise<any> {
+    if (!file) throw new BadRequestException('File is required');
+    let mapping: Record<string, string> | undefined;
+    if (mappingRaw) {
+      try {
+        mapping = JSON.parse(mappingRaw);
+      } catch {
+        throw new BadRequestException('Invalid column mapping payload');
+      }
+    }
+    return this.planningService.previewDistributionImport(
+      projectId,
+      file.buffer,
+      mapping,
+    );
+  }
+
+  @Post(':projectId/distribution-matrix/import/commit')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  async commitDistributionMatrixImport(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: { data: any[] },
+    @Request() req: any,
+  ): Promise<any> {
+    return this.planningService.commitDistributionImport(
+      projectId,
+      body.data || [],
       req.user,
     );
   }

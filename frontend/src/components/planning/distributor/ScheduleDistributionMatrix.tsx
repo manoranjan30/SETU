@@ -8,9 +8,16 @@ import {
   CheckSquare,
   Loader,
   Filter,
+  Download,
+  FileUp,
 } from "lucide-react"; // Import Filter Icon
 import api from "../../../api/axios";
 import { useParams } from "react-router-dom";
+import {
+  downloadBlob,
+  withFileExtension,
+} from "../../../utils/file-download.utils";
+import ScheduleDistributionImportWizard from "./ScheduleDistributionImportWizard";
 
 interface MatrixData {
   [masterActivityId: string]: number[]; // EPS Node IDs
@@ -37,6 +44,10 @@ const ScheduleDistributionMatrix: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<Record<string, boolean>>({});
   const [restrictToFloor, setRestrictToFloor] = useState(true);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [exportingMode, setExportingMode] = useState<"linked" | "template" | null>(
+    null,
+  );
 
   useEffect(() => {
     if (projectId) {
@@ -213,6 +224,35 @@ const ScheduleDistributionMatrix: React.FC = () => {
     }
   };
 
+  const handleDownloadCsv = async (mode: "linked" | "template") => {
+    if (!projectId || exportingMode) return;
+
+    setExportingMode(mode);
+    try {
+      const response = await api.get(
+        `/planning/${projectId}/distribution-matrix/export`,
+        {
+          params: { mode },
+          responseType: "blob",
+        },
+      );
+
+      const suffix = mode === "linked" ? "linked" : "template";
+      downloadBlob(
+        response.data,
+        withFileExtension(
+          `schedule_distribution_${projectId}_${suffix}`,
+          ".csv",
+        ),
+      );
+    } catch (error) {
+      console.error("Failed to download distribution csv", error);
+      alert("Failed to download distribution CSV.");
+    } finally {
+      setExportingMode(null);
+    }
+  };
+
   const handleHeaderToggle = (type: "expand" | "collapse", nodeId: number) => {
     setExpandedHeaders((prev) => {
       if (type === "expand") return [...prev, nodeId];
@@ -239,30 +279,88 @@ const ScheduleDistributionMatrix: React.FC = () => {
 
   // Helper: Get ALL Activity IDs under a WBS Node
   const getDescendantActivityIds = (node: any): number[] => {
-    let ids: number[] = [];
-    if (node.type === "ACTIVITY") {
-      ids.push(node.id);
-    }
-    if (node.children) {
-      node.children.forEach((child: any) => {
-        ids = [...ids, ...getDescendantActivityIds(child)];
-      });
-    }
+    const ids: number[] = [];
+
+    const visit = (current: any) => {
+      if (current.type === "ACTIVITY") {
+        ids.push(current.id);
+      }
+      if (current.children) {
+        current.children.forEach(visit);
+      }
+    };
+
+    visit(node);
     return ids;
   };
 
   // Helper: Get ALL Leaf EPS IDs under an EPS Node
   // We treat 'Leaves' as the actual distribution targets (Floors/Units)
   const getDescendantEpsIds = (node: any): number[] => {
-    let ids: number[] = [];
-    if (!node.children || node.children.length === 0) {
-      ids.push(node.id);
-    } else {
-      node.children.forEach((child: any) => {
-        ids = [...ids, ...getDescendantEpsIds(child)];
-      });
-    }
+    const ids: number[] = [];
+
+    const visit = (current: any) => {
+      if (!current.children || current.children.length === 0) {
+        ids.push(current.id);
+        return;
+      }
+      current.children.forEach(visit);
+    };
+
+    visit(node);
     return ids;
+  };
+
+  const applyMatrixDelta = (
+    currentMatrix: MatrixData,
+    activityIds: number[],
+    targetEpsIds: number[],
+    shouldLink: boolean,
+  ): MatrixData => {
+    const nextMatrix: MatrixData = { ...currentMatrix };
+
+    activityIds.forEach((activityId) => {
+      const activityKey = String(activityId);
+      const currentTargets = nextMatrix[activityKey] || [];
+
+      if (shouldLink) {
+        const mergedTargets = new Set(currentTargets);
+        targetEpsIds.forEach((targetId) => mergedTargets.add(targetId));
+        nextMatrix[activityKey] = Array.from(mergedTargets);
+        return;
+      }
+
+      if (currentTargets.length === 0) {
+        return;
+      }
+
+      const targetSet = new Set(targetEpsIds);
+      const remainingTargets = currentTargets.filter(
+        (targetId) => !targetSet.has(targetId),
+      );
+
+      if (remainingTargets.length > 0) {
+        nextMatrix[activityKey] = remainingTargets;
+      } else {
+        delete nextMatrix[activityKey];
+      }
+    });
+
+    return nextMatrix;
+  };
+
+  const isNodeDistributedToTarget = (node: any, targetId: number): boolean => {
+    if (node.type === "ACTIVITY") {
+      return matrix[node.id]?.includes(targetId) || false;
+    }
+
+    if (node.children) {
+      return node.children.some((child: any) =>
+        isNodeDistributedToTarget(child, targetId),
+      );
+    }
+
+    return false;
   };
 
   const handleToggle = async (
@@ -288,9 +386,14 @@ const ScheduleDistributionMatrix: React.FC = () => {
       if (!window.confirm(confirmMsg)) return;
     }
 
+    const shouldLink = !currentStatus;
     setProcessing((prev) => ({ ...prev, [key]: true }));
+    setMatrix((prev) =>
+      applyMatrixDelta(prev, activityIds, targetEpsIds, shouldLink),
+    );
+
     try {
-      if (!currentStatus) {
+      if (shouldLink) {
         // Link
         await api.post("/planning/distribute-schedule", {
           projectId: Number(projectId),
@@ -305,10 +408,10 @@ const ScheduleDistributionMatrix: React.FC = () => {
           targetEpsIds: targetEpsIds,
         });
       }
-
-      // Refresh ONLY Matrix Data (Silent Refresh)
-      await fetchMatrix();
     } catch (err: any) {
+      setMatrix((prev) =>
+        applyMatrixDelta(prev, activityIds, targetEpsIds, !shouldLink),
+      );
       console.error(err);
       const msg =
         err?.response?.data?.message || err?.message || "Action failed";
@@ -341,6 +444,7 @@ const ScheduleDistributionMatrix: React.FC = () => {
             >
               {!isActivity && (
                 <button
+                  type="button"
                   onClick={() => handleRowToggle(node.id)}
                   className="mr-2 text-text-disabled hover:text-text-secondary transition-transform"
                 >
@@ -373,23 +477,7 @@ const ScheduleDistributionMatrix: React.FC = () => {
 
           {/* Columns for Visible Targets */}
           {leafColumns.map((target) => {
-            // Check recursive distribution Status
-            // We need to know if this cell is "Full", "Partial", or "Empty"
-            // Expensive to calculate perfectly?
-            const checkRecursively = (n: any): boolean => {
-              if (n.type === "ACTIVITY") {
-                // Is this activity linked to ANY descendant of the target column?
-                // If target is a leaf, checking matrix[id].includes(target.id) is enough.
-                // If target is a parent, we need to check if matrix[id] intersects with target's descendants.
-                const targetIds = getDescendantEpsIds(target);
-                return targetIds.some((tid) => matrix[n.id]?.includes(tid));
-              }
-              // If WBS Parent, check if ANY child is linked
-              if (n.children) return n.children.some(checkRecursively);
-              return false;
-            };
-
-            const isDistributed = checkRecursively(node);
+            const isDistributed = isNodeDistributedToTarget(node, target.id);
             const isProcessing = processing[`${node.id}-${target.id}`];
 
             // Style differs for Parent vs Activity
@@ -403,6 +491,8 @@ const ScheduleDistributionMatrix: React.FC = () => {
                 className="border-r border-border-subtle p-0 text-center min-w-[100px] align-middle"
               >
                 <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleToggle(node, target, isDistributed)}
                   className={`w-full h-10 flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-100 ${btnClass}`}
                   disabled={isProcessing}
@@ -455,11 +545,48 @@ const ScheduleDistributionMatrix: React.FC = () => {
           </h2>
           <p className="text-xs text-text-muted">
             <b>Top-Down Linking:</b> Click the intersection of a Parent WBS and
-            Parent Block to link ALL sub-activities to ALL sub-floors.
+            Parent Block to link ALL sub-activities to ALL sub-floors. For
+            bulk updates, download the simple link sheet, edit only the Linked
+            Floor Codes column, and import it back.
           </p>
         </div>
         <div className="flex items-center gap-4 text-sm text-text-secondary">
           <button
+            type="button"
+            onClick={() => handleDownloadCsv("template")}
+            disabled={!!exportingMode}
+            className="flex items-center gap-2 rounded border border-border-strong bg-surface-card px-3 py-1 text-text-secondary transition-colors hover:bg-surface-base disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exportingMode === "template" ? (
+              <Loader size={14} className="animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
+            Download Simple Link Sheet
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownloadCsv("linked")}
+            disabled={!!exportingMode}
+            className="flex items-center gap-2 rounded border border-border-strong bg-surface-card px-3 py-1 text-text-secondary transition-colors hover:bg-surface-base disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exportingMode === "linked" ? (
+              <Loader size={14} className="animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
+            Download Linked-Only Sheet
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsImportOpen(true)}
+            className="flex items-center gap-2 rounded border border-blue-200 bg-info-muted px-3 py-1 text-blue-700 transition-colors hover:bg-blue-100"
+          >
+            <FileUp size={14} />
+            Import Filled Link Sheet
+          </button>
+          <button
+            type="button"
             onClick={() => setShowFilter(!showFilter)}
             className={`flex items-center gap-2 px-3 py-1 rounded border transition-colors ${showFilter ? "bg-info-muted border-blue-200 text-blue-700" : "bg-surface-card border-border-strong text-text-secondary hover:bg-surface-base"}`}
           >
@@ -558,6 +685,15 @@ const ScheduleDistributionMatrix: React.FC = () => {
           </table>
         )}
       </div>
+      <ScheduleDistributionImportWizard
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        projectId={Number(projectId)}
+        onSuccess={() => {
+          setIsImportOpen(false);
+          fetchMatrix();
+        }}
+      />
     </div>
   );
 };

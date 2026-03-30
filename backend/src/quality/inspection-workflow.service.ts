@@ -26,6 +26,7 @@ import {
 } from './entities/quality-inspection.entity';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 import { ReleaseStrategyService } from '../planning/release-strategy.service';
 import { StageStatus } from './entities/quality-inspection-stage.entity';
 import { RestartPolicy } from '../planning/entities/release-strategy.entity';
@@ -47,6 +48,7 @@ export class InspectionWorkflowService {
     private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
   ) {}
 
@@ -94,22 +96,37 @@ export class InspectionWorkflowService {
   }
 
   private async notifyStep(
-    projectId: number,
-    inspectionId: number,
+    inspection: QualityInspection,
     step: InspectionWorkflowStep | undefined | null,
-    title: string,
-    message: string,
+    levelLabel?: string | null,
+    stageName?: string | null,
   ) {
     if (!step) return;
+    const notification =
+      await this.notificationComposer.composeInspectionApprovalRequired({
+        projectId: inspection.projectId,
+        epsNodeId: inspection.epsNodeId,
+        activityLabel: inspection.activity?.activityName || null,
+        subjectLabel: `RFI #${inspection.id}`,
+        inspectionId: inspection.id,
+        levelLabel: levelLabel || null,
+        stageName: stageName || null,
+      });
     if (step.assignedRoleId) {
       this.pushService
-        .sendToProjectRole(projectId, step.assignedRoleId, title, message, {
-          inspectionId: String(inspectionId),
-          type: 'PENDING_APPROVAL',
-        })
+        .sendToProjectRole(
+          inspection.projectId,
+          step.assignedRoleId,
+          notification.title,
+          notification.body,
+          {
+            inspectionId: String(inspection.id),
+            ...notification.data,
+          },
+        )
         .catch(() => {
           /* non-fatal */
-        });
+        })
       return;
     }
 
@@ -121,9 +138,9 @@ export class InspectionWorkflowService {
 
     if (assignedUserIds.length > 0) {
       this.pushService
-        .sendToUsers(assignedUserIds, title, message, {
-          inspectionId: String(inspectionId),
-          type: 'PENDING_APPROVAL',
+        .sendToUsers(assignedUserIds, notification.title, notification.body, {
+          inspectionId: String(inspection.id),
+          ...notification.data,
         })
         .catch(() => {
           /* non-fatal */
@@ -402,13 +419,7 @@ export class InspectionWorkflowService {
       );
     }
 
-    await this.notifyStep(
-      projectId,
-      inspectionId,
-      stepEntities[0],
-      'New RFI Awaiting Approval',
-      `RFI #${inspectionId} is awaiting approval.`,
-    );
+    await this.notifyStep(inspection, stepEntities[0], 'Level 1');
 
     return this.getWorkflowState(inspectionId);
   }
@@ -569,11 +580,9 @@ export class InspectionWorkflowService {
       }
 
       await this.notifyStep(
-        inspection.projectId,
-        inspectionId,
+        inspection,
         nextStep,
-        'Approval Required',
-        `RFI #${inspectionId} is awaiting approval at level ${nextStep.stepOrder}.`,
+        `Level ${nextStep.stepOrder}`,
       );
     } else {
       const refreshedInspection = await this.getInspectionOrThrow(inspectionId);
@@ -600,12 +609,21 @@ export class InspectionWorkflowService {
       await this.inspectionRepo.save(refreshedInspection);
 
       if (refreshedInspection.requestedById) {
+        const notification =
+          await this.notificationComposer.composeInspectionDecision({
+            projectId: refreshedInspection.projectId,
+            epsNodeId: refreshedInspection.epsNodeId,
+            activityLabel: refreshedInspection.activity?.activityName || null,
+            subjectLabel: `RFI #${inspectionId}`,
+            inspectionId,
+            decisionLabel: 'RFI Fully Approved',
+          });
         this.pushService
           .sendToUsers(
             [refreshedInspection.requestedById],
-            'RFI Fully Approved',
-            `Your RFI #${inspectionId} has completed all approval levels.`,
-            { inspectionId: String(inspectionId), type: 'APPROVED' },
+            notification.title,
+            notification.body,
+            { inspectionId: String(inspectionId), ...notification.data },
           )
           .catch(() => {
             /* non-fatal */
@@ -726,16 +744,28 @@ export class InspectionWorkflowService {
     await this.inspectionRepo.save(inspection);
 
     if (inspection.requestedById) {
+      const notification =
+        await this.notificationComposer.composeInspectionDecision({
+          projectId: inspection.projectId,
+          epsNodeId: inspection.epsNodeId,
+          activityLabel: inspection.activity?.activityName || null,
+          subjectLabel: `RFI #${inspectionId}`,
+          inspectionId,
+          decisionLabel: 'RFI Workflow Rejected',
+          comments:
+            comments +
+            `. Workflow resumes from ${
+              restartPolicy === RestartPolicy.NO_RESTART
+                ? `level ${currentStep.stepOrder}`
+                : 'level 1'
+            }`,
+        });
       this.pushService
         .sendToUsers(
           [inspection.requestedById],
-          'RFI Workflow Rejected',
-          `Your RFI #${inspectionId} was rejected. Reason: ${comments}. Workflow will resume from ${
-            restartPolicy === RestartPolicy.NO_RESTART
-              ? `level ${currentStep.stepOrder}`
-              : 'level 1'
-          }.`,
-          { inspectionId: String(inspectionId), type: 'REJECTED' },
+          notification.title,
+          notification.body,
+          { inspectionId: String(inspectionId), ...notification.data },
         )
         .catch(() => {
           /* non-fatal */
@@ -816,12 +846,22 @@ export class InspectionWorkflowService {
 
     // Notify the original raiser that their approved RFI has been reversed
     if (inspection.requestedById) {
+      const notification =
+        await this.notificationComposer.composeInspectionDecision({
+          projectId: inspection.projectId,
+          epsNodeId: inspection.epsNodeId,
+          activityLabel: inspection.activity?.activityName || null,
+          subjectLabel: `RFI #${inspectionId}`,
+          inspectionId,
+          decisionLabel: 'RFI Approval Reversed',
+          comments: reason,
+        });
       this.pushService
         .sendToUsers(
           [inspection.requestedById],
-          'RFI Approval Reversed',
-          `RFI #${inspectionId} approval has been reversed by admin. Reason: ${reason}`,
-          { inspectionId: String(inspectionId), type: 'WORKFLOW_REVERSED' },
+          notification.title,
+          notification.body,
+          { inspectionId: String(inspectionId), ...notification.data },
         )
         .catch(() => {
           /* non-fatal */
@@ -885,13 +925,20 @@ export class InspectionWorkflowService {
     await this.stepRepo.save(targetStep);
 
     // Notify the delegate that a workflow step has been assigned to them
+    const notification = await this.notificationComposer.composeInspectionDelegated({
+      projectId: inspection.projectId,
+      epsNodeId: inspection.epsNodeId,
+      activityLabel: inspection.activity?.activityName || null,
+      subjectLabel: `RFI #${inspectionId}`,
+      inspectionId,
+      levelLabel: `Level ${targetOrder}`,
+      delegateName: delegate.name,
+    });
     this.pushService
-      .sendToUsers(
-        [newUserId],
-        'RFI Approval Delegated to You',
-        `RFI #${inspectionId} step ${targetOrder} has been delegated to you for approval.`,
-        { inspectionId: String(inspectionId), type: 'WORKFLOW_DELEGATED' },
-      )
+      .sendToUsers([newUserId], notification.title, notification.body, {
+        inspectionId: String(inspectionId),
+        ...notification.data,
+      })
       .catch(() => {
         /* non-fatal */
       });

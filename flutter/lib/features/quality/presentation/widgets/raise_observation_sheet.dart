@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
@@ -55,6 +58,20 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
     super.dispose();
   }
 
+  /// Saves a photo to the app's pending-observations directory so it survives
+  /// until the SyncService can upload it to the server.
+  Future<String> _savePhotoLocally(String sourcePath) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final pendingDir =
+        Directory(p.join(dir.path, 'pending_obs_photos'));
+    await pendingDir.create(recursive: true);
+    final fileName =
+        '${DateTime.now().millisecondsSinceEpoch}_obs.jpg';
+    final dest = File(p.join(pendingDir.path, fileName));
+    await File(sourcePath).copy(dest.path);
+    return dest.path; // absolute local path used as placeholder URL
+  }
+
   Future<void> _pickPhoto() async {
     final xfile = await ImagePicker().pickImage(source: ImageSource.camera);
     if (xfile == null || !mounted) return;
@@ -69,21 +86,39 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
     String? compressedPath;
     try {
       compressedPath = await PhotoCompressor.compress(uploadPath);
-      final result =
-          await sl<SetuApiClient>().uploadFile(filePath: compressedPath);
-      final url =
-          result['url'] as String? ?? result['path'] as String? ?? '';
-      if (mounted && url.isNotEmpty) setState(() => _photoUrls.add(url));
+      try {
+        // Online path: upload immediately and store server URL.
+        final result =
+            await sl<SetuApiClient>().uploadFile(filePath: compressedPath);
+        final url =
+            result['url'] as String? ?? result['path'] as String? ?? '';
+        if (mounted && url.isNotEmpty) setState(() => _photoUrls.add(url));
+      } catch (_) {
+        // Offline path: save compressed copy locally.
+        // The SyncService will upload it when connectivity is restored.
+        final localPath = await _savePhotoLocally(compressedPath!);
+        if (mounted) {
+          setState(() => _photoUrls.add(localPath));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text(
+                'Photo saved locally — will upload when online.'),
+            backgroundColor: Colors.orange.shade700,
+          ));
+        }
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Photo upload failed. Please try again.'),
+          content: const Text('Could not capture photo. Please try again.'),
           backgroundColor: Colors.red.shade700,
         ));
       }
     } finally {
       if (mounted) setState(() => _uploadingPhoto = false);
-      if (compressedPath != null) {
+      // Only delete the compressed temp file — the local copy in
+      // pending_obs_photos must NOT be deleted here (it's the saved data).
+      if (compressedPath != null &&
+          !_photoUrls.contains(compressedPath)) {
         await PhotoCompressor.deleteTempFile(compressedPath);
       }
       await PhotoCompressor.deleteTempFile(xfile.path);

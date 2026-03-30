@@ -507,13 +507,15 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
   Future<void> _load() async {
     try {
       final raw = await sl<SetuApiClient>().getEpsTreeForProject(widget.projectId);
-      if (mounted) {
-        setState(() {
-          _nodes = raw
-              .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
-              .toList();
-        });
+      var nodes = raw
+          .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
+          .toList();
+      // The API returns [projectRoot] where projectRoot.children are the actual
+      // EPS nodes (blocks, towers). Skip the root to show blocks at the top level.
+      if (nodes.length == 1 && nodes.first.children.isNotEmpty) {
+        nodes = nodes.first.children;
       }
+      if (mounted) setState(() => _nodes = nodes);
     } catch (_) {
       if (mounted) setState(() => _error = 'Failed to load locations.');
     }
@@ -559,9 +561,10 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
                                 .map((n) => _EpsNodeTile(
                                       node: n,
                                       depth: 0,
-                                      onSelected: (node) =>
+                                      parentLabels: const [],
+                                      onSelected: (nodeId, fullLabel) =>
                                           Navigator.of(context).pop(
-                                        (id: node.id, label: node.label),
+                                        (id: nodeId, label: fullLabel),
                                       ),
                                     ))
                                 .toList(),
@@ -576,12 +579,17 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
 class _EpsNodeTile extends StatefulWidget {
   final EpsTreeNode node;
   final int depth;
-  final ValueChanged<EpsTreeNode> onSelected;
+  /// Labels of all ancestors, ordered from root to immediate parent.
+  /// Used to build the full breadcrumb when the user selects this node.
+  final List<String> parentLabels;
+  /// Called with (nodeId, fullBreadcrumbLabel) when a selectable node is tapped.
+  final void Function(int nodeId, String fullLabel) onSelected;
 
   const _EpsNodeTile({
     required this.node,
     required this.depth,
     required this.onSelected,
+    this.parentLabels = const [],
   });
 
   @override
@@ -602,31 +610,50 @@ class _EpsNodeTileState extends State<_EpsNodeTile> {
       children: [
         InkWell(
           onTap: () {
-            if (hasChildren) setState(() => _expanded = !_expanded);
-            widget.onSelected(node);
+            if (hasChildren) {
+              // Parent node: toggle expand/collapse only — never select here.
+              // Selecting the dialog would close it before the user navigates down.
+              setState(() => _expanded = !_expanded);
+            } else {
+              // Leaf node: build full breadcrumb and return to the sheet.
+              final fullLabel = [...widget.parentLabels, node.label].join(' › ');
+              widget.onSelected(node.id, fullLabel);
+            }
           },
           borderRadius: BorderRadius.circular(6),
           child: Padding(
             padding: EdgeInsets.only(
               left: 8.0 + widget.depth * 16.0,
               right: 8,
-              top: 8,
-              bottom: 8,
+              top: 10,
+              bottom: 10,
             ),
             child: Row(
               children: [
                 Icon(_nodeIcon(node.type), size: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                    color: hasChildren
+                        ? theme.colorScheme.primary.withValues(alpha: 0.7)
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.55)),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(node.label,
-                      style: theme.textTheme.bodyMedium),
+                  child: Text(
+                    node.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: hasChildren ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
                 ),
                 if (hasChildren)
                   Icon(
                     _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    size: 18,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                  )
+                else
+                  Icon(
+                    Icons.radio_button_unchecked,
+                    size: 14,
+                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
                   ),
               ],
             ),
@@ -636,6 +663,7 @@ class _EpsNodeTileState extends State<_EpsNodeTile> {
           ...node.children.map((child) => _EpsNodeTile(
                 node: child,
                 depth: widget.depth + 1,
+                parentLabels: [...widget.parentLabels, node.label],
                 onSelected: widget.onSelected,
               )),
       ],

@@ -79,11 +79,16 @@ class TowerLensLoaded extends TowerLensState {
   /// The floor detail sheet shows data for this floor (null = no selection).
   final int? selectedFloorIndex;
 
+  /// True when tower data came from the SharedPreferences offline cache rather
+  /// than a live API response. The UI shows an "offline data" chip when true.
+  final bool isFromCache;
+
   const TowerLensLoaded({
     required this.towers,
     this.activeTowerIndex = 0,
     this.activeMode = TowerViewMode.progress,
     this.selectedFloorIndex,
+    this.isFromCache = false,
   });
 
   /// The tower currently displayed in the 3D view.
@@ -95,6 +100,7 @@ class TowerLensLoaded extends TowerLensState {
     TowerViewMode? activeMode,
     int? selectedFloorIndex,
     bool clearSelectedFloor = false,
+    bool? isFromCache,
   }) =>
       TowerLensLoaded(
         towers: towers ?? this.towers,
@@ -103,11 +109,12 @@ class TowerLensLoaded extends TowerLensState {
         selectedFloorIndex: clearSelectedFloor
             ? null
             : (selectedFloorIndex ?? this.selectedFloorIndex),
+        isFromCache: isFromCache ?? this.isFromCache,
       );
 
   @override
   List<Object?> get props =>
-      [towers, activeTowerIndex, activeMode, selectedFloorIndex];
+      [towers, activeTowerIndex, activeMode, selectedFloorIndex, isFromCache];
 }
 
 /// Fired (once) when a floor reaches 100% for the first time.
@@ -156,13 +163,17 @@ class TowerLensBloc extends Bloc<TowerLensEvent, TowerLensState> {
 
   Future<void> _fetch(int projectId, Emitter<TowerLensState> emit) async {
     try {
-      final towers = await _repository.buildForProject(projectId);
-      if (towers.isEmpty) {
+      final result = await _repository.buildForProject(projectId);
+      if (result.models.isEmpty) {
         emit(const TowerLensError(
             'No tower structure found for this project. Ensure EPS nodes of type TOWER or BLOCK exist.'));
         return;
       }
-      emit(TowerLensLoaded(towers: towers, activeMode: TowerViewMode.progress));
+      emit(TowerLensLoaded(
+        towers: result.models,
+        activeMode: TowerViewMode.progress,
+        isFromCache: result.isFromCache,
+      ));
     } catch (e) {
       emit(TowerLensError('Failed to load tower data. $e'));
     }

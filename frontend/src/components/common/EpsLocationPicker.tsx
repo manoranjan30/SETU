@@ -136,6 +136,22 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
       return null;
     }
 
+    // Row click behaviour:
+    //   • Parent node (has children): toggle expand/collapse only.
+    //     Clicking the row text must NOT select + close the dropdown — the user
+    //     is navigating the tree, not choosing a location yet.
+    //   • Leaf node (no children): select the node and close the dropdown.
+    const handleRowClick = () => {
+      if (isLeaf) {
+        handleSelect(node, parents);
+      } else {
+        const next = new Set(expandedNodes);
+        if (next.has(node.id)) next.delete(node.id);
+        else next.add(node.id);
+        setExpandedNodes(next);
+      }
+    };
+
     return (
       <div key={node.id} className="ml-4">
         <div
@@ -144,20 +160,16 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
               ? "bg-primary-muted text-primary font-semibold border-primary/30 shadow-sm"
               : "border-transparent hover:bg-surface-raised hover:border-border-default"
           }`}
-          onClick={() => handleSelect(node, parents)}
+          onClick={handleRowClick}
         >
           {!isLeaf ? (
-            <button
-              type="button"
-              className="p-0.5 hover:bg-surface-raised rounded text-text-muted"
-              onClick={(e) => toggleNode(e, node.id)}
-            >
+            <span className="p-0.5 rounded text-text-muted">
               {isExpanded ? (
                 <ChevronDown className="w-4 h-4" />
               ) : (
                 <ChevronRight className="w-4 h-4" />
               )}
-            </button>
+            </span>
           ) : (
             <div className="w-5" />
           )}
@@ -170,7 +182,9 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
             <MapPin className="w-4 h-4 text-text-disabled" />
           )}
 
-          <span className="text-sm">{node.label || node.name}</span>
+          <span className={`text-sm ${!isLeaf ? "font-medium" : ""}`}>
+            {node.label || node.name}
+          </span>
         </div>
 
         {isExpanded && !isLeaf && node.children && (

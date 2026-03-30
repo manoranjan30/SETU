@@ -20,6 +20,7 @@ import { InspectionApproval } from './entities/inspection-approval.entity';
 import { QualityInspection } from './entities/quality-inspection.entity';
 import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationContextService } from '../notifications/notification-context.service';
 import * as crypto from 'crypto';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export class QualityActivityService {
     @InjectRepository(QualityInspectionStage)
     private readonly inspectionStageRepo: Repository<QualityInspectionStage>,
     private readonly pushService: PushNotificationService,
+    private readonly notificationContext: NotificationContextService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -327,14 +329,33 @@ export class QualityActivityService {
   ): Promise<void> {
     if (!inspection.requestedById) return;
 
+    const inspectionScope = await this.inspectionRepo.findOne({
+      where: { id: inspection.id },
+      select: ['id', 'projectId', 'epsNodeId', 'activityId', 'vendorName'],
+    });
+    const scope = await this.notificationContext.resolve({
+      projectId: inspectionScope?.projectId ?? null,
+      epsNodeId: inspectionScope?.epsNodeId ?? null,
+      activityId: inspectionScope?.activityId ?? null,
+      subjectLabel: inspectionScope?.vendorName || 'RFI observation',
+    });
+    const body = [
+      'A quality observation has been raised against your RFI.',
+      this.notificationContext.formatInline(scope),
+      'Please review and rectify.',
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .join(' | ');
+
     await this.pushService.sendToUsers(
       [inspection.requestedById],
-      'New Observation Raised 📝',
-      `A QC observation has been raised against your RFI. Please review and rectify.`,
+      'Quality Observation Raised',
+      body,
       {
         type: 'quality_observation',
         observationId,
         inspectionId: String(inspection.id),
+        ...this.notificationContext.toData(scope),
       },
     );
   }

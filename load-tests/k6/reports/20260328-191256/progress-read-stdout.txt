@@ -1,0 +1,254 @@
+
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: C:\Users\omano\OneDrive - Puravankara Limited\Manoranjan\Antigravity Experiment\000 Project PM\SETU\load-tests\k6\scenarios\progress-read.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 1m30s max duration (incl. graceful stop):
+              * default: 10 looping VUs for 1m0s (gracefulStop: 30s)
+
+
+running (0m01.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 10 VUs  0m01.0s/1m0s
+
+running (0m02.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 10 VUs  0m02.0s/1m0s
+
+running (0m03.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 10 VUs  0m03.0s/1m0s
+
+running (0m04.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 10 VUs  0m04.0s/1m0s
+
+running (0m05.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 10 VUs  0m05.0s/1m0s
+
+running (0m06.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 10 VUs  0m06.0s/1m0s
+
+running (0m07.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 10 VUs  0m07.0s/1m0s
+
+running (0m08.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 10 VUs  0m08.0s/1m0s
+
+running (0m09.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 10 VUs  0m09.0s/1m0s
+
+running (0m10.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 10 VUs  0m10.0s/1m0s
+
+running (0m11.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 10 VUs  0m11.0s/1m0s
+
+running (0m12.0s), 10/10 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 10 VUs  0m12.0s/1m0s
+
+running (0m13.0s), 10/10 VUs, 1 complete and 0 interrupted iterations
+default   [  22% ] 10 VUs  0m13.0s/1m0s
+
+running (0m14.0s), 10/10 VUs, 3 complete and 0 interrupted iterations
+default   [  23% ] 10 VUs  0m14.0s/1m0s
+
+running (0m15.0s), 10/10 VUs, 4 complete and 0 interrupted iterations
+default   [  25% ] 10 VUs  0m15.0s/1m0s
+
+running (0m16.0s), 10/10 VUs, 9 complete and 0 interrupted iterations
+default   [  27% ] 10 VUs  0m16.0s/1m0s
+
+running (0m17.0s), 10/10 VUs, 11 complete and 0 interrupted iterations
+default   [  28% ] 10 VUs  0m17.0s/1m0s
+
+running (0m18.0s), 10/10 VUs, 11 complete and 0 interrupted iterations
+default   [  30% ] 10 VUs  0m18.0s/1m0s
+
+running (0m19.0s), 10/10 VUs, 11 complete and 0 interrupted iterations
+default   [  32% ] 10 VUs  0m19.0s/1m0s
+
+running (0m20.0s), 10/10 VUs, 12 complete and 0 interrupted iterations
+default   [  33% ] 10 VUs  0m20.0s/1m0s
+
+running (0m21.0s), 10/10 VUs, 12 complete and 0 interrupted iterations
+default   [  35% ] 10 VUs  0m21.0s/1m0s
+
+running (0m22.0s), 10/10 VUs, 12 complete and 0 interrupted iterations
+default   [  37% ] 10 VUs  0m22.0s/1m0s
+
+running (0m23.0s), 10/10 VUs, 12 complete and 0 interrupted iterations
+default   [  38% ] 10 VUs  0m23.0s/1m0s
+
+running (0m24.0s), 10/10 VUs, 12 complete and 0 interrupted iterations
+default   [  40% ] 10 VUs  0m24.0s/1m0s
+
+running (0m25.0s), 10/10 VUs, 13 complete and 0 interrupted iterations
+default   [  42% ] 10 VUs  0m25.0s/1m0s
+
+running (0m26.0s), 10/10 VUs, 14 complete and 0 interrupted iterations
+default   [  43% ] 10 VUs  0m26.0s/1m0s
+
+running (0m27.0s), 10/10 VUs, 19 complete and 0 interrupted iterations
+default   [  45% ] 10 VUs  0m27.0s/1m0s
+
+running (0m28.0s), 10/10 VUs, 22 complete and 0 interrupted iterations
+default   [  47% ] 10 VUs  0m28.0s/1m0s
+
+running (0m29.0s), 10/10 VUs, 22 complete and 0 interrupted iterations
+default   [  48% ] 10 VUs  0m29.0s/1m0s
+
+running (0m30.0s), 10/10 VUs, 22 complete and 0 interrupted iterations
+default   [  50% ] 10 VUs  0m30.0s/1m0s
+
+running (0m31.1s), 10/10 VUs, 22 complete and 0 interrupted iterations
+default   [  52% ] 10 VUs  0m31.1s/1m0s
+
+running (0m32.0s), 10/10 VUs, 23 complete and 0 interrupted iterations
+default   [  53% ] 10 VUs  0m32.0s/1m0s
+
+running (0m33.0s), 10/10 VUs, 23 complete and 0 interrupted iterations
+default   [  55% ] 10 VUs  0m33.0s/1m0s
+
+running (0m34.0s), 10/10 VUs, 23 complete and 0 interrupted iterations
+default   [  57% ] 10 VUs  0m34.0s/1m0s
+
+running (0m35.0s), 10/10 VUs, 24 complete and 0 interrupted iterations
+default   [  58% ] 10 VUs  0m35.0s/1m0s
+
+running (0m36.0s), 10/10 VUs, 25 complete and 0 interrupted iterations
+default   [  60% ] 10 VUs  0m36.0s/1m0s
+
+running (0m37.0s), 10/10 VUs, 26 complete and 0 interrupted iterations
+default   [  62% ] 10 VUs  0m37.0s/1m0s
+
+running (0m38.0s), 10/10 VUs, 28 complete and 0 interrupted iterations
+default   [  63% ] 10 VUs  0m38.0s/1m0s
+
+running (0m39.0s), 10/10 VUs, 32 complete and 0 interrupted iterations
+default   [  65% ] 10 VUs  0m39.0s/1m0s
+
+running (0m40.0s), 10/10 VUs, 34 complete and 0 interrupted iterations
+default   [  67% ] 10 VUs  0m40.0s/1m0s
+
+running (0m41.0s), 10/10 VUs, 34 complete and 0 interrupted iterations
+default   [  68% ] 10 VUs  0m41.0s/1m0s
+
+running (0m42.0s), 10/10 VUs, 35 complete and 0 interrupted iterations
+default   [  70% ] 10 VUs  0m42.0s/1m0s
+
+running (0m43.0s), 10/10 VUs, 35 complete and 0 interrupted iterations
+default   [  72% ] 10 VUs  0m43.0s/1m0s
+
+running (0m44.0s), 10/10 VUs, 35 complete and 0 interrupted iterations
+default   [  73% ] 10 VUs  0m44.0s/1m0s
+
+running (0m45.0s), 10/10 VUs, 35 complete and 0 interrupted iterations
+default   [  75% ] 10 VUs  0m45.0s/1m0s
+
+running (0m46.0s), 10/10 VUs, 35 complete and 0 interrupted iterations
+default   [  77% ] 10 VUs  0m46.0s/1m0s
+
+running (0m47.0s), 10/10 VUs, 36 complete and 0 interrupted iterations
+default   [  78% ] 10 VUs  0m47.0s/1m0s
+
+running (0m48.0s), 10/10 VUs, 37 complete and 0 interrupted iterations
+default   [  80% ] 10 VUs  0m48.0s/1m0s
+
+running (0m49.0s), 10/10 VUs, 39 complete and 0 interrupted iterations
+default   [  82% ] 10 VUs  0m49.0s/1m0s
+
+running (0m50.0s), 10/10 VUs, 41 complete and 0 interrupted iterations
+default   [  83% ] 10 VUs  0m50.0s/1m0s
+
+running (0m51.0s), 10/10 VUs, 44 complete and 0 interrupted iterations
+default   [  85% ] 10 VUs  0m51.0s/1m0s
+
+running (0m52.0s), 10/10 VUs, 47 complete and 0 interrupted iterations
+default   [  87% ] 10 VUs  0m52.0s/1m0s
+
+running (0m53.0s), 10/10 VUs, 48 complete and 0 interrupted iterations
+default   [  88% ] 10 VUs  0m53.0s/1m0s
+
+running (0m54.0s), 10/10 VUs, 48 complete and 0 interrupted iterations
+default   [  90% ] 10 VUs  0m54.0s/1m0s
+
+running (0m55.0s), 10/10 VUs, 48 complete and 0 interrupted iterations
+default   [  92% ] 10 VUs  0m55.0s/1m0s
+
+running (0m56.0s), 10/10 VUs, 48 complete and 0 interrupted iterations
+default   [  93% ] 10 VUs  0m56.0s/1m0s
+
+running (0m57.0s), 10/10 VUs, 48 complete and 0 interrupted iterations
+default   [  95% ] 10 VUs  0m57.0s/1m0s
+
+running (0m58.0s), 10/10 VUs, 48 complete and 0 interrupted iterations
+default   [  97% ] 10 VUs  0m58.0s/1m0s
+
+running (0m59.0s), 10/10 VUs, 49 complete and 0 interrupted iterations
+default   [  98% ] 10 VUs  0m59.0s/1m0s
+
+running (1m00.0s), 10/10 VUs, 53 complete and 0 interrupted iterations
+default   [ 100% ] 10 VUs  1m00.0s/1m0s
+
+running (1m01.0s), 08/10 VUs, 55 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m02.0s), 06/10 VUs, 57 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m03.0s), 05/10 VUs, 58 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m04.0s), 05/10 VUs, 58 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m05.0s), 05/10 VUs, 58 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m06.0s), 03/10 VUs, 60 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m07.0s), 02/10 VUs, 61 complete and 0 interrupted iterations
+default ↓ [ 100% ] 10 VUs  1m0s
+
+running (1m08.0s), 00/10 VUs, 63 complete and 0 interrupted iterations
+default ✓ [ 100% ] 10 VUs  1m0s
+
+     ✗ login status is 2xx
+      ↳  95% — ✓ 60 / ✗ 3
+     ✓ eps tree status is 2xx
+     ✓ execution vendors status is 2xx
+     ✓ execution has-micro status is 2xx
+     ✓ execution breakdown status is 2xx
+
+     checks.........................: 99.00% ✓ 300      ✗ 3   
+     data_received..................: 1.9 MB 28 kB/s
+     data_sent......................: 2.2 MB 32 kB/s
+     http_req_blocked...............: avg=2.63ms   min=0s       med=0s       max=81.8ms  p(90)=0s     p(95)=598.85µs
+     http_req_connecting............: avg=178.5µs  min=0s       med=0s       max=10.5ms  p(90)=0s     p(95)=0s      
+   ✗ http_req_duration..............: avg=1.27s    min=25.45ms  med=640.94ms max=8.55s   p(90)=3.49s  p(95)=4.39s   
+       { expected_response:true }...: avg=1.28s    min=25.45ms  med=652.14ms max=8.55s   p(90)=3.51s  p(95)=4.41s   
+     http_req_failed................: 0.99%  ✓ 3        ✗ 300 
+     http_req_receiving.............: avg=473.01µs min=0s       med=63.5µs   max=11.11ms p(90)=1.02ms p(95)=1.56ms  
+     http_req_sending...............: avg=916.45µs min=0s       med=518.9µs  max=68.28ms p(90)=1.38ms p(95)=1.98ms  
+     http_req_tls_handshaking.......: avg=0s       min=0s       med=0s       max=0s      p(90)=0s     p(95)=0s      
+     http_req_waiting...............: avg=1.27s    min=23.86ms  med=637.94ms max=8.55s   p(90)=3.49s  p(95)=4.39s   
+     http_reqs......................: 303    4.458981/s
+     iteration_duration.............: avg=10.14s   min=364.23ms med=10.68s   max=16.41s  p(90)=14.23s p(95)=15.43s  
+     iterations.....................: 63     0.927115/s
+     vus............................: 2      min=2      max=10
+     vus_max........................: 10     min=10     max=10
+
+
+running (1m08.0s), 00/10 VUs, 63 complete and 0 interrupted iterations
+default ✓ [ 100% ] 10 VUs  1m0s
+time="2026-03-28T19:15:30+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": EOF"
+time="2026-03-28T19:15:30+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/progress-read.js:17:24(15)\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-03-28T19:16:05+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": EOF"
+time="2026-03-28T19:16:05+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/progress-read.js:17:24(15)\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-03-28T19:16:06+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": EOF"
+time="2026-03-28T19:16:06+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/progress-read.js:17:24(15)\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-03-28T19:16:23+05:30" level=error msg="thresholds on metrics 'http_req_duration' have been crossed"

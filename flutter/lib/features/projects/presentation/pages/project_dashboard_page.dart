@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/navigation/app_routes.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
@@ -51,6 +52,7 @@ class ProjectDashboardPage extends StatelessWidget {
     return BlocProvider<DashboardCubit>(
       create: (_) => DashboardCubit(
         apiClient: sl<SetuApiClient>(),
+        database: sl<AppDatabase>(),
         projectId: project.id,
       )..load(), // kick off the initial load immediately
       child: _DashboardView(project: project, pendingModule: pendingModule),

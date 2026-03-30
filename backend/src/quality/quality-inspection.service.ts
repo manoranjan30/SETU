@@ -38,6 +38,7 @@ import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationComposerService } from '../notifications/notification-composer.service';
 import {
   InspectionWorkflowRun,
   WorkflowRunStatus,
@@ -120,6 +121,7 @@ export class QualityInspectionService {
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
     private readonly pushService: PushNotificationService,
+    private readonly notificationComposer: NotificationComposerService,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
     private readonly customerMilestoneService: CustomerMilestoneService,
   ) {}
@@ -1004,17 +1006,27 @@ export class QualityInspectionService {
       if (inspection.requestedById) {
         const resultLabel =
           dto.status === InspectionStatus.APPROVED
-            ? 'Approved ✓'
-            : 'Rejected ✗';
+            ? 'RFI Approved'
+            : 'RFI Rejected';
+        const notification =
+          await this.notificationComposer.composeInspectionDecision({
+            projectId: inspection.projectId,
+            epsNodeId: inspection.epsNodeId,
+            activityId: inspection.activityId,
+            inspectionId: inspection.id,
+            decisionLabel: resultLabel,
+            comments: dto.comments,
+          });
         this.pushService
           .sendToUsers(
             [inspection.requestedById],
-            `RFI ${resultLabel}`,
-            dto.comments ||
-              (dto.status === InspectionStatus.APPROVED
-                ? 'Your inspection request has been approved.'
-                : 'Your inspection request has been rejected.'),
-            { inspectionId: String(id), type: dto.status },
+            notification.title,
+            notification.body,
+            {
+              inspectionId: String(id),
+              type: dto.status,
+              ...notification.data,
+            },
           )
           .catch(() => {
             /* non-fatal */
@@ -1245,15 +1257,25 @@ export class QualityInspectionService {
         : [];
       const notifyUserIds = Array.from(new Set([...nextUserIds, ...nextRoleUserIds]));
       if (notifyUserIds.length > 0) {
+        const notification =
+          await this.notificationComposer.composeInspectionApprovalRequired({
+            projectId: stage.inspection.projectId,
+            epsNodeId: stage.inspection.epsNodeId,
+            activityId: stage.inspection.activityId,
+            inspectionId,
+            stageName: stage.stageTemplate?.name,
+            levelLabel: `Level ${nextPendingLevel.stepOrder}`,
+          });
         this.pushService
           .sendToUsers(
             notifyUserIds,
-            'Stage Approval Required',
-            `Stage "${stage.stageTemplate?.name}" is pending at Level ${nextPendingLevel.stepOrder}.`,
+            notification.title,
+            notification.body,
             {
               inspectionId: String(inspectionId),
               stageId: String(stageId),
               type: 'STAGE_LEVEL_PENDING',
+              ...notification.data,
             },
           )
           .catch(() => {
@@ -1264,15 +1286,26 @@ export class QualityInspectionService {
 
     // Notify RFI raiser of progress
     if (inspection.requestedById) {
+      const notification =
+        await this.notificationComposer.composeInspectionDecision({
+          projectId: inspection.projectId,
+          epsNodeId: inspection.epsNodeId,
+          activityId: inspection.activityId,
+          inspectionId,
+          decisionLabel:
+            approvedStages === totalStages && totalStages > 0
+              ? 'Checklist Approved'
+              : 'Stage Approved',
+          comments:
+            approvedStages === totalStages && totalStages > 0
+              ? `All stages approved (${approvedStages}/${totalStages}).`
+              : `${approvedStages}/${totalStages} stages approved.`,
+        });
       this.pushService
         .sendToUsers(
           [inspection.requestedById],
-          approvedStages === totalStages && totalStages > 0
-            ? 'Checklist Approved ✓'
-            : 'Stage Approved ✓',
-          approvedStages === totalStages && totalStages > 0
-            ? `All stages are approved for RFI #${inspectionId}. The checklist is now fully approved.`
-            : `Stage "${stage.stageTemplate?.name}" approved for RFI #${inspectionId}. ${approvedStages}/${totalStages} complete.`,
+          notification.title,
+          notification.body,
           {
             inspectionId: String(inspectionId),
             stageId: String(stageId),
@@ -1280,6 +1313,7 @@ export class QualityInspectionService {
               approvedStages === totalStages && totalStages > 0
                 ? 'APPROVED'
                 : 'STAGE_APPROVED',
+            ...notification.data,
           },
         )
         .catch(() => {
@@ -1406,12 +1440,25 @@ export class QualityInspectionService {
 
     // Notify the RFI raiser
     if (inspection.requestedById) {
+      const notification =
+        await this.notificationComposer.composeInspectionDecision({
+          projectId: inspection.projectId,
+          epsNodeId: inspection.epsNodeId,
+          activityId: inspection.activityId,
+          inspectionId,
+          decisionLabel: 'RFI Approved',
+          comments: comments || undefined,
+        });
       this.pushService
         .sendToUsers(
           [inspection.requestedById],
-          'RFI Approved ✅',
-          `Your RFI #${inspectionId} has received final approval.`,
-          { inspectionId: String(inspectionId), type: 'APPROVED' },
+          notification.title,
+          notification.body,
+          {
+            inspectionId: String(inspectionId),
+            type: 'APPROVED',
+            ...notification.data,
+          },
         )
         .catch(() => {
           /* non-fatal */

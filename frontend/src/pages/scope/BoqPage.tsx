@@ -27,6 +27,8 @@ import { ImportWizard } from "../../components/ImportWizard";
 import { MeasurementManager } from "./MeasurementManager";
 import { formatIndianNumber } from "../../utils/format";
 import ResourcesView from "../../components/boq/resources/ResourcesView";
+import { exportUtils } from "../../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../../utils/export.registry";
 
 const BoqPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -112,6 +114,59 @@ const BoqPage = () => {
   const totalBoqValue = useMemo(() => {
     return items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }, [items]);
+
+  const exportRows = useMemo(
+    () =>
+      items.flatMap((item) => {
+        if (item.subItems && item.subItems.length > 0) {
+          return item.subItems.map((subItem) => ({
+            boqCode: item.boqCode,
+            boqDescription: item.description,
+            subItemDescription: subItem.description,
+            uom: subItem.uom || item.uom,
+            qty: Number(subItem.qty || 0),
+            rate: Number(subItem.rate || 0),
+            amount: Number(subItem.amount || 0),
+            consumedQuantity: Number(item.consumedQuantity || 0),
+          }));
+        }
+
+        return [
+          {
+            boqCode: item.boqCode,
+            boqDescription: item.description,
+            subItemDescription: "",
+            uom: item.uom,
+            qty: Number(item.qty || 0),
+            rate: Number(item.rate || 0),
+            amount: Number(item.amount || 0),
+            consumedQuantity: Number(item.consumedQuantity || 0),
+          },
+        ];
+      }),
+    [items],
+  );
+
+  const handleExportExcel = () => {
+    if (!projectId) return;
+    exportUtils.toExcel(
+      exportRows,
+      resolveRegisteredExportFileName("boq.items", { projectId }),
+      {
+        sheetName: "BOQ",
+        columns: [
+          { key: "boqCode", label: "BOQ Code" },
+          { key: "boqDescription", label: "BOQ Description" },
+          { key: "subItemDescription", label: "Sub Item Description" },
+          { key: "uom", label: "UOM" },
+          { key: "qty", label: "Quantity" },
+          { key: "rate", label: "Rate" },
+          { key: "amount", label: "Amount" },
+          { key: "consumedQuantity", label: "Consumed Quantity" },
+        ],
+      },
+    );
+  };
 
   // Handlers
   const toggleExpand = (id: number) => {
@@ -271,6 +326,12 @@ const BoqPage = () => {
                 className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base"
               >
                 <FileSpreadsheet className="w-4 h-4 text-success" /> Export CSV
+              </button>
+              <button
+                onClick={handleExportExcel}
+                className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-strong rounded text-text-secondary hover:bg-surface-base"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-primary" /> Export Excel
               </button>
               <button
                 onClick={() => setIsImportWizardOpen(true)}

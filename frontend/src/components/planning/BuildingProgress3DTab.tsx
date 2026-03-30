@@ -753,12 +753,148 @@ function estimateTowerHeight(
   return Math.max(inferredFloorCount * 3.2, 3.2);
 }
 
+function createRectanglePolygon(
+  originX: number,
+  originY: number,
+  width: number,
+  depth: number,
+): Array<[number, number]> {
+  return [
+    [originX, originY],
+    [originX + width, originY],
+    [originX + width, originY + depth],
+    [originX, originY + depth],
+  ];
+}
+
+function buildSyntheticModelEntries(
+  root: TreeNode,
+  towers: ReturnType<typeof collectTowerNodes>,
+  towerProgress: TowerProgressResponse | null,
+  selectedTowerId: number | "ALL",
+): ModelEntry[] {
+  const progressByFloor = buildFloorProgressMap(towerProgress);
+  const progressByTower = buildTowerProgressMap(towerProgress);
+  const scopedTowers = towers.filter(
+    (tower) => selectedTowerId === "ALL" || tower.towerId === selectedTowerId,
+  );
+  const entries: ModelEntry[] = [];
+  const towerWidth = 30;
+  const towerDepth = 40;
+  const towerSpacing = 5;
+  const floorHeight = 3;
+
+  scopedTowers.forEach((tower, towerIndex) => {
+    const baseX = towerIndex * (towerWidth + towerSpacing);
+    const baseY = 0;
+    const polygon = createRectanglePolygon(baseX, baseY, towerWidth, towerDepth);
+    const towerActivityIds =
+      towerProgress?.towers
+        .find((item) => item.epsNodeId === tower.towerId)
+        ?.floors.flatMap((floor) => (floor.activities || []).map((activity) => activity.id)) ||
+      [];
+
+    if (tower.floors.length === 0) {
+      const towerMetrics = progressByTower.get(tower.towerId) || {
+        progressPct: 0,
+        totalActivities: 0,
+        completedActivities: 0,
+        inProgressActivities: 0,
+        pendingActivities: 0,
+        pendingRfis: 0,
+      };
+      entries.push({
+        id: `synthetic-tower-${tower.towerId}`,
+        towerId: tower.towerId,
+        towerName: tower.towerName,
+        floorId: null,
+        floorName: "Tower Massing",
+        level: "TOWER",
+        geometrySource: "TOWER",
+        label: `${tower.towerName} - Synthetic Tower`,
+        progressPct: towerMetrics.progressPct,
+        z: 0,
+        height: floorHeight,
+        polygon,
+        activityIds: towerActivityIds,
+        metrics: { ...towerMetrics },
+      });
+      return;
+    }
+
+    let currentZ = 0;
+    tower.floors.forEach((floorNode) => {
+      const floorActivityIds =
+        towerProgress?.towers
+          .find((item) => item.epsNodeId === tower.towerId)
+          ?.floors.find((item) => item.epsNodeId === floorNode.id)
+          ?.activities?.map((activity) => activity.id) || [];
+      const progress = progressByFloor.get(floorNode.id) || {
+        progressPct: 0,
+        totalActivities: 0,
+        completedActivities: 0,
+        inProgressActivities: 0,
+        pendingActivities: 0,
+        pendingRfis: 0,
+      };
+
+      entries.push({
+        id: `synthetic-floor-${tower.towerId}-${floorNode.id}`,
+        towerId: tower.towerId,
+        towerName: tower.towerName,
+        floorId: floorNode.id,
+        floorName: floorNode.name,
+        level: "FLOOR",
+        geometrySource: "TOWER",
+        label: `${tower.towerName} - ${floorNode.name} (Synthetic)`,
+        progressPct: progress.progressPct,
+        z: currentZ,
+        height: floorHeight,
+        polygon,
+        activityIds: floorActivityIds.length > 0 ? floorActivityIds : towerActivityIds,
+        metrics: { ...progress },
+      });
+
+      currentZ += floorHeight;
+    });
+  });
+
+  if (entries.length > 0) {
+    return entries;
+  }
+
+  return [
+    {
+      id: `synthetic-project-${root.id}`,
+      towerId: null,
+      towerName: root.name,
+      floorId: null,
+      floorName: "Project Massing",
+      level: "PROJECT",
+      geometrySource: "PROJECT",
+      label: `${root.name} - Synthetic Project`,
+      progressPct: 0,
+      z: 0,
+      height: floorHeight,
+      polygon: createRectanglePolygon(0, 0, towerWidth, towerDepth),
+      activityIds: [],
+      metrics: {
+        totalActivities: 0,
+        completedActivities: 0,
+        inProgressActivities: 0,
+        pendingActivities: 0,
+        pendingRfis: 0,
+      },
+    },
+  ];
+}
+
 function buildModelEntries(
   root: TreeNode,
   towerProgress: TowerProgressResponse | null,
   selectedTowerId: number | "ALL",
   mode: RenderMode,
-) {
+): ModelEntry[] {
   const towers = collectTowerNodes(root);
   const progressByFloor = buildFloorProgressMap(towerProgress);
   const progressByTower = buildTowerProgressMap(towerProgress);
@@ -1096,6 +1232,10 @@ function buildModelEntries(
           ),
         },
       });
+    }
+
+    if (!projectPolygon) {
+      return buildSyntheticModelEntries(root, towers, towerProgress, selectedTowerId);
     }
   }
 

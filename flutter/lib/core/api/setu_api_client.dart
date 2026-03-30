@@ -35,11 +35,17 @@ class SetuApiClient {
         // Base URL resolved from ApiEndpoints (compile-time dart-define or
         // runtime override set by ServerConfigService before this constructor runs).
         baseUrl: ApiEndpoints.baseUrl,
-        // 10 s timeouts: if no response in 10 s the device is effectively offline.
-        // The _ErrorInterceptor maps connectionTimeout/receiveTimeout to
-        // ApiException.networkError so BLoCs treat them as offline → queue.
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        // 5 s connect timeout: fail fast when the server is unreachable (no signal,
+        // firewall, etc.).  On construction floors the device may show "connected"
+        // (WiFi/4G icon) but the TCP handshake never completes — 5 s surfaces this
+        // quickly so the app can fall back to cached data instead of blocking the UI.
+        //
+        // 15 s receive timeout: once a connection IS established, allow slow signals
+        // (e.g. weak 4G on upper floors) enough time to stream the full response body.
+        // The _ErrorInterceptor maps both timeout types to ApiException.networkError
+        // so BLoCs treat them as offline → write to SyncQueue → retry later.
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 15),
         sendTimeout: const Duration(seconds: 10),
         headers: {
           // Tell the backend we are sending and expecting JSON for all requests.

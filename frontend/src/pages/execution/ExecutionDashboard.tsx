@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../../api/axios";
 import { Folder, ChevronRight, Activity } from "lucide-react";
 import ProjectProgress3DPanel from "../../components/planning/ProjectProgress3DPanel";
+import { filterOperationalProjects } from "../../utils/project-lifecycle.utils";
 
 const ExecutionDashboard = () => {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ const ExecutionDashboard = () => {
         });
         return list;
       };
-      const nextProjects = flatten(res.data);
+      const nextProjects = filterOperationalProjects(flatten(res.data));
       setProjects(nextProjects);
       setSelectedProjectId((current) => current ?? nextProjects[0]?.id ?? null);
     } catch (err) {

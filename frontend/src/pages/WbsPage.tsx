@@ -16,6 +16,8 @@ import WbsImportModal from "../components/wbs/WbsImportWizard";
 import SaveTemplateModal from "../components/wbs/SaveTemplateModal";
 import { LayoutTemplate, FileSpreadsheet, Save } from "lucide-react";
 import WbsTemplatesTab from "../components/wbs/WbsTemplatesTab";
+import { exportUtils } from "../utils/export.utils";
+import { resolveRegisteredExportFileName } from "../utils/export.registry";
 
 interface WbsNode {
   id: number;
@@ -89,6 +91,62 @@ const WbsPage: React.FC = () => {
       }
     });
     return roots;
+  };
+
+  const flattenTree = (nodes: WbsNode[], depth = 0): Array<Record<string, unknown>> =>
+    nodes.flatMap((node) => {
+      const current = {
+        wbsCode: node.wbsCode,
+        wbsName: node.wbsName,
+        parentCode:
+          node.parentId != null
+            ? (() => {
+                const parent = findNodeById(wbsData, node.parentId);
+                return parent?.wbsCode || "";
+              })()
+            : "",
+        level: depth + 1,
+        isControlAccount: node.isControlAccount ? "TRUE" : "FALSE",
+        responsibleRole: node.responsibleRole?.name || "",
+        responsibleUser: node.responsibleUser?.username || "",
+      };
+      return [current, ...flattenTree(node.children || [], depth + 1)];
+    });
+
+  const findNodeById = (nodes: WbsNode[], id: number): WbsNode | null => {
+    for (const node of nodes) {
+      if (node.id === id) return node;
+      const found = findNodeById(node.children || [], id);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  const exportRows = flattenTree(wbsData);
+
+  const handleExport = (format: "EXCEL" | "CSV") => {
+    const fileName = resolveRegisteredExportFileName("wbs.structure", {
+      projectId,
+    });
+    const columns = [
+      { key: "wbsCode", label: "WBS Code" },
+      { key: "wbsName", label: "WBS Name" },
+      { key: "parentCode", label: "Parent WBS Code" },
+      { key: "level", label: "Level" },
+      { key: "isControlAccount", label: "Control Account" },
+      { key: "responsibleRole", label: "Responsible Role" },
+      { key: "responsibleUser", label: "Responsible User" },
+    ];
+
+    if (format === "EXCEL") {
+      exportUtils.toExcel(exportRows, fileName, {
+        sheetName: "WBS",
+        columns,
+      });
+      return;
+    }
+
+    exportUtils.toCsv(exportRows, fileName, { columns });
   };
 
   const toggleExpand = (id: number) => {
@@ -319,6 +377,20 @@ const WbsPage: React.FC = () => {
                 >
                   <FileSpreadsheet className="w-4 h-4 mr-2" />
                   Import Data
+                </button>
+                <button
+                  onClick={() => handleExport("CSV")}
+                  className="flex items-center px-3 py-2 bg-surface-card border border-border-strong text-text-secondary rounded-md hover:bg-surface-base text-sm font-medium shadow-sm"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => handleExport("EXCEL")}
+                  className="flex items-center px-3 py-2 bg-surface-card border border-border-strong text-text-secondary rounded-md hover:bg-surface-base text-sm font-medium shadow-sm"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Export Excel
                 </button>
                 <button
                   onClick={() => setIsSaveTemplateModalOpen(true)}

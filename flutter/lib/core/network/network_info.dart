@@ -1,33 +1,69 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:setu_mobile/core/network/server_probe.dart';
 
 /// Thin wrapper around the `connectivity_plus` package that provides
 /// clean async/stream accessors for the current network state.
 ///
-/// This class is injected wherever one-shot connectivity checks are needed
-/// (e.g., before attempting an API call or starting a sync).  For continuous
-/// reactive updates throughout the widget tree, use [NetworkStatusNotifier]
-/// with a `Provider` instead.
+/// **Two-level connectivity model:**
+///
+/// 1. [isConnected] — checks only whether a network *interface* is active
+///    (WiFi / mobile / ethernet icon in the status bar). Fast, no network
+///    traffic.  Used for the quick "definitely offline" fast-path (e.g. sync
+///    guard at the top of [SyncService.syncAll]).
+///
+/// 2. [isServerReachable] — additionally probes the SETU backend with a 3 s
+///    HEAD request via [ServerProbe]. Slower but accurate: distinguishes
+///    "device shows WiFi icon but server unreachable" (common on construction
+///    floors with weak signal) from genuine online connectivity.  Use this
+///    before deciding to show cached data vs. attempting an API call.
+///
+/// For continuous reactive updates throughout the widget tree use
+/// [NetworkStatusNotifier] with a `Provider` instead.
 class NetworkInfo {
-  // Single Connectivity instance created once per NetworkInfo object.
-  // connectivity_plus manages its own platform channel lifecycle internally.
   final Connectivity _connectivity = Connectivity();
+  final ServerProbe _probe;
 
-  /// Returns `true` if the device currently has any network interface active.
+  NetworkInfo({ServerProbe? probe}) : _probe = probe ?? ServerProbe();
+
+  /// Returns `true` if the device has any active network interface.
   ///
   /// This is a one-shot async check — it does not stream future changes.
-  /// [ConnectivityResult.none] is the only result considered "offline";
-  /// wifi, mobile, ethernet, VPN, etc. are all treated as "online" here.
+  /// [ConnectivityResult.none] is the only result considered "offline".
+  /// WiFi, mobile, ethernet, VPN, etc. are all treated as "interface active".
+  ///
+  /// **Important:** a `true` result does NOT guarantee the SETU server is
+  /// reachable — use [isServerReachable] for that.
   Future<bool> get isConnected async {
     final result = await _connectivity.checkConnectivity();
     return result != ConnectivityResult.none;
   }
 
-  /// Returns the current connectivity type as the app-defined [ConnectivityType] enum.
+  /// Returns `true` if the device has a network interface AND the SETU server
+  /// responds to a lightweight probe within 3 seconds.
   ///
-  /// Uses [ConnectivityType] rather than the raw [ConnectivityResult] so that
-  /// feature code is decoupled from the `connectivity_plus` package types —
-  /// if the package changes, only this class needs updating.
+  /// This is the recommended check before deciding whether to fetch live data
+  /// or fall back to the local cache.  On construction floors the device often
+  /// shows "connected" (WiFi/4G icon) but the signal is too weak to reach the
+  /// server; this method surfaces that quickly rather than waiting for the full
+  /// Dio receive-timeout.
+  ///
+  /// Results are cached by [ServerProbe] for 15 s to avoid excessive probing.
+  Future<bool> get isServerReachable async {
+    // Fast path: no interface at all → server definitely unreachable.
+    if (!await isConnected) return false;
+    return _probe.isReachable();
+  }
+
+  /// Force the server probe cache to be cleared.
+  ///
+  /// Called by [NetworkStatusNotifier] whenever the connectivity stream fires
+  /// so that the next [isServerReachable] call makes a fresh network request
+  /// rather than returning a stale cached result from before the connection
+  /// change.
+  void invalidateProbe() => _probe.invalidate();
+
+  /// Returns the current connectivity type as the app-defined [ConnectivityType] enum.
   Future<ConnectivityType> get connectivityType async {
     final result = await _connectivity.checkConnectivity();
     switch (result) {
@@ -38,38 +74,24 @@ class NetworkInfo {
       case ConnectivityResult.ethernet:
         return ConnectivityType.ethernet;
       default:
-        // Covers ConnectivityResult.none, vpn, bluetooth, and any future
-        // values added by the package that we haven't mapped yet.
         return ConnectivityType.none;
     }
   }
 
   /// Raw stream of [ConnectivityResult] changes from the platform.
-  ///
-  /// Exposed primarily for [NetworkStatusNotifier] which listens to this
-  /// stream and translates events into notifyListeners() calls.
   Stream<ConnectivityResult> get onConnectivityChanged =>
       _connectivity.onConnectivityChanged;
 
   /// Convenience stream that emits `true` (online) or `false` (offline)
-  /// whenever connectivity status changes.
-  ///
-  /// Maps the raw [ConnectivityResult] stream so callers don't need to
-  /// import `connectivity_plus` to consume the boolean status.
+  /// whenever the network interface status changes.
   Stream<bool> get onConnectionStatusChanged {
     return _connectivity.onConnectivityChanged.map(
-      // Any result other than 'none' is considered connected.
       (result) => result != ConnectivityResult.none,
     );
   }
 }
 
 /// Simplified connectivity type used throughout the app.
-///
-/// Intentionally narrower than [ConnectivityResult] — VPN, Bluetooth, and
-/// other exotic connection types are all treated as [none] since the app only
-/// needs to distinguish wifi vs. mobile for UX hints (e.g., "high-res photo
-/// upload is only recommended on wifi").
 enum ConnectivityType {
   wifi,
   mobile,
@@ -84,51 +106,33 @@ enum ConnectivityType {
 /// ChangeNotifierProvider(create: (_) => NetworkStatusNotifier(NetworkInfo()))
 /// ```
 ///
-/// Widgets can then call `context.watch<NetworkStatusNotifier>().isConnected`
-/// to reactively rebuild when connectivity changes.
-///
-/// The notifier initialises by doing a one-shot check immediately, then
-/// subscribes to the platform stream for all subsequent changes.
+/// On every connectivity event the server probe cache is invalidated so the
+/// next [isServerReachable] call is guaranteed to reflect the new network state.
 class NetworkStatusNotifier extends ChangeNotifier {
   final NetworkInfo _networkInfo;
 
   // Optimistic initial state — assume connected until proven otherwise.
-  // This prevents unnecessary "no connection" flash on startup before the
-  // first async check completes.
   bool _isConnected = true;
   ConnectivityType _connectivityType = ConnectivityType.none;
 
-  /// Creates the notifier and immediately starts monitoring connectivity.
   NetworkStatusNotifier(this._networkInfo) {
-    // Kick off the async initialisation; any errors are surfaced via the
-    // platform stream listener below.
     _initialize();
   }
 
-  /// Whether the device currently has an active network connection.
   bool get isConnected => _isConnected;
-
-  /// The type of the current active connection (wifi, mobile, etc.).
   ConnectivityType get connectivityType => _connectivityType;
 
-  /// Performs an initial one-shot check, updates state, then subscribes to
-  /// ongoing connectivity changes for the lifetime of this notifier.
   Future<void> _initialize() async {
-    // One-shot check on startup to set the correct initial state before any
-    // widgets render — avoids the false "connected" default being shown.
     _isConnected = await _networkInfo.isConnected;
     _connectivityType = await _networkInfo.connectivityType;
-
-    // Notify synchronously so any already-mounted widgets get the correct state.
     notifyListeners();
 
-    // Subscribe to the raw stream for all future connectivity changes.
-    // We re-map ConnectivityResult here (rather than the boolean stream) so
-    // we can update both _isConnected and _connectivityType in one listener.
     _networkInfo.onConnectivityChanged.listen((result) {
-      _isConnected = result != ConnectivityResult.none;
+      // Invalidate the server probe cache whenever the network interface
+      // changes so the next [isServerReachable] call probes fresh.
+      _networkInfo.invalidateProbe();
 
-      // Translate the raw result to our internal enum.
+      _isConnected = result != ConnectivityResult.none;
       switch (result) {
         case ConnectivityResult.wifi:
           _connectivityType = ConnectivityType.wifi;
@@ -140,11 +144,8 @@ class NetworkStatusNotifier extends ChangeNotifier {
           _connectivityType = ConnectivityType.ethernet;
           break;
         default:
-          // none, vpn, bluetooth, etc. — all treated as disconnected/unknown.
           _connectivityType = ConnectivityType.none;
       }
-
-      // Trigger a rebuild on all listening widgets (e.g., sync status banner).
       notifyListeners();
     });
   }

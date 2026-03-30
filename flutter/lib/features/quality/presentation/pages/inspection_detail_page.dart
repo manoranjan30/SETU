@@ -7,6 +7,7 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/core/network/connectivity_banner.dart';
+import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
@@ -280,6 +281,8 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
                   children: [
                     // Offline/online connectivity indicator banner
                     const ConnectivityBanner(),
+                    // Data-from-cache indicator (shown when loaded offline)
+                    if (display.fromCache) const OfflineBanner(),
                     Expanded(
                       child: TabBarView(
                         controller: _tabCtrl,
@@ -307,7 +310,32 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
             );
           }
 
-          return const Center(child: CircularProgressIndicator());
+          // No cached data available offline — show an error with retry.
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No cached data available.\nConnect to the internet and try again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () => context
+                        .read<QualityApprovalBloc>()
+                        .add(LoadInspectionDetail(widget.inspection)),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
         },
       ),
     );

@@ -1,0 +1,250 @@
+{
+    "root_group": {
+        "checks": {
+            "login status is 2xx": {
+                "passes": 42,
+                "fails": 0,
+                "name": "login status is 2xx",
+                "path": "::login status is 2xx",
+                "id": "fc4ad0a473289fccc786b840f605bf12"
+            },
+            "profile status is 2xx": {
+                "name": "profile status is 2xx",
+                "path": "::profile status is 2xx",
+                "id": "6029f8e96e1aec4bad75eb888c953d93",
+                "passes": 42,
+                "fails": 0
+            },
+            "dashboard summary status is 2xx": {
+                "path": "::dashboard summary status is 2xx",
+                "id": "a46f618aa87d25fbb8082749650bb4e1",
+                "passes": 42,
+                "fails": 0,
+                "name": "dashboard summary status is 2xx"
+            },
+            "dashboard burn rate status is 2xx": {
+                "fails": 0,
+                "name": "dashboard burn rate status is 2xx",
+                "path": "::dashboard burn rate status is 2xx",
+                "id": "90c24920105dc97abb0f6e857b5b0cdf",
+                "passes": 42
+            },
+            "dashboard manpower status is 2xx": {
+                "passes": 42,
+                "fails": 0,
+                "name": "dashboard manpower status is 2xx",
+                "path": "::dashboard manpower status is 2xx",
+                "id": "6c3c68dcecdde86360258266b4a670c5"
+            },
+            "dashboard milestones status is 2xx": {
+                "fails": 0,
+                "name": "dashboard milestones status is 2xx",
+                "path": "::dashboard milestones status is 2xx",
+                "id": "dd699f79ea8bcb4e95fd4062eccfe857",
+                "passes": 42
+            },
+            "dashboard alerts status is 2xx": {
+                "name": "dashboard alerts status is 2xx",
+                "path": "::dashboard alerts status is 2xx",
+                "id": "5405dc52b830c55d80728280e10bb5c0",
+                "passes": 42,
+                "fails": 0
+            },
+            "dashboard quality metrics status is 2xx": {
+                "name": "dashboard quality metrics status is 2xx",
+                "path": "::dashboard quality metrics status is 2xx",
+                "id": "4c9f241005d60a686602fde4fc099fe9",
+                "passes": 42,
+                "fails": 0
+            },
+            "dashboard ehs metrics status is 2xx": {
+                "fails": 0,
+                "name": "dashboard ehs metrics status is 2xx",
+                "path": "::dashboard ehs metrics status is 2xx",
+                "id": "16efda6dbe71ec34d5a2be6b38d546c1",
+                "passes": 42
+            },
+            "dashboard companies status is 2xx": {
+                "fails": 0,
+                "name": "dashboard companies status is 2xx",
+                "path": "::dashboard companies status is 2xx",
+                "id": "01ec73ed73ac12d85d56360355a0f8e6",
+                "passes": 42
+            },
+            "dashboard projects status is 2xx": {
+                "passes": 42,
+                "fails": 0,
+                "name": "dashboard projects status is 2xx",
+                "path": "::dashboard projects status is 2xx",
+                "id": "801c639161465e3dcb6993b245c4e65a"
+            },
+            "dashboard enterprise status is 2xx": {
+                "passes": 42,
+                "fails": 0,
+                "name": "dashboard enterprise status is 2xx",
+                "path": "::dashboard enterprise status is 2xx",
+                "id": "c1ebef324448853ad89ac9452ff00835"
+            },
+            "dashboard company status is 2xx": {
+                "name": "dashboard company status is 2xx",
+                "path": "::dashboard company status is 2xx",
+                "id": "183206abe17d2f04b8ade27736e177dd",
+                "passes": 42,
+                "fails": 0
+            },
+            "dashboard project status is 2xx": {
+                "fails": 0,
+                "name": "dashboard project status is 2xx",
+                "path": "::dashboard project status is 2xx",
+                "id": "f5665759cc825807e4f1cecdb06342d4",
+                "passes": 42
+            },
+            "progress stats status is 2xx": {
+                "name": "progress stats status is 2xx",
+                "path": "::progress stats status is 2xx",
+                "id": "db36b49b8560a893b431962a4e688a08",
+                "passes": 42,
+                "fails": 0
+            },
+            "progress plan-vs-achieved status is 2xx": {
+                "passes": 42,
+                "fails": 0,
+                "name": "progress plan-vs-achieved status is 2xx",
+                "path": "::progress plan-vs-achieved status is 2xx",
+                "id": "37ad125285acf31ea56a9389a1b52b31"
+            },
+            "progress insights status is 2xx": {
+                "name": "progress insights status is 2xx",
+                "path": "::progress insights status is 2xx",
+                "id": "ae33d061035f9c10ff1d194f5e0cbde5",
+                "passes": 42,
+                "fails": 0
+            },
+            "progress approvals pending status is 2xx": {
+                "name": "progress approvals pending status is 2xx",
+                "path": "::progress approvals pending status is 2xx",
+                "id": "03213419fb604794eac6af98c3671407",
+                "passes": 42,
+                "fails": 0
+            }
+        },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {}
+    },
+    "metrics": {
+        "http_req_waiting": {
+            "min": 7.7777,
+            "med": 212.27875,
+            "max": 5819.1535,
+            "p(90)": 1068.84455,
+            "p(95)": 2048.733975,
+            "avg": 505.99296402116414
+        },
+        "http_req_receiving": {
+            "p(95)": 1.37775,
+            "avg": 0.4323636243386245,
+            "min": 0,
+            "med": 0.0279,
+            "max": 33.7298,
+            "p(90)": 1.0103499999999999
+        },
+        "http_req_duration": {
+            "med": 214.03005000000002,
+            "max": 5820.7467,
+            "p(90)": 1069.36395,
+            "p(95)": 2051.1742,
+            "avg": 507.0329943121694,
+            "min": 8.3929,
+            "thresholds": {
+                "p(95)<2000": true,
+                "p(99)<3500": true
+            }
+        },
+        "vus_max": {
+            "value": 10,
+            "min": 10,
+            "max": 10
+        },
+        "data_received": {
+            "rate": 35519.35162807143,
+            "count": 2240322
+        },
+        "http_req_connecting": {
+            "min": 0,
+            "med": 0,
+            "max": 4.4389,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.04605859788359789
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 756,
+            "value": 0
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "iteration_duration": {
+            "p(90)": 17723.07278,
+            "p(95)": 17873.562114999997,
+            "avg": 14838.730826190473,
+            "min": 8554.9592,
+            "med": 14966.13155,
+            "max": 18804.8736
+        },
+        "checks": {
+            "passes": 756,
+            "fails": 0,
+            "value": 1
+        },
+        "http_reqs": {
+            "count": 756,
+            "rate": 11.986058178610934
+        },
+        "http_req_sending": {
+            "med": 0.5407,
+            "max": 14.7236,
+            "p(90)": 1.0801,
+            "p(95)": 1.5022,
+            "avg": 0.6076666666666664,
+            "min": 0
+        },
+        "iterations": {
+            "count": 42,
+            "rate": 0.6658921210339408
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 10
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(90)": 1069.36395,
+            "p(95)": 2051.1742,
+            "avg": 507.0329943121694,
+            "min": 8.3929,
+            "med": 214.03005000000002,
+            "max": 5820.7467
+        },
+        "data_sent": {
+            "count": 6431670,
+            "rate": 101971.38995453253
+        },
+        "http_req_blocked": {
+            "avg": 1.0069208994708987,
+            "min": 0,
+            "med": 0,
+            "max": 77.1453,
+            "p(90)": 0,
+            "p(95)": 0.05305
+        }
+    }
+}
