@@ -15,6 +15,13 @@ import {
 } from "lucide-react";
 import api from "../../../api/axios";
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/api\/?$/, "");
+const getFileUrl = (path: string) => {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  return `${API_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+};
+
 interface Props {
   projectId: number;
 }
@@ -189,13 +196,26 @@ const EhsObservations: React.FC<Props> = ({ projectId }) => {
             </div>
             <div className="px-5 py-3 bg-surface-base border-t flex justify-between items-center">
               <div className="flex items-center gap-2">
-                {obs.photoUrl ? (
-                  <div className="w-8 h-8 rounded bg-info-muted flex items-center justify-center">
-                    <Camera className="w-4 h-4 text-primary" />
+                {obs.photos && obs.photos.length > 0 ? (
+                  <div className="flex gap-1">
+                    {obs.photos.slice(0, 3).map((p: string, i: number) => (
+                      <a key={i} href={getFileUrl(p)} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={getFileUrl(p)}
+                          alt="observation"
+                          className="w-8 h-8 rounded object-cover border border-border-default"
+                        />
+                      </a>
+                    ))}
+                    {obs.photos.length > 3 && (
+                      <div className="w-8 h-8 rounded bg-surface-raised border border-border-default flex items-center justify-center text-[10px] text-text-muted font-bold">
+                        +{obs.photos.length - 3}
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <span className="text-[10px] text-text-disabled italic">
-                    No image
+                  <span className="text-[10px] text-text-disabled italic flex items-center gap-1">
+                    <Camera className="w-3 h-3" /> No image
                   </span>
                 )}
               </div>

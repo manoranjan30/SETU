@@ -6,20 +6,6 @@ import {
   AiCompletionResponse,
 } from './ai-provider.interface';
 
-/**
- * Azure OpenAI provider.
- *
- * Supports two authentication modes:
- *  1. API Key — simpler, uses `config.apiKey` (or env AI_AZURE_API_KEY).
- *  2. Service Principal — uses clientId + clientSecret + tenantId to obtain
- *     an AAD access token via the OAuth2 client-credentials flow.
- *
- * The Azure endpoint must include the deployment name:
- *   https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-02-01
- *
- * If `config.endpoint` is just the resource base URL and `config.azureDeployment`
- * is provided, the provider will build the full URL automatically.
- */
 export class AzureOpenAiProvider implements IAiProvider {
   private readonly logger = new Logger(AzureOpenAiProvider.name);
   private readonly config: AiModelConfig;
@@ -48,7 +34,7 @@ export class AzureOpenAiProvider implements IAiProvider {
       response_format: { type: 'json_object' },
     };
 
-    this.logger.debug(`Azure OpenAI call → ${endpoint}`);
+    this.logger.debug(`Azure OpenAI call -> ${endpoint}`);
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -65,21 +51,54 @@ export class AzureOpenAiProvider implements IAiProvider {
     }
 
     const data = (await response.json()) as {
-      choices: { message: { content: string } }[];
+      choices: { message?: { content?: unknown }; text?: string; finish_reason?: string }[];
       model: string;
       usage?: { total_tokens: number };
+      output_text?: string;
     };
 
     return {
-      text: data.choices?.[0]?.message?.content ?? '',
+      text: this.extractText(data).trim(),
       modelUsed:
         this.config.azureDeployment ?? this.config.model ?? 'azure-gpt',
       tokensUsed: data.usage?.total_tokens ?? null,
+      finishReason: data.choices?.[0]?.finish_reason ?? null,
       raw: data,
     };
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
+  private extractText(data: {
+    choices?: Array<{ message?: { content?: unknown }; text?: string }>;
+    output_text?: string;
+  }): string {
+    const messageContent = data.choices?.[0]?.message?.content;
+    if (typeof messageContent === 'string') return messageContent;
+
+    if (Array.isArray(messageContent)) {
+      const parts = messageContent
+        .map((part) => {
+          if (typeof part === 'string') return part;
+          if (part && typeof part === 'object') {
+            const record = part as Record<string, unknown>;
+            if (typeof record.text === 'string') return record.text;
+            if (typeof record.content === 'string') return record.content;
+          }
+          return '';
+        })
+        .filter(Boolean);
+      if (parts.length > 0) return parts.join('\n');
+    }
+
+    if (typeof data.output_text === 'string' && data.output_text.trim()) {
+      return data.output_text;
+    }
+
+    if (typeof data.choices?.[0]?.text === 'string') {
+      return data.choices[0].text;
+    }
+
+    return '';
+  }
 
   private buildEndpoint(): string {
     const base =
@@ -97,7 +116,6 @@ export class AzureOpenAiProvider implements IAiProvider {
       this.config.azureDeployment ??
       process.env.AI_AZURE_DEPLOYMENT ?? '';
 
-    // If endpoint already contains /deployments/ assume it is a full URL
     if (base.includes('/deployments/')) {
       return `${base}?api-version=${AzureOpenAiProvider.API_VERSION}`;
     }
@@ -113,7 +131,6 @@ export class AzureOpenAiProvider implements IAiProvider {
   }
 
   private async getAuthHeader(): Promise<Record<string, string>> {
-    // Mode 1: API key (simpler, no AAD needed)
     const apiKey =
       this.config.apiKey ?? process.env.AI_AZURE_API_KEY ?? '';
 
@@ -121,7 +138,6 @@ export class AzureOpenAiProvider implements IAiProvider {
       return { 'api-key': apiKey };
     }
 
-    // Mode 2: Service principal OAuth2 client credentials
     const token = await this.getServicePrincipalToken();
     return { Authorization: `Bearer ${token}` };
   }
@@ -129,7 +145,6 @@ export class AzureOpenAiProvider implements IAiProvider {
   private async getServicePrincipalToken(): Promise<string> {
     const now = Date.now();
 
-    // Return cached token if still valid (with 60 s buffer)
     if (this.cachedToken && this.cachedToken.expiresAt > now + 60_000) {
       return this.cachedToken.value;
     }

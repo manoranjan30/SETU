@@ -17,6 +17,10 @@ import {
 @Injectable()
 export class AiInsightsService {
   private readonly logger = new Logger(AiInsightsService.name);
+  private static readonly MAX_ARRAY_ITEMS = 40;
+  private static readonly MAX_OBJECT_KEYS = 25;
+  private static readonly MAX_STRING_LENGTH = 1200;
+  private static readonly MAX_PROMPT_DEPTH = 4;
 
   constructor(
     @InjectRepository(InsightTemplate)
@@ -122,6 +126,14 @@ export class AiInsightsService {
     return run;
   }
 
+  async deleteRun(id: number, userId: number, isAdmin: boolean): Promise<void> {
+    const run = await this.getRun(id);
+    if (!isAdmin && run.requestedById !== userId) {
+      throw new ForbiddenException('You can only delete your own AI insight runs.');
+    }
+    await this.runRepo.remove(run);
+  }
+
   /**
    * Executes an insight run end-to-end:
    *  1. Load template
@@ -161,11 +173,12 @@ export class AiInsightsService {
       this.logger.log(
         `Run #${run.id}: aggregating data for template "${template.slug}"`,
       );
-      const dataMap = await this.aggregator.aggregate(
+      const rawDataMap = await this.aggregator.aggregate(
         template.dataSources as { key: string; filters?: Record<string, unknown> }[],
         dto.projectId ?? null,
         dto.parameters as Record<string, unknown> | undefined,
       );
+      const dataMap = this.compactDataMap(rawDataMap);
 
       // 3. Render prompt
       const prompt = this.renderPrompt(
@@ -208,6 +221,18 @@ export class AiInsightsService {
       if (!aiResponse) {
         throw lastError ?? new ServiceUnavailableException(
           'All AI provider configurations are rate-limited. Please wait and try again.',
+        );
+      }
+
+      if ((aiResponse.finishReason || '').toLowerCase() === 'length') {
+        throw new ServiceUnavailableException(
+          'AI response was truncated by the token limit. Reduce scope or retry with a larger model.',
+        );
+      }
+
+      if (!aiResponse.text || !aiResponse.text.trim()) {
+        throw new ServiceUnavailableException(
+          'AI provider returned an empty completion. Please retry with a different model or rerun the analysis.',
         );
       }
 
@@ -299,6 +324,59 @@ export class AiInsightsService {
       );
     }
 
-    return rendered;
+    return `${rendered}
+
+Important response rules:
+- Return concise JSON only.
+- Prefer summaries, top items, and clear recommendations.
+- Do not repeat or echo the full input data.
+- Keep the response compact enough to avoid token truncation.`;
+  }
+
+  private compactDataMap(dataMap: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(dataMap).map(([key, value]) => [key, this.compactValue(value, 0)]),
+    );
+  }
+
+  private compactValue(value: unknown, depth: number): unknown {
+    if (value == null) return value;
+
+    if (typeof value === 'string') {
+      return value.length > AiInsightsService.MAX_STRING_LENGTH
+        ? `${value.slice(0, AiInsightsService.MAX_STRING_LENGTH)}…`
+        : value;
+    }
+
+    if (typeof value !== 'object') return value;
+
+    if (depth >= AiInsightsService.MAX_PROMPT_DEPTH) {
+      if (Array.isArray(value)) {
+        return `[truncated array: ${value.length} items]`;
+      }
+      return '[truncated object]';
+    }
+
+    if (Array.isArray(value)) {
+      const sliced = value
+        .slice(0, AiInsightsService.MAX_ARRAY_ITEMS)
+        .map((item) => this.compactValue(item, depth + 1));
+      if (value.length > AiInsightsService.MAX_ARRAY_ITEMS) {
+        sliced.push(`[${value.length - AiInsightsService.MAX_ARRAY_ITEMS} more items omitted]`);
+      }
+      return sliced;
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>);
+    const compacted = entries
+      .slice(0, AiInsightsService.MAX_OBJECT_KEYS)
+      .reduce<Record<string, unknown>>((acc, [key, item]) => {
+        acc[key] = this.compactValue(item, depth + 1);
+        return acc;
+      }, {});
+    if (entries.length > AiInsightsService.MAX_OBJECT_KEYS) {
+      compacted.__truncatedKeys = entries.length - AiInsightsService.MAX_OBJECT_KEYS;
+    }
+    return compacted;
   }
 }

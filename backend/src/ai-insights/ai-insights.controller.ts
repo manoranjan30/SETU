@@ -27,8 +27,6 @@ export class AiInsightsController {
     private readonly modelConfigService: AiModelConfigService,
   ) {}
 
-  // ── Templates (public read) ───────────────────────────────────────────────
-
   @Get('templates')
   @Permissions('AI.INSIGHTS.READ')
   listTemplates(@Query('includeInactive') includeInactive?: string) {
@@ -62,8 +60,6 @@ export class AiInsightsController {
     return this.insightsService.deleteTemplate(id);
   }
 
-  // ── Runs ───────────────────────────────────────────────────────────────────
-
   @Post('run')
   @Permissions('AI.INSIGHTS.RUN')
   runInsight(@Body() dto: RunInsightDto, @Request() req: { user: { id: number; permissions?: string[] } }) {
@@ -86,7 +82,15 @@ export class AiInsightsController {
     return this.insightsService.getRun(id);
   }
 
-  // ── AI Model Config (admin) ────────────────────────────────────────────────
+  @Delete('runs/:id')
+  @Permissions('AI.INSIGHTS.READ')
+  deleteRun(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: { user: { id: number; permissions?: string[] } },
+  ) {
+    const isAdmin = req.user.permissions?.includes('AI.INSIGHTS.ADMIN') ?? false;
+    return this.insightsService.deleteRun(id, req.user.id, isAdmin);
+  }
 
   @Get('admin/model-configs')
   @Permissions('AI.INSIGHTS.ADMIN')

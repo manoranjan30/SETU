@@ -50,9 +50,17 @@ const getMonthStart = () => {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 };
 
+const formatCurrencyInCrores = (value: number) => {
+  const crores = value / 10_000_000;
+  return `₹${new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: crores >= 100 ? 0 : 2,
+    maximumFractionDigits: crores >= 100 ? 0 : 2,
+  }).format(crores)} Cr`;
+};
+
 const formatValue = (m: { value: number | string; format?: string }) => {
   if (m.format === "currency" && typeof m.value === "number")
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(m.value);
+    return formatCurrencyInCrores(m.value);
   if (m.format === "percent" && typeof m.value === "number")
     return `${m.value.toFixed(1)}%`;
   if (typeof m.value === "number")
@@ -859,7 +867,7 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-4 p-4">
         {pillarKey === "progressExecution" && progressPreview ? (
-          <div className="grid gap-3 lg:grid-cols-[1.02fr_0.98fr]">
+          <div className="grid gap-3 lg:grid-cols-[1.14fr_0.86fr]">
             <div className="overflow-hidden rounded-2xl"
               style={{ background: "var(--color-surface-base)", border: "1px solid var(--color-border-subtle)" }}>
               <ProjectProgress3DPanel
@@ -868,7 +876,7 @@ function PillarColumn({ pillarKey, section, onNavigate, isDark, progressPreview 
                 subtitle={progressPreview.subtitle}
                 autoRotate
                 autoRotateSpeed={2.2}
-                viewerClassName="h-[372px]"
+                viewerClassName="h-[388px]"
               />
             </div>
 

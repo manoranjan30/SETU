@@ -549,6 +549,78 @@ export class PlanningService {
     ].filter(Boolean);
   }
 
+  private naturalSortTokenize(value: string): Array<string | number> {
+    return this.normalizeImportCell(value)
+      .split(/(\d+)/)
+      .filter(Boolean)
+      .map((part) => (/^\d+$/.test(part) ? Number(part) : part.toLowerCase()));
+  }
+
+  private compareNaturalStrings(a: string, b: string): number {
+    const aTokens = this.naturalSortTokenize(a);
+    const bTokens = this.naturalSortTokenize(b);
+    const maxLength = Math.max(aTokens.length, bTokens.length);
+
+    for (let index = 0; index < maxLength; index += 1) {
+      const left = aTokens[index];
+      const right = bTokens[index];
+      if (left === undefined) return -1;
+      if (right === undefined) return 1;
+      if (left === right) continue;
+
+      if (typeof left === 'number' && typeof right === 'number') {
+        return left - right;
+      }
+
+      return String(left).localeCompare(String(right), undefined, {
+        sensitivity: 'base',
+      });
+    }
+
+    return 0;
+  }
+
+  private compareWoMapperTargets(
+    left: {
+      vendorName: string;
+      workOrderNumber: string;
+      path: string;
+      code: string;
+      id: number;
+    },
+    right: {
+      vendorName: string;
+      workOrderNumber: string;
+      path: string;
+      code: string;
+      id: number;
+    },
+  ): number {
+    return (
+      this.compareNaturalStrings(left.vendorName, right.vendorName) ||
+      this.compareNaturalStrings(left.workOrderNumber, right.workOrderNumber) ||
+      this.compareNaturalStrings(left.path, right.path) ||
+      this.compareNaturalStrings(left.code, right.code) ||
+      left.id - right.id
+    );
+  }
+
+  private orderWoMapperTargets<T extends { id: number }>(
+    targets: T[],
+    targetOrder: string[],
+  ): T[] {
+    const orderIndex = new Map<string, number>(
+      targetOrder.map((targetId, index) => [String(targetId), index]),
+    );
+
+    return [...targets].sort((left, right) => {
+      const leftIndex = orderIndex.get(String(left.id)) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex =
+        orderIndex.get(String(right.id)) ?? Number.MAX_SAFE_INTEGER;
+      return leftIndex - rightIndex || Number(left.id) - Number(right.id);
+    });
+  }
+
   private async getWoMapperTargets(projectId: number) {
     const items = await this.woItemRepo
       .createQueryBuilder('woItem')
@@ -596,10 +668,12 @@ export class PlanningService {
         vendorName: item.workOrder?.vendor?.name || '',
         allocatedQty: Number(item.allocatedQty || 0),
         uom: item.uom || '',
-      }));
+      }))
+      .sort((left, right) => this.compareWoMapperTargets(left, right));
 
     return {
       targets,
+      targetOrder: targets.map((target) => String(target.id)),
       targetById: new Map(targets.map((target) => [String(target.id), target])),
     };
   }
@@ -1053,7 +1127,7 @@ export class PlanningService {
   }
 
   async exportWoMapperMatrixWorkbook(projectId: number): Promise<Buffer> {
-    const [{ activityMeta }, { targets }, existingPlans] = await Promise.all([
+    const [{ activityMeta }, { targets, targetOrder }, existingPlans] = await Promise.all([
       this.getDistributionSourceActivities(projectId),
       this.getWoMapperTargets(projectId),
       this.planRepo.find({
@@ -1072,8 +1146,9 @@ export class PlanningService {
 
     const matrixRows = activityMeta.map((activity) => {
       const linkedTargetIds = activityWoMap.get(activity.id) || new Set<string>();
-      const linkedTargets = targets.filter((target) =>
-        linkedTargetIds.has(String(target.id)),
+      const linkedTargets = this.orderWoMapperTargets(
+        targets.filter((target) => linkedTargetIds.has(String(target.id))),
+        targetOrder,
       );
 
       return {
@@ -1093,6 +1168,7 @@ export class PlanningService {
     });
 
     const referenceRows = targets.map((target) => ({
+      Order: (targetOrder.indexOf(String(target.id)) || 0) + 1,
       'WO Item ID': target.id,
       'WO Item Code': target.code,
       'WO Item Name': target.name,
@@ -1101,6 +1177,16 @@ export class PlanningService {
       Vendor: target.vendorName,
       'Allocated Qty': target.allocatedQty,
       UOM: target.uom,
+    }));
+
+    const nameListRows = targets.map((target, index) => ({
+      Order: index + 1,
+      'WO Name': target.name,
+      'WO Path': target.path,
+      'WO Item Code': target.code,
+      'WO Item ID': target.id,
+      'Work Order': target.workOrderNumber,
+      Vendor: target.vendorName,
     }));
 
     const workbook = XLSX.utils.book_new();
@@ -1113,6 +1199,11 @@ export class PlanningService {
       workbook,
       XLSX.utils.json_to_sheet(referenceRows),
       'WO Reference',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(nameListRows),
+      'WO Name List',
     );
 
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -1130,14 +1221,28 @@ export class PlanningService {
 
     const headers = Object.keys(rawRows[0] || {});
     const { activityByCode } = await this.getDistributionSourceActivities(projectId);
-    const { targets, targetById } = await this.getWoMapperTargets(projectId);
+    const { targets, targetById, targetOrder } = await this.getWoMapperTargets(projectId);
     const existingPlans = await this.planRepo.find({ where: { projectId } });
 
     const woHeaderLookup = new Map<string, string>();
+    const targetTokenLookup = new Map<string, string>();
     targets.forEach((target) => {
       this.buildWoMapperColumnAliases(target).forEach((alias) =>
         woHeaderLookup.set(alias, String(target.id)),
       );
+      [
+        this.normalizeImportHeader(target.path),
+        this.normalizeImportHeader(target.name),
+        this.normalizeImportHeader(target.code),
+        this.normalizeImportHeader(String(target.id)),
+        this.normalizeImportHeader(this.buildWoMapperColumnHeader(target)),
+      ]
+        .filter(Boolean)
+        .forEach((token) => {
+          if (!targetTokenLookup.has(token)) {
+            targetTokenLookup.set(token, String(target.id));
+          }
+        });
     });
 
     const hasDynamicWoHeaders = headers.some((header) =>
@@ -1149,13 +1254,17 @@ export class PlanningService {
         ? mapping
         : this.buildWoMapperImportAutoMapping(headers);
 
+    const hasReferenceColumns = Boolean(
+      effectiveMapping.currentlinkedwonames || effectiveMapping.currentlinkedwocodes,
+    );
+
     const missingRequired = this.woMapperImportFields
       .filter((field) => field.required)
       .filter((field) => !effectiveMapping[field.key])
       .map((field) => field.label);
 
-    if (!hasDynamicWoHeaders) {
-      missingRequired.push('WO Matrix Columns');
+    if (!hasDynamicWoHeaders && !hasReferenceColumns) {
+      missingRequired.push('WO Matrix Columns or Current Linked WO Names/Codes');
     }
 
     if (missingRequired.length > 0) {
@@ -1240,6 +1349,28 @@ export class PlanningService {
         }
       });
 
+      const resolveTokensFromCell = (value: string) => {
+        this.normalizeImportCell(value)
+          .split(',')
+          .map((token) => this.normalizeImportCell(token))
+          .filter(Boolean)
+          .forEach((token) => {
+            const matchedTargetId = targetTokenLookup.get(
+              this.normalizeImportHeader(token),
+            );
+            if (matchedTargetId) {
+              requestedTargetIds.add(matchedTargetId);
+              const target = targetById.get(matchedTargetId);
+              if (target) requestedMarks.push(target.path);
+            }
+          });
+      };
+
+      if (requestedTargetIds.size === 0) {
+        resolveTokensFromCell(this.normalizeImportCell(row.currentlinkedwocodes));
+        resolveTokensFromCell(this.normalizeImportCell(row.currentlinkedwonames));
+      }
+
       const currentLinkedIds = activityLinkedWoMap.get(activity.id) || new Set<string>();
       const alreadyLinkedTargets: Array<(typeof targets)[number]> = [];
       const newTargets: Array<(typeof targets)[number]> = [];
@@ -1254,24 +1385,40 @@ export class PlanningService {
         }
       });
 
+      const orderedCurrentLinkedTargets = this.orderWoMapperTargets(
+        Array.from(currentLinkedIds)
+          .map((id) => targetById.get(id))
+          .filter(Boolean) as Array<(typeof targets)[number]>,
+        targetOrder,
+      );
+      const orderedAlreadyLinkedTargets = this.orderWoMapperTargets(
+        alreadyLinkedTargets,
+        targetOrder,
+      );
+      const orderedNewTargets = this.orderWoMapperTargets(newTargets, targetOrder);
+
       const normalizedBase: WoMapperImportPreviewRow = {
         ...row,
         activitycode: activity.activityCode,
         activityname: activity.activityName,
         wbspath: activity.wbsPath,
-        currentlinkedwocodes: Array.from(currentLinkedIds)
-          .map((id) => targetById.get(id)?.code)
-          .filter(Boolean)
+        currentlinkedwocodes: orderedCurrentLinkedTargets
+          .map((target) => target.code)
           .join(', '),
-        currentlinkedwonames: Array.from(currentLinkedIds)
-          .map((id) => targetById.get(id)?.path)
-          .filter(Boolean)
+        currentlinkedwonames: orderedCurrentLinkedTargets
+          .map((target) => target.path)
           .join(', '),
         requestedwomarks: requestedMarks.join(', '),
-        resolvednewwoids: newTargets.map((target) => String(target.id)).join(', '),
-        resolvednewwocodes: newTargets.map((target) => target.code).join(', '),
-        resolvednewwonames: newTargets.map((target) => target.path).join(', '),
-        alreadylinkedwocodes: alreadyLinkedTargets
+        resolvednewwoids: orderedNewTargets
+          .map((target) => String(target.id))
+          .join(', '),
+        resolvednewwocodes: orderedNewTargets
+          .map((target) => target.code)
+          .join(', '),
+        resolvednewwonames: orderedNewTargets
+          .map((target) => target.path)
+          .join(', '),
+        alreadylinkedwocodes: orderedAlreadyLinkedTargets
           .map((target) => target.code)
           .join(', '),
         invalidwocolumns: '',
@@ -1281,7 +1428,8 @@ export class PlanningService {
         return {
           ...normalizedBase,
           importStatus: 'IGNORED' as DistributionImportStatus,
-          importMessage: 'No WO columns were marked with 1.',
+          importMessage:
+            'No WO columns were marked with 1 and no Current Linked WO Names/Codes were provided.',
         };
       }
 
@@ -1334,12 +1482,19 @@ export class PlanningService {
 
     let createdCount = 0;
     let skippedCount = 0;
+    const errors: string[] = [];
 
     for (const row of actionableRows) {
       const activity = activityByCode.get(
         this.normalizeImportCell(row.activitycode).toLowerCase(),
       );
-      if (!activity) continue;
+      if (!activity) {
+        skippedCount += 1;
+        errors.push(
+          `Row ${row.__rowNumber}: Activity "${row.activitycode}" was not found during import.`,
+        );
+        continue;
+      }
 
       const targetIds = this.normalizeImportCell(row.resolvednewwoids)
         .split(',')
@@ -1350,17 +1505,40 @@ export class PlanningService {
         const target = targetById.get(targetId);
         if (!target) {
           skippedCount += 1;
+          errors.push(
+            `Row ${row.__rowNumber}: WO target "${targetId}" is no longer available in this project.`,
+          );
           continue;
         }
-        await this.distributeWoItemToActivity(target.id, activity.id, -1);
-        createdCount += 1;
+        try {
+          await this.distributeWoItemToActivity(target.id, activity.id, -1);
+          createdCount += 1;
+        } catch (error) {
+          skippedCount += 1;
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Unexpected import error while linking WO item.';
+          errors.push(
+            `Row ${row.__rowNumber}: ${activity.activityCode} -> ${target.path}: ${message}`,
+          );
+        }
       }
+    }
+
+    if (createdCount === 0 && errors.length > 0) {
+      throw new BadRequestException({
+        message: 'WO link import could not create any links.',
+        details: errors.slice(0, 10),
+      });
     }
 
     return {
       createdCount,
       skippedCount,
       processedRows: actionableRows.length,
+      errorCount: errors.length,
+      errors,
     };
   }
 

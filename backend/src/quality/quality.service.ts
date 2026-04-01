@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { toRelativePath } from '../common/path.utils';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -219,7 +220,7 @@ export class QualityService {
     if (file) {
       await this.photoRepo.save({
         snagId: saved.id,
-        url: file.path || `uploads/${file.originalname}`,
+        url: toRelativePath(`/uploads/${file.filename}`),
         type: SnagPhotoType.INITIAL,
         uploadedBy: 'User',
       });
@@ -279,7 +280,7 @@ export class QualityService {
 
       await this.photoRepo.save({
         snagId: id,
-        url: file.path || `uploads/${file.originalname}`,
+        url: toRelativePath(`/uploads/${file.filename}`),
         type,
         uploadedBy: 'User',
       });

@@ -122,14 +122,17 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
   const hasDynamicWoHeaders = (headers: string[] = []) =>
     headers.some((header) => /^wo\s+/i.test(header.trim()));
 
+  const hasLinkedWoReferenceColumns = (mapping: ImportColumnMapping) =>
+    Boolean(mapping.currentlinkedwonames || mapping.currentlinkedwocodes);
+
   const validateMappings = (
     mapping: ImportColumnMapping,
     headers: string[] = [],
   ) => {
     const errors: string[] = [];
     if (!mapping.activitycode) errors.push("Activity Code");
-    if (!hasDynamicWoHeaders(headers)) {
-      errors.push("WO Matrix Columns");
+    if (!hasDynamicWoHeaders(headers) && !hasLinkedWoReferenceColumns(mapping)) {
+      errors.push("WO Matrix Columns or Current Linked WO Names/Codes");
     }
     return errors;
   };
@@ -207,8 +210,20 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
     }
     setLoading(true);
     try {
+      const actionableRows = previewData
+        .filter(
+          (row) =>
+            row.importStatus === "READY" || row.importStatus === "PARTIAL",
+        )
+        .map((row) => ({
+          __rowNumber: row.__rowNumber,
+          activitycode: row.activitycode,
+          resolvednewwoids: (row as any).resolvednewwoids,
+          importStatus: row.importStatus,
+        }));
+
       await api.post(`/planning/${projectId}/wo-mapper/import/commit`, {
-        data: previewData,
+        data: actionableRows,
       });
       setStep(3);
       setTimeout(() => {
@@ -216,7 +231,15 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
         onClose();
       }, 800);
     } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to import WO links");
+      const responseData = error.response?.data;
+      const detailLines = Array.isArray(responseData?.details)
+        ? responseData.details.join("\n")
+        : "";
+      alert(
+        detailLines
+          ? `${responseData?.message || "Failed to import WO links"}\n\n${detailLines}`
+          : responseData?.message || "Failed to import WO links",
+      );
     } finally {
       setLoading(false);
     }
@@ -230,6 +253,8 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
   );
   const canPreview = !!file && !loading && missingMappings.length === 0;
   const previewRowsToShow = previewData.slice(0, 12);
+  const hasActionableRows = Boolean(summary?.readyRows || summary?.partialRows);
+  const canCommit = Boolean(!loading && validation?.isValid && hasActionableRows);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/70">
@@ -274,7 +299,9 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
                 <div className="mt-1">
                   Use the WO name columns like the frontend mapper and put <b>1</b>{" "}
                   under the WO items you want to link. Current linked WO names and
-                  codes stay in the sheet for reference.
+                  codes stay in the sheet for reference. Use the ordered{" "}
+                  <b>WO Name List</b> / <b>WO Reference</b> sheets to pick the
+                  correct WO names while filling the matrix.
                 </div>
               </div>
 
@@ -451,7 +478,7 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
                 </div>
               )}
 
-              <div className="overflow-hidden rounded-lg border">
+              <div className="max-h-[360px] overflow-auto rounded-lg border">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b bg-surface-raised text-text-secondary">
                     <tr>
@@ -535,45 +562,51 @@ const WoBulkMappingImportWizard: React.FC<Props> = ({
           )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t p-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded px-4 py-2 text-text-secondary hover:bg-surface-base"
-          >
-            Cancel
-          </button>
-          {step === 1 && (
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t bg-surface-card p-4">
+          <div className="text-xs text-text-muted">
+            {step === 2 && !canCommit
+              ? validation?.isValid
+                ? "No new WO links are ready to import from this file yet."
+                : "Fix the preview validation issues to enable import."
+              : "\u00A0"}
+          </div>
+
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={handlePreview}
-              disabled={!canPreview}
-              className="flex items-center gap-2 rounded bg-primary px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={onClose}
+              className="rounded px-4 py-2 text-text-secondary hover:bg-surface-base"
             >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  Preview
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
+              Cancel
             </button>
-          )}
-          {step === 2 && (
-            <button
-              type="button"
-              onClick={handleCommit}
-              disabled={
-                loading ||
-                !validation?.isValid ||
-                !(summary?.readyRows || summary?.partialRows)
-              }
-              className="rounded bg-success px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? "Importing..." : "Import WO Links"}
-            </button>
-          )}
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={handlePreview}
+                disabled={!canPreview}
+                className="flex items-center gap-2 rounded bg-primary px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:border disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    Preview
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            )}
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={handleCommit}
+                disabled={!canCommit}
+                className="rounded bg-success px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:border disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
+              >
+                {loading ? "Importing..." : "Import WO Links"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

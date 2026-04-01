@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Brain, Sparkles, Clock, CheckCircle2, XCircle, Loader2,
   Play, ChevronRight, TrendingUp, ShieldCheck, ShieldAlert,
-  IndianRupee, RefreshCw,
+  IndianRupee, RefreshCw, Trash2,
 } from "lucide-react";
 import { aiInsightsService } from "../../services/aiInsights.service";
 import type { InsightTemplate, InsightRun } from "../../services/aiInsights.service";
@@ -71,6 +71,7 @@ const AiInsightsPage: React.FC = () => {
   const [runsTotal, setRunsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<number | null>(null);
+  const [deletingRunId, setDeletingRunId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +111,22 @@ const AiInsightsPage: React.FC = () => {
       alert("Analysis failed. Check console for details.");
     } finally {
       setRunningId(null);
+    }
+  };
+
+  const handleDeleteRun = async (runId: number) => {
+    const confirmed = window.confirm("Delete this AI analysis run result?");
+    if (!confirmed) return;
+    setDeletingRunId(runId);
+    try {
+      await aiInsightsService.deleteRun(runId);
+      setRuns((prev) => prev.filter((run) => run.id !== runId));
+      setRunsTotal((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Failed to delete AI analysis run:", error);
+      alert("Failed to delete AI analysis run.");
+    } finally {
+      setDeletingRunId(null);
     }
   };
 
@@ -222,7 +239,13 @@ const AiInsightsPage: React.FC = () => {
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
             {runs.map((run) => (
-              <RunRow key={run.id} run={run} onClick={() => navigate(`/dashboard/ai-insights/runs/${run.id}`)} />
+              <RunRow
+                key={run.id}
+                run={run}
+                deleting={deletingRunId === run.id}
+                onClick={() => navigate(`/dashboard/ai-insights/runs/${run.id}`)}
+                onDelete={() => void handleDeleteRun(run.id)}
+              />
             ))}
           </div>
         )}
@@ -304,9 +327,16 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
 
 // ── RunRow ────────────────────────────────────────────────────────────────────
 
-const RunRow: React.FC<{ run: InsightRun; onClick: () => void }> = ({
+const RunRow: React.FC<{
+  run: InsightRun;
+  deleting?: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}> = ({
   run,
+  deleting = false,
   onClick,
+  onDelete,
 }) => {
   return (
     <button
@@ -330,6 +360,18 @@ const RunRow: React.FC<{ run: InsightRun; onClick: () => void }> = ({
         </p>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          disabled={deleting}
+          className="inline-flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+          title="Delete run result"
+        >
+          <Trash2 size={14} className={deleting ? "animate-pulse" : ""} />
+        </button>
         <StatusBadge status={run.status} />
         <ChevronRight size={14} className="text-gray-300" />
       </div>

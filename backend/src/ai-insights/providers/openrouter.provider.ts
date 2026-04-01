@@ -76,18 +76,53 @@ export class OpenRouterProvider implements IAiProvider {
     }
 
     const data = (await response.json()) as {
-      choices: { message: { content: string } }[];
+      choices: { message?: { content?: unknown }; text?: string; finish_reason?: string }[];
       model: string;
       usage?: { total_tokens: number };
+      output_text?: string;
     };
 
-    const text = data.choices?.[0]?.message?.content ?? '';
+    const text = this.extractText(data).trim();
 
     return {
       text,
       modelUsed: data.model ?? model,
       tokensUsed: data.usage?.total_tokens ?? null,
+      finishReason: data.choices?.[0]?.finish_reason ?? null,
       raw: data,
     };
+  }
+
+  private extractText(data: {
+    choices?: Array<{ message?: { content?: unknown }; text?: string }>;
+    output_text?: string;
+  }): string {
+    const messageContent = data.choices?.[0]?.message?.content;
+    if (typeof messageContent === 'string') return messageContent;
+
+    if (Array.isArray(messageContent)) {
+      const parts = messageContent
+        .map((part) => {
+          if (typeof part === 'string') return part;
+          if (part && typeof part === 'object') {
+            const record = part as Record<string, unknown>;
+            if (typeof record.text === 'string') return record.text;
+            if (typeof record.content === 'string') return record.content;
+          }
+          return '';
+        })
+        .filter(Boolean);
+      if (parts.length > 0) return parts.join('\n');
+    }
+
+    if (typeof data.output_text === 'string' && data.output_text.trim()) {
+      return data.output_text;
+    }
+
+    if (typeof data.choices?.[0]?.text === 'string') {
+      return data.choices[0].text;
+    }
+
+    return '';
   }
 }

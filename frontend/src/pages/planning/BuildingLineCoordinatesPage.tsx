@@ -56,6 +56,12 @@ type EditableStructureSnapshot = {
   floorCount?: number;
   unitCount?: number;
   roomCount?: number;
+  showTowerLabels?: boolean;
+  progressPalette?: Array<{
+    key: string;
+    label: string;
+    color: string;
+  }>;
   units?: EditableUnit[];
   floors?: Array<{
     floorId: number;
@@ -67,6 +73,27 @@ type EditableStructureSnapshot = {
     units: EditableUnit[];
   }>;
 };
+
+const DEFAULT_PROGRESS_PALETTE = [
+  { key: "structure", label: "Structure", color: "#d97706" },
+  { key: "finishing", label: "Finishing", color: "#16a34a" },
+  { key: "phe", label: "PHE", color: "#0891b2" },
+  { key: "electrical", label: "Electrical", color: "#7c3aed" },
+  { key: "fire", label: "Fire", color: "#dc2626" },
+  { key: "externaldevelopment", label: "External Development", color: "#a16207" },
+  { key: "default", label: "Other / Default", color: "#475569" },
+];
+
+function ensureProgressPalette(
+  palette?: Array<{ key: string; label: string; color: string }> | null,
+) {
+  const byKey = new Map((palette || []).map((item) => [item.key, item]));
+  return DEFAULT_PROGRESS_PALETTE.map((item) => ({
+    key: item.key,
+    label: byKey.get(item.key)?.label || item.label,
+    color: byKey.get(item.key)?.color || item.color,
+  }));
+}
 
 type EditableNode = Omit<BuildingLineNode, "children" | "customFeatures" | "structureSnapshot"> & {
   draftCoordinatesText: string;
@@ -92,6 +119,8 @@ function toEditableStructure(
     floorCount: snapshot.floorCount,
     unitCount: snapshot.unitCount,
     roomCount: snapshot.roomCount,
+    showTowerLabels: snapshot.showTowerLabels ?? true,
+    progressPalette: ensureProgressPalette(snapshot.progressPalette),
     units: (snapshot.units || []).map((unit) => ({
       unitId: unit.unitId,
       unitName: unit.unitName,
@@ -134,6 +163,12 @@ function serializeStructure(snapshot: EditableStructureSnapshot | null) {
 
   return {
     ...snapshot,
+    showTowerLabels: snapshot.showTowerLabels ?? true,
+    progressPalette: ensureProgressPalette(snapshot.progressPalette).map((item) => ({
+      key: item.key,
+      label: item.label,
+      color: item.color,
+    })),
     units: snapshot.units?.map((unit) => ({
       unitId: unit.unitId,
       unitName: unit.unitName,
@@ -181,7 +216,13 @@ function toEditable(node: BuildingLineNode): EditableNode {
       heightMeters: feature.heightMeters != null ? String(feature.heightMeters) : "",
       inheritFromBelow: !!feature.inheritFromBelow,
     })),
-    draftStructureSnapshot: toEditableStructure(node.structureSnapshot),
+    draftStructureSnapshot:
+      toEditableStructure(node.structureSnapshot) ||
+      (node.type === "PROJECT"
+        ? {
+            progressPalette: ensureProgressPalette(null),
+          }
+        : null),
     children: (node.children || []).map(toEditable),
   };
 }
@@ -361,6 +402,19 @@ export default function BuildingLineCoordinatesPage() {
     );
   };
 
+  const updateProgressPalette = (
+    nodeId: number,
+    paletteKey: string,
+    color: string,
+  ) => {
+    updateNodeStructure(nodeId, (snapshot) => ({
+      ...(snapshot || {}),
+      progressPalette: ensureProgressPalette(snapshot?.progressPalette).map((item) =>
+        item.key === paletteKey ? { ...item, color } : item,
+      ),
+    }));
+  };
+
   const updateUnitCoordinates = (nodeId: number, unitId: number, value: string) => {
     updateNodeStructure(nodeId, (snapshot) => {
       if (!snapshot?.units) return snapshot;
@@ -496,6 +550,9 @@ export default function BuildingLineCoordinatesPage() {
         })),
         structureSnapshot: serializeStructure(node.draftStructureSnapshot),
       });
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(`setu.project-progress-3d.${pId}`);
+      }
       alert(`${node.name} coordinates saved.`);
     } catch (error: any) {
       alert(error?.response?.data?.message || "Failed to save coordinates.");
@@ -692,6 +749,87 @@ export default function BuildingLineCoordinatesPage() {
                 ))}
               </div>
             </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderProgressPaletteEditor = (node: EditableNode) => {
+    if (node.type !== "PROJECT") return null;
+
+    const palette = ensureProgressPalette(node.draftStructureSnapshot?.progressPalette);
+
+    return (
+      <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-text-primary">
+              Progress Colour Mapping
+            </div>
+            <div className="text-xs text-text-muted">
+              Assign facade colours for activity groups like Structure, Finishing, PHE,
+              Electrical, and Fire. The 3D progress viewer will use these colours in real time.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSave(node)}
+            disabled={!canWrite || savingId === node.id}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            {savingId === node.id ? "Saving..." : "Save Colour Mapping"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <label className="rounded-xl border border-border-default bg-surface-base px-3 py-3 md:col-span-2 xl:col-span-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-text-primary">Show Tower Name Labels</div>
+                <div className="mt-1 text-xs text-text-muted">
+                  Float each tower name above the building in the 3D progress viewer. The label
+                  width will scale to roughly half of the tower width.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={node.draftStructureSnapshot?.showTowerLabels ?? true}
+                disabled={!canWrite}
+                onChange={(e) =>
+                  setNodeDraft(node.id, "draftStructureSnapshot", {
+                    ...(node.draftStructureSnapshot || {}),
+                    progressPalette: ensureProgressPalette(node.draftStructureSnapshot?.progressPalette),
+                    showTowerLabels: e.target.checked,
+                  })
+                }
+                className="mt-1 h-5 w-5 rounded border border-border-default text-primary"
+              />
+            </div>
+          </label>
+          {palette.map((item) => (
+            <label
+              key={item.key}
+              className="rounded-xl border border-border-default bg-surface-base px-3 py-3"
+            >
+              <div className="text-sm font-semibold text-text-primary">{item.label}</div>
+              <div className="mt-2 flex items-center gap-3">
+                <input
+                  type="color"
+                  value={item.color}
+                  disabled={!canWrite}
+                  onChange={(e) => updateProgressPalette(node.id, item.key, e.target.value)}
+                  className="h-11 w-16 cursor-pointer rounded-lg border border-border-default bg-transparent p-1"
+                />
+                <input
+                  type="text"
+                  value={item.color}
+                  disabled
+                  className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2 text-sm text-text-secondary"
+                />
+              </div>
+            </label>
           ))}
         </div>
       </div>
@@ -944,6 +1082,8 @@ export default function BuildingLineCoordinatesPage() {
             </div>
           ) : null}
         </div>
+
+        {renderProgressPaletteEditor(node)}
 
         {hasChildren && isExpanded ? (
           <div className="space-y-3">{node.children.map((child) => renderNode(child, depth + 1))}</div>
