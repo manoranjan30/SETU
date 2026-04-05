@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration {
@@ -78,6 +78,23 @@ class AppDatabase extends _$AppDatabase {
           // Previously missing indexes caused full-table scans on every
           // per-project query; this migration adds them for existing installs.
           await _createIndexes();
+        }
+        if (from < 6) {
+          // v6: Added server_updated_at, local_updated_at, is_deleted to
+          // ProgressEntries and DailyLogs to support delta sync conflict
+          // detection and offline soft-deletes.
+          await customStatement(
+              'ALTER TABLE progress_entries ADD COLUMN server_updated_at INTEGER;');
+          await customStatement(
+              'ALTER TABLE progress_entries ADD COLUMN local_updated_at INTEGER NOT NULL DEFAULT (strftime(\'%s\', \'now\') * 1000);');
+          await customStatement(
+              'ALTER TABLE progress_entries ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;');
+          await customStatement(
+              'ALTER TABLE daily_logs ADD COLUMN server_updated_at INTEGER;');
+          await customStatement(
+              'ALTER TABLE daily_logs ADD COLUMN local_updated_at INTEGER NOT NULL DEFAULT (strftime(\'%s\', \'now\') * 1000);');
+          await customStatement(
+              'ALTER TABLE daily_logs ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;');
         }
       },
     );
@@ -658,6 +675,17 @@ class ProgressEntries extends Table {
   TextColumn get syncError => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   TextColumn get idempotencyKey => text().nullable()(); // For safe retry
+
+  /// Server's last-modified timestamp — used for delta sync conflict detection.
+  /// Null until the record has been synced at least once.
+  DateTimeColumn get serverUpdatedAt => dateTime().nullable()();
+
+  /// Client's last-modified timestamp — set on every local create or update.
+  DateTimeColumn get localUpdatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  /// Soft-delete flag. 1 = deleted locally, row not yet purged.
+  IntColumn get isDeleted => integer().withDefault(const Constant(0))();
 }
 
 /// Daily logs table for offline storage.
@@ -682,6 +710,17 @@ class DailyLogs extends Table {
   TextColumn get syncError => text().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   TextColumn get idempotencyKey => text().nullable()();
+
+  /// Server's last-modified timestamp — used for delta sync conflict detection.
+  /// Null until the record has been synced at least once.
+  DateTimeColumn get serverUpdatedAt => dateTime().nullable()();
+
+  /// Client's last-modified timestamp — set on every local create or update.
+  DateTimeColumn get localUpdatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  /// Soft-delete flag. 1 = deleted locally, row not yet purged.
+  IntColumn get isDeleted => integer().withDefault(const Constant(0))();
 }
 
 /// Generic sync queue for tracking any pending server mutation.
