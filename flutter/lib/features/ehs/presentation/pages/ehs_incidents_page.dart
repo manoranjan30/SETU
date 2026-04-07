@@ -4,6 +4,8 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dart';
+import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart'
+    as widgets;
 
 /// EHS Incidents page — lists all safety incidents for the project.
 /// Shows a scrollable card list with a FAB to report new incidents.
@@ -82,6 +84,8 @@ class _EhsIncidentsPageState extends State<EhsIncidentsPage> {
             tooltip: 'Refresh',
             onPressed: _refresh,
           ),
+          const widgets.LiveSyncStatusIndicator(),
+          const SizedBox(width: 4),
         ],
       ),
       // FAB shown only when user has create permission
