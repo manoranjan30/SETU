@@ -532,4 +532,31 @@ class ApiEndpoints {
   /// Used by [IsometricBuildingPainter] to render real building footprints.
   static String buildingLineCoordinates(int projectId) =>
       '/planning/$projectId/building-line-coordinates';
+
+  // ==================== DELTA SYNC ENDPOINTS ====================
+
+  /// GET /sync/progress?projectId=X&since=ISO
+  /// Returns progress entries updated after [since] for the project.
+  /// [since] is nullable — omit for a full bootstrap fetch.
+  static String syncProgress({required int projectId, String? since}) {
+    final params =
+        'projectId=$projectId${since != null ? '&since=${Uri.encodeComponent(since)}' : ''}';
+    return '/sync/progress?$params';
+  }
+
+  /// GET /sync/quality?projectId=X&since=ISO
+  /// Returns quality lists, activities, and site observations.
+  static String syncQuality({required int projectId, String? since}) {
+    final params =
+        'projectId=$projectId${since != null ? '&since=${Uri.encodeComponent(since)}' : ''}';
+    return '/sync/quality?$params';
+  }
+
+  /// GET /sync/ehs?projectId=X&since=ISO
+  /// Returns EHS observations updated after [since].
+  static String syncEhs({required int projectId, String? since}) {
+    final params =
+        'projectId=$projectId${since != null ? '&since=${Uri.encodeComponent(since)}' : ''}';
+    return '/sync/ehs?$params';
+  }
 }
