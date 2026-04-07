@@ -310,6 +310,30 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
     required int offset,
     required List<EhsSiteObservation> existing,
   }) async {
+    // ── Step 1: Serve Drift cache immediately (page-0 unfiltered only) ──────
+    if (offset == 0) {
+      try {
+        final cached = await _db.getCachedEhsSiteObs(projectId, statusFilter);
+        if (cached.isNotEmpty) {
+          final obs = cached
+              .map((r) => EhsSiteObservation.fromJson(
+                  jsonDecode(r.rawData) as Map<String, dynamic>))
+              .toList();
+          emit(EhsSiteObsLoaded(
+            observations: obs,
+            appliedStatusFilter: statusFilter,
+            appliedSeverityFilter: severityFilter,
+            fromCache: true,
+            hasMore: false,
+          ));
+          // Fall through — try to refresh from server in background.
+        }
+      } catch (_) {
+        // Cache read failed — proceed to API attempt.
+      }
+    }
+
+    // ── Step 2: Attempt live API fetch ──────────────────────────────────────
     try {
       final raw = await _api.getEhsSiteObs(
         projectId: projectId,
@@ -326,41 +350,28 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
       }
       final newObs = rawList.map(EhsSiteObservation.fromJson).toList();
       final all = [...existing, ...newObs];
-      // Advance the pagination cursor.
       _nextOffset = offset + newObs.length;
       emit(EhsSiteObsLoaded(
         observations: all,
         appliedStatusFilter: statusFilter,
         appliedSeverityFilter: severityFilter,
-        // If a full page was returned, there may be more data.
         hasMore: newObs.length == _pageLimit,
       ));
     } catch (_) {
       if (offset > 0) {
-        // Load-more failed — keep existing list, just disable hasMore
+        // Load-more failed — keep existing list, just disable hasMore.
         final current = state;
         if (current is EhsSiteObsLoaded) {
           emit(current.copyWith(hasMore: false, isLoadingMore: false));
         }
         return;
       }
-      // Page-0 failure — try the local Drift cache.
-      try {
-        final cached = await _db.getCachedEhsSiteObs(projectId, statusFilter);
-        final obs = cached
-            .map((r) => EhsSiteObservation.fromJson(
-                jsonDecode(r.rawData) as Map<String, dynamic>))
-            .toList();
-        emit(EhsSiteObsLoaded(
-          observations: obs,
-          appliedStatusFilter: statusFilter,
-          appliedSeverityFilter: severityFilter,
-          fromCache: true,
-          hasMore: false,
-        ));
-      } catch (_) {
-        emit(EhsSiteObsError('Failed to load EHS observations. No cached data available.'));
-      }
+      // Page-0 API failure — if cache was already emitted, stay silent.
+      final current = state;
+      if (current is EhsSiteObsLoaded && current.fromCache) return;
+      // Nothing was cached — show error.
+      emit(EhsSiteObsError(
+          'Failed to load EHS observations. No cached data available.'));
     }
   }
 
