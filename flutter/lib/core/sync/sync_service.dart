@@ -563,11 +563,70 @@ class SyncService {
   /// before the parent entity is submitted, so the sync queue should never
   /// contain raw photo bytes. This stub exists as a safety net in case older
   /// queue rows with `entityType == 'photo'` are encountered.
+  /// Upload a single photo from local storage to the server.
+  ///
+  /// The [SyncQueue] row payload must have:
+  ///   - `localPath`: absolute path to the file on device
+  ///   - `entryType`: 'progress' | 'quality'
+  ///   - `entryLocalId`: local DB id of the parent entry
+  ///
+  /// On success: the parent entry's photoPaths comma-separated column is updated
+  /// to replace [localPath] with the returned server URL, and the queue item is
+  /// deleted.
+  /// On failure: retryCount is incremented by the outer queue processor.
   Future<void> _processPhotoQueueItem(
     SyncQueueData item,
     Map<String, dynamic> payload,
   ) async {
-    // Handle photo uploads - postponed as per requirements
+    final localPath = payload['localPath'] as String?;
+    final entryType = payload['entryType'] as String?;
+    final entryLocalId = payload['entryLocalId'] as int?;
+
+    if (localPath == null || entryType == null || entryLocalId == null) {
+      // Invalid payload — remove from queue to avoid perpetual retries.
+      await (_database.delete(_database.syncQueue)
+            ..where((t) => t.id.equals(item.id)))
+          .go();
+      return;
+    }
+
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      // File was deleted — remove from queue silently.
+      await (_database.delete(_database.syncQueue)
+            ..where((t) => t.id.equals(item.id)))
+          .go();
+      return;
+    }
+
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        localPath,
+        filename: localPath.split('/').last,
+      ),
+    });
+    final response = await _apiClient.uploadFile(formData);
+    final serverUrl = response['url'] as String;
+
+    // Replace the local path with the server URL in the parent entry.
+    if (entryType == 'progress') {
+      final entries = await (_database.select(_database.progressEntries)
+            ..where((t) => t.id.equals(entryLocalId)))
+          .get();
+      if (entries.isNotEmpty) {
+        final entry = entries.first;
+        final paths = entry.photoPaths != null && entry.photoPaths!.isNotEmpty
+            ? entry.photoPaths!.split(',')
+            : <String>[];
+        final updated = paths.map((p) => p == localPath ? serverUrl : p).toList();
+        await (_database.update(_database.progressEntries)
+              ..where((t) => t.id.equals(entryLocalId)))
+            .write(ProgressEntriesCompanion(
+          photoPaths: Value(updated.join(',')),
+        ));
+      }
+    }
+    // Queue item deletion is handled by the outer processor on success.
   }
 
   /// Process quality-specific entries from SyncQueue.

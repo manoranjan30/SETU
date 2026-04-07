@@ -421,7 +421,7 @@ class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
   /// The idempotency key prevents duplicate entries if the sync retries
   /// the same entry after a partial failure (e.g. network cut mid-request).
   Future<int> _saveProgressToLocal(ProgressEntry entry) async {
-    return await _database.into(_database.progressEntries).insert(
+    final newEntryId = await _database.into(_database.progressEntries).insert(
           db.ProgressEntriesCompanion.insert(
             projectId: entry.projectId,
             activityId: entry.activityId,
@@ -436,5 +436,25 @@ class ProgressBloc extends Bloc<ProgressEvent, ProgressState> {
             idempotencyKey: Value(SyncService.generateIdempotencyKey()),
           ),
         );
+
+    // Enqueue each local photo for upload.
+    // Photos are lower-priority (1) than data entries (default 0 or higher).
+    if (entry.photoPaths != null && entry.photoPaths!.isNotEmpty) {
+      for (final localPath in entry.photoPaths!) {
+        await _syncService.addToQueue(
+          entityType: 'photo',
+          entityId: newEntryId,
+          operation: 'upload',
+          payload: {
+            'localPath': localPath,
+            'entryType': 'progress',
+            'entryLocalId': newEntryId,
+          },
+          priority: 1,
+        );
+      }
+    }
+
+    return newEntryId;
   }
 }
