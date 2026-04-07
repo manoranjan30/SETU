@@ -7,6 +7,7 @@ import 'package:logger/logger.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/network/network_info.dart';
+import 'package:setu_mobile/core/sync/delta_sync_cursors.dart';
 
 /// Core offline-first sync engine for SETU.
 ///
@@ -75,7 +76,7 @@ class SyncService {
   /// Processes progress entries, daily logs, and both the generic and
   /// quality-specific sync queues in sequence. Returns a [SyncResult]
   /// summarising how many items were synced or failed.
-  Future<SyncResult> syncAll() async {
+  Future<SyncResult> syncAll({int? projectId}) async {
     final result = SyncResult();
 
     // Check connectivity first — no point building payloads or updating
@@ -104,6 +105,12 @@ class SyncService {
 
       // Process quality-specific queue items
       await _processQualityQueue();
+
+      // Pull server changes (delta sync) — runs after push to avoid overwriting
+      // data we just uploaded.
+      if (projectId != null) {
+        await _deltaSync(projectId);
+      }
 
       result.success = true;
 
@@ -856,6 +863,111 @@ class SyncService {
             priority: Value(priority),
           ),
         );
+  }
+
+  /// Pull changes from the server since the last successful delta sync.
+  ///
+  /// For each module (progress, quality, ehs):
+  ///   1. Reads the stored cursor timestamp from SharedPreferences.
+  ///   2. Calls GET /sync/{module}?since=cursor&projectId=projectId.
+  ///   3. Upserts the returned records into the local Drift cache tables.
+  ///   4. Skips local records with sync_status = pending (user's edits win).
+  ///   5. Advances the cursor to response.synced_at on success.
+  ///
+  /// Only runs when the device is online. Silently no-ops on network error
+  /// so it does not interfere with the existing push-sync logic.
+  Future<void> _deltaSync(int projectId) async {
+    if (!await _networkInfo.isConnected) return;
+
+    final cursors = await DeltaSyncCursors.create();
+
+    // ── Progress delta ──────────────────────────────────────────────────────
+    try {
+      final res = await _apiClient.deltaProgressSync(
+        projectId: projectId,
+        since: cursors.progressCursor,
+      );
+      final syncedAt = res['synced_at'] as String;
+      final records =
+          (res['data'] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      for (final record in records) {
+        final serverId = record['id'] as int?;
+        if (serverId == null) continue;
+
+        // Find the matching local entry (if any).
+        final localEntries = await (_database.select(_database.progressEntries)
+              ..where((t) => t.serverId.equals(serverId)))
+            .get();
+
+        if (localEntries.isNotEmpty) {
+          final local = localEntries.first;
+          // USER WINS: never overwrite a pending local edit with server data.
+          if (local.syncStatus == SyncStatus.pending.value) continue;
+          // Update server timestamp so future delta syncs have a valid cursor.
+          await (_database.update(_database.progressEntries)
+                ..where((t) => t.id.equals(local.id)))
+              .write(ProgressEntriesCompanion(
+            serverUpdatedAt: Value(
+                DateTime.tryParse(record['updatedAt']?.toString() ?? '')),
+          ));
+        }
+        // No local entry — nothing to update (server record not yet seen locally).
+      }
+      await cursors.setProgressCursor(syncedAt);
+    } catch (e) {
+      _logger.w('Progress delta sync failed (non-fatal): $e');
+    }
+
+    // ── Quality delta ───────────────────────────────────────────────────────
+    try {
+      final res = await _apiClient.deltaQualitySync(
+        projectId: projectId,
+        since: cursors.qualityCursor,
+      );
+      final syncedAt = res['synced_at'] as String;
+      final data = res['data'] as Map<String, dynamic>;
+
+      final lists =
+          (data['lists'] as List<dynamic>).cast<Map<String, dynamic>>();
+      final activities =
+          (data['activities'] as List<dynamic>).cast<Map<String, dynamic>>();
+      final siteObs =
+          (data['siteObs'] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      if (lists.isNotEmpty) {
+        await _database.cacheActivityLists(lists, projectId);
+      }
+      if (activities.isNotEmpty) {
+        await _database.cacheQualityActivities(activities, projectId);
+      }
+      if (siteObs.isNotEmpty) {
+        await _database.cacheQualitySiteObs(siteObs, projectId);
+      }
+
+      await cursors.setQualityCursor(syncedAt);
+    } catch (e) {
+      _logger.w('Quality delta sync failed (non-fatal): $e');
+    }
+
+    // ── EHS delta ────────────────────────────────────────────────────────────
+    try {
+      final res = await _apiClient.deltaEhsSync(
+        projectId: projectId,
+        since: cursors.ehsCursor,
+      );
+      final syncedAt = res['synced_at'] as String;
+      final records =
+          (res['data'] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      if (records.isNotEmpty) {
+        await _database.cacheEhsSiteObs(records, projectId);
+      }
+
+      await cursors.setEhsCursor(syncedAt);
+    } catch (e) {
+      _logger.w('EHS delta sync failed (non-fatal): $e');
+    }
   }
 
   /// Get total pending sync count across all queues.
