@@ -186,6 +186,7 @@ import { SnagReleaseApproval } from './snag/entities/snag-release-approval.entit
 import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-step.entity';
 // AI Insights
 import { AiInsightsModule } from './ai-insights/ai-insights.module';
+import { SyncModule } from './sync/sync.module';
 import { AiModelConfig } from './ai-insights/entities/ai-model-config.entity';
 import { InsightTemplate } from './ai-insights/entities/insight-template.entity';
 import { InsightRun } from './ai-insights/entities/insight-run.entity';
@@ -399,6 +400,7 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
     MilestoneModule,
     SnagModule,
     AiInsightsModule,
+    SyncModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

@@ -119,28 +119,6 @@ class $ProgressEntriesTable extends ProgressEntries
   late final GeneratedColumn<String> idempotencyKey = GeneratedColumn<String>(
       'idempotency_key', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _serverUpdatedAtMeta =
-      const VerificationMeta('serverUpdatedAt');
-  @override
-  late final GeneratedColumn<DateTime> serverUpdatedAt =
-      GeneratedColumn<DateTime>('server_updated_at', aliasedName, true,
-          type: DriftSqlType.dateTime, requiredDuringInsert: false);
-  static const VerificationMeta _localUpdatedAtMeta =
-      const VerificationMeta('localUpdatedAt');
-  @override
-  late final GeneratedColumn<DateTime> localUpdatedAt =
-      GeneratedColumn<DateTime>('local_updated_at', aliasedName, false,
-          type: DriftSqlType.dateTime,
-          requiredDuringInsert: false,
-          defaultValue: currentDateAndTime);
-  static const VerificationMeta _isDeletedMeta =
-      const VerificationMeta('isDeleted');
-  @override
-  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
-      'is_deleted', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(0));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -159,10 +137,7 @@ class $ProgressEntriesTable extends ProgressEntries
         syncedAt,
         syncError,
         retryCount,
-        idempotencyKey,
-        serverUpdatedAt,
-        localUpdatedAt,
-        isDeleted
+        idempotencyKey
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -269,22 +244,6 @@ class $ProgressEntriesTable extends ProgressEntries
           idempotencyKey.isAcceptableOrUnknown(
               data['idempotency_key']!, _idempotencyKeyMeta));
     }
-    if (data.containsKey('server_updated_at')) {
-      context.handle(
-          _serverUpdatedAtMeta,
-          serverUpdatedAt.isAcceptableOrUnknown(
-              data['server_updated_at']!, _serverUpdatedAtMeta));
-    }
-    if (data.containsKey('local_updated_at')) {
-      context.handle(
-          _localUpdatedAtMeta,
-          localUpdatedAt.isAcceptableOrUnknown(
-              data['local_updated_at']!, _localUpdatedAtMeta));
-    }
-    if (data.containsKey('is_deleted')) {
-      context.handle(_isDeletedMeta,
-          isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta));
-    }
     return context;
   }
 
@@ -328,12 +287,6 @@ class $ProgressEntriesTable extends ProgressEntries
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
       idempotencyKey: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}idempotency_key']),
-      serverUpdatedAt: attachedDatabase.typeMapping.read(
-          DriftSqlType.dateTime, data['${effectivePrefix}server_updated_at']),
-      localUpdatedAt: attachedDatabase.typeMapping.read(
-          DriftSqlType.dateTime, data['${effectivePrefix}local_updated_at'])!,
-      isDeleted: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}is_deleted'])!,
     );
   }
 
@@ -345,16 +298,11 @@ class $ProgressEntriesTable extends ProgressEntries
 
 class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
   final int id;
-
-  /// Server-assigned ID returned after a successful sync; null until synced.
   final int? serverId;
   final int projectId;
   final int activityId;
   final int epsNodeId;
   final int boqItemId;
-
-  /// Reused to carry the execution plan ID (planId) when submitting to the
-  /// measurements endpoint. Named microActivityId for historical reasons.
   final int? microActivityId;
   final double quantity;
   final String date;
@@ -366,16 +314,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
   final String? syncError;
   final int retryCount;
   final String? idempotencyKey;
-
-  /// Server's last-modified timestamp — used for delta sync conflict detection.
-  /// Null until the record has been synced at least once.
-  final DateTime? serverUpdatedAt;
-
-  /// Client's last-modified timestamp — set on every local create or update.
-  final DateTime localUpdatedAt;
-
-  /// Soft-delete flag. 1 = deleted locally, row not yet purged.
-  final int isDeleted;
   const ProgressEntry(
       {required this.id,
       this.serverId,
@@ -393,10 +331,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       this.syncedAt,
       this.syncError,
       required this.retryCount,
-      this.idempotencyKey,
-      this.serverUpdatedAt,
-      required this.localUpdatedAt,
-      required this.isDeleted});
+      this.idempotencyKey});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -431,11 +366,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
     if (!nullToAbsent || idempotencyKey != null) {
       map['idempotency_key'] = Variable<String>(idempotencyKey);
     }
-    if (!nullToAbsent || serverUpdatedAt != null) {
-      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
-    }
-    map['local_updated_at'] = Variable<DateTime>(localUpdatedAt);
-    map['is_deleted'] = Variable<int>(isDeleted);
     return map;
   }
 
@@ -472,11 +402,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       idempotencyKey: idempotencyKey == null && nullToAbsent
           ? const Value.absent()
           : Value(idempotencyKey),
-      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(serverUpdatedAt),
-      localUpdatedAt: Value(localUpdatedAt),
-      isDeleted: Value(isDeleted),
     );
   }
 
@@ -501,9 +426,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       syncError: serializer.fromJson<String?>(json['syncError']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
       idempotencyKey: serializer.fromJson<String?>(json['idempotencyKey']),
-      serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
-      localUpdatedAt: serializer.fromJson<DateTime>(json['localUpdatedAt']),
-      isDeleted: serializer.fromJson<int>(json['isDeleted']),
     );
   }
   @override
@@ -527,9 +449,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       'syncError': serializer.toJson<String?>(syncError),
       'retryCount': serializer.toJson<int>(retryCount),
       'idempotencyKey': serializer.toJson<String?>(idempotencyKey),
-      'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
-      'localUpdatedAt': serializer.toJson<DateTime>(localUpdatedAt),
-      'isDeleted': serializer.toJson<int>(isDeleted),
     };
   }
 
@@ -550,10 +469,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           Value<DateTime?> syncedAt = const Value.absent(),
           Value<String?> syncError = const Value.absent(),
           int? retryCount,
-          Value<String?> idempotencyKey = const Value.absent(),
-          Value<DateTime?> serverUpdatedAt = const Value.absent(),
-          DateTime? localUpdatedAt,
-          int? isDeleted}) =>
+          Value<String?> idempotencyKey = const Value.absent()}) =>
       ProgressEntry(
         id: id ?? this.id,
         serverId: serverId.present ? serverId.value : this.serverId,
@@ -575,11 +491,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
         retryCount: retryCount ?? this.retryCount,
         idempotencyKey:
             idempotencyKey.present ? idempotencyKey.value : this.idempotencyKey,
-        serverUpdatedAt: serverUpdatedAt.present
-            ? serverUpdatedAt.value
-            : this.serverUpdatedAt,
-        localUpdatedAt: localUpdatedAt ?? this.localUpdatedAt,
-        isDeleted: isDeleted ?? this.isDeleted,
       );
   ProgressEntry copyWithCompanion(ProgressEntriesCompanion data) {
     return ProgressEntry(
@@ -608,13 +519,6 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       idempotencyKey: data.idempotencyKey.present
           ? data.idempotencyKey.value
           : this.idempotencyKey,
-      serverUpdatedAt: data.serverUpdatedAt.present
-          ? data.serverUpdatedAt.value
-          : this.serverUpdatedAt,
-      localUpdatedAt: data.localUpdatedAt.present
-          ? data.localUpdatedAt.value
-          : this.localUpdatedAt,
-      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
 
@@ -637,10 +541,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
           ..write('retryCount: $retryCount, ')
-          ..write('idempotencyKey: $idempotencyKey, ')
-          ..write('serverUpdatedAt: $serverUpdatedAt, ')
-          ..write('localUpdatedAt: $localUpdatedAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -663,10 +564,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
       syncedAt,
       syncError,
       retryCount,
-      idempotencyKey,
-      serverUpdatedAt,
-      localUpdatedAt,
-      isDeleted);
+      idempotencyKey);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -687,10 +585,7 @@ class ProgressEntry extends DataClass implements Insertable<ProgressEntry> {
           other.syncedAt == this.syncedAt &&
           other.syncError == this.syncError &&
           other.retryCount == this.retryCount &&
-          other.idempotencyKey == this.idempotencyKey &&
-          other.serverUpdatedAt == this.serverUpdatedAt &&
-          other.localUpdatedAt == this.localUpdatedAt &&
-          other.isDeleted == this.isDeleted);
+          other.idempotencyKey == this.idempotencyKey);
 }
 
 class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
@@ -711,9 +606,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
   final Value<String?> syncError;
   final Value<int> retryCount;
   final Value<String?> idempotencyKey;
-  final Value<DateTime?> serverUpdatedAt;
-  final Value<DateTime> localUpdatedAt;
-  final Value<int> isDeleted;
   const ProgressEntriesCompanion({
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
@@ -732,9 +624,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.idempotencyKey = const Value.absent(),
-    this.serverUpdatedAt = const Value.absent(),
-    this.localUpdatedAt = const Value.absent(),
-    this.isDeleted = const Value.absent(),
   });
   ProgressEntriesCompanion.insert({
     this.id = const Value.absent(),
@@ -754,9 +643,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.idempotencyKey = const Value.absent(),
-    this.serverUpdatedAt = const Value.absent(),
-    this.localUpdatedAt = const Value.absent(),
-    this.isDeleted = const Value.absent(),
   })  : projectId = Value(projectId),
         activityId = Value(activityId),
         epsNodeId = Value(epsNodeId),
@@ -781,9 +667,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     Expression<String>? syncError,
     Expression<int>? retryCount,
     Expression<String>? idempotencyKey,
-    Expression<DateTime>? serverUpdatedAt,
-    Expression<DateTime>? localUpdatedAt,
-    Expression<int>? isDeleted,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -803,9 +686,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
       if (syncError != null) 'sync_error': syncError,
       if (retryCount != null) 'retry_count': retryCount,
       if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
-      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
-      if (localUpdatedAt != null) 'local_updated_at': localUpdatedAt,
-      if (isDeleted != null) 'is_deleted': isDeleted,
     });
   }
 
@@ -826,10 +706,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
       Value<DateTime?>? syncedAt,
       Value<String?>? syncError,
       Value<int>? retryCount,
-      Value<String?>? idempotencyKey,
-      Value<DateTime?>? serverUpdatedAt,
-      Value<DateTime>? localUpdatedAt,
-      Value<int>? isDeleted}) {
+      Value<String?>? idempotencyKey}) {
     return ProgressEntriesCompanion(
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
@@ -848,9 +725,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
       syncError: syncError ?? this.syncError,
       retryCount: retryCount ?? this.retryCount,
       idempotencyKey: idempotencyKey ?? this.idempotencyKey,
-      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
-      localUpdatedAt: localUpdatedAt ?? this.localUpdatedAt,
-      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -908,15 +782,6 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
     if (idempotencyKey.present) {
       map['idempotency_key'] = Variable<String>(idempotencyKey.value);
     }
-    if (serverUpdatedAt.present) {
-      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt.value);
-    }
-    if (localUpdatedAt.present) {
-      map['local_updated_at'] = Variable<DateTime>(localUpdatedAt.value);
-    }
-    if (isDeleted.present) {
-      map['is_deleted'] = Variable<int>(isDeleted.value);
-    }
     return map;
   }
 
@@ -939,10 +804,7 @@ class ProgressEntriesCompanion extends UpdateCompanion<ProgressEntry> {
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
           ..write('retryCount: $retryCount, ')
-          ..write('idempotencyKey: $idempotencyKey, ')
-          ..write('serverUpdatedAt: $serverUpdatedAt, ')
-          ..write('localUpdatedAt: $localUpdatedAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -1059,28 +921,6 @@ class $DailyLogsTable extends DailyLogs
   late final GeneratedColumn<String> idempotencyKey = GeneratedColumn<String>(
       'idempotency_key', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _serverUpdatedAtMeta =
-      const VerificationMeta('serverUpdatedAt');
-  @override
-  late final GeneratedColumn<DateTime> serverUpdatedAt =
-      GeneratedColumn<DateTime>('server_updated_at', aliasedName, true,
-          type: DriftSqlType.dateTime, requiredDuringInsert: false);
-  static const VerificationMeta _localUpdatedAtMeta =
-      const VerificationMeta('localUpdatedAt');
-  @override
-  late final GeneratedColumn<DateTime> localUpdatedAt =
-      GeneratedColumn<DateTime>('local_updated_at', aliasedName, false,
-          type: DriftSqlType.dateTime,
-          requiredDuringInsert: false,
-          defaultValue: currentDateAndTime);
-  static const VerificationMeta _isDeletedMeta =
-      const VerificationMeta('isDeleted');
-  @override
-  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
-      'is_deleted', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(0));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -1098,10 +938,7 @@ class $DailyLogsTable extends DailyLogs
         syncedAt,
         syncError,
         retryCount,
-        idempotencyKey,
-        serverUpdatedAt,
-        localUpdatedAt,
-        isDeleted
+        idempotencyKey
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1200,22 +1037,6 @@ class $DailyLogsTable extends DailyLogs
           idempotencyKey.isAcceptableOrUnknown(
               data['idempotency_key']!, _idempotencyKeyMeta));
     }
-    if (data.containsKey('server_updated_at')) {
-      context.handle(
-          _serverUpdatedAtMeta,
-          serverUpdatedAt.isAcceptableOrUnknown(
-              data['server_updated_at']!, _serverUpdatedAtMeta));
-    }
-    if (data.containsKey('local_updated_at')) {
-      context.handle(
-          _localUpdatedAtMeta,
-          localUpdatedAt.isAcceptableOrUnknown(
-              data['local_updated_at']!, _localUpdatedAtMeta));
-    }
-    if (data.containsKey('is_deleted')) {
-      context.handle(_isDeletedMeta,
-          isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta));
-    }
     return context;
   }
 
@@ -1257,12 +1078,6 @@ class $DailyLogsTable extends DailyLogs
           .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
       idempotencyKey: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}idempotency_key']),
-      serverUpdatedAt: attachedDatabase.typeMapping.read(
-          DriftSqlType.dateTime, data['${effectivePrefix}server_updated_at']),
-      localUpdatedAt: attachedDatabase.typeMapping.read(
-          DriftSqlType.dateTime, data['${effectivePrefix}local_updated_at'])!,
-      isDeleted: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}is_deleted'])!,
     );
   }
 
@@ -1289,16 +1104,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
   final String? syncError;
   final int retryCount;
   final String? idempotencyKey;
-
-  /// Server's last-modified timestamp — used for delta sync conflict detection.
-  /// Null until the record has been synced at least once.
-  final DateTime? serverUpdatedAt;
-
-  /// Client's last-modified timestamp — set on every local create or update.
-  final DateTime localUpdatedAt;
-
-  /// Soft-delete flag. 1 = deleted locally, row not yet purged.
-  final int isDeleted;
   const DailyLog(
       {required this.id,
       this.serverId,
@@ -1315,10 +1120,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       this.syncedAt,
       this.syncError,
       required this.retryCount,
-      this.idempotencyKey,
-      this.serverUpdatedAt,
-      required this.localUpdatedAt,
-      required this.isDeleted});
+      this.idempotencyKey});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1354,11 +1156,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
     if (!nullToAbsent || idempotencyKey != null) {
       map['idempotency_key'] = Variable<String>(idempotencyKey);
     }
-    if (!nullToAbsent || serverUpdatedAt != null) {
-      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
-    }
-    map['local_updated_at'] = Variable<DateTime>(localUpdatedAt);
-    map['is_deleted'] = Variable<int>(isDeleted);
     return map;
   }
 
@@ -1396,11 +1193,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       idempotencyKey: idempotencyKey == null && nullToAbsent
           ? const Value.absent()
           : Value(idempotencyKey),
-      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(serverUpdatedAt),
-      localUpdatedAt: Value(localUpdatedAt),
-      isDeleted: Value(isDeleted),
     );
   }
 
@@ -1424,9 +1216,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       syncError: serializer.fromJson<String?>(json['syncError']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
       idempotencyKey: serializer.fromJson<String?>(json['idempotencyKey']),
-      serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
-      localUpdatedAt: serializer.fromJson<DateTime>(json['localUpdatedAt']),
-      isDeleted: serializer.fromJson<int>(json['isDeleted']),
     );
   }
   @override
@@ -1449,9 +1238,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       'syncError': serializer.toJson<String?>(syncError),
       'retryCount': serializer.toJson<int>(retryCount),
       'idempotencyKey': serializer.toJson<String?>(idempotencyKey),
-      'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
-      'localUpdatedAt': serializer.toJson<DateTime>(localUpdatedAt),
-      'isDeleted': serializer.toJson<int>(isDeleted),
     };
   }
 
@@ -1471,10 +1257,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           Value<DateTime?> syncedAt = const Value.absent(),
           Value<String?> syncError = const Value.absent(),
           int? retryCount,
-          Value<String?> idempotencyKey = const Value.absent(),
-          Value<DateTime?> serverUpdatedAt = const Value.absent(),
-          DateTime? localUpdatedAt,
-          int? isDeleted}) =>
+          Value<String?> idempotencyKey = const Value.absent()}) =>
       DailyLog(
         id: id ?? this.id,
         serverId: serverId.present ? serverId.value : this.serverId,
@@ -1494,11 +1277,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
         retryCount: retryCount ?? this.retryCount,
         idempotencyKey:
             idempotencyKey.present ? idempotencyKey.value : this.idempotencyKey,
-        serverUpdatedAt: serverUpdatedAt.present
-            ? serverUpdatedAt.value
-            : this.serverUpdatedAt,
-        localUpdatedAt: localUpdatedAt ?? this.localUpdatedAt,
-        isDeleted: isDeleted ?? this.isDeleted,
       );
   DailyLog copyWithCompanion(DailyLogsCompanion data) {
     return DailyLog(
@@ -1529,13 +1307,6 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       idempotencyKey: data.idempotencyKey.present
           ? data.idempotencyKey.value
           : this.idempotencyKey,
-      serverUpdatedAt: data.serverUpdatedAt.present
-          ? data.serverUpdatedAt.value
-          : this.serverUpdatedAt,
-      localUpdatedAt: data.localUpdatedAt.present
-          ? data.localUpdatedAt.value
-          : this.localUpdatedAt,
-      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
 
@@ -1557,10 +1328,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
           ..write('retryCount: $retryCount, ')
-          ..write('idempotencyKey: $idempotencyKey, ')
-          ..write('serverUpdatedAt: $serverUpdatedAt, ')
-          ..write('localUpdatedAt: $localUpdatedAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -1582,10 +1350,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
       syncedAt,
       syncError,
       retryCount,
-      idempotencyKey,
-      serverUpdatedAt,
-      localUpdatedAt,
-      isDeleted);
+      idempotencyKey);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1605,10 +1370,7 @@ class DailyLog extends DataClass implements Insertable<DailyLog> {
           other.syncedAt == this.syncedAt &&
           other.syncError == this.syncError &&
           other.retryCount == this.retryCount &&
-          other.idempotencyKey == this.idempotencyKey &&
-          other.serverUpdatedAt == this.serverUpdatedAt &&
-          other.localUpdatedAt == this.localUpdatedAt &&
-          other.isDeleted == this.isDeleted);
+          other.idempotencyKey == this.idempotencyKey);
 }
 
 class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
@@ -1628,9 +1390,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
   final Value<String?> syncError;
   final Value<int> retryCount;
   final Value<String?> idempotencyKey;
-  final Value<DateTime?> serverUpdatedAt;
-  final Value<DateTime> localUpdatedAt;
-  final Value<int> isDeleted;
   const DailyLogsCompanion({
     this.id = const Value.absent(),
     this.serverId = const Value.absent(),
@@ -1648,9 +1407,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.idempotencyKey = const Value.absent(),
-    this.serverUpdatedAt = const Value.absent(),
-    this.localUpdatedAt = const Value.absent(),
-    this.isDeleted = const Value.absent(),
   });
   DailyLogsCompanion.insert({
     this.id = const Value.absent(),
@@ -1669,9 +1425,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     this.syncError = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.idempotencyKey = const Value.absent(),
-    this.serverUpdatedAt = const Value.absent(),
-    this.localUpdatedAt = const Value.absent(),
-    this.isDeleted = const Value.absent(),
   })  : microActivityId = Value(microActivityId),
         logDate = Value(logDate),
         plannedQty = Value(plannedQty),
@@ -1693,9 +1446,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     Expression<String>? syncError,
     Expression<int>? retryCount,
     Expression<String>? idempotencyKey,
-    Expression<DateTime>? serverUpdatedAt,
-    Expression<DateTime>? localUpdatedAt,
-    Expression<int>? isDeleted,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1714,9 +1464,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
       if (syncError != null) 'sync_error': syncError,
       if (retryCount != null) 'retry_count': retryCount,
       if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
-      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
-      if (localUpdatedAt != null) 'local_updated_at': localUpdatedAt,
-      if (isDeleted != null) 'is_deleted': isDeleted,
     });
   }
 
@@ -1736,10 +1483,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
       Value<DateTime?>? syncedAt,
       Value<String?>? syncError,
       Value<int>? retryCount,
-      Value<String?>? idempotencyKey,
-      Value<DateTime?>? serverUpdatedAt,
-      Value<DateTime>? localUpdatedAt,
-      Value<int>? isDeleted}) {
+      Value<String?>? idempotencyKey}) {
     return DailyLogsCompanion(
       id: id ?? this.id,
       serverId: serverId ?? this.serverId,
@@ -1757,9 +1501,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
       syncError: syncError ?? this.syncError,
       retryCount: retryCount ?? this.retryCount,
       idempotencyKey: idempotencyKey ?? this.idempotencyKey,
-      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
-      localUpdatedAt: localUpdatedAt ?? this.localUpdatedAt,
-      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -1814,15 +1555,6 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
     if (idempotencyKey.present) {
       map['idempotency_key'] = Variable<String>(idempotencyKey.value);
     }
-    if (serverUpdatedAt.present) {
-      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt.value);
-    }
-    if (localUpdatedAt.present) {
-      map['local_updated_at'] = Variable<DateTime>(localUpdatedAt.value);
-    }
-    if (isDeleted.present) {
-      map['is_deleted'] = Variable<int>(isDeleted.value);
-    }
     return map;
   }
 
@@ -1844,10 +1576,7 @@ class DailyLogsCompanion extends UpdateCompanion<DailyLog> {
           ..write('syncedAt: $syncedAt, ')
           ..write('syncError: $syncError, ')
           ..write('retryCount: $retryCount, ')
-          ..write('idempotencyKey: $idempotencyKey, ')
-          ..write('serverUpdatedAt: $serverUpdatedAt, ')
-          ..write('localUpdatedAt: $localUpdatedAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('idempotencyKey: $idempotencyKey')
           ..write(')'))
         .toString();
   }
@@ -2044,24 +1773,14 @@ class $SyncQueueTable extends SyncQueue
 
 class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
   final int id;
-
-  /// Logical type of the operation, e.g. 'progress', 'daily_log',
-  /// 'quality_rfi', 'ehs_site_obs_create'. Used as the dispatch key in
-  /// [SyncService._processQualityQueue].
   final String entityType;
   final int entityId;
   final String operation;
-
-  /// Full JSON-encoded payload to be sent to the server. Storing the entire
-  /// payload avoids the need to re-query the source table at sync time.
   final String payload;
   final int retryCount;
   final DateTime createdAt;
   final DateTime? lastAttemptAt;
   final String? lastError;
-
-  /// Higher priority items are processed first. Used to ensure user-initiated
-  /// operations (e.g. RFI raises) complete before background refreshes.
   final int priority;
   const SyncQueueData(
       {required this.id,
@@ -3820,8 +3539,6 @@ class $CachedEpsNodesTable extends CachedEpsNodes
 class CachedEpsNode extends DataClass implements Insertable<CachedEpsNode> {
   final int id;
   final int projectId;
-
-  /// Null for root-level nodes; set for all child nodes.
   final int? parentId;
   final String name;
   final String? code;
@@ -4267,15 +3984,9 @@ class CachedQualityActivityList extends DataClass
     implements Insertable<CachedQualityActivityList> {
   final int id;
   final int projectId;
-
-  /// Optional — when non-null, the list is specific to this EPS node (e.g. a
-  /// floor-level inspection checklist).
   final int? epsNodeId;
   final String name;
   final String? description;
-
-  /// Denormalised count so the list view can show "12 activities" without
-  /// loading the activities themselves.
   final int activityCount;
   final String rawData;
   final DateTime cachedAt;
@@ -4748,19 +4459,10 @@ class CachedQualityActivity extends DataClass
   final int listId;
   final int projectId;
   final int? epsNodeId;
-
-  /// Display order within the checklist — the UI sorts ascending by this value.
   final int sequence;
   final String activityName;
-
-  /// Lifecycle state: NOT_STARTED → IN_PROGRESS → PENDING_INSPECTION →
-  /// APPROVED / REJECTED.
   final String status;
-
-  /// 1 if this is a hold point (work must stop until approved), else 0.
   final int holdPoint;
-
-  /// 1 if this is a witness point (third party should observe), else 0.
   final int witnessPoint;
   final String rawData;
   final DateTime cachedAt;
@@ -5206,8 +4908,6 @@ class $CachedQualitySiteObsTable extends CachedQualitySiteObs
 
 class CachedQualitySiteOb extends DataClass
     implements Insertable<CachedQualitySiteOb> {
-  /// UUID assigned by the server — stored as text to avoid int overflow on
-  /// 64-bit UUIDs and to match the server's string type.
   final String id;
   final int projectId;
   final String status;
@@ -5842,9 +5542,6 @@ typedef $$ProgressEntriesTableCreateCompanionBuilder = ProgressEntriesCompanion
   Value<String?> syncError,
   Value<int> retryCount,
   Value<String?> idempotencyKey,
-  Value<DateTime?> serverUpdatedAt,
-  Value<DateTime> localUpdatedAt,
-  Value<int> isDeleted,
 });
 typedef $$ProgressEntriesTableUpdateCompanionBuilder = ProgressEntriesCompanion
     Function({
@@ -5865,9 +5562,6 @@ typedef $$ProgressEntriesTableUpdateCompanionBuilder = ProgressEntriesCompanion
   Value<String?> syncError,
   Value<int> retryCount,
   Value<String?> idempotencyKey,
-  Value<DateTime?> serverUpdatedAt,
-  Value<DateTime> localUpdatedAt,
-  Value<int> isDeleted,
 });
 
 class $$ProgressEntriesTableFilterComposer
@@ -5931,17 +5625,6 @@ class $$ProgressEntriesTableFilterComposer
   ColumnFilters<String> get idempotencyKey => $composableBuilder(
       column: $table.idempotencyKey,
       builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<DateTime> get serverUpdatedAt => $composableBuilder(
-      column: $table.serverUpdatedAt,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<DateTime> get localUpdatedAt => $composableBuilder(
-      column: $table.localUpdatedAt,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<int> get isDeleted => $composableBuilder(
-      column: $table.isDeleted, builder: (column) => ColumnFilters(column));
 }
 
 class $$ProgressEntriesTableOrderingComposer
@@ -6005,17 +5688,6 @@ class $$ProgressEntriesTableOrderingComposer
   ColumnOrderings<String> get idempotencyKey => $composableBuilder(
       column: $table.idempotencyKey,
       builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<DateTime> get serverUpdatedAt => $composableBuilder(
-      column: $table.serverUpdatedAt,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<DateTime> get localUpdatedAt => $composableBuilder(
-      column: $table.localUpdatedAt,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<int> get isDeleted => $composableBuilder(
-      column: $table.isDeleted, builder: (column) => ColumnOrderings(column));
 }
 
 class $$ProgressEntriesTableAnnotationComposer
@@ -6077,15 +5749,6 @@ class $$ProgressEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get idempotencyKey => $composableBuilder(
       column: $table.idempotencyKey, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get serverUpdatedAt => $composableBuilder(
-      column: $table.serverUpdatedAt, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get localUpdatedAt => $composableBuilder(
-      column: $table.localUpdatedAt, builder: (column) => column);
-
-  GeneratedColumn<int> get isDeleted =>
-      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 }
 
 class $$ProgressEntriesTableTableManager extends RootTableManager<
@@ -6132,9 +5795,6 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             Value<String?> idempotencyKey = const Value.absent(),
-            Value<DateTime?> serverUpdatedAt = const Value.absent(),
-            Value<DateTime> localUpdatedAt = const Value.absent(),
-            Value<int> isDeleted = const Value.absent(),
           }) =>
               ProgressEntriesCompanion(
             id: id,
@@ -6154,9 +5814,6 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             syncError: syncError,
             retryCount: retryCount,
             idempotencyKey: idempotencyKey,
-            serverUpdatedAt: serverUpdatedAt,
-            localUpdatedAt: localUpdatedAt,
-            isDeleted: isDeleted,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -6176,9 +5833,6 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             Value<String?> idempotencyKey = const Value.absent(),
-            Value<DateTime?> serverUpdatedAt = const Value.absent(),
-            Value<DateTime> localUpdatedAt = const Value.absent(),
-            Value<int> isDeleted = const Value.absent(),
           }) =>
               ProgressEntriesCompanion.insert(
             id: id,
@@ -6198,9 +5852,6 @@ class $$ProgressEntriesTableTableManager extends RootTableManager<
             syncError: syncError,
             retryCount: retryCount,
             idempotencyKey: idempotencyKey,
-            serverUpdatedAt: serverUpdatedAt,
-            localUpdatedAt: localUpdatedAt,
-            isDeleted: isDeleted,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -6241,9 +5892,6 @@ typedef $$DailyLogsTableCreateCompanionBuilder = DailyLogsCompanion Function({
   Value<String?> syncError,
   Value<int> retryCount,
   Value<String?> idempotencyKey,
-  Value<DateTime?> serverUpdatedAt,
-  Value<DateTime> localUpdatedAt,
-  Value<int> isDeleted,
 });
 typedef $$DailyLogsTableUpdateCompanionBuilder = DailyLogsCompanion Function({
   Value<int> id,
@@ -6262,9 +5910,6 @@ typedef $$DailyLogsTableUpdateCompanionBuilder = DailyLogsCompanion Function({
   Value<String?> syncError,
   Value<int> retryCount,
   Value<String?> idempotencyKey,
-  Value<DateTime?> serverUpdatedAt,
-  Value<DateTime> localUpdatedAt,
-  Value<int> isDeleted,
 });
 
 class $$DailyLogsTableFilterComposer
@@ -6325,17 +5970,6 @@ class $$DailyLogsTableFilterComposer
   ColumnFilters<String> get idempotencyKey => $composableBuilder(
       column: $table.idempotencyKey,
       builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<DateTime> get serverUpdatedAt => $composableBuilder(
-      column: $table.serverUpdatedAt,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<DateTime> get localUpdatedAt => $composableBuilder(
-      column: $table.localUpdatedAt,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<int> get isDeleted => $composableBuilder(
-      column: $table.isDeleted, builder: (column) => ColumnFilters(column));
 }
 
 class $$DailyLogsTableOrderingComposer
@@ -6397,17 +6031,6 @@ class $$DailyLogsTableOrderingComposer
   ColumnOrderings<String> get idempotencyKey => $composableBuilder(
       column: $table.idempotencyKey,
       builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<DateTime> get serverUpdatedAt => $composableBuilder(
-      column: $table.serverUpdatedAt,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<DateTime> get localUpdatedAt => $composableBuilder(
-      column: $table.localUpdatedAt,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<int> get isDeleted => $composableBuilder(
-      column: $table.isDeleted, builder: (column) => ColumnOrderings(column));
 }
 
 class $$DailyLogsTableAnnotationComposer
@@ -6466,15 +6089,6 @@ class $$DailyLogsTableAnnotationComposer
 
   GeneratedColumn<String> get idempotencyKey => $composableBuilder(
       column: $table.idempotencyKey, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get serverUpdatedAt => $composableBuilder(
-      column: $table.serverUpdatedAt, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get localUpdatedAt => $composableBuilder(
-      column: $table.localUpdatedAt, builder: (column) => column);
-
-  GeneratedColumn<int> get isDeleted =>
-      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 }
 
 class $$DailyLogsTableTableManager extends RootTableManager<
@@ -6516,9 +6130,6 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             Value<String?> idempotencyKey = const Value.absent(),
-            Value<DateTime?> serverUpdatedAt = const Value.absent(),
-            Value<DateTime> localUpdatedAt = const Value.absent(),
-            Value<int> isDeleted = const Value.absent(),
           }) =>
               DailyLogsCompanion(
             id: id,
@@ -6537,9 +6148,6 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             syncError: syncError,
             retryCount: retryCount,
             idempotencyKey: idempotencyKey,
-            serverUpdatedAt: serverUpdatedAt,
-            localUpdatedAt: localUpdatedAt,
-            isDeleted: isDeleted,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -6558,9 +6166,6 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             Value<String?> syncError = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
             Value<String?> idempotencyKey = const Value.absent(),
-            Value<DateTime?> serverUpdatedAt = const Value.absent(),
-            Value<DateTime> localUpdatedAt = const Value.absent(),
-            Value<int> isDeleted = const Value.absent(),
           }) =>
               DailyLogsCompanion.insert(
             id: id,
@@ -6579,9 +6184,6 @@ class $$DailyLogsTableTableManager extends RootTableManager<
             syncError: syncError,
             retryCount: retryCount,
             idempotencyKey: idempotencyKey,
-            serverUpdatedAt: serverUpdatedAt,
-            localUpdatedAt: localUpdatedAt,
-            isDeleted: isDeleted,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
