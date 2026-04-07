@@ -8,7 +8,19 @@ export default defineConfig({
     include: ['ag-grid-react', 'ag-grid-community', 'react-pdf', 'pdfjs-dist', 'react-grid-layout']
   },
   server: {
-    allowedHosts: true
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    allowedHosts: true,
+    hmr: {
+      host: 'localhost',
+      clientPort: 5173,
+      protocol: 'ws',
+    },
+    watch: {
+      usePolling: true,
+      interval: 1000,
+    },
   },
   build: {
     chunkSizeWarningLimit: 1000,
