@@ -599,13 +599,7 @@ class SyncService {
       return;
     }
 
-    final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(
-        localPath,
-        filename: localPath.split('/').last,
-      ),
-    });
-    final response = await _apiClient.uploadFile(formData);
+    final response = await _apiClient.uploadFile(filePath: localPath);
     final serverUrl = response['url'] as String;
 
     // Replace the local path with the server URL in the parent entry.
@@ -998,7 +992,16 @@ class SyncService {
         await _database.cacheActivityLists(lists, projectId);
       }
       if (activities.isNotEmpty) {
-        await _database.cacheQualityActivities(activities, projectId);
+        // Group activities by listId so the cache method's signature is satisfied.
+        final byList = <int, List<Map<String, dynamic>>>{};
+        for (final a in activities) {
+          final lid = (a['listId'] as num?)?.toInt() ?? 0;
+          byList.putIfAbsent(lid, () => []).add(a);
+        }
+        for (final entry in byList.entries) {
+          await _database.cacheQualityActivities(
+              entry.value, entry.key, projectId, null);
+        }
       }
       if (siteObs.isNotEmpty) {
         await _database.cacheQualitySiteObs(siteObs, projectId);
