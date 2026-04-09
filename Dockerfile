@@ -1,8 +1,15 @@
 # Stage 1: Build Frontend (Dev)
 FROM node:22-alpine AS frontend-dev
 WORKDIR /app/frontend
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG http_proxy=
+ARG https_proxy=
+ARG NO_PROXY=
+ARG no_proxy=
+ENV HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= NO_PROXY= no_proxy=
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 COPY frontend/ .
 
 # Stage 2: Build Frontend (Prod)
@@ -12,8 +19,15 @@ RUN npm run build
 # Stage 3: Build Backend (Dev)
 FROM node:22-alpine AS backend-dev
 WORKDIR /app/backend
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG http_proxy=
+ARG https_proxy=
+ARG NO_PROXY=
+ARG no_proxy=
+ENV HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= NO_PROXY= no_proxy=
 COPY backend/package*.json ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 COPY backend/ .
 
 # Stage 4: Build Backend (Prod)
