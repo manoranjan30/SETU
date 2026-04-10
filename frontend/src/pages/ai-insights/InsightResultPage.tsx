@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   Brain, ArrowLeft, CheckCircle2, XCircle, Loader2,
   Clock, TrendingUp, TrendingDown, Minus,
-  AlertTriangle, Info, CheckCircle,
+  AlertTriangle, Info, CheckCircle, Trash2,
 } from "lucide-react";
 import { aiInsightsService } from "../../services/aiInsights.service";
 import type { InsightRun } from "../../services/aiInsights.service";
@@ -118,6 +118,7 @@ const InsightResultPage: React.FC = () => {
   const [run, setRun] = useState<InsightRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -161,6 +162,20 @@ const InsightResultPage: React.FC = () => {
   const result = run.result as Record<string, unknown> | null;
   const isRunning = run.status === "RUNNING" || run.status === "PENDING";
 
+  const handleDelete = async () => {
+    const confirmed = window.confirm("Delete this AI analysis run result?");
+    if (!confirmed || !run) return;
+    setDeleting(true);
+    try {
+      await aiInsightsService.deleteRun(run.id);
+      navigate("/dashboard/ai-insights");
+    } catch (error) {
+      console.error("Failed to delete AI analysis run:", error);
+      alert("Failed to delete AI analysis run.");
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       {/* Back */}
@@ -193,7 +208,16 @@ const InsightResultPage: React.FC = () => {
               {run.durationMs && ` · ${(run.durationMs / 1000).toFixed(1)}s`}
             </p>
           </div>
-          <div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 size={14} />
+              {deleting ? "Deleting..." : "Delete Run"}
+            </button>
             {isRunning ? (
               <span className="flex items-center gap-1.5 text-sm text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full font-medium">
                 <Loader2 size={14} className="animate-spin" />
@@ -232,7 +256,23 @@ const InsightResultPage: React.FC = () => {
 
       {/* Result */}
       {run.status === "COMPLETED" && result && (
-        <InsightResultView result={result} />
+        <InsightResultView result={result} rawResponse={run.rawResponse} />
+      )}
+
+      {run.status === "COMPLETED" && !result && run.rawResponse && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-gray-600 mb-3">Analysis Result</h2>
+          <SimpleMarkdown text={run.rawResponse} />
+        </div>
+      )}
+
+      {run.status === "COMPLETED" && !result && !run.rawResponse && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-amber-800 mb-2">Analysis Result</h2>
+          <p className="text-sm text-amber-700">
+            This AI run completed, but no readable analysis content was returned. Please rerun the analysis.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -240,7 +280,10 @@ const InsightResultPage: React.FC = () => {
 
 // ─── Insight Result View — renders structured result fields ──────────────────
 
-const InsightResultView: React.FC<{ result: Record<string, unknown> }> = ({ result }) => {
+const InsightResultView: React.FC<{
+  result: Record<string, unknown>;
+  rawResponse?: string | null;
+}> = ({ result, rawResponse }) => {
   const headline = result.headline as string | undefined;
   const overallStatus = result.overallStatus as string | undefined;
   const sections = result.sections as { title: string; content: string; status: "good" | "warning" | "critical" }[] | undefined;
@@ -253,6 +296,31 @@ const InsightResultView: React.FC<{ result: Record<string, unknown> }> = ({ resu
   const topHazards = result.topHazards as { hazard: string; frequency: number; severity: string }[] | undefined;
   const riskScore = result.riskScore as number | undefined;
   const varianceItems = result.varianceItems as { boqCode: string; description: string; variancePct: number; severity: string }[] | undefined;
+  const normalizedRawResult =
+    typeof result.raw === "string" && result.raw.trim().length > 0
+      ? result.raw.trim()
+      : null;
+  const normalizedRawSummary =
+    typeof result.summary === "string" && result.summary.trim().length > 0
+      ? result.summary.trim()
+      : null;
+  const normalizedRawResponse =
+    typeof rawResponse === "string" && rawResponse.trim().length > 0
+      ? rawResponse.trim()
+      : null;
+  const rawText = normalizedRawResult || normalizedRawSummary || normalizedRawResponse;
+  const hasStructuredContent = Boolean(
+    headline ||
+    overallStatus ||
+    progressPercentage !== undefined ||
+    riskScore !== undefined ||
+    (keyMetrics && keyMetrics.length > 0) ||
+    (sections && sections.length > 0) ||
+    (topDefectCategories && topDefectCategories.length > 0) ||
+    (topHazards && topHazards.length > 0) ||
+    (varianceItems && varianceItems.length > 0) ||
+    (recommendations && recommendations.length > 0),
+  );
 
   return (
     <div className="space-y-5">
@@ -390,6 +458,29 @@ const InsightResultView: React.FC<{ result: Record<string, unknown> }> = ({ resu
                 <p className="text-sm text-gray-700">{r}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {!hasStructuredContent && rawText && (
+        <div>
+          <h2 className="text-sm font-semibold text-gray-600 mb-2">Analysis Result</h2>
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <SimpleMarkdown text={rawText} />
+          </div>
+        </div>
+      )}
+
+      {!hasStructuredContent && !rawText && (
+        <div>
+          <h2 className="text-sm font-semibold text-gray-600 mb-2">Analysis Result</h2>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-sm text-amber-700">
+              This AI run completed, but the model did not return readable analysis content for display.
+            </p>
+            <pre className="mt-3 whitespace-pre-wrap break-words text-xs text-amber-900">
+              {JSON.stringify(result, null, 2)}
+            </pre>
           </div>
         </div>
       )}

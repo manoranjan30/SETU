@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/activity_list_detail_page.dart';
+import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart'
+    as widgets;
 
 /// Entry page for the Quality Request (site engineer) flow.
 /// Shows a two-panel layout:
@@ -53,6 +55,10 @@ class _QualityRequestPageState extends State<QualityRequestPage> {
                     const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
           ],
         ),
+        actions: const [
+          widgets.LiveSyncStatusIndicator(),
+          SizedBox(width: 8),
+        ],
       ),
       body: BlocConsumer<QualityRequestBloc, QualityRequestState>(
         listener: (context, state) {

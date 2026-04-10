@@ -6,6 +6,8 @@ import 'package:setu_mobile/core/navigation/app_routes.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_site_obs_bloc.dart';
 import 'package:setu_mobile/features/ehs/presentation/pages/ehs_site_obs_detail_page.dart';
+import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart'
+    as widgets;
 import 'package:setu_mobile/shared/widgets/advanced_filter_sheet.dart';
 import 'package:setu_mobile/shared/widgets/filter_chip_bar.dart';
 import 'package:setu_mobile/shared/widgets/obs_status_badge.dart';
@@ -230,6 +232,8 @@ class _EhsSiteObsPageState extends State<EhsSiteObsPage>
             tooltip: 'Refresh',
             onPressed: _refresh,
           ),
+          const widgets.LiveSyncStatusIndicator(),
+          const SizedBox(width: 4),
         ],
       ),
       // FAB shown only when user has EHS observation create permission

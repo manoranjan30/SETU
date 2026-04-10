@@ -1,7 +1,5 @@
 import api from "../api/axios";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 export interface InsightTemplate {
   id: number;
   name: string;
@@ -72,10 +70,7 @@ export interface InsightRunsResponse {
   total: number;
 }
 
-// ─── Template CRUD ────────────────────────────────────────────────────────────
-
 export const aiInsightsService = {
-  // Templates
   async listTemplates(includeInactive = false): Promise<InsightTemplate[]> {
     const { data } = await api.get("/ai-insights/templates", {
       params: includeInactive ? { includeInactive: "true" } : undefined,
@@ -102,7 +97,6 @@ export const aiInsightsService = {
     await api.delete(`/ai-insights/templates/${id}`);
   },
 
-  // Runs
   async runInsight(payload: RunInsightPayload): Promise<InsightRun> {
     const { data } = await api.post("/ai-insights/run", payload);
     return data;
@@ -123,7 +117,10 @@ export const aiInsightsService = {
     return data;
   },
 
-  // Admin — Model Configs
+  async deleteRun(id: number): Promise<void> {
+    await api.delete(`/ai-insights/runs/${id}`);
+  },
+
   async listModelConfigs(): Promise<AiModelConfig[]> {
     const { data } = await api.get("/ai-insights/admin/model-configs");
     return data;

@@ -266,8 +266,7 @@ class ApiEndpoints {
   /// Absolute URLs (those starting with `http`) are returned unchanged so
   /// that production URLs pointing to CDN hosts are not corrupted.
   static String resolveUrl(String url) {
-    // Pass-through: empty string or already-absolute URL needs no change.
-    if (url.isEmpty || url.startsWith('http')) return url;
+    if (url.isEmpty) return url;
 
     // Extract only scheme + host + port from baseUrl, discarding the `/api`
     // path prefix — uploaded files are served from the server root, not /api.
@@ -283,7 +282,21 @@ class ApiEndpoints {
         ? '${base.scheme}://${base.host}'
         : '${base.scheme}://${base.host}:${base.port}';
 
-    // Ensure a single slash between origin and the relative path.
+    // If the URL is already absolute (http/https), extract just the path so
+    // we can rebuild it with the CURRENT server origin. This fixes old records
+    // stored in the DB with a stale host (e.g. 10.0.2.2, a dev tunnel URL, or
+    // a previous ngrok address) that would fail on real devices / prod.
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      try {
+        final parsed = Uri.parse(url);
+        final path = parsed.path; // e.g. /uploads/uuid.jpg
+        return path.startsWith('/') ? '$origin$path' : '$origin/$path';
+      } catch (_) {
+        return url; // malformed URL: return as-is
+      }
+    }
+
+    // Relative path — just prepend the current origin.
     return url.startsWith('/') ? '$origin$url' : '$origin/$url';
   }
 
@@ -519,4 +532,31 @@ class ApiEndpoints {
   /// Used by [IsometricBuildingPainter] to render real building footprints.
   static String buildingLineCoordinates(int projectId) =>
       '/planning/$projectId/building-line-coordinates';
+
+  // ==================== DELTA SYNC ENDPOINTS ====================
+
+  /// GET /sync/progress?projectId=X&since=ISO
+  /// Returns progress entries updated after [since] for the project.
+  /// [since] is nullable — omit for a full bootstrap fetch.
+  static String syncProgress({required int projectId, String? since}) {
+    final params =
+        'projectId=$projectId${since != null ? '&since=${Uri.encodeComponent(since)}' : ''}';
+    return '/sync/progress?$params';
+  }
+
+  /// GET /sync/quality?projectId=X&since=ISO
+  /// Returns quality lists, activities, and site observations.
+  static String syncQuality({required int projectId, String? since}) {
+    final params =
+        'projectId=$projectId${since != null ? '&since=${Uri.encodeComponent(since)}' : ''}';
+    return '/sync/quality?$params';
+  }
+
+  /// GET /sync/ehs?projectId=X&since=ISO
+  /// Returns EHS observations updated after [since].
+  static String syncEhs({required int projectId, String? since}) {
+    final params =
+        'projectId=$projectId${since != null ? '&since=${Uri.encodeComponent(since)}' : ''}';
+    return '/sync/ehs?$params';
+  }
 }

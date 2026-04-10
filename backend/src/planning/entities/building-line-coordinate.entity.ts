@@ -59,6 +59,12 @@ export class BuildingLineCoordinate {
         floorCount?: number;
         unitCount?: number;
         roomCount?: number;
+        showTowerLabels?: boolean;
+        progressPalette?: Array<{
+          key: string;
+          label: string;
+          color: string;
+        }>;
         units?: Array<{
           unitId: number;
           unitName: string;

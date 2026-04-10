@@ -23,6 +23,8 @@ export interface AiCompletionResponse {
   modelUsed: string;
   /** Total tokens consumed (prompt + completion). */
   tokensUsed: number | null;
+  /** Provider finish reason such as stop / length when available. */
+  finishReason?: string | null;
   /** Raw provider response object for debugging. */
   raw: unknown;
 }

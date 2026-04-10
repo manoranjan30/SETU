@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import api from "../../../api/axios";
-import { Split, Link as LinkIcon } from "lucide-react";
+import {
+  Split,
+  Link as LinkIcon,
+  Download,
+  FileUp,
+  Loader,
+} from "lucide-react";
 import BoqGridPanel from "./BoqGridPanel";
 import ActivityPickerModal from "./ActivityPickerModal";
+import WoBulkMappingImportWizard from "./WoBulkMappingImportWizard";
+import {
+  downloadBlob,
+  withFileExtension,
+} from "../../../utils/file-download.utils";
 
 const ExecutionMapper: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -11,7 +22,9 @@ const ExecutionMapper: React.FC = () => {
   const [activities, setActivities] = useState<any[]>([]);
   const [vendorTree, setVendorTree] = useState<any[]>([]);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [downloadingSheet, setDownloadingSheet] = useState(false);
 
   useEffect(() => {
     if (projectId) {
@@ -81,6 +94,25 @@ const ExecutionMapper: React.FC = () => {
     }
   };
 
+  const handleDownloadMatrixSheet = async () => {
+    if (!projectId) return;
+    setDownloadingSheet(true);
+    try {
+      const response = await api.get(`/planning/${projectId}/wo-mapper/export`, {
+        responseType: "blob",
+      });
+      downloadBlob(
+        new Blob([response.data]),
+        withFileExtension(`wo_qty_mapper_${projectId}_matrix`, ".xlsx"),
+      );
+    } catch (error) {
+      console.error("Failed to download WO link sheet", error);
+      alert("Failed to download WO link sheet.");
+    } finally {
+      setDownloadingSheet(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-surface-base">
       {/* Header / Toolbar */}
@@ -91,9 +123,35 @@ const ExecutionMapper: React.FC = () => {
           <span className="bg-info-muted text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
             Project #{projectId}
           </span>
+          <span className="text-xs text-text-muted">
+            Manual linking stays available. Bulk CSV/XLSX mapping is additive.
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadMatrixSheet}
+            disabled={downloadingSheet}
+            className="flex items-center gap-2 px-3 py-2 rounded shadow-sm text-sm font-medium transition-colors border bg-surface-card text-text-secondary border-border-strong hover:bg-surface-base disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {downloadingSheet ? (
+              <Loader size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
+            Download Matrix Link Sheet
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsBulkImportOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded shadow-sm text-sm font-medium transition-colors border bg-info-muted text-blue-700 border-blue-200 hover:bg-blue-100"
+          >
+            <FileUp size={16} />
+            Import Filled Link Sheet
+          </button>
+
           <span className="text-sm text-text-muted mr-2">
             {selectedWoItemIds.length} items selected
           </span>
@@ -142,6 +200,12 @@ const ExecutionMapper: React.FC = () => {
           onConfirm={handleLink}
           activities={activities}
           projectId={parseInt(projectId!)}
+        />
+        <WoBulkMappingImportWizard
+          isOpen={isBulkImportOpen}
+          onClose={() => setIsBulkImportOpen(false)}
+          projectId={parseInt(projectId!)}
+          onSuccess={() => setRefreshTrigger((prev) => prev + 1)}
         />
       </div>
     </div>

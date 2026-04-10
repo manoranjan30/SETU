@@ -39,6 +39,7 @@ const BoqPage = () => {
   const [items, setItems] = useState<BoqItem[]>([]);
   const [epsNodes, setEpsNodes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedItems, setExpandedItems] = useState<number[]>([]);
 
@@ -85,7 +86,7 @@ const BoqPage = () => {
     try {
       const [data, eps] = await Promise.all([
         boqService.getBoqItems(Number(projectId)),
-        boqService.getEpsList(),
+        boqService.getProjectEpsList(Number(projectId)),
       ]);
       setItems(data);
       setEpsNodes(eps);
@@ -176,7 +177,22 @@ const BoqPage = () => {
   };
 
   const handleDownloadTemplate = () => {
-    boqService.getBoqTemplate();
+    boqService.getBoqTemplate(projectId ? Number(projectId) : undefined);
+  };
+
+  const handleRecalculateBoq = async () => {
+    if (!projectId || recalculating) return;
+    setRecalculating(true);
+    try {
+      const response = await boqService.recalculateProjectBoq(Number(projectId));
+      await fetchItems();
+      alert(response.data?.message || "BOQ quantities recalculated successfully.");
+    } catch (error) {
+      console.error("Failed to recalculate BOQ quantities", error);
+      alert("Failed to recalculate BOQ quantities");
+    } finally {
+      setRecalculating(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -338,6 +354,15 @@ const BoqPage = () => {
                 className="flex items-center gap-2 px-3 py-2 bg-success text-white rounded hover:opacity-90"
               >
                 <Upload className="w-4 h-4" /> Import CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleRecalculateBoq}
+                disabled={recalculating}
+                className="flex items-center gap-2 px-3 py-2 bg-warning text-white rounded hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Calculator className="w-4 h-4" />
+                {recalculating ? "Recalculating..." : "Recalculate BOQ"}
               </button>
               <button
                 onClick={() => setIsCreateModalOpen(true)}

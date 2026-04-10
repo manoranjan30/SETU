@@ -1151,6 +1151,46 @@ class SetuApiClient {
       data: {'token': token},
     );
   }
+
+  // ==================== DELTA SYNC ENDPOINTS ====================
+
+  /// GET /sync/progress?projectId=X&since=ISO
+  /// Returns `{synced_at, count, data: [...]}`.
+  /// Pass [since] = null for a full bootstrap.
+  Future<Map<String, dynamic>> deltaProgressSync({
+    required int projectId,
+    String? since,
+  }) async {
+    final response = await _dio.get(
+      ApiEndpoints.syncProgress(projectId: projectId, since: since),
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// GET /sync/quality?projectId=X&since=ISO
+  /// Returns `{synced_at, count, data: {lists, activities, siteObs}}`.
+  Future<Map<String, dynamic>> deltaQualitySync({
+    required int projectId,
+    String? since,
+  }) async {
+    final response = await _dio.get(
+      ApiEndpoints.syncQuality(projectId: projectId, since: since),
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// GET /sync/ehs?projectId=X&since=ISO
+  /// Returns `{synced_at, count, data: [...]}`.
+  Future<Map<String, dynamic>> deltaEhsSync({
+    required int projectId,
+    String? since,
+  }) async {
+    final response = await _dio.get(
+      ApiEndpoints.syncEhs(projectId: projectId, since: since),
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
 }
 
 /// Dio interceptor that injects the JWT Bearer token into every outgoing

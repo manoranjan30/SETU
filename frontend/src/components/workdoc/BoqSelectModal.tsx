@@ -55,40 +55,113 @@ const BoqSelectModal: React.FC<Props> = ({
     setExpandedIds(next);
   };
 
+  const buildSelection = (
+    item: any,
+    level: number,
+    parent?: any,
+    grandParent?: any,
+  ) => ({
+    ...item,
+    level,
+    parentInfo: parent,
+    grandParentInfo: grandParent,
+    boqItemId:
+      level === 0
+        ? item.id
+        : grandParent?.id || parent?.id || item.boqItemId,
+    boqSubItemId: level === 1 ? item.id : level === 2 ? parent?.id : null,
+    measurementElementId: level === 2 ? item.id : null,
+    boqRate:
+      level === 2
+        ? Number(parent?.rate || grandParent?.rate || item.rate || 0)
+        : Number(item.rate || item.totalRate || item.boqRate || 0),
+  });
+
+  const collectSelections = (
+    item: any,
+    level: number,
+    parent?: any,
+    grandParent?: any,
+  ): Array<{ key: string; selection: any }> => {
+    const key = `${level}-${item.id}`;
+    const current = [{ key, selection: buildSelection(item, level, parent, grandParent) }];
+    const children =
+      level === 0 ? item.subItems || [] : level === 1 ? item.measurements || [] : [];
+
+    if (level === 0) {
+      children.forEach((child: any) => {
+        current.push(...collectSelections(child, 1, item, undefined));
+      });
+    } else if (level === 1) {
+      children.forEach((child: any) => {
+        current.push(...collectSelections(child, 2, item, parent));
+      });
+    }
+
+    return current;
+  };
+
   const handleSelect = (
     item: any,
     level: number,
     parent?: any,
     grandParent?: any,
   ) => {
-    const key = `${level}-${item.id}`;
     const next = new Map(selectedItems);
+    const subtreeSelections = collectSelections(item, level, parent, grandParent);
+    const isAlreadySelected = next.has(`${level}-${item.id}`);
 
-    if (next.has(key)) {
-      next.delete(key);
+    if (isAlreadySelected) {
+      subtreeSelections.forEach(({ key }) => next.delete(key));
     } else {
-      // Auto-select parent and grand-parent as context
-      const selection = {
-        ...item,
-        level,
-        parentInfo: parent,
-        grandParentInfo: grandParent,
-        // Unified IDs for manual entry
-        boqItemId:
-          level === 0
-            ? item.id
-            : grandParent?.id || parent?.id || item.boqItemId,
-        boqSubItemId: level === 1 ? item.id : level === 2 ? parent.id : null,
-        measurementElementId: level === 2 ? item.id : null,
-        boqRate: item.rate || item.totalRate || item.boqRate || 0,
-      };
-      next.set(key, selection);
+      subtreeSelections.forEach(({ key, selection }) => next.set(key, selection));
+      if (level === 2) {
+        if (parent) {
+          next.set(`1-${parent.id}`, buildSelection(parent, 1, grandParent));
+        }
+        if (grandParent) {
+          next.set(`0-${grandParent.id}`, buildSelection(grandParent, 0));
+        }
+      } else if (level === 1 && parent) {
+        next.set(`0-${parent.id}`, buildSelection(parent, 0));
+      }
+
+      if (level < 2) {
+        const expanded = new Set(expandedIds);
+        expanded.add(`${level}-${item.id}`);
+        setExpandedIds(expanded);
+      }
     }
     setSelectedItems(next);
   };
 
   const handleConfirm = () => {
-    onSelectItems(Array.from(selectedItems.values()));
+    const selections = Array.from(selectedItems.values());
+    const selectedSubItemIdsWithMeasurements = new Set(
+      selections
+        .filter(
+          (entry) => entry.level === 2 && entry.boqSubItemId,
+        )
+        .map((entry) => entry.boqSubItemId),
+    );
+    const selectedBoqItemIdsWithChildren = new Set(
+      selections
+        .filter((entry) => entry.level > 0 && entry.boqItemId)
+        .map((entry) => entry.boqItemId),
+    );
+
+    const effectiveSelections = selections.filter((entry) => {
+      if (entry.level === 2) return !!entry.measurementElementId;
+      if (entry.level === 1) {
+        return !selectedSubItemIdsWithMeasurements.has(entry.id);
+      }
+      if (entry.level === 0) {
+        return !selectedBoqItemIdsWithChildren.has(entry.id);
+      }
+      return true;
+    });
+
+    onSelectItems(effectiveSelections);
     onClose();
   };
 

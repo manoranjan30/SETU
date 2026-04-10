@@ -166,34 +166,35 @@ class EhsIncidentBloc extends Bloc<EhsIncidentEvent, EhsIncidentState> {
     int projectId,
     Emitter<EhsIncidentState> emit,
   ) async {
+    // ── Serve SharedPreferences cache immediately ────────────────────────────
+    final prefs = await SharedPreferences.getInstance();
+    final cached =
+        prefs.getString(BackgroundDownloadService.ehsIncidentsKey(projectId));
+    if (cached != null) {
+      try {
+        final list = jsonDecode(cached) as List<dynamic>;
+        final incidents = list
+            .map((e) => EhsIncident.fromJson(e as Map<String, dynamic>))
+            .toList();
+        emit(EhsIncidentLoaded(incidents, fromCache: true));
+        // Fall through to refresh from server.
+      } catch (_) {
+        // Corrupted cache — ignore, proceed to API.
+      }
+    }
+
+    // ── Attempt live API fetch ───────────────────────────────────────────────
     try {
       final raw = await _api.getEhsIncidents(projectId);
-      final incidents = raw
-          .map((e) => EhsIncident.fromJson(e as Map<String, dynamic>))
-          .toList();
-      // Persist for next offline session.
-      final prefs = await SharedPreferences.getInstance();
+      final incidents =
+          raw.map((e) => EhsIncident.fromJson(e as Map<String, dynamic>)).toList();
       await prefs.setString(
-          BackgroundDownloadService.ehsIncidentsKey(projectId),
-          jsonEncode(raw));
+          BackgroundDownloadService.ehsIncidentsKey(projectId), jsonEncode(raw));
       emit(EhsIncidentLoaded(incidents));
     } catch (_) {
-      // Network failed — try the cache written by BackgroundDownloadService.
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final cached = prefs
-            .getString(BackgroundDownloadService.ehsIncidentsKey(projectId));
-        if (cached != null) {
-          final list = jsonDecode(cached) as List<dynamic>;
-          final incidents = list
-              .map((e) => EhsIncident.fromJson(e as Map<String, dynamic>))
-              .toList();
-          emit(EhsIncidentLoaded(incidents, fromCache: true));
-          return;
-        }
-      } catch (_) {
-        // Cache read failed — fall through to error state.
-      }
+      // API failed — if cache was already emitted, stay silent.
+      final current = state;
+      if (current is EhsIncidentLoaded && current.fromCache) return;
       emit(const EhsIncidentError(
           'No connection and no cached data. Connect to load incidents.'));
     }

@@ -6,6 +6,14 @@ import {
   type TowerProgressResponse,
 } from "../../services/buildingLineCoordinates.service";
 
+const PROJECT_PROGRESS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+type ProjectProgress3DCacheEntry = {
+  savedAt: number;
+  root: BuildingLineNode | null;
+  towerProgress: TowerProgressResponse | null;
+};
+
 type ProjectProgress3DPanelProps = {
   projectId: number;
   projectName: string;
@@ -29,8 +37,54 @@ export default function ProjectProgress3DPanel({
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [error, setError] = useState("");
 
+  const getCacheKey = (targetProjectId: number) => `setu.project-progress-3d.${targetProjectId}`;
+
+  const readCache = (targetProjectId: number): ProjectProgress3DCacheEntry | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(getCacheKey(targetProjectId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as ProjectProgress3DCacheEntry;
+      if (!parsed?.savedAt) return null;
+      const isExpired = Date.now() - parsed.savedAt > PROJECT_PROGRESS_CACHE_TTL_MS;
+      if (isExpired) {
+        window.localStorage.removeItem(getCacheKey(targetProjectId));
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeCache = (
+    targetProjectId: number,
+    nextRoot: BuildingLineNode | null,
+    nextTowerProgress: TowerProgressResponse | null,
+  ) => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: ProjectProgress3DCacheEntry = {
+        savedAt: Date.now(),
+        root: nextRoot,
+        towerProgress: nextTowerProgress,
+      };
+      window.localStorage.setItem(getCacheKey(targetProjectId), JSON.stringify(payload));
+    } catch {
+      // Ignore cache write failures and keep the live response.
+    }
+  };
+
   const load = async () => {
     if (!projectId) return;
+    const cached = readCache(projectId);
+    if (cached) {
+      setRoot(cached.root);
+      setTowerProgress(cached.towerProgress);
+      setError("");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -40,6 +94,7 @@ export default function ProjectProgress3DPanel({
       ]);
       setRoot(structure);
       setTowerProgress(progress);
+      writeCache(projectId, structure, progress);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to load 3D progress data.");
       setRoot(null);
@@ -52,9 +107,17 @@ export default function ProjectProgress3DPanel({
   const refreshProgress = async () => {
     if (!projectId) return;
     setLoadingProgress(true);
+    setError("");
     try {
-      const progress = await buildingLineCoordinatesService.getTowerProgress(projectId);
+      const [structure, progress] = await Promise.all([
+        buildingLineCoordinatesService.getStructure(projectId),
+        buildingLineCoordinatesService.getTowerProgress(projectId),
+      ]);
+      setRoot(structure);
       setTowerProgress(progress);
+      writeCache(projectId, structure, progress);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Unable to refresh 3D progress data.");
     } finally {
       setLoadingProgress(false);
     }

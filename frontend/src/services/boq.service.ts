@@ -84,8 +84,9 @@ export interface ImportMapping {
 
 export const boqService = {
   // Download Template
-  getBoqTemplate: async () => {
+  getBoqTemplate: async (projectId?: number) => {
     const response = await api.get("/boq/template", {
+      params: projectId ? { projectId } : undefined,
       responseType: "blob", // Important for file download
     });
     downloadBlob(
@@ -119,10 +120,45 @@ export const boqService = {
     return response.data;
   },
 
+  recalculateProjectBoq: async (projectId: number) => {
+    return await api.post(`/boq/project/${projectId}/recalculate`);
+  },
+
   // Get EPS List (for Dropdown)
   getEpsList: async () => {
     const response = await api.get("/eps");
     return response.data;
+  },
+
+  getProjectEpsList: async (projectId: number) => {
+    const response = await api.get(`/eps/${projectId}/tree`);
+    const flatten = (
+      nodes: any[],
+      acc: Array<{ id: number; name: string; parentId?: number; type?: string }> = [],
+    ) => {
+      nodes.forEach((node) => {
+        const rawNode = node?.data ?? node;
+        const nodeId = Number(rawNode?.id ?? node?.id);
+        const nodeName = rawNode?.name ?? node?.label ?? node?.name ?? "";
+        const rawParentId = rawNode?.parentId ?? node?.parentId;
+        const parentId =
+          rawParentId === null || rawParentId === undefined || rawParentId === ""
+            ? undefined
+            : Number(rawParentId);
+
+        acc.push({
+          id: nodeId,
+          name: nodeName,
+          parentId,
+          type: rawNode?.type ?? node?.type,
+        });
+        if (Array.isArray(node.children) && node.children.length > 0) {
+          flatten(node.children, acc);
+        }
+      });
+      return acc;
+    };
+    return flatten(Array.isArray(response.data) ? response.data : []);
   },
 
   // Create Single Item
@@ -175,8 +211,17 @@ export const boqService = {
     return await api.post("/boq/measurement", data);
   },
 
-  getMeasurementTemplate: async () => {
+  getMeasurementTemplate: async (
+    projectId?: number,
+    boqItemId?: number,
+    boqSubItemId?: number,
+  ) => {
     const response = await api.get("/boq/measurements/template", {
+      params: {
+        ...(projectId ? { projectId } : {}),
+        ...(boqItemId ? { boqItemId } : {}),
+        ...(boqSubItemId ? { boqSubItemId } : {}),
+      },
       responseType: "blob",
     });
     downloadBlob(

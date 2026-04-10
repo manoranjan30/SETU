@@ -296,10 +296,21 @@ class QualityRequestBloc
       LoadEpsTree event, Emitter<QualityRequestState> emit) async {
     emit(const QualityRequestLoading());
     final prefsKey = 'eps_tree_${event.projectId}';
+
+    // Serve cache immediately so the UI is not blocked.
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString(prefsKey);
+    if (cached != null) {
+      final raw = jsonDecode(cached) as List<dynamic>;
+      final nodes = raw
+          .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
+          .toList();
+      emit(EpsTreeLoaded(nodes: nodes, projectId: event.projectId));
+      // Don't return — fall through to refresh from server in background.
+    }
+
     try {
       final raw = await _apiClient.getEpsTreeForProject(event.projectId);
-      // Cache for offline use
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString(prefsKey, jsonEncode(raw));
       final nodes = raw
           .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
@@ -310,19 +321,12 @@ class QualityRequestBloc
         emit(QualityRequestError(_friendly(e)));
         return;
       }
-      // Network failure — serve from cache
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(prefsKey);
-      if (cached != null) {
-        final raw = jsonDecode(cached) as List<dynamic>;
-        final nodes = raw
-            .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
-            .toList();
-        emit(EpsTreeLoaded(nodes: nodes, projectId: event.projectId));
-      } else {
+      // Already served from cache above — if cache was null, show error.
+      if (cached == null) {
         emit(const QualityRequestError(
             'No connection and no cached EPS tree. Connect to load locations.'));
       }
+      // If cache was served, silently swallow the network error — user sees data.
     }
   }
 
@@ -332,15 +336,31 @@ class QualityRequestBloc
   Future<void> _onSelectEpsNode(
       SelectEpsNode event, Emitter<QualityRequestState> emit) async {
     emit(const QualityRequestLoading());
+
+    // Serve Drift cache immediately (instant).
+    final cachedLists = await _database.getCachedActivityLists(
+        event.projectId, event.epsNodeId);
+    if (cachedLists.isNotEmpty) {
+      final lists = cachedLists
+          .map((c) => QualityActivityList.fromJson(
+              jsonDecode(c.rawData) as Map<String, dynamic>))
+          .toList();
+      emit(ActivityListsLoaded(
+        lists: lists,
+        projectId: event.projectId,
+        epsNodeId: event.epsNodeId,
+        isFromCache: true,
+      ));
+      // Fall through to refresh in background.
+    }
+
     try {
       final raw = await _apiClient.getQualityActivityLists(
         projectId: event.projectId,
         epsNodeId: event.epsNodeId,
       );
-      // Cache for offline use
       await _database.cacheActivityLists(
           raw.cast<Map<String, dynamic>>(), event.projectId);
-
       final lists = raw
           .map((e) =>
               QualityActivityList.fromJson(e as Map<String, dynamic>))
@@ -351,29 +371,15 @@ class QualityRequestBloc
         epsNodeId: event.epsNodeId,
       ));
     } catch (e) {
-      // Non-network errors must surface immediately — don't fall through to cache.
       if (_isNonNetworkError(e)) {
         emit(QualityRequestError(_friendly(e)));
         return;
       }
-      // Network / timeout errors → serve from cache
-      final cached = await _database.getCachedActivityLists(
-          event.projectId, event.epsNodeId);
-      if (cached.isNotEmpty) {
-        final lists = cached
-            .map((c) => QualityActivityList.fromJson(
-                jsonDecode(c.rawData) as Map<String, dynamic>))
-            .toList();
-        emit(ActivityListsLoaded(
-          lists: lists,
-          projectId: event.projectId,
-          epsNodeId: event.epsNodeId,
-          isFromCache: true,
-        ));
-      } else {
+      if (cachedLists.isEmpty) {
         emit(const QualityRequestError(
-            'No connection and no cached data. Connect to load checklists.'));
+            'Template not available offline. Please sync while connected.'));
       }
+      // If cache was served, swallow network error silently.
     }
   }
 

@@ -24,6 +24,7 @@ export type BuildingLineNode = {
     floorCount?: number;
     unitCount?: number;
     roomCount?: number;
+    showTowerLabels?: boolean;
     units?: Array<{
       unitId: number;
       unitName: string;
@@ -36,6 +37,11 @@ export type BuildingLineNode = {
         code?: string | null;
         coordinatesText?: string | null;
       }>;
+    }>;
+    progressPalette?: Array<{
+      key: string;
+      label: string;
+      color: string;
     }>;
     floors?: Array<{
       floorId: number;

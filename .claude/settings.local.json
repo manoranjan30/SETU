@@ -48,7 +48,15 @@
       "Bash(cmd /c \"taskkill /PID 14172 /F\")",
       "Bash(cmd /c \"rmdir /s /q \"\"c:\\\\Users\\\\omano\\\\OneDrive - Puravankara Limited\\\\Manoranjan\\\\Antigravity Experiment\\\\000 Project PM\\\\SETU\\\\flutter\\\\build\"\"\")",
       "Bash(cmd /c \"taskkill /IM OneDrive.exe /F\")",
-      "Bash(cmd /c \"gradle --stop 2>nul & flutter build apk --release\")"
+      "Bash(cmd /c \"gradle --stop 2>nul & flutter build apk --release\")",
+      "Bash(dart run:*)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(dir \"C:\\\\Users\\\\omano\\\\OneDrive - Puravankara Limited\\\\Manoranjan\\\\Antigravity Experiment\\\\000 Project PM\\\\SETU\\\\.claude\\\\worktrees\\\\offline-delta-sync\\\\flutter\")",
+      "Bash(git -C \"C:/Users/omano/OneDrive - Puravankara Limited/Manoranjan/Antigravity Experiment/000 Project PM/SETU/.claude/worktrees/offline-delta-sync\" status)",
+      "Bash(git:*)",
+      "Bash(cmd:*)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(printf '100644 blob %s\\\\tapp_database.dart\\\\n100644 blob %s\\\\tapp_database.g.dart\\\\n' 7472bbcd69e3a1776e5fda89a7e73c39b10ddeff eb722f48e48a1888ddcba77af5c8463d7ccec2d3)"
     ],
     "additionalDirectories": [
       "C:\\Users\\omano"

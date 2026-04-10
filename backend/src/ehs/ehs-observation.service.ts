@@ -20,6 +20,7 @@ import {
   RectifyEhsObservationDto,
   CloseEhsObservationDto,
 } from './dto/ehs-observation.dto';
+import { toRelativePaths } from '../common/path.utils';
 
 @Injectable()
 export class EhsObservationService {
@@ -95,7 +96,8 @@ export class EhsObservationService {
     if (status) query.andWhere('obs.status = :status', { status });
     if (severity) query.andWhere('obs.severity = :severity', { severity });
 
-    return query.orderBy('obs.createdAt', 'DESC').getMany();
+    const rows = await query.orderBy('obs.createdAt', 'DESC').getMany();
+    return rows.map((obs) => this.normalizePhotos(obs));
   }
 
   async getById(id: string) {
@@ -104,6 +106,15 @@ export class EhsObservationService {
       relations: ['epsNode'],
     });
     if (!obs) throw new NotFoundException('EHS observation not found');
+    return this.normalizePhotos(obs);
+  }
+
+  /** Normalize photo arrays so old absolute URLs stored in the DB are
+   *  converted to relative paths at read time. This retroactively fixes
+   *  records saved before the write-time normalization was introduced. */
+  private normalizePhotos(obs: EhsObservation): EhsObservation {
+    obs.photos = toRelativePaths(obs.photos);
+    obs.rectificationPhotos = toRelativePaths(obs.rectificationPhotos);
     return obs;
   }
 
@@ -115,6 +126,7 @@ export class EhsObservationService {
 
     const obs = this.observationRepo.create({
       ...cleanedDto,
+      photos: toRelativePaths(cleanedDto.photos),
       status: EhsObservationStatus.OPEN,
       raisedById: userId,
     });
@@ -175,7 +187,7 @@ export class EhsObservationService {
     obs.status = EhsObservationStatus.RECTIFIED;
     obs.rectificationText = dto.rectificationText;
     if (dto.rectificationPhotos) {
-      obs.rectificationPhotos = dto.rectificationPhotos;
+      obs.rectificationPhotos = toRelativePaths(dto.rectificationPhotos);
     }
     if (userId) {
       obs.rectifiedById = userId;

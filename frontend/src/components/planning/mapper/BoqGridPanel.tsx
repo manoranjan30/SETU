@@ -45,6 +45,9 @@ interface TreeRow {
   childCount?: number;
 }
 
+const isMeasurementRow = (row: TreeRow) => row.type === "MEAS";
+const isMappedStatus = (status?: string) => status === "MAPPED";
+
 const BoqGridPanel: React.FC<Props> = ({
   vendorTree,
   selectedWoItemIds,
@@ -220,6 +223,61 @@ const BoqGridPanel: React.FC<Props> = ({
     setExpandedKeys(new Set());
   }, []);
 
+  const displayRows = useMemo<TreeRow[]>(() => {
+    const childrenByParentKey = new Map<string, TreeRow[]>();
+    allRows.forEach((row) => {
+      if (!row.parentKey) return;
+      const bucket = childrenByParentKey.get(row.parentKey) || [];
+      bucket.push(row);
+      childrenByParentKey.set(row.parentKey, bucket);
+    });
+
+    const collectMeasurementLeaves = (row: TreeRow): TreeRow[] => {
+      const children = childrenByParentKey.get(row.key) || [];
+      if (children.length === 0) {
+        return isMeasurementRow(row) ? [row] : [];
+      }
+      return children.flatMap(collectMeasurementLeaves);
+    };
+
+    return allRows.map((row) => {
+      if (!row.hasChildren) return row;
+
+      const descendantMeasurements = collectMeasurementLeaves(row);
+      if (descendantMeasurements.length === 0) {
+        return row;
+      }
+
+      const mappedCount = descendantMeasurements.filter((child) =>
+        isMappedStatus(child.mappingStatus),
+      ).length;
+
+      let mappingStatus = "UNMAPPED";
+      if (mappedCount === descendantMeasurements.length) {
+        mappingStatus = "MAPPED";
+      } else if (mappedCount > 0) {
+        mappingStatus = "PARTIALLY_MAPPED";
+      }
+
+      const linkedActivities = Array.from(
+        new Set(
+          descendantMeasurements.flatMap((child) =>
+            (child.linkedActivities || "")
+              .split(",")
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        ),
+      ).join(", ");
+
+      return {
+        ...row,
+        mappingStatus,
+        linkedActivities,
+      };
+    });
+  }, [allRows]);
+
   // Filter rows based on search + expansion state
   const visibleRows = useMemo(() => {
     if (searchText.trim()) {
@@ -227,7 +285,7 @@ const BoqGridPanel: React.FC<Props> = ({
       const lowerSearch = searchText.toLowerCase();
       const matchKeys = new Set<string>();
 
-      allRows.forEach((row) => {
+      displayRows.forEach((row) => {
         if (
           row.label?.toLowerCase().includes(lowerSearch) ||
           row.subtitle?.toLowerCase().includes(lowerSearch)
@@ -237,27 +295,27 @@ const BoqGridPanel: React.FC<Props> = ({
           let parentKey = row.parentKey;
           while (parentKey) {
             matchKeys.add(parentKey);
-            const parent = allRows.find((r) => r.key === parentKey);
+            const parent = displayRows.find((r) => r.key === parentKey);
             parentKey = parent?.parentKey;
           }
         }
       });
-      return allRows.filter((r) => matchKeys.has(r.key));
+      return displayRows.filter((r) => matchKeys.has(r.key));
     }
 
     // Normal expansion filtering
-    return allRows.filter((row) => {
+    return displayRows.filter((row) => {
       if (row.level === 0) return true;
       let currentKey = row.parentKey;
       while (currentKey) {
         if (!expandedKeys.has(currentKey)) return false;
-        const parent = allRows.find((r) => r.key === currentKey);
+        const parent = displayRows.find((r) => r.key === currentKey);
         if (!parent) break;
         currentKey = parent.parentKey;
       }
       return true;
     });
-  }, [allRows, searchText, expandedKeys]);
+  }, [displayRows, searchText, expandedKeys]);
 
   // Selection helpers
   const toggleSelect = useCallback(
@@ -276,11 +334,14 @@ const BoqGridPanel: React.FC<Props> = ({
     (key: string): number[] => {
       const ids: number[] = [];
       for (const row of allRows) {
-        if (row.key.startsWith(key + "|") && row.workOrderItemId) {
+        if (
+          row.key.startsWith(key + "|") &&
+          row.workOrderItemId &&
+          isMeasurementRow(row)
+        ) {
           ids.push(row.workOrderItemId);
         }
-        // Also check if it's the row itself (for DIRECT / leaf items)
-        if (row.key === key && row.workOrderItemId) {
+        if (row.key === key && row.workOrderItemId && isMeasurementRow(row)) {
           ids.push(row.workOrderItemId);
         }
       }
@@ -349,22 +410,25 @@ const BoqGridPanel: React.FC<Props> = ({
     const colors =
       status === "MAPPED"
         ? "bg-green-100 text-green-700 border-green-200"
-        : "bg-surface-raised text-text-muted border-border-default";
+        : status === "PARTIALLY_MAPPED"
+          ? "bg-blue-100 text-blue-700 border-blue-200"
+          : "bg-surface-raised text-text-muted border-border-default";
     return (
       <span
         className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${colors}`}
       >
-        {status}
+        {status === "PARTIALLY_MAPPED" ? "PARTIAL" : status}
       </span>
     );
   };
 
   // Checkbox renderer
   const renderCheckbox = (row: TreeRow) => {
-    if (row.workOrderItemId) {
+    if (row.workOrderItemId && isMeasurementRow(row)) {
       const isSelected = selectedWoItemIds.includes(row.workOrderItemId);
       return (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             toggleSelect(row.workOrderItemId!);
@@ -384,6 +448,7 @@ const BoqGridPanel: React.FC<Props> = ({
       const state = getBranchSelectionState(row.key);
       return (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             toggleSelectBranch(row.key);
@@ -460,7 +525,7 @@ const BoqGridPanel: React.FC<Props> = ({
         {visibleRows.map((row) => {
           const indent = row.level * 24;
           const isExpanded = expandedKeys.has(row.key);
-          const isLeaf = !!row.workOrderItemId;
+          const isLeaf = !!row.workOrderItemId && isMeasurementRow(row);
           const isSelected =
             isLeaf && selectedWoItemIds.includes(row.workOrderItemId!);
 
@@ -479,7 +544,9 @@ const BoqGridPanel: React.FC<Props> = ({
               className={`flex items-center px-4 py-1.5 border-b border-border-subtle cursor-pointer transition-colors text-sm ${bgClass}`}
               onClick={() => {
                 if (row.hasChildren) toggleExpand(row.key);
-                else if (row.workOrderItemId) toggleSelect(row.workOrderItemId);
+                else if (row.workOrderItemId && isMeasurementRow(row)) {
+                  toggleSelect(row.workOrderItemId);
+                }
               }}
             >
               {/* Description column */}
@@ -491,6 +558,7 @@ const BoqGridPanel: React.FC<Props> = ({
                 <div className="w-5 flex-shrink-0 flex items-center justify-center mr-1">
                   {row.hasChildren ? (
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleExpand(row.key);

@@ -26,6 +26,17 @@ class User extends Equatable {
   final String? designation;
   final bool isActive;
 
+  /// True when this user is a temporary vendor/contractor account.
+  /// Temp users have an associated [vendorId] / [vendorName] that should be
+  /// auto-selected when they raise an RFI — no picker is shown.
+  final bool isTempUser;
+
+  /// The vendor company ID linked to this temp user (null for internal users).
+  final int? vendorId;
+
+  /// The vendor company name (null for internal users).
+  final String? vendorName;
+
   const User({
     required this.id,
     required this.username,
@@ -37,6 +48,9 @@ class User extends Equatable {
     this.phone,
     this.designation,
     this.isActive = true,
+    this.isTempUser = false,
+    this.vendorId,
+    this.vendorName,
   });
 
   /// Parses a user from the /auth/profile API response.
@@ -69,6 +83,10 @@ class User extends Equatable {
       phone: json['phone'] as String?,
       designation: json['designation'] as String?,
       isActive: json['isActive'] as bool? ?? true,
+      isTempUser: json['isTempUser'] as bool? ?? false,
+      // Backend returns vendor as a nested object on the profile of temp users.
+      vendorId: (json['vendor'] as Map<String, dynamic>?)?['id'] as int?,
+      vendorName: (json['vendor'] as Map<String, dynamic>?)?['name'] as String?,
     );
   }
 
@@ -85,6 +103,9 @@ class User extends Equatable {
       'phone': phone,
       'designation': designation,
       'isActive': isActive,
+      'isTempUser': isTempUser,
+      if (vendorId != null) 'vendorId': vendorId,
+      if (vendorName != null) 'vendorName': vendorName,
     };
   }
 
@@ -133,5 +154,8 @@ class User extends Equatable {
         phone,
         designation,
         isActive,
+        isTempUser,
+        vendorId,
+        vendorName,
       ];
 }

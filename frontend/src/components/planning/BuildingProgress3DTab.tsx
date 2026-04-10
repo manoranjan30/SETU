@@ -47,6 +47,27 @@ type ModelEntry = {
 type OverlayEntry = ModelEntry & {
   overlayColor: string;
   scheduleLabel: string;
+  facadeBands: Array<{
+    key: string;
+    label: string;
+    color: string;
+    progressPct: number;
+    activityCount: number;
+  }>;
+};
+
+type ProgressPaletteItem = {
+  key: string;
+  label: string;
+  color: string;
+};
+
+type FloorScheduleGroup = {
+  key: string;
+  label: string;
+  color: string;
+  progressPct: number;
+  activityCount: number;
 };
 
 type FloorProgressMap = Map<
@@ -74,6 +95,113 @@ type BuildingProgress3DTabProps = {
   viewerClassName?: string;
   panelTitle?: string;
   panelSubtitle?: string;
+};
+
+const disposeMaterialResources = (
+  material: THREE.Material | THREE.Material[] | undefined,
+) => {
+  const disposeSingle = (item: THREE.Material | undefined) => {
+    if (!item) return;
+    const textureKeys = [
+      "map",
+      "alphaMap",
+      "aoMap",
+      "bumpMap",
+      "displacementMap",
+      "emissiveMap",
+      "envMap",
+      "lightMap",
+      "metalnessMap",
+      "normalMap",
+      "roughnessMap",
+      "specularMap",
+    ] as const;
+    textureKeys.forEach((key) => {
+      const texture = (item as THREE.Material & Record<string, unknown>)[key];
+      if (texture instanceof THREE.Texture) texture.dispose();
+    });
+    item.dispose();
+  };
+
+  if (Array.isArray(material)) material.forEach(disposeSingle);
+  else disposeSingle(material);
+};
+
+const disposeObjectResources = (object: THREE.Object3D) => {
+  const resourceObject = object as THREE.Object3D & {
+    geometry?: THREE.BufferGeometry;
+    material?: THREE.Material | THREE.Material[];
+  };
+  resourceObject.geometry?.dispose();
+  disposeMaterialResources(resourceObject.material);
+};
+
+const drawRoundedRect = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) => {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+};
+
+const createTowerLabelSprite = (towerName: string, widthWorld: number) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.shadowColor = "rgba(15, 23, 42, 0.18)";
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 10;
+  drawRoundedRect(ctx, 28, 32, canvas.width - 56, canvas.height - 64, 34);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(71, 85, 105, 0.18)";
+  ctx.stroke();
+
+  let fontSize = 120;
+  do {
+    ctx.font = `700 ${fontSize}px "Segoe UI", Arial, sans-serif`;
+    fontSize -= 6;
+  } while (ctx.measureText(towerName).width > canvas.width - 120 && fontSize > 54);
+
+  ctx.fillStyle = "#0f172a";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(towerName, canvas.width / 2, canvas.height / 2 + 6);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  const effectiveWidth = Math.max(widthWorld, 12);
+  sprite.scale.set(effectiveWidth, effectiveWidth * 0.22, 1);
+  sprite.renderOrder = 999;
+  return sprite;
 };
 
 type ActivityTreeTower = {
@@ -117,6 +245,16 @@ const SCHEDULE_COLORS = [
   "#c2410c",
   "#4338ca",
   "#0f766e",
+];
+
+const DEFAULT_PROGRESS_PALETTE: ProgressPaletteItem[] = [
+  { key: "structure", label: "Structure", color: "#d97706" },
+  { key: "finishing", label: "Finishing", color: "#16a34a" },
+  { key: "phe", label: "PHE", color: "#0891b2" },
+  { key: "electrical", label: "Electrical", color: "#7c3aed" },
+  { key: "fire", label: "Fire", color: "#dc2626" },
+  { key: "externaldevelopment", label: "External Development", color: "#a16207" },
+  { key: "default", label: "Other / Default", color: "#475569" },
 ];
 
 function parseCoordinatePairs(
@@ -344,6 +482,27 @@ function getScheduleLabelAtLevel(
   return path[index] || path[path.length - 1] || "Unmapped activity";
 }
 
+function inferProgressPaletteKey(label: string) {
+  const normalized = normalizeLabel(label).toLowerCase().replace(/[\s_-]+/g, "");
+  if (normalized.includes("struct") || normalized.endsWith("str")) return "structure";
+  if (normalized.includes("finish") || normalized.endsWith("fins")) return "finishing";
+  if (normalized.includes("phe")) return "phe";
+  if (normalized.includes("elect") || normalized.endsWith("ele")) return "electrical";
+  if (normalized.includes("fire")) return "fire";
+  if (normalized.includes("externaldevelopment")) return "externaldevelopment";
+  return "default";
+}
+
+function buildProgressPalette(root: TreeNode) {
+  const configured = root.structureSnapshot?.progressPalette || [];
+  const byKey = new Map(configured.map((item) => [item.key, item]));
+  return DEFAULT_PROGRESS_PALETTE.map((item) => ({
+    key: item.key,
+    label: byKey.get(item.key)?.label || item.label,
+    color: byKey.get(item.key)?.color || item.color,
+  }));
+}
+
 function getStoredScheduleLevel() {
   if (typeof window === "undefined") return 1;
   const raw = window.localStorage.getItem(SCHEDULE_LEVEL_STORAGE_KEY);
@@ -363,6 +522,141 @@ function mixColor(colorA: string, colorB: string, ratio: number) {
   const mixed = new THREE.Color(colorA);
   mixed.lerp(new THREE.Color(colorB), clamp(ratio, 0, 1));
   return `#${mixed.getHexString()}`;
+}
+
+function getRealisticFacadeColor(progressPct: number) {
+  if (progressPct >= 95) return "#8fb996";
+  if (progressPct >= 75) return "#c9b27c";
+  if (progressPct >= 50) return "#c98d5b";
+  if (progressPct >= 25) return "#b8794b";
+  if (progressPct > 0) return "#9c6f56";
+  return "#b9c2cc";
+}
+
+function getRealisticFacadeEdgeColor(progressPct: number) {
+  if (progressPct >= 95) return "#d8e7d7";
+  if (progressPct >= 75) return "#f0dfb4";
+  if (progressPct >= 50) return "#f0bc8a";
+  if (progressPct >= 25) return "#e7a270";
+  if (progressPct > 0) return "#d9a98f";
+  return "#dbe4ee";
+}
+
+function createInsetPolygon(
+  polygon: Array<[number, number]>,
+  insetRatio = 0.985,
+): Array<[number, number]> {
+  if (polygon.length < 3 || insetRatio >= 1) return polygon;
+
+  const center = polygon.reduce(
+    (acc, [x, y]) => {
+      acc.x += x;
+      acc.y += y;
+      return acc;
+    },
+    { x: 0, y: 0 },
+  );
+  center.x /= polygon.length;
+  center.y /= polygon.length;
+
+  return polygon.map(([x, y]) => [
+    center.x + (x - center.x) * insetRatio,
+    center.y + (y - center.y) * insetRatio,
+  ]);
+}
+
+function createPerimeterWallGeometry(
+  polygon: Array<[number, number]>,
+  bottomZ: number,
+  topZ: number,
+  offset = 0.06,
+) {
+  if (polygon.length < 2 || topZ <= bottomZ) return null;
+
+  const center = polygon.reduce(
+    (acc, [x, y]) => {
+      acc.x += x;
+      acc.y += y;
+      return acc;
+    },
+    { x: 0, y: 0 },
+  );
+  center.x /= polygon.length;
+  center.y /= polygon.length;
+
+  const positions: number[] = [];
+
+  for (let index = 0; index < polygon.length; index += 1) {
+    const [x1, y1] = polygon[index];
+    const [x2, y2] = polygon[(index + 1) % polygon.length];
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    const outwardX = midX - center.x;
+    const outwardY = midY - center.y;
+    const length = Math.hypot(outwardX, outwardY) || 1;
+    const dx = (outwardX / length) * offset;
+    const dy = (outwardY / length) * offset;
+
+    const p1 = [x1 + dx, y1 + dy];
+    const p2 = [x2 + dx, y2 + dy];
+
+    positions.push(
+      p1[0], p1[1], bottomZ,
+      p2[0], p2[1], bottomZ,
+      p2[0], p2[1], topZ,
+
+      p1[0], p1[1], bottomZ,
+      p2[0], p2[1], topZ,
+      p1[0], p1[1], topZ,
+    );
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createPerimeterLineSegments(
+  polygon: Array<[number, number]>,
+  z: number,
+  offset = 0.06,
+) {
+  if (polygon.length < 2) return null;
+
+  const center = polygon.reduce(
+    (acc, [x, y]) => {
+      acc.x += x;
+      acc.y += y;
+      return acc;
+    },
+    { x: 0, y: 0 },
+  );
+  center.x /= polygon.length;
+  center.y /= polygon.length;
+
+  const positions: number[] = [];
+
+  for (let index = 0; index < polygon.length; index += 1) {
+    const [x1, y1] = polygon[index];
+    const [x2, y2] = polygon[(index + 1) % polygon.length];
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    const outwardX = midX - center.x;
+    const outwardY = midY - center.y;
+    const length = Math.hypot(outwardX, outwardY) || 1;
+    const dx = (outwardX / length) * offset;
+    const dy = (outwardY / length) * offset;
+
+    positions.push(
+      x1 + dx, y1 + dy, z,
+      x2 + dx, y2 + dy, z,
+    );
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  return geometry;
 }
 
 function collectTowerNodes(root: TreeNode) {
@@ -617,6 +911,7 @@ function buildScheduleLegendAndFloorMap(
   selectedTowerId: number | "ALL",
   selectedActivityId: number | "ALL",
   scheduleLevel: number,
+  palette: ProgressPaletteItem[],
 ) {
   const relevantTowers = (towerProgress?.towers || []).filter(
     (tower) => selectedTowerId === "ALL" || tower.epsNodeId === selectedTowerId,
@@ -624,6 +919,7 @@ function buildScheduleLegendAndFloorMap(
   const groupStats = new Map<
     string,
     {
+      key: string;
       label: string;
       activityCount: number;
       floorIds: Set<number>;
@@ -636,8 +932,11 @@ function buildScheduleLegendAndFloorMap(
       label: string;
       activityCount: number;
       progressPct: number;
+      color: string;
+      groups: FloorScheduleGroup[];
     }
   >();
+  const paletteByKey = new Map(palette.map((item) => [item.key, item]));
 
   relevantTowers.forEach((tower) => {
     tower.floors.forEach((floor) => {
@@ -649,6 +948,7 @@ function buildScheduleLegendAndFloorMap(
       const floorGroups = new Map<
         string,
         {
+          key: string;
           label: string;
           activityCount: number;
           totalProgress: number;
@@ -660,8 +960,10 @@ function buildScheduleLegendAndFloorMap(
           selectedActivityId === "ALL"
             ? getScheduleLabelAtLevel(activity, scheduleLevel)
             : `${activity.activityCode} - ${activity.activityName}`;
+        const paletteKey = inferProgressPaletteKey(label);
         const current = floorGroups.get(label) || {
           label,
+          key: paletteKey,
           activityCount: 0,
           totalProgress: 0,
         };
@@ -671,6 +973,7 @@ function buildScheduleLegendAndFloorMap(
 
         const summary = groupStats.get(label) || {
           label,
+          key: paletteKey,
           activityCount: 0,
           floorIds: new Set<number>(),
           totalProgress: 0,
@@ -693,10 +996,31 @@ function buildScheduleLegendAndFloorMap(
 
       if (!dominantGroup) return;
 
+      const groups = Array.from(floorGroups.values())
+        .map((group) => {
+          const paletteItem = paletteByKey.get(group.key) || paletteByKey.get("default");
+          return {
+            key: group.key,
+            label: group.label,
+            color: paletteItem?.color || "#64748b",
+            progressPct: group.totalProgress / group.activityCount,
+            activityCount: group.activityCount,
+          } satisfies FloorScheduleGroup;
+        })
+        .sort((left, right) => {
+          if (right.progressPct !== left.progressPct) {
+            return right.progressPct - left.progressPct;
+          }
+          return right.activityCount - left.activityCount;
+        });
+      const dominantPalette = paletteByKey.get(dominantGroup.key) || paletteByKey.get("default");
+
       floorMap.set(floor.epsNodeId, {
         label: dominantGroup.label,
         activityCount: dominantGroup.activityCount,
         progressPct: dominantGroup.totalProgress / dominantGroup.activityCount,
+        color: dominantPalette?.color || "#64748b",
+        groups,
       });
     });
   });
@@ -711,7 +1035,10 @@ function buildScheduleLegendAndFloorMap(
   const legend: ScheduleLegendItem[] = legendBase.map((item, index) => ({
     key: item.label,
     label: item.label,
-    color: SCHEDULE_COLORS[index % SCHEDULE_COLORS.length],
+    color:
+      paletteByKey.get(item.key)?.color ||
+      paletteByKey.get(inferProgressPaletteKey(item.label))?.color ||
+      SCHEDULE_COLORS[index % SCHEDULE_COLORS.length],
     activityCount: item.activityCount,
     floorCount: item.floorIds.size,
     averageProgress: item.activityCount > 0 ? item.totalProgress / item.activityCount : 0,
@@ -1268,6 +1595,8 @@ export default function BuildingProgress3DTab({
   const [selectedActivityId, setSelectedActivityId] = useState<number | "ALL">("ALL");
   const [selectedScheduleLevel, setSelectedScheduleLevel] = useState<number>(getStoredScheduleLevel);
   const [expandedActivityGroups, setExpandedActivityGroups] = useState<Set<string>>(new Set());
+  const progressPalette = useMemo(() => buildProgressPalette(root), [root]);
+  const showTowerLabels = root.structureSnapshot?.showTowerLabels ?? true;
 
   const modelEntries = useMemo(
     () => buildModelEntries(root, towerProgress, selectedTowerId, depth),
@@ -1294,8 +1623,16 @@ export default function BuildingProgress3DTab({
         selectedTowerId,
         selectedActivityId,
         Math.min(selectedScheduleLevel, maxScheduleDepth),
+        progressPalette,
       ),
-    [maxScheduleDepth, selectedActivityId, selectedScheduleLevel, selectedTowerId, towerProgress],
+    [
+      maxScheduleDepth,
+      progressPalette,
+      selectedActivityId,
+      selectedScheduleLevel,
+      selectedTowerId,
+      towerProgress,
+    ],
   );
   const overlayEntries = useMemo(() => {
     return modelEntries
@@ -1324,6 +1661,15 @@ export default function BuildingProgress3DTab({
             metrics: selectedMetrics,
             overlayColor: floorColor,
             scheduleLabel,
+            facadeBands: [
+              {
+                key: inferProgressPaletteKey(scheduleLabel),
+                label: scheduleLabel,
+                color: floorColor,
+                progressPct: selectedProgressPct,
+                activityCount: selectedMetrics.totalActivities,
+              },
+            ],
           } satisfies OverlayEntry;
         }
         const floorOverlay = entry.floorId ? scheduleVisualization.floorMap.get(entry.floorId) : null;
@@ -1338,6 +1684,7 @@ export default function BuildingProgress3DTab({
           ...entry,
           overlayColor: floorOverlay?.color || "#64748b",
           scheduleLabel: floorOverlay?.label || "Mapped schedule",
+          facadeBands: floorOverlay?.groups || [],
         } satisfies OverlayEntry;
       })
       .filter((entry): entry is OverlayEntry => Boolean(entry))
@@ -1426,19 +1773,44 @@ export default function BuildingProgress3DTab({
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    const ambient = new THREE.AmbientLight("#ffffff", 1.4);
+    const ambient = new THREE.AmbientLight("#ffffff", 1.05);
     scene.add(ambient);
+
+    const hemisphere = new THREE.HemisphereLight("#f8fdff", "#d7e3ee", 0.95);
+    hemisphere.position.set(0, 0, 260);
+    scene.add(hemisphere);
 
     const directional = new THREE.DirectionalLight("#ffffff", 1.2);
     directional.position.set(180, -120, 300);
     directional.castShadow = true;
+    directional.shadow.mapSize.width = 2048;
+    directional.shadow.mapSize.height = 2048;
+    directional.shadow.bias = -0.0003;
     scene.add(directional);
+
+    const fillLight = new THREE.DirectionalLight("#d7f0ff", 0.7);
+    fillLight.position.set(-220, 160, 180);
+    scene.add(fillLight);
+
+    const sunAccent = new THREE.DirectionalLight("#ffe9c4", 0.45);
+    sunAccent.position.set(60, -260, 220);
+    scene.add(sunAccent);
+
+    const groundPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2400, 2400),
+      new THREE.ShadowMaterial({ color: "#64748b", opacity: 0.12 }),
+    );
+    groundPlane.position.z = -0.8;
+    groundPlane.receiveShadow = true;
+    scene.add(groundPlane);
 
     const grid = new THREE.GridHelper(800, 24, "#cbd5e1", "#dbe4ee");
     grid.rotation.x = Math.PI / 2;
+    grid.position.z = -0.12;
     scene.add(grid);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -1487,13 +1859,7 @@ export default function BuildingProgress3DTab({
       window.removeEventListener("resize", handleResize);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       controls.dispose();
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(material)) material.forEach((item) => item.dispose());
-        else material?.dispose();
-      });
+      scene.traverse(disposeObjectResources);
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
@@ -1505,13 +1871,7 @@ export default function BuildingProgress3DTab({
 
     if (modelGroupRef.current) {
       sceneRef.current.remove(modelGroupRef.current);
-      modelGroupRef.current.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(material)) material.forEach((item) => item.dispose());
-        else material?.dispose();
-      });
+      modelGroupRef.current.traverse(disposeObjectResources);
     }
 
     const nextGroup = new THREE.Group();
@@ -1530,11 +1890,11 @@ export default function BuildingProgress3DTab({
         bevelEnabled: false,
       });
       const material = new THREE.MeshStandardMaterial({
-        color: "#cbd5e1",
+        color: "#d9e4ef",
         transparent: true,
-        opacity: 0.22,
-        roughness: 0.52,
-        metalness: 0.02,
+        opacity: 0.2,
+        roughness: 0.38,
+        metalness: 0.04,
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.z = scaledZ;
@@ -1544,9 +1904,9 @@ export default function BuildingProgress3DTab({
 
       const edgeGeometry = new THREE.EdgesGeometry(geometry);
       const edgeMaterial = new THREE.LineBasicMaterial({
-        color: "#475569",
+        color: "#5b6b7f",
         transparent: true,
-        opacity: 0.62,
+        opacity: 0.5,
       });
       const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
       edges.position.z = scaledZ;
@@ -1556,9 +1916,9 @@ export default function BuildingProgress3DTab({
         centeredPolygon.map(([x, y]) => new THREE.Vector3(x, y, scaledHeight)),
       );
       const topOutlineMaterial = new THREE.LineBasicMaterial({
-        color: "#334155",
+        color: "#6b7d92",
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.42,
       });
       const topOutline = new THREE.LineLoop(topOutlineGeometry, topOutlineMaterial);
       topOutline.position.z = scaledZ;
@@ -1568,20 +1928,24 @@ export default function BuildingProgress3DTab({
     overlayEntries.forEach((entry) => {
       const scaledZ = entry.z * verticalScale;
       const scaledHeight = entry.height * verticalScale;
+      const realisticFacadeColor = getRealisticFacadeColor(entry.progressPct);
+      const realisticFacadeEdgeColor = getRealisticFacadeEdgeColor(entry.progressPct);
       const centeredPolygon = entry.polygon.map(
         ([x, y]) => [x - planCenter.x, y - planCenter.y] as [number, number],
       );
-      const shape = toShape(centeredPolygon);
-      const plannedGeometry = new THREE.ExtrudeGeometry(shape, {
+      const plannedShape = toShape(centeredPolygon);
+      const plannedGeometry = new THREE.ExtrudeGeometry(plannedShape, {
         depth: scaledHeight,
         bevelEnabled: false,
       });
-      const plannedMaterial = new THREE.MeshStandardMaterial({
-        color: mixColor(entry.overlayColor, "#ffffff", 0.28),
+      const plannedMaterial = new THREE.MeshPhysicalMaterial({
+        color: "#d8dee6",
         transparent: true,
-        opacity: 0.16 + (entry.progressPct > 0 ? 0.08 : 0),
-        roughness: 0.4,
-        metalness: 0.04,
+        opacity: 0.05 + (entry.progressPct > 0 ? 0.03 : 0),
+        roughness: 0.28,
+        metalness: 0.03,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.4,
       });
       const plannedMesh = new THREE.Mesh(plannedGeometry, plannedMaterial);
       plannedMesh.position.z = scaledZ;
@@ -1589,29 +1953,172 @@ export default function BuildingProgress3DTab({
       plannedMesh.receiveShadow = true;
       nextGroup.add(plannedMesh);
 
+      const plannedEdges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(plannedGeometry),
+        new THREE.LineBasicMaterial({
+          color: "#a9b7c5",
+          transparent: true,
+          opacity: 0.16,
+        }),
+      );
+      plannedEdges.position.z = scaledZ;
+      nextGroup.add(plannedEdges);
+
+      const facadeBands = (entry.facadeBands || []).filter((band) => band.progressPct > 0);
+      facadeBands.forEach((band, bandIndex) => {
+        const bandGeometry = createPerimeterWallGeometry(
+          centeredPolygon,
+          scaledZ,
+          scaledZ + scaledHeight,
+          0.24 + bandIndex * 0.18,
+        );
+        if (!bandGeometry) return;
+
+        const bandOpacity = clamp(0.12 + band.progressPct / 100, 0.16, 1);
+        const bandMaterial = new THREE.MeshStandardMaterial({
+          color: band.color,
+          emissive: new THREE.Color(mixColor(band.color, "#ffffff", 0.08)),
+          emissiveIntensity: 0.04 + band.progressPct / 500,
+          transparent: true,
+          opacity: bandOpacity,
+          roughness: 0.56,
+          metalness: 0.02,
+          side: THREE.DoubleSide,
+        });
+        const bandMesh = new THREE.Mesh(bandGeometry, bandMaterial);
+        bandMesh.castShadow = true;
+        bandMesh.receiveShadow = true;
+        nextGroup.add(bandMesh);
+
+        const bandTopLines = createPerimeterLineSegments(
+          centeredPolygon,
+          scaledZ + scaledHeight + 0.05,
+          0.28 + bandIndex * 0.18,
+        );
+        if (bandTopLines) {
+          const bandTopOutline = new THREE.LineSegments(
+            bandTopLines,
+            new THREE.LineBasicMaterial({
+              color: mixColor(band.color, "#ffffff", 0.2),
+              transparent: true,
+              opacity: clamp(0.28 + band.progressPct / 140, 0.28, 0.96),
+            }),
+          );
+          nextGroup.add(bandTopOutline);
+        }
+      });
+
       if (entry.progressPct <= 0) return;
 
       const overlayHeight = Math.max(
         (scaledHeight * entry.progressPct) / 100,
         scaledHeight * 0.05,
       );
-      const progressGeometry = new THREE.ExtrudeGeometry(shape, {
+      const progressPolygon = createInsetPolygon(centeredPolygon, 0.975);
+      const progressShape = toShape(progressPolygon);
+      const progressGeometry = new THREE.ExtrudeGeometry(progressShape, {
         depth: Math.min(scaledHeight, overlayHeight),
         bevelEnabled: false,
       });
       const progressMaterial = new THREE.MeshStandardMaterial({
-        color: shadeColor(entry.overlayColor, 0.68),
+        color: realisticFacadeColor,
+        emissive: new THREE.Color(mixColor(realisticFacadeColor, "#fff1d6", 0.18)),
+        emissiveIntensity: 0.08 + Math.min(0.12, entry.progressPct / 220),
         transparent: true,
-        opacity: 0.55 + Math.min(0.28, entry.progressPct / 240),
-        roughness: 0.28,
-        metalness: 0.14,
+        opacity: 0.58 + Math.min(0.12, entry.progressPct / 280),
+        roughness: 0.48,
+        metalness: 0.06,
       });
       const progressMesh = new THREE.Mesh(progressGeometry, progressMaterial);
       progressMesh.position.z = scaledZ;
       progressMesh.castShadow = true;
       progressMesh.receiveShadow = true;
       nextGroup.add(progressMesh);
+
+      const progressTopGeometry = new THREE.ShapeGeometry(progressShape);
+      const progressTopMaterial = new THREE.MeshStandardMaterial({
+        color: mixColor(realisticFacadeColor, "#f6ead7", 0.42),
+        emissive: new THREE.Color(mixColor(realisticFacadeColor, "#ffe8c9", 0.22)),
+        emissiveIntensity: 0.12,
+        transparent: true,
+        opacity: 0.82,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+      const progressTop = new THREE.Mesh(progressTopGeometry, progressTopMaterial);
+      progressTop.position.z = scaledZ + Math.min(scaledHeight, overlayHeight) + 0.04;
+      nextGroup.add(progressTop);
+
+      const progressTopOutline = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(
+          progressPolygon.map(
+            ([x, y]) =>
+              new THREE.Vector3(x, y, scaledZ + Math.min(scaledHeight, overlayHeight) + 0.07),
+          ),
+        ),
+        new THREE.LineBasicMaterial({
+          color: realisticFacadeEdgeColor,
+          transparent: true,
+          opacity: 0.94,
+        }),
+      );
+      nextGroup.add(progressTopOutline);
     });
+
+    if (showTowerLabels) {
+      const towerBounds = new Map<
+        string,
+        {
+          towerName: string;
+          minX: number;
+          maxX: number;
+          minY: number;
+          maxY: number;
+          maxZ: number;
+        }
+      >();
+
+      modelEntries.forEach((entry) => {
+        if (!entry.towerName) return;
+        const centeredPolygon = entry.polygon.map(
+          ([x, y]) => [x - planCenter.x, y - planCenter.y] as [number, number],
+        );
+        const xs = centeredPolygon.map(([x]) => x);
+        const ys = centeredPolygon.map(([, y]) => y);
+        const current = towerBounds.get(entry.towerName);
+        const entryMaxZ = entry.z * verticalScale + entry.height * verticalScale;
+        if (!current) {
+          towerBounds.set(entry.towerName, {
+            towerName: entry.towerName,
+            minX: Math.min(...xs),
+            maxX: Math.max(...xs),
+            minY: Math.min(...ys),
+            maxY: Math.max(...ys),
+            maxZ: entryMaxZ,
+          });
+          return;
+        }
+        current.minX = Math.min(current.minX, ...xs);
+        current.maxX = Math.max(current.maxX, ...xs);
+        current.minY = Math.min(current.minY, ...ys);
+        current.maxY = Math.max(current.maxY, ...ys);
+        current.maxZ = Math.max(current.maxZ, entryMaxZ);
+      });
+
+      towerBounds.forEach((bounds) => {
+        const planarSpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 16);
+        const towerLabel = createTowerLabelSprite(bounds.towerName, planarSpan * 0.5);
+        if (!towerLabel) return;
+        towerLabel.position.set(
+          (bounds.minX + bounds.maxX) / 2,
+          (bounds.minY + bounds.maxY) / 2,
+          bounds.maxZ + 10 * verticalScale,
+        );
+        nextGroup.add(towerLabel);
+      });
+    }
 
     sceneRef.current.add(nextGroup);
     modelGroupRef.current = nextGroup;
@@ -1634,7 +2141,7 @@ export default function BuildingProgress3DTab({
         Math.max(maxDimension * 10, 2400),
       );
     }
-  }, [modelEntries, overlayEntries]);
+  }, [modelEntries, overlayEntries, showTowerLabels]);
 
   const legend = [
     { label: "Completed", color: "#16a34a", range: "95%+" },
@@ -1647,16 +2154,16 @@ export default function BuildingProgress3DTab({
   if (displayMode === "viewerOnly") {
     return (
       <div className="overflow-hidden rounded-3xl border border-border-default bg-surface-card">
-        <div className="border-b border-border-subtle px-4 py-2.5">
+        <div className="border-b border-border-subtle px-3.5 py-2">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">
-              <Move3d className="h-4 w-4 text-secondary" />
-              Project 3D Progress
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+              <Move3d className="h-3.5 w-3.5 text-secondary" />
+              3D Progress
             </div>
-            <div className="mt-0.5 text-base font-bold leading-tight text-text-primary">
+            <div className="mt-0.5 line-clamp-1 text-[1.05rem] font-bold leading-tight text-text-primary">
               {panelTitle || "Transparent Building Mass with Activity Progress Overlay"}
             </div>
-            <div className="mt-0.5 line-clamp-1 text-xs text-text-secondary">
+            <div className="mt-0.5 line-clamp-1 text-[11px] text-text-secondary">
               {panelSubtitle ||
                 "Planned work stays visible as a coloured transparent shell, and achieved progress darkens upward from the base to the executed height."}
             </div>

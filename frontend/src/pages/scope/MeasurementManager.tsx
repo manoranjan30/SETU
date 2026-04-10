@@ -371,7 +371,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
 
   const handleDownloadTemplate = async () => {
     try {
-      await boqService.getMeasurementTemplate();
+      await boqService.getMeasurementTemplate(projectId, boqItem.id, subItem?.id);
     } catch (error) {
       alert("Failed to download template");
     }

@@ -340,7 +340,6 @@ export class WorkDocService {
     await queryRunner.startTransaction();
 
     try {
-      let newTotal = 0;
       for (const itemData of items) {
         const item = await queryRunner.manager.findOne(WorkOrderItem, {
           where: { id: itemData.id },
@@ -350,14 +349,13 @@ export class WorkDocService {
           item.rate = Number(itemData.rate);
           item.amount = item.allocatedQty * item.rate;
           await queryRunner.manager.save(item);
-          newTotal += item.amount;
         }
       }
 
-      // Update WO total
-      await queryRunner.manager.update(WorkOrder, woId, {
-        totalAmount: newTotal,
-      });
+      const newTotal = await this.recalculateWorkOrderHierarchy(
+        queryRunner.manager,
+        woId,
+      );
 
       await queryRunner.commitTransaction();
       return { success: true, totalAmount: newTotal };
@@ -583,7 +581,11 @@ export class WorkDocService {
       }
 
       // 3. Update total amount
-      savedWo.totalAmount = totalAmount;
+      const recalculatedTotal = await this.recalculateWorkOrderHierarchy(
+        queryRunner.manager,
+        savedWo.id,
+      );
+      savedWo.totalAmount = recalculatedTotal;
       await queryRunner.manager.save(savedWo);
 
       await queryRunner.commitTransaction();
@@ -593,7 +595,7 @@ export class WorkDocService {
         woNumber: savedWo.woNumber,
         message: 'Work Order created from BOQ successfully',
         itemCount: createdItems.length,
-        totalAmount,
+        totalAmount: recalculatedTotal,
       };
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -616,7 +618,6 @@ export class WorkDocService {
     await queryRunner.startTransaction();
 
     try {
-      let addedAmount = 0;
       const nodeCache: WorkOrderNodeCache = new Map();
 
       for (const sel of items) {
@@ -627,15 +628,17 @@ export class WorkDocService {
           sel,
           nodeCache,
         );
-        addedAmount += materialized.leafAmount;
       }
 
-      // Update WO total
-      wo.totalAmount = Number(wo.totalAmount || 0) + addedAmount;
+      const totalAmount = await this.recalculateWorkOrderHierarchy(
+        queryRunner.manager,
+        wo.id,
+      );
+      wo.totalAmount = totalAmount;
       await queryRunner.manager.save(wo);
 
       await queryRunner.commitTransaction();
-      return { success: true, itemsAdded: items.length, addedAmount };
+      return { success: true, itemsAdded: items.length, totalAmount };
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -746,7 +749,7 @@ export class WorkDocService {
 
       for (const measurementRow of measurementRows) {
         const rate =
-          Number(subItem?.rate || 0) || Number(sel.rate || 0);
+          Number(sel.rate || 0) || Number(subItem?.rate || 0);
         const amount = Number(measurementRow.allocatedQty) * rate;
         const measurementNode = await this.ensureWoNode(
           manager,
@@ -793,10 +796,12 @@ export class WorkDocService {
               (sum, row) => sum + Number(row.allocatedQty || 0),
               0,
             ),
-            rate: Number(subItem.rate || 0),
+            rate: Number(sel.rate || 0) || Number(subItem.rate || 0),
             deltaAmount: measurementRows.reduce(
               (sum, row) =>
-                sum + Number(row.allocatedQty || 0) * Number(subItem.rate || 0),
+                sum +
+                Number(row.allocatedQty || 0) *
+                  (Number(sel.rate || 0) || Number(subItem.rate || 0)),
               0,
             ),
             woRefText: sel.woRefText || null,
@@ -1022,6 +1027,65 @@ export class WorkDocService {
     const saved = await manager.save(WorkOrderItem, existing);
     nodeCache.set(cacheKey, saved);
     return saved;
+  }
+
+  private async recalculateWorkOrderHierarchy(
+    manager: DataSource['manager'],
+    woId: number,
+  ): Promise<number> {
+    const items = await manager.find(WorkOrderItem, {
+      where: { workOrder: { id: woId } as any },
+      order: { level: 'DESC', id: 'ASC' },
+    });
+
+    const byId = new Map<number, WorkOrderItem>();
+    const childrenByParentId = new Map<number, WorkOrderItem[]>();
+    items.forEach((item) => {
+      byId.set(item.id, item);
+      if (item.parentWorkOrderItemId) {
+        const bucket = childrenByParentId.get(item.parentWorkOrderItemId) || [];
+        bucket.push(item);
+        childrenByParentId.set(item.parentWorkOrderItemId, bucket);
+      }
+    });
+
+    let totalAmount = 0;
+
+    for (const item of items) {
+      const children = childrenByParentId.get(item.id) || [];
+      if (children.length > 0) {
+        const rolledQty = children.reduce(
+          (sum, child) => sum + Number(child.allocatedQty || 0),
+          0,
+        );
+        const rolledAmount = children.reduce(
+          (sum, child) => sum + Number(child.amount || 0),
+          0,
+        );
+
+        item.allocatedQty = Number(rolledQty.toFixed(3));
+        item.amount = Number(rolledAmount.toFixed(2));
+        item.rate =
+          item.allocatedQty > 0
+            ? Number((item.amount / item.allocatedQty).toFixed(2))
+            : 0;
+        item.isParent = true;
+      } else {
+        item.amount = Number(
+          (Number(item.allocatedQty || 0) * Number(item.rate || 0)).toFixed(2),
+        );
+        totalAmount += Number(item.amount || 0);
+      }
+
+      await manager.save(WorkOrderItem, item);
+      byId.set(item.id, item);
+    }
+
+    await manager.update(WorkOrder, woId, {
+      totalAmount: Number(totalAmount.toFixed(2)),
+    });
+
+    return Number(totalAmount.toFixed(2));
   }
 
   // ===========================
