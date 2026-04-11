@@ -61,10 +61,17 @@ void main() {
   );
 
   // ── 4. UpdateProfile → [ProfileSaving, ProfileSaveSuccess] on success ────────
+  //
+  // _cachedUser is a private field set inside _onLoadProfile. We cannot seed it
+  // via bloc's `seed:` parameter. Instead we dispatch LoadProfile first and await
+  // the ProfileLoaded state deterministically using stream.firstWhere before
+  // dispatching UpdateProfile — no timing races.
 
   blocTest<ProfileBloc, ProfileState>(
     'UpdateProfile emits [ProfileSaving, ProfileSaveSuccess] when API succeeds',
     build: () {
+      when(mockApi.getUserProfile()).thenAnswer((_) async => fakeUserJson);
+      when(mockApi.getUserSignature()).thenAnswer((_) async => <String, dynamic>{});
       when(mockApi.updateUserProfile(
         displayName: anyNamed('displayName'),
         email: anyNamed('email'),
@@ -73,14 +80,10 @@ void main() {
       )).thenAnswer((_) async => fakeUserJson);
       return buildBloc();
     },
-    // Seed a loaded state so _cachedUser is populated via the bloc's internal
-    // field — we pre-load via LoadProfile first.
     act: (bloc) async {
-      // Prime _cachedUser by loading profile first
-      when(mockApi.getUserProfile()).thenAnswer((_) async => fakeUserJson);
-      when(mockApi.getUserSignature()).thenAnswer((_) async => <String, dynamic>{});
+      // Prime _cachedUser by awaiting ProfileLoaded deterministically.
       bloc.add(const LoadProfile());
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await bloc.stream.firstWhere((s) => s is ProfileLoaded);
       bloc.add(const UpdateProfile(
         fullName: 'New Name',
         email: 'new@setu.com',
@@ -105,6 +108,8 @@ void main() {
   blocTest<ProfileBloc, ProfileState>(
     'UpdateProfile emits [ProfileSaving, ProfileError] when updateUserProfile throws',
     build: () {
+      when(mockApi.getUserProfile()).thenAnswer((_) async => fakeUserJson);
+      when(mockApi.getUserSignature()).thenAnswer((_) async => <String, dynamic>{});
       when(mockApi.updateUserProfile(
         displayName: anyNamed('displayName'),
         email: anyNamed('email'),
@@ -114,10 +119,9 @@ void main() {
       return buildBloc();
     },
     act: (bloc) async {
-      when(mockApi.getUserProfile()).thenAnswer((_) async => fakeUserJson);
-      when(mockApi.getUserSignature()).thenAnswer((_) async => <String, dynamic>{});
+      // Prime _cachedUser by awaiting ProfileLoaded deterministically.
       bloc.add(const LoadProfile());
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await bloc.stream.firstWhere((s) => s is ProfileLoaded);
       bloc.add(const UpdateProfile(
         fullName: 'New Name',
         email: 'new@setu.com',

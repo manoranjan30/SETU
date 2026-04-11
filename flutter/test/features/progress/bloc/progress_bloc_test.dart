@@ -1,7 +1,6 @@
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
-import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/features/progress/data/models/progress_model.dart';
 import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
 
@@ -30,43 +29,20 @@ void main() {
     expect(buildBloc().state, isA<ProgressInitial>());
   });
 
-  // ── 2. SaveProgress → success when DB insert succeeds and sync succeeds ─────
-
-  blocTest<ProgressBloc, ProgressState>(
-    'SaveProgress emits [ProgressLoading, ProgressSaved(isOffline:false)] when DB and sync succeed',
-    build: () {
-      // Arrange: into().insert() is a SmartFake that throws by default —
-      // stub addToQueue and syncAll so the code-path through _saveProgressToLocal
-      // can complete (insert uses SmartFake that succeeds for int return).
-      final syncResult = SyncResult()
-        ..success = true
-        ..progressSynced = 1;
-      when(mockSync.syncAll()).thenAnswer((_) async => syncResult);
-      when(mockSync.getPendingSyncCount()).thenAnswer((_) async => 0);
-      // into() returns a SmartFake InsertStatement; its insert() returns a
-      // SmartFake Future<int> — SmartFake succeeds for methods that have a
-      // returnValue.  We just need the Drift chain not to throw.
-      return buildBloc();
-    },
-    act: (bloc) => bloc.add(SaveProgress(
-      ProgressEntry(
-        projectId: 10,
-        activityId: 1,
-        epsNodeId: 2,
-        boqItemId: 3,
-        quantity: 5.0,
-        date: DateTime(2026, 4, 8),
-        createdAt: DateTime(2026, 4, 8),
-      ),
-    )),
-    expect: () => [
-      isA<ProgressLoading>(),
-      // Either saved (online) or error (SmartFake throws on insert) — both are valid
-      // outcomes depending on whether Drift SmartFake handles insert.
-      // We match either because the test validates the flow enters the try-branch.
-      anyOf(isA<ProgressSaved>(), isA<ProgressError>()),
-    ],
-  );
+  // ── 2. SaveProgress → success path ──────────────────────────────────────────
+  //
+  // NOTE: A unit test for the happy path of SaveProgress cannot be written with
+  // a MockAppDatabase because _saveProgressToLocal calls
+  //   _database.into(_database.progressEntries).insert(...)
+  // which is a Drift-generated chain. The `into()` method returns a SmartFake
+  // InsertStatement whose `insert()` method throws MissingStubError — there is
+  // no public API on MockAppDatabase to stub this return value.
+  //
+  // The happy path (ProgressSaved) is covered by widget/integration tests that
+  // use an in-memory Drift database (driftTestDatabase). A missing unit test is
+  // preferable to a test that accepts ProgressError as a valid success outcome.
+  //
+  // The error path is fully covered by test 3 below.
 
   // ── 3. SaveProgress → error when DB insert throws ───────────────────────────
 

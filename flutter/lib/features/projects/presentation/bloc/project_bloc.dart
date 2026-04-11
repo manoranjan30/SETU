@@ -266,11 +266,17 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
 
       emit(ProjectsLoaded(projects));
     } catch (e) {
-      // Try to load from cache
-      final cachedProjects = await _loadCachedProjects();
-      if (cachedProjects.isNotEmpty) {
-        emit(ProjectsLoaded(cachedProjects));
-      } else {
+      // Try to load from cache. If the cache query itself fails (e.g. in a
+      // test environment where Drift has no real SQLite backend), catch that
+      // secondary exception and emit ProjectError rather than rethrowing.
+      try {
+        final cachedProjects = await _loadCachedProjects();
+        if (cachedProjects.isNotEmpty) {
+          emit(ProjectsLoaded(cachedProjects));
+        } else {
+          emit(ProjectError(e.toString()));
+        }
+      } catch (_) {
         emit(ProjectError(e.toString()));
       }
     }

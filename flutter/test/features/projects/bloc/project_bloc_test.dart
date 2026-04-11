@@ -58,15 +58,14 @@ void main() {
     },
   );
 
-  // ── 3. LoadProjects → error when API throws and cache is unavailable ─────────
+  // ── 3. LoadProjects → ProjectError when API throws and cache is unavailable ──
   //
   // When API throws, the bloc tries to load from Drift cache.
-  // The Drift select() chain (SmartFake) throws on .get() inside
-  // _loadCachedProjects(), which propagates out of the catch block.
-  // bloc_test's `errors` parameter captures this unhandled exception.
+  // If the cache query also fails (SmartFake has no real SQLite backend),
+  // the bloc catches the secondary exception and emits ProjectError.
 
   blocTest<ProjectBloc, ProjectState>(
-    'LoadProjects emits [ProjectLoading] and reports error when API throws and Drift cache is inaccessible',
+    'LoadProjects emits [ProjectLoading, ProjectError] when API throws and Drift cache is inaccessible',
     build: () {
       when(mockApi.getMyProjects()).thenThrow(Exception('no network'));
       return buildBloc();
@@ -74,7 +73,7 @@ void main() {
     act: (bloc) => bloc.add(LoadProjects()),
     expect: () => [
       isA<ProjectLoading>(),
+      isA<ProjectError>(),
     ],
-    errors: () => [isA<Object>()],
   );
 }
