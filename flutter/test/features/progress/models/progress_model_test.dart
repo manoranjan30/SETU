@@ -2,23 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:setu_mobile/features/progress/data/models/progress_model.dart';
 
 void main() {
-  // ── 1. ProgressEntry instantiation ──────────────────────────────────────────
-
-  test('ProgressEntry can be instantiated with required fields', () {
-    final entry = ProgressEntry(
-      projectId: 10,
-      activityId: 5,
-      epsNodeId: 2,
-      boqItemId: 3,
-      quantity: 12.5,
-      date: DateTime(2026, 4, 8),
-      createdAt: DateTime(2026, 4, 8),
-    );
-
-    expect(entry, isNotNull);
-  });
-
-  // ── 2. Key fields are accessible ────────────────────────────────────────────
+  // ── 1. Key fields are accessible ────────────────────────────────────────────
 
   test('ProgressEntry key fields are accessible', () {
     final date = DateTime(2026, 4, 8);
