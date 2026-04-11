@@ -35,6 +35,9 @@ void main() {
         'createdAt': '2026-01-01T00:00:00.000Z',
       };
       expect(() => QualitySiteObservation.fromJson(minimal), returnsNormally);
+      final obs = QualitySiteObservation.fromJson(minimal);
+      expect(obs.id, 'x');
+      expect(obs.description, 'd');
     });
   });
 

@@ -18,7 +18,9 @@ void main() {
   // ── 1. Initial state ────────────────────────────────────────────────────────
 
   test('initial state is ProfileInitial', () {
-    expect(buildBloc().state, isA<ProfileInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<ProfileInitial>());
   });
 
   // ── 2. LoadProfile → [ProfileLoading, ProfileLoaded] on success ─────────────

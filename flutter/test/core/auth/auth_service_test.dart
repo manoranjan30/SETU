@@ -50,7 +50,7 @@ void main() {
           'expires_in': 3600,
         });
 
-    expect(
+    await expectLater(
       () => authService.login(username: 'test_user', password: 'secret'),
       throwsA(isA<Exception>()),
     );
@@ -97,7 +97,7 @@ void main() {
       password: anyNamed('password'),
     )).thenThrow(Exception('Network error'));
 
-    expect(
+    await expectLater(
       () => authService.login(username: 'test_user', password: 'secret'),
       throwsA(isA<Exception>()),
     );

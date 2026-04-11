@@ -26,7 +26,9 @@ void main() {
   // ── 1. Initial state ────────────────────────────────────────────────────────
 
   test('initial state is ProgressInitial', () {
-    expect(buildBloc().state, isA<ProgressInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<ProgressInitial>());
   });
 
   // ── 2. SaveProgress → success path ──────────────────────────────────────────

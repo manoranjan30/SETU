@@ -39,7 +39,9 @@ void main() {
   // ── 1. Initial state ────────────────────────────────────────────────────────
 
   test('initial state is EhsSiteObsInitial', () {
-    expect(buildBloc().state, isA<EhsSiteObsInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<EhsSiteObsInitial>());
   });
 
   // ── 2. LoadEhsSiteObs → API success (empty cache) ───────────────────────────

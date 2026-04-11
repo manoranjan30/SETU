@@ -21,7 +21,9 @@ void main() {
   // ── 1. Initial state ─────────────────────────────────────────────────────────
 
   test('initial state is EhsIncidentInitial', () {
-    expect(buildBloc().state, isA<EhsIncidentInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<EhsIncidentInitial>());
   });
 
   // ── 2. Load → [Loading, Loaded] on API success ───────────────────────────────

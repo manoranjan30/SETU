@@ -22,7 +22,9 @@ void main() {
   // ── 1. Initial state ────────────────────────────────────────────────────────
 
   test('initial state is ProjectInitial', () {
-    expect(buildBloc().state, isA<ProjectInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<ProjectInitial>());
   });
 
   // ── 2. LoadProjects → success: API returns data, ProjectsLoaded emitted ─────

@@ -30,7 +30,9 @@ void main() {
   // ── 1. Initial state ────────────────────────────────────────────────────────
 
   test('initial state is QualitySiteObsInitial', () {
-    expect(buildBloc().state, isA<QualitySiteObsInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<QualitySiteObsInitial>());
   });
 
   // ── 2. LoadQualitySiteObs → API success ─────────────────────────────────────

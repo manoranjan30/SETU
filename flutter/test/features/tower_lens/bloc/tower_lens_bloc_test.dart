@@ -29,7 +29,9 @@ void main() {
   // ── 1. Initial state ────────────────────────────────────────────────────────
 
   test('initial state is TowerLensInitial', () {
-    expect(buildBloc().state, isA<TowerLensInitial>());
+    final bloc = buildBloc();
+    addTearDown(bloc.close);
+    expect(bloc.state, isA<TowerLensInitial>());
   });
 
   // ── 2. LoadTowerLens → [TowerLensLoading, TowerLensLoaded] on success ────────
