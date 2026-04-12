@@ -130,9 +130,11 @@ describe('PermissionResolutionService', () => {
     const node = { id: 20, type: EpsNodeType.FLOOR, parent: null } as EpsNode;
     const scopeNode = { id: 30, type: EpsNodeType.BLOCK } as EpsNode;
     epsRepo.findOne.mockResolvedValue(node);
-    epsRepo.findAncestors
-      .mockResolvedValueOnce([projectNode]) // findProjectRoot call
-      .mockResolvedValueOnce([{ id: 99 }]); // isDescendant — scope node NOT in ancestors
+    epsRepo.findAncestors.mockImplementation((n: any) =>
+      n.id === node.id
+        ? Promise.resolve([{ id: 99 }])          // isDescendant: scope node NOT in ancestors
+        : Promise.resolve([projectNode]),          // findProjectRoot: project root found
+    );
     assignmentRepo.findOne.mockResolvedValue({
       scopeType: ProjectScopeType.LIMITED,
       scopeNode,
@@ -155,9 +157,11 @@ describe('PermissionResolutionService', () => {
     const node = { id: 20, type: EpsNodeType.FLOOR, parent: null } as EpsNode;
     const scopeNode = { id: 30, type: EpsNodeType.BLOCK } as EpsNode;
     epsRepo.findOne.mockResolvedValue(node);
-    epsRepo.findAncestors
-      .mockResolvedValueOnce([projectNode]) // findProjectRoot call
-      .mockResolvedValueOnce([{ id: 30 }, projectNode]); // isDescendant — scope node IS in ancestors
+    epsRepo.findAncestors.mockImplementation((n: any) =>
+      n.id === node.id
+        ? Promise.resolve([{ id: 30 }, projectNode])   // isDescendant: scope node IS in ancestors
+        : Promise.resolve([projectNode]),               // findProjectRoot: project root found
+    );
     assignmentRepo.findOne.mockResolvedValue({
       scopeType: ProjectScopeType.LIMITED,
       scopeNode,
