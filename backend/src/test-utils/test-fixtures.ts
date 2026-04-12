@@ -24,6 +24,7 @@ export const fakeAdminUser = (): Partial<User> => ({
 });
 
 export const fakeJwtPayload = () => ({
+  id: 1,
   sub: 1,
   username: 'testuser',
   roles: ['Viewer'],
@@ -31,6 +32,7 @@ export const fakeJwtPayload = () => ({
   project_ids: [10],
   isTempUser: false,
   isFirstLogin: false,
+  vendorContext: null,
 });
 
 export const fakeRequest = (user: any = fakeJwtPayload()) => ({

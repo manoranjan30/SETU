@@ -1,11 +1,15 @@
 import { ExecutionContext } from '@nestjs/common';
 
-export const createMockExecutionContext = (user: any = {}): ExecutionContext =>
+export const createMockExecutionContext = (
+  user: any = {},
+  handler: Function = () => {},
+  cls: Function = class {},
+): ExecutionContext =>
   ({
     switchToHttp: () => ({
       getRequest: () => ({ user }),
       getResponse: () => ({}),
     }),
-    getHandler: () => ({}),
-    getClass: () => ({}),
+    getHandler: () => handler,
+    getClass: () => cls,
   }) as unknown as ExecutionContext;

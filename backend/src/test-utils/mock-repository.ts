@@ -1,11 +1,12 @@
 import { Repository } from 'typeorm';
 
-// Use `any` so callers can pass any entity type without satisfying ObjectLiteral
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type MockRepository<T = any> = Partial<Record<keyof Repository<any>, jest.Mock>>;
+export type MockRepository<T extends object = any> = Partial<
+  Record<keyof Repository<T>, jest.Mock>
+>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const createMockRepository = <T = any>(): MockRepository<T> => ({
+export const createMockRepository = <T extends object = any>(): MockRepository<T> => ({
   find: jest.fn(),
   findOne: jest.fn(),
   findOneBy: jest.fn(),
