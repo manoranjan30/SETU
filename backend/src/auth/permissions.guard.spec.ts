@@ -1,6 +1,7 @@
 import { Reflector } from '@nestjs/core';
 import { ForbiddenException } from '@nestjs/common';
 import { PermissionsGuard } from './permissions.guard';
+import { PERMISSIONS_KEY } from './permissions.decorator';
 import { createMockExecutionContext } from '../test-utils/mock-execution-context';
 
 describe('PermissionsGuard', () => {
@@ -20,14 +21,14 @@ describe('PermissionsGuard', () => {
 
   it('passes for Admin user regardless of permissions', () => {
     const handler = () => {};
-    Reflect.defineMetadata('permissions', ['QUALITY.READ'], handler);
+    Reflect.defineMetadata(PERMISSIONS_KEY, ['QUALITY.READ'], handler);
     const ctx = createMockExecutionContext({ roles: ['Admin'], permissions: [] }, handler);
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('passes when user has the required permission', () => {
     const handler = () => {};
-    Reflect.defineMetadata('permissions', ['QUALITY.READ'], handler);
+    Reflect.defineMetadata(PERMISSIONS_KEY, ['QUALITY.READ'], handler);
     const ctx = createMockExecutionContext(
       { roles: ['Viewer'], permissions: ['QUALITY.READ'] },
       handler,
@@ -37,7 +38,7 @@ describe('PermissionsGuard', () => {
 
   it('throws ForbiddenException when user lacks permission', () => {
     const handler = () => {};
-    Reflect.defineMetadata('permissions', ['QUALITY.APPROVE'], handler);
+    Reflect.defineMetadata(PERMISSIONS_KEY, ['QUALITY.APPROVE'], handler);
     const ctx = createMockExecutionContext(
       { roles: ['Viewer'], permissions: ['QUALITY.READ'] },
       handler,

@@ -32,6 +32,7 @@ describe('JwtStrategy', () => {
     expect(result.id).toBe(payload.sub);
     expect(result.username).toBe(payload.username);
     expect(result.isTempUser).toBe(false);
+    expect(result.vendorContext).toBeNull();
     expect(tempUserRepo.findOne).not.toHaveBeenCalled();
   });
 
@@ -51,9 +52,7 @@ describe('JwtStrategy', () => {
       workOrder: { status: 'ACTIVE', orderValidityEnd: new Date(Date.now() + 86400000) },
     });
 
-    await expect(strategy.validate(payload)).rejects.toThrow(
-      'Temporary access suspended or revoked',
-    );
+    await expect(strategy.validate(payload)).rejects.toThrow(UnauthorizedException);
   });
 
   it('throws TEMP_EXPIRED and marks TempUser EXPIRED when past expiry date', async () => {
