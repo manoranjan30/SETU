@@ -231,7 +231,7 @@ describe('BoqImportService', () => {
     it('throws when the buffer is corrupted/not a valid xlsx', async () => {
       const corruptBuffer = Buffer.from('this is not a valid xlsx file!!');
 
-      await expect(service.importBoq(1, corruptBuffer)).rejects.toThrow();
+      await expect(service.importBoq(1, corruptBuffer)).rejects.toThrow(BadRequestException);
     });
   });
 

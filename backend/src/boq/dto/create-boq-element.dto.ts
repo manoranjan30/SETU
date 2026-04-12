@@ -14,8 +14,8 @@ export class CreateBoqElementDto {
   projectId: number;
 
   @ApiProperty({ description: 'ID of the EPS Node (Location)' })
-  @IsNotEmpty()
   @IsNumber()
+  @IsOptional()
   epsNodeId: number;
 
   @ApiProperty({ description: 'Unique BOQ Code' })
@@ -38,6 +38,11 @@ export class CreateBoqElementDto {
   @IsNumber()
   @Min(0)
   totalQuantity: number;
+
+  @ApiPropertyOptional({ description: 'Linked Budget Line Item ID' })
+  @IsOptional()
+  @IsNumber()
+  budgetLineItemId?: number;
 
   @ApiPropertyOptional({ description: 'Reference ID for BIM/Geometry' })
   @IsOptional()

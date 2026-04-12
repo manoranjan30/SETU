@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { BoqElement } from './entities/boq-element.entity';
@@ -14,6 +14,8 @@ import { AuditService } from '../audit/audit.service';
 import { PlanningService } from '../planning/planning.service';
 import { WorkDocService } from '../workdoc/workdoc.service';
 import { forwardRef, Inject } from '@nestjs/common';
+import { BudgetService } from '../planning/budget.service';
+import { BudgetLineItem } from '../planning/entities/budget-line-item.entity';
 
 @Injectable()
 export class BoqService {
@@ -36,7 +38,80 @@ export class BoqService {
     private readonly planningService: PlanningService,
     @Inject(forwardRef(() => WorkDocService))
     private readonly workDocService: WorkDocService,
+    @Inject(forwardRef(() => BudgetService))
+    private readonly budgetService: BudgetService,
   ) {}
+
+  private async applyBudgetSourceOfTruth(
+    data: Partial<BoqItem>,
+  ): Promise<Partial<BoqItem>> {
+    if (!data.projectId) return data;
+    const activeBudget = await this.budgetService.getActiveBudget(
+      data.projectId,
+    );
+    if (!activeBudget) return data;
+
+    const budgetLineItemId = data.budgetLineItemId;
+    if (!budgetLineItemId) {
+      throw new BadRequestException(
+        'Budget line item is required when budget is ACTIVE.',
+      );
+    }
+
+    const line = await this.budgetService.getBudgetLineById(
+      data.projectId,
+      budgetLineItemId,
+    );
+    if (activeBudget && line.budgetId !== activeBudget.id) {
+      throw new BadRequestException(
+        'Budget line must belong to the active budget.',
+      );
+    }
+
+    return {
+      ...data,
+      budgetLineItemId,
+      qty: Number(line.qty || 0),
+      rate: Number(line.rate || 0),
+      amount: Number(line.amount || 0),
+      uom: data.uom ?? line.uom ?? data.uom,
+    };
+  }
+
+  private async applyBudgetAmountToBoqItem(
+    boqItem: BoqItem,
+    budgetContext?: {
+      activeBudgetId: number;
+      budgetLineById: Map<number, BudgetLineItem>;
+    },
+  ): Promise<void> {
+    if (!boqItem.projectId || !boqItem.budgetLineItemId) return;
+
+    let budgetLine: BudgetLineItem | undefined;
+    let activeBudgetId = budgetContext?.activeBudgetId;
+
+    if (budgetContext) {
+      budgetLine = budgetContext.budgetLineById.get(boqItem.budgetLineItemId);
+    } else {
+      const activeBudget = await this.budgetService.getActiveBudget(
+        boqItem.projectId,
+      );
+      if (!activeBudget) return;
+      activeBudgetId = activeBudget.id;
+      budgetLine = await this.budgetService.getBudgetLineById(
+        boqItem.projectId,
+        boqItem.budgetLineItemId,
+      );
+    }
+
+    if (!budgetLine) return;
+    if (activeBudgetId && budgetLine.budgetId !== activeBudgetId) return;
+
+    boqItem.amount = Number(budgetLine.amount || 0);
+    const qty = Number(boqItem.qty || 0);
+    boqItem.rate =
+      qty > 0 ? boqItem.amount / qty : Number(budgetLine.rate || 0);
+  }
 
   // --- Legacy / Compatibility ---
   async create(dto: CreateBoqElementDto): Promise<BoqElement> {
@@ -54,8 +129,24 @@ export class BoqService {
       data.epsNode = { id: data.epsNodeId } as any;
     }
 
-    const item = this.boqItemRepo.create(data);
+    const normalized = await this.applyBudgetSourceOfTruth(data);
+    const item = this.boqItemRepo.create(normalized);
     const saved = await this.boqItemRepo.save(item);
+
+    if (saved.budgetLineItemId) {
+      const activeBudget = await this.budgetService.getActiveBudget(
+        saved.projectId,
+      );
+      if (activeBudget) {
+        await this.budgetService.linkBoqToBudgetLine(
+          saved.projectId,
+          activeBudget.id,
+          saved.id,
+          saved.budgetLineItemId,
+          userId,
+        );
+      }
+    }
 
     await this.auditService.log(
       userId,
@@ -201,6 +292,8 @@ export class BoqService {
       } else {
         boqItem.amount = boqItem.qty * boqItem.rate;
       }
+
+      await this.applyBudgetAmountToBoqItem(boqItem);
       await this.boqItemRepo.save(boqItem);
 
       // Trigger Financial Update in Schedule
@@ -236,6 +329,19 @@ export class BoqService {
       relations: ['subItems'],
       order: { id: 'ASC' },
     });
+
+    const activeBudget = await this.budgetService.getActiveBudget(projectId);
+    const budgetContext = activeBudget
+      ? {
+          activeBudgetId: activeBudget.id,
+          budgetLineById: new Map(
+            (await this.budgetService.listBudgetLines(
+              projectId,
+              activeBudget.id,
+            )).map((line) => [line.id, line]),
+          ),
+        }
+      : null;
 
     let recalculatedSubItemCount = 0;
     let recalculatedMainItemCount = 0;
@@ -282,6 +388,9 @@ export class BoqService {
         boqItem.amount = Number(boqItem.qty || 0) * Number(boqItem.rate || 0);
       }
 
+      if (budgetContext) {
+        await this.applyBudgetAmountToBoqItem(boqItem, budgetContext);
+      }
       await this.boqItemRepo.save(boqItem);
       await this.planningService.updateActivitiesByBoqItem(boqItem.id);
       recalculatedMainItemCount++;
@@ -325,6 +434,7 @@ export class BoqService {
       boqItem.rate = boqItem.amount / boqItem.qty;
     }
 
+    await this.applyBudgetAmountToBoqItem(boqItem);
     await this.boqItemRepo.save(boqItem);
 
     // Trigger Financial Update in Schedule
@@ -407,7 +517,22 @@ export class BoqService {
     const item = await this.boqItemRepo.findOneBy({ id });
     if (!item) throw new NotFoundException('BOQ Item not found');
 
-    if (data.qty !== undefined && item.qtyMode === BoqQtyMode.DERIVED) {
+    const activeBudget = await this.budgetService.getActiveBudget(
+      item.projectId,
+    );
+    const budgetActive = !!activeBudget;
+
+    const normalized = await this.applyBudgetSourceOfTruth({
+      ...item,
+      ...data,
+      projectId: item.projectId,
+    });
+
+    if (
+      !budgetActive &&
+      data.qty !== undefined &&
+      item.qtyMode === BoqQtyMode.DERIVED
+    ) {
       if (data.qty !== item.qty) {
         throw new Error(
           'Cannot manually update Quantity when Mode is DERIVED. Update Measurements instead.',
@@ -422,13 +547,26 @@ export class BoqService {
       mode: item.qtyMode,
     };
 
-    Object.assign(item, data);
-    item.amount = Number(item.qty) * Number(item.rate);
+    Object.assign(item, normalized);
+    item.amount =
+      normalized.amount !== undefined
+        ? Number(normalized.amount)
+        : Number(item.qty) * Number(item.rate);
 
     const saved = await this.boqItemRepo.save(item);
 
     // Trigger Financial Update in Schedule
     await this.planningService.updateActivitiesByBoqItem(saved.id);
+
+    if (saved.budgetLineItemId && activeBudget) {
+      await this.budgetService.linkBoqToBudgetLine(
+        saved.projectId,
+        activeBudget.id,
+        saved.id,
+        saved.budgetLineItemId,
+        userId,
+      );
+    }
 
     await this.auditService.log(
       userId,

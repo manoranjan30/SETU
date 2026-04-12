@@ -13,6 +13,9 @@ import * as XLSX from 'xlsx';
 import { Readable } from 'stream';
 
 import { MeasurementElement } from './entities/measurement-element.entity';
+import { BudgetService } from '../planning/budget.service';
+import { BudgetLineItem } from '../planning/entities/budget-line-item.entity';
+import { forwardRef, Inject } from '@nestjs/common';
 
 @Injectable()
 export class BoqImportService {
@@ -25,6 +28,8 @@ export class BoqImportService {
     private readonly measurementRepo: Repository<MeasurementElement>,
     @InjectRepository(BoqSubItem)
     private readonly boqSubItemRepo: Repository<BoqSubItem>, // Injected
+    @Inject(forwardRef(() => BudgetService))
+    private readonly budgetService: BudgetService,
   ) {}
 
   private async getProjectScopedEpsNodes(projectId: number) {
@@ -673,6 +678,7 @@ export class BoqImportService {
     // Sheet 1: Data Entry Template / Round-trip Export
     const headers = [
       'Row Type',
+      'Budget Line ID',
       'BOQ Code',
       'Parent BOQ Code',
       'Parent Sub-Item',
@@ -730,6 +736,7 @@ export class BoqImportService {
     projectItems.forEach((item) => {
       exportRows.push([
         'MAIN_ITEM',
+        item.budgetLineItemId || '',
         item.boqCode || '',
         '',
         '',
@@ -750,6 +757,7 @@ export class BoqImportService {
         exportRows.push([
           'SUB_ITEM',
           '',
+          '',
           item.boqCode || '',
           '',
           subItem.description || '',
@@ -768,6 +776,7 @@ export class BoqImportService {
         (measurementsBySubItem.get(subItem.id) || []).forEach((measurement) => {
           exportRows.push([
             'MEASUREMENT',
+            '',
             '',
             item.boqCode || '',
             subItem.description || '',
@@ -791,6 +800,7 @@ export class BoqImportService {
       (measurementsByItem.get(item.id) || []).forEach((measurement) => {
         exportRows.push([
           'MEASUREMENT',
+          '',
           '',
           item.boqCode || '',
           '',
@@ -828,6 +838,7 @@ export class BoqImportService {
         '',
         '',
         '',
+        '',
       ],
       [
         'SUB_ITEM',
@@ -845,9 +856,11 @@ export class BoqImportService {
         '',
         '',
         '',
+        '',
       ],
       [
         'MEASUREMENT',
+        '',
         '',
         '',
         '',
@@ -869,10 +882,11 @@ export class BoqImportService {
 
     // Set Column Widths for better visibility
     ws['!cols'] = [
-      { wch: 15 }, // Row Type
-      { wch: 15 }, // BOQ Code
-      { wch: 15 }, // Parent Code
-      { wch: 20 }, // Parent Sub-Item (New)
+      { wch: 14 }, // Row Type
+      { wch: 16 }, // Budget Line ID
+      { wch: 16 }, // BOQ Code
+      { wch: 16 }, // Parent Code
+      { wch: 20 }, // Parent Sub-Item
       { wch: 40 }, // Description
       { wch: 30 }, // Detailed Desc
       { wch: 10 }, // UOM
@@ -892,6 +906,7 @@ export class BoqImportService {
       headers,
       [
         'MAIN_ITEM',
+        '',
         'CIV-001',
         '',
         '',
@@ -910,6 +925,7 @@ export class BoqImportService {
       [
         'SUB_ITEM',
         '',
+        '',
         'CIV-001',
         '',
         'Manual Excavation',
@@ -926,6 +942,7 @@ export class BoqImportService {
       ],
       [
         'MEASUREMENT',
+        '',
         '',
         'CIV-001',
         'Manual Excavation',
@@ -944,6 +961,7 @@ export class BoqImportService {
       [
         'MEASUREMENT',
         '',
+        '',
         'CIV-001',
         'Manual Excavation',
         'Grid 1-B Pit',
@@ -960,6 +978,7 @@ export class BoqImportService {
       ],
       [
         'MAIN_ITEM',
+        '',
         'CIV-002',
         '',
         '',
@@ -983,24 +1002,28 @@ export class BoqImportService {
     const boqReference = [
       [
         'Row Type',
+        'Budget Line ID',
         'BOQ Code',
         'Parent BOQ Code',
         'Parent Sub-Item',
         'Description',
+        'Detailed Description',
         'UOM',
         'Quantity',
         'Rate',
         'EPS Path',
       ],
-      ...exportRows.map((row) => row.slice(0, 10)),
+      ...exportRows.map((row) => row.slice(0, 11)),
     ];
     const wsBoqRef = XLSX.utils.aoa_to_sheet(boqReference);
     wsBoqRef['!cols'] = [
       { wch: 15 },
+      { wch: 16 },
       { wch: 15 },
       { wch: 18 },
       { wch: 24 },
       { wch: 40 },
+      { wch: 30 },
       { wch: 10 },
       { wch: 12 },
       { wch: 12 },
@@ -1078,7 +1101,12 @@ export class BoqImportService {
     hierarchyMapping?: any,
     dryRun: boolean = false,
   ) {
-    const wb = XLSX.read(fileBuffer, { type: 'buffer' });
+    let wb: XLSX.WorkBook;
+    try {
+      wb = XLSX.read(fileBuffer, { type: 'buffer' });
+    } catch {
+      throw new BadRequestException('Invalid or corrupted file. Please upload a valid .xlsx file.');
+    }
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
 
@@ -1117,6 +1145,8 @@ export class BoqImportService {
     const idxUom = getIndex('uom', 'UOM');
     const idxQty = getIndex('qty', 'Quantity');
     const idxRate = getIndex('rate', 'Rate');
+    const idxBudgetLineId = getIndex('budgetLineItemId', 'Budget Line ID');
+    const idxBudgetCode = getIndex('budgetCode', 'Budget Code');
     let idxEpsPath = getIndex('epsPath', 'EPS Path');
     if (idxEpsPath === -1) idxEpsPath = getIndex('epsName', 'EPS Name');
     if (idxEpsPath === -1)
@@ -1132,6 +1162,22 @@ export class BoqImportService {
     const allEps = await this.epsRepo.find({
       select: ['id', 'name', 'parentId'],
     });
+
+    const activeBudget = await this.budgetService.getActiveBudget(projectId);
+    const budgetLineById = new Map<number, BudgetLineItem>();
+    const budgetLineByCode = new Map<string, BudgetLineItem>();
+    if (activeBudget) {
+      const lines = await this.budgetService.listBudgetLines(
+        projectId,
+        activeBudget.id,
+      );
+      lines.forEach((line) => {
+        budgetLineById.set(line.id, line);
+        if (line.code) {
+          budgetLineByCode.set(normalize(line.code), line);
+        }
+      });
+    }
 
     // Handle Hierarchy Mapping Indices
     let hierarchyIndices: number[] = [];
@@ -1300,7 +1346,48 @@ export class BoqImportService {
         const code = String(row[idxCode] || '').trim();
         if (!code) continue;
 
-        let item = itemCodeMap.get(code);
+        let budgetLine: BudgetLineItem | undefined;
+        const rawBudgetLineId =
+          idxBudgetLineId !== -1 ? row[idxBudgetLineId] : undefined;
+        const rawBudgetCode =
+          idxBudgetCode !== -1 ? row[idxBudgetCode] : undefined;
+
+        if (activeBudget) {
+          const lineId = rawBudgetLineId
+            ? Number(rawBudgetLineId)
+            : undefined;
+          if (lineId && budgetLineById.has(lineId)) {
+            budgetLine = budgetLineById.get(lineId);
+          } else if (rawBudgetCode) {
+            const key = normalize(rawBudgetCode);
+            if (budgetLineByCode.has(key)) {
+              budgetLine = budgetLineByCode.get(key);
+            }
+          }
+
+          if (!budgetLine) {
+            result.errors.push(
+              `Row "${code}": Budget Line is required when Budget is ACTIVE.`,
+            );
+            result.errorCount++;
+            continue;
+          }
+        } else {
+          const lineId = rawBudgetLineId
+            ? Number(rawBudgetLineId)
+            : undefined;
+          if (lineId && budgetLineById.has(lineId)) {
+            budgetLine = budgetLineById.get(lineId);
+          } else if (rawBudgetCode) {
+            const key = normalize(rawBudgetCode);
+            if (budgetLineByCode.has(key)) {
+              budgetLine = budgetLineByCode.get(key);
+            }
+          }
+        }
+
+        const existingItem = itemCodeMap.get(code);
+        let item = existingItem;
         if (!item) {
           item = this.boqItemRepo.create({
             projectId,
@@ -1315,8 +1402,17 @@ export class BoqImportService {
           idxLongDesc !== -1 ? String(row[idxLongDesc] || '') : '';
         item.uom = String(row[idxUom] || 'set');
 
-        item.qty = Number(row[idxQty] || 0);
-        item.rate = Number(row[idxRate] || 0);
+        if (budgetLine) {
+          item.budgetLineItemId = budgetLine.id;
+          item.uom = budgetLine.uom || item.uom;
+          item.qty = Number(budgetLine.qty || 0);
+          item.rate = Number(budgetLine.rate || 0);
+          item.amount = Number(budgetLine.amount || 0);
+        } else {
+          item.qty = Number(row[idxQty] || 0);
+          item.rate = Number(row[idxRate] || 0);
+          item.amount = Number(item.qty || 0) * Number(item.rate || 0);
+        }
 
         // EPS
         const pathStr =
@@ -1349,9 +1445,22 @@ export class BoqImportService {
         }
 
         await this.boqItemRepo.save(item);
+        if (budgetLine && activeBudget) {
+          await this.budgetService.linkBoqToBudgetLine(
+            projectId,
+            activeBudget.id,
+            item.id,
+            budgetLine.id,
+            0,
+          );
+        }
         itemCodeMap.set(code, item); // Update map with saved entity (has ID)
         touchedBoqItemIds.add(item.id);
-        result.newCount++;
+        if (existingItem) {
+          result.updateCount++;
+        } else {
+          result.newCount++;
+        }
       }
     }
 
@@ -1831,6 +1940,7 @@ export class BoqImportService {
 
     const headers = [
       'ID',
+      'Budget Line ID',
       'BOQ Code',
       'Parent BOQ Code',
       'Row Type',
@@ -1854,6 +1964,7 @@ export class BoqImportService {
       // 1. Main Item
       data.push([
         item.id,
+        item.budgetLineItemId || '',
         item.boqCode,
         '', // No parent for main item
         'MAIN_ITEM',
@@ -1876,6 +1987,7 @@ export class BoqImportService {
           // 2. Sub Item
           data.push([
             sub.id,
+            '',
             '', // SubItems don't have their own code usually
             item.boqCode, // Link to parent
             'SUB_ITEM',
@@ -1898,6 +2010,7 @@ export class BoqImportService {
               // 3. Measurement
               data.push([
                 m.id,
+                '',
                 '',
                 item.boqCode, // Link back to main item (or we could use sub.id if we wanted to be more specific)
                 'MEASUREMENT',

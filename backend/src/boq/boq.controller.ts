@@ -245,6 +245,7 @@ export class BoqController {
         rate: 0,
         amount: 0,
         epsNodeId: dto.epsNodeId || null, // Optional
+        budgetLineItemId: (dto as any).budgetLineItemId || null,
       } as any,
       user.id,
     );
