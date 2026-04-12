@@ -50,8 +50,8 @@ describe('UsersService', () => {
 
     it('hashes the password and saves the user', async () => {
       userRepo.findOneBy!.mockResolvedValue(null);
-      userRepo.create!.mockReturnValue({ username: 'newuser' });
-      userRepo.save!.mockResolvedValue({ id: 99, username: 'newuser' } as any);
+      userRepo.create!.mockImplementation((dto: any) => ({ ...dto }));
+      userRepo.save!.mockImplementation(async (u: any) => ({ id: 99, ...u }));
 
       const result = await service.create({ username: 'newuser', password: 'secret', isActive: true });
 
@@ -59,6 +59,9 @@ describe('UsersService', () => {
       expect(userRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ username: 'newuser' }),
       );
+      const savedArg = (userRepo.save as jest.Mock).mock.calls[0][0];
+      const isHashed = await bcrypt.compare('secret', savedArg.passwordHash);
+      expect(isHashed).toBe(true);
     });
   });
 
@@ -154,7 +157,7 @@ describe('UsersService', () => {
       const user = {
         ...fakeUser(),
         passwordHash: await bcrypt.hash('oldpass', 10),
-        isFirstLogin: false,
+        isFirstLogin: true,   // starts true — service must clear it to false
       } as any;
       userRepo.findOneBy!.mockResolvedValue(user);
       userRepo.save!.mockResolvedValue(user);
