@@ -5,14 +5,25 @@ export class CreateCustomerMilestoneTables1711100000000
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TYPE customer_milestone_trigger_type AS ENUM ('QUALITY_APPROVED','PROGRESS_PCT','SNAG_ROUND_RELEASED','MANUAL');
-      CREATE TYPE customer_milestone_applicability AS ENUM ('all_units','tower','floor','unit');
-      CREATE TYPE customer_milestone_achievement_status AS ENUM ('not_triggered','triggered','invoice_raised','collected','partially_collected','waived');
-      CREATE TYPE milestone_payment_mode AS ENUM ('cheque','neft','rtgs','upi','demand_draft','other');
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'customer_milestone_trigger_type') THEN
+          CREATE TYPE customer_milestone_trigger_type AS ENUM ('QUALITY_APPROVED','PROGRESS_PCT','SNAG_ROUND_RELEASED','MANUAL');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'customer_milestone_applicability') THEN
+          CREATE TYPE customer_milestone_applicability AS ENUM ('all_units','tower','floor','unit');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'customer_milestone_achievement_status') THEN
+          CREATE TYPE customer_milestone_achievement_status AS ENUM ('not_triggered','triggered','invoice_raised','collected','partially_collected','waived');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'milestone_payment_mode') THEN
+          CREATE TYPE milestone_payment_mode AS ENUM ('cheque','neft','rtgs','upi','demand_draft','other');
+        END IF;
+      END $$;
     `);
 
     await queryRunner.query(`
-      CREATE TABLE customer_milestone_template (
+      CREATE TABLE IF NOT EXISTS customer_milestone_template (
         id SERIAL PRIMARY KEY,
         project_id INTEGER NOT NULL REFERENCES eps_node(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
@@ -34,7 +45,7 @@ export class CreateCustomerMilestoneTables1711100000000
     `);
 
     await queryRunner.query(`
-      CREATE TABLE flat_sale_info (
+      CREATE TABLE IF NOT EXISTS flat_sale_info (
         id SERIAL PRIMARY KEY,
         project_id INTEGER NOT NULL REFERENCES eps_node(id) ON DELETE CASCADE,
         eps_node_id INTEGER NULL REFERENCES eps_node(id) ON DELETE SET NULL,
@@ -52,7 +63,7 @@ export class CreateCustomerMilestoneTables1711100000000
     `);
 
     await queryRunner.query(`
-      CREATE TABLE customer_milestone_achievement (
+      CREATE TABLE IF NOT EXISTS customer_milestone_achievement (
         id SERIAL PRIMARY KEY,
         template_id INTEGER NOT NULL REFERENCES customer_milestone_template(id) ON DELETE CASCADE,
         project_id INTEGER NOT NULL REFERENCES eps_node(id) ON DELETE CASCADE,
@@ -78,12 +89,12 @@ export class CreateCustomerMilestoneTables1711100000000
       );
     `);
     await queryRunner.query(`
-      CREATE UNIQUE INDEX uq_customer_milestone_template_unit
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_milestone_template_unit
       ON customer_milestone_achievement(template_id, quality_unit_id);
     `);
 
     await queryRunner.query(`
-      CREATE TABLE milestone_collection_tranche (
+      CREATE TABLE IF NOT EXISTS milestone_collection_tranche (
         id SERIAL PRIMARY KEY,
         achievement_id INTEGER NOT NULL REFERENCES customer_milestone_achievement(id) ON DELETE CASCADE,
         amount DECIMAL(15,2) NOT NULL,
