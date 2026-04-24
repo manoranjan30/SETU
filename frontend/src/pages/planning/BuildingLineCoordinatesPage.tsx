@@ -798,11 +798,11 @@ export default function BuildingLineCoordinatesPage() {
                 checked={node.draftStructureSnapshot?.showTowerLabels ?? true}
                 disabled={!canWrite}
                 onChange={(e) =>
-                  setNodeDraft(node.id, "draftStructureSnapshot", {
-                    ...(node.draftStructureSnapshot || {}),
-                    progressPalette: ensureProgressPalette(node.draftStructureSnapshot?.progressPalette),
+                  updateNodeStructure(node.id, (snapshot) => ({
+                    ...(snapshot || {}),
+                    progressPalette: ensureProgressPalette(snapshot?.progressPalette),
                     showTowerLabels: e.target.checked,
-                  })
+                  }))
                 }
                 className="mt-1 h-5 w-5 rounded border border-border-default text-primary"
               />

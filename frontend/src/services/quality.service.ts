@@ -12,6 +12,11 @@ import type {
   ParsedChecklistPreview,
   PdfParseResult,
   QualityChecklistTemplatePayload,
+  QualityMaterialEvidenceFile,
+  QualityMaterialItpTemplate,
+  QualityMaterialReceipt,
+  QualityMaterialTestObligation,
+  QualityMaterialTestResult,
 } from "../types/quality";
 
 const BASE_URL = "/quality";
@@ -264,6 +269,138 @@ export const qualityService = {
       `${BASE_URL}/checklist-templates/project/${projectId}/import-excel?preview=false`,
       payload,
     );
+    return res.data;
+  },
+
+  getMaterialItps: async (
+    projectId: number,
+  ): Promise<QualityMaterialItpTemplate[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/material-itps`);
+    return res.data;
+  },
+
+  createMaterialItp: async (
+    projectId: number,
+    data: Partial<QualityMaterialItpTemplate>,
+  ): Promise<QualityMaterialItpTemplate> => {
+    const res = await api.post(`${BASE_URL}/${projectId}/material-itps`, data);
+    return res.data;
+  },
+
+  submitMaterialItpApproval: async (templateId: number) => {
+    const res = await api.post(
+      `${BASE_URL}/material-itps/${templateId}/submit-approval`,
+    );
+    return res.data;
+  },
+
+  approveMaterialItpStep: async (
+    templateId: number,
+    stepId: number,
+    comments?: string,
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/material-itps/${templateId}/approval/${stepId}/approve`,
+      { comments },
+    );
+    return res.data;
+  },
+
+  rejectMaterialItpStep: async (
+    templateId: number,
+    stepId: number,
+    comments?: string,
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/material-itps/${templateId}/approval/${stepId}/reject`,
+      { comments },
+    );
+    return res.data;
+  },
+
+  activateMaterialItp: async (templateId: number) => {
+    const res = await api.post(`${BASE_URL}/material-itps/${templateId}/activate`);
+    return res.data;
+  },
+
+  getMaterialReceipts: async (
+    projectId: number,
+  ): Promise<QualityMaterialReceipt[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/material-receipts`);
+    return res.data;
+  },
+
+  createMaterialReceipt: async (
+    projectId: number,
+    data: Partial<QualityMaterialReceipt>,
+  ): Promise<QualityMaterialReceipt> => {
+    const res = await api.post(`${BASE_URL}/${projectId}/material-receipts`, data);
+    return res.data;
+  },
+
+  getMaterialTestObligations: async (
+    projectId: number,
+  ): Promise<QualityMaterialTestObligation[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/material-test-obligations`);
+    return res.data;
+  },
+
+  getMaterialTestResults: async (
+    projectId: number,
+  ): Promise<QualityMaterialTestResult[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/material-test-results`);
+    return res.data;
+  },
+
+  createMaterialTestResult: async (
+    obligationId: number,
+    data: Partial<QualityMaterialTestResult>,
+  ): Promise<QualityMaterialTestResult> => {
+    const res = await api.post(
+      `${BASE_URL}/material-test-obligations/${obligationId}/results`,
+      data,
+    );
+    return res.data;
+  },
+
+  submitMaterialTestResultApproval: async (resultId: number) => {
+    const res = await api.post(
+      `${BASE_URL}/material-test-results/${resultId}/submit-approval`,
+    );
+    return res.data;
+  },
+
+  approveMaterialTestResultStep: async (
+    resultId: number,
+    stepId: number,
+    comments?: string,
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/material-test-results/${resultId}/approval/${stepId}/approve`,
+      { comments },
+    );
+    return res.data;
+  },
+
+  rejectMaterialTestResultStep: async (
+    resultId: number,
+    stepId: number,
+    comments?: string,
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/material-test-results/${resultId}/approval/${stepId}/reject`,
+      { comments },
+    );
+    return res.data;
+  },
+
+  uploadMaterialEvidence: async (
+    projectId: number,
+    data: FormData,
+  ): Promise<QualityMaterialEvidenceFile> => {
+    const res = await api.post(`${BASE_URL}/${projectId}/material-evidence`, data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return res.data;
   },
 };

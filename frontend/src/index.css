@@ -939,15 +939,15 @@ table td[class*="sticky"] {
 }
 
 .ui-animate-page {
-  animation: uiFadeUp 320ms ease-out both;
+  animation: uiFadeUp 320ms ease-out backwards;
 }
 
 .ui-animate-card {
-  animation: uiScaleIn 260ms ease-out both;
+  animation: uiScaleIn 260ms ease-out backwards;
 }
 
 .ui-stagger > * {
-  animation: uiFadeUp 340ms ease-out both;
+  animation: uiFadeUp 340ms ease-out backwards;
 }
 
 .ui-stagger > *:nth-child(1) { animation-delay: 20ms; }

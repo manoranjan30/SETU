@@ -16,6 +16,7 @@ import BuildingLineCoordinatesPage from "./planning/BuildingLineCoordinatesPage"
 import IssueTrackerPage from "./planning/IssueTrackerPage";
 import CustomerMilestonesPage from "./planning/CustomerMilestonesPage";
 import CostPage from "./planning/CostPage";
+import BudgetPage from "./planning/BudgetPage";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -60,6 +61,8 @@ const PlanningPage = () => {
         return <CustomerMilestonesPage />;
       case "cost":
         return <CostPage />;
+      case "budget":
+        return <BudgetPage />;
       case "recovery":
         return (
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">

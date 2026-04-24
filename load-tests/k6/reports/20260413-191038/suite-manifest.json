@@ -1,0 +1,68 @@
+﻿{
+    "generatedAt":  "2026-04-13T19:10:38",
+    "baseUrl":  "http://localhost:3000",
+    "scenarioSet":  "core-read",
+    "runDirectory":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038",
+    "environment":  {
+                        "projectId":  "2",
+                        "companyId":  "1",
+                        "activityId":  "1967",
+                        "epsNodeId":  "410"
+                    },
+    "scenarios":  [
+                      {
+                          "name":  "smoke-auth",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\smoke-auth.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\smoke-auth-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\smoke-auth-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\smoke-auth-stderr.txt",
+                          "exitCode":  99,
+                          "status":  "failed"
+                      },
+                      {
+                          "name":  "dashboard",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\dashboard.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\dashboard-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\dashboard-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\dashboard-stderr.txt",
+                          "exitCode":  99,
+                          "status":  "failed"
+                      },
+                      {
+                          "name":  "progress-read",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\progress-read.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\progress-read-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\progress-read-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\progress-read-stderr.txt",
+                          "exitCode":  99,
+                          "status":  "failed"
+                      },
+                      {
+                          "name":  "planning-read",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\planning-read.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\planning-read-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\planning-read-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\planning-read-stderr.txt",
+                          "exitCode":  99,
+                          "status":  "failed"
+                      },
+                      {
+                          "name":  "design-read",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\design-read.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\design-read-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\design-read-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\design-read-stderr.txt",
+                          "exitCode":  99,
+                          "status":  "failed"
+                      },
+                      {
+                          "name":  "mixed-read",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\mixed-read.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\mixed-read-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\mixed-read-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-191038\\mixed-read-stderr.txt",
+                          "exitCode":  99,
+                          "status":  "failed"
+                      }
+                  ]
+}

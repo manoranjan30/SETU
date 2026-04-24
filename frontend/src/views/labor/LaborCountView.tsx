@@ -20,6 +20,7 @@ import LaborCategoryModal from "../../components/labor/LaborCategoryModal";
 import LaborEntryModal from "../../components/labor/LaborEntryModal";
 import LaborImportModal from "../../components/labor/LaborImportModal";
 import { exportUtils } from "../../utils/export.utils";
+import type { ExportColumnDefinition } from "../../types/data-transfer";
 import { resolveRegisteredExportFileName } from "../../utils/export.registry";
 
 type TabType = "daily" | "weekly" | "monthly" | "reconciliation";
@@ -235,7 +236,15 @@ const LaborCountView = () => {
       status: item.status,
     }));
 
-  const getLaborExportConfig = () => {
+  type ExportRow = Record<string, unknown>;
+  type ExportConfig = {
+    fileName: string;
+    sheetName: string;
+    rows: ExportRow[];
+    columns: ExportColumnDefinition<ExportRow>[];
+  };
+
+  const getLaborExportConfig = (): ExportConfig => {
     const fileName = resolveRegisteredExportFileName("labor.counts", {
       projectId,
       tab: activeTab,

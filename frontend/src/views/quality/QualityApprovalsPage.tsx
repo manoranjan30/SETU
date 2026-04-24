@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { PermissionCode } from "../../config/permissions";
 import {
@@ -268,6 +268,7 @@ function getPriorityScore(insp: QualityInspection) {
 
 export default function QualityApprovalsPage() {
   const { projectId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [inspections, setInspections] = useState<QualityInspection[]>([]);
   const [selectedInspectionId, setSelectedInspectionId] = useState<
     number | null
@@ -376,7 +377,7 @@ export default function QualityApprovalsPage() {
               setSelectedInspectionId(id);
               setFilterStatus("ALL");
             }
-            setSearchParams((prev) => {
+            setSearchParams((prev: URLSearchParams) => {
               const next = new URLSearchParams(prev);
               next.delete("inspectionId");
               return next;

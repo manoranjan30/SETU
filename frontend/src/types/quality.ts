@@ -283,3 +283,150 @@ export interface QualityChecklistTemplatePayload {
     }>;
   }>;
 }
+
+export interface QualityMaterialItpCheckpoint {
+  id?: number;
+  templateId?: number;
+  sequence: number;
+  section?: string;
+  slNo?: string | null;
+  characteristic: string;
+  testSpecification?: string | null;
+  unit?: string | null;
+  verifyingDocument?: string;
+  frequencyType?: string;
+  frequencyValue?: number | null;
+  frequencyUnit?: string | null;
+  acceptanceCriteria?: any;
+  isMandatory?: boolean;
+  requiresDocument?: boolean;
+  requiresPhotoEvidence?: boolean;
+  requiresNumericResult?: boolean;
+  requiresLabReport?: boolean;
+  requiredEvidenceTypes?: string[] | null;
+  minPhotoCount?: number;
+  dueOffsetHours?: number | null;
+  expiryWindowDays?: number | null;
+}
+
+export interface QualityMaterialItpTemplate {
+  id: number;
+  projectId: number;
+  materialName: string;
+  materialCode?: string | null;
+  itpNo: string;
+  revNo: string;
+  title: string;
+  description?: string | null;
+  status: string;
+  approvalStatus: string;
+  approvalRunId?: number | null;
+  approvalRun?: QualityMaterialApprovalRun | null;
+  checkpoints: QualityMaterialItpCheckpoint[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QualityMaterialReceipt {
+  id: number;
+  projectId: number;
+  itpTemplateId: number;
+  materialName: string;
+  materialCode?: string | null;
+  brand?: string | null;
+  grade?: string | null;
+  supplier?: string | null;
+  manufacturer?: string | null;
+  batchNumber: string;
+  lotNumber?: string | null;
+  challanNumber?: string | null;
+  quantity?: string | null;
+  uom?: string | null;
+  receivedDate: string;
+  manufactureDate?: string | null;
+  status: string;
+  obligations?: QualityMaterialTestObligation[];
+}
+
+export interface QualityMaterialTestObligation {
+  id: number;
+  projectId: number;
+  receiptId?: number | null;
+  templateId: number;
+  checkpointId: number;
+  materialName: string;
+  brand?: string | null;
+  grade?: string | null;
+  dueDate?: string | null;
+  warningDate?: string | null;
+  status: string;
+  priority: string;
+  reason?: string | null;
+  lastResultId?: number | null;
+  checkpoint?: QualityMaterialItpCheckpoint;
+  receipt?: QualityMaterialReceipt;
+}
+
+export interface QualityMaterialTestResult {
+  id: number;
+  projectId: number;
+  obligationId: number;
+  receiptId?: number | null;
+  templateId: number;
+  checkpointId: number;
+  testDate: string;
+  testedByName?: string | null;
+  labType: string;
+  numericValue?: string | null;
+  textValue?: string | null;
+  result: string;
+  reviewStatus: string;
+  approvalRun?: QualityMaterialApprovalRun | null;
+  remarks?: string | null;
+  checkpoint?: QualityMaterialItpCheckpoint;
+  obligation?: QualityMaterialTestObligation;
+}
+
+export interface QualityMaterialEvidenceFile {
+  id: number;
+  projectId: number;
+  ownerType: string;
+  ownerId: number;
+  evidenceType: string;
+  fileKind: string;
+  originalName: string;
+  relativeUrl: string;
+  uploadedAt: string;
+  isLocked: boolean;
+}
+
+export interface QualityMaterialApprovalStep {
+  id: number;
+  runId: number;
+  stepOrder: number;
+  stepName?: string | null;
+  approverMode?: string | null;
+  assignedUserId?: number | null;
+  assignedUserIds?: number[] | null;
+  assignedRoleId?: number | null;
+  minApprovalsRequired: number;
+  currentApprovalCount: number;
+  approvedUserIds?: number[] | null;
+  status: string;
+  signedBy?: string | null;
+  signerDisplayName?: string | null;
+  completedAt?: string | null;
+  comments?: string | null;
+}
+
+export interface QualityMaterialApprovalRun {
+  id: number;
+  projectId: number;
+  documentType: string;
+  documentId: number;
+  processCode: string;
+  strategyName: string;
+  status: string;
+  currentStepOrder: number;
+  steps: QualityMaterialApprovalStep[];
+}

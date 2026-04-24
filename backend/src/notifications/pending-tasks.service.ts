@@ -13,6 +13,12 @@ import {
   ActivityObservation,
   ActivityObservationStatus,
 } from '../quality/entities/activity-observation.entity';
+import { QualityMaterialApprovalStep } from '../quality/entities/quality-material-approval-step.entity';
+import { QualityMaterialTestObligation } from '../quality/entities/quality-material-test-obligation.entity';
+import {
+  AssignmentStatus,
+  UserProjectAssignment,
+} from '../projects/entities/user-project-assignment.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 
 @Injectable()
@@ -24,6 +30,12 @@ export class PendingTasksService {
     private readonly stepRepo: Repository<InspectionWorkflowStep>,
     @InjectRepository(ActivityObservation)
     private readonly obsRepo: Repository<ActivityObservation>,
+    @InjectRepository(QualityMaterialApprovalStep)
+    private readonly materialApprovalStepRepo: Repository<QualityMaterialApprovalStep>,
+    @InjectRepository(QualityMaterialTestObligation)
+    private readonly materialObligationRepo: Repository<QualityMaterialTestObligation>,
+    @InjectRepository(UserProjectAssignment)
+    private readonly assignmentRepo: Repository<UserProjectAssignment>,
     @InjectRepository(TempUser)
     private readonly tempUserRepo: Repository<TempUser>,
   ) {}
@@ -85,6 +97,36 @@ export class PendingTasksService {
       });
     }
 
+    const projectRoleIds = await this.getProjectRoleIds(userId, projectId);
+    const candidateMaterialApprovalSteps =
+      await this.materialApprovalStepRepo.find({
+        where: {
+          status: 'PENDING',
+          ...(projectId ? { run: { projectId } } : {}),
+        },
+        relations: ['run'],
+      });
+    const materialApprovalSteps = candidateMaterialApprovalSteps.filter((step) => {
+      const assignedUserIds = step.assignedUserIds?.length
+        ? step.assignedUserIds
+        : step.assignedUserId
+          ? [step.assignedUserId]
+          : [];
+      if (assignedUserIds.includes(userId)) return true;
+      return Boolean(
+        step.assignedRoleId && projectRoleIds.includes(step.assignedRoleId),
+      );
+    });
+
+    const materialTestAlerts = await this.materialObligationRepo.find({
+      where: {
+        status: In(['DUE_SOON', 'OVERDUE']),
+        ...(projectId ? { projectId } : {}),
+      },
+      relations: ['checkpoint', 'receipt'],
+      order: { dueDate: 'ASC' },
+    });
+
     const items = [
       ...pendingRFIs.map((s) => ({
         type: 'RFI_APPROVAL',
@@ -114,17 +156,61 @@ export class PendingTasksService {
         subtitle: o.observationText,
         date: o.createdAt,
       })),
+      ...materialApprovalSteps.map((step) => ({
+        type:
+          step.run.documentType === 'MATERIAL_ITP_TEMPLATE'
+            ? 'MATERIAL_ITP_APPROVAL'
+            : 'MATERIAL_TEST_APPROVAL',
+        id: step.run.documentId,
+        title:
+          step.run.documentType === 'MATERIAL_ITP_TEMPLATE'
+            ? 'Material ITP Approval Needed'
+            : 'Material Test Result Approval Needed',
+        subtitle: step.stepName || step.run.strategyName,
+        date: step.createdAt,
+      })),
+      ...materialTestAlerts.map((obligation) => ({
+        type: 'MATERIAL_TEST_DUE',
+        id: obligation.id,
+        title:
+          obligation.status === 'OVERDUE'
+            ? 'Material Test Overdue'
+            : 'Material Test Expiring Soon',
+        subtitle:
+          obligation.checkpoint?.characteristic || obligation.materialName,
+        date: obligation.dueDate || obligation.createdAt,
+      })),
     ];
 
     return {
-      approvalsCount: pendingRFIs.length,
+      approvalsCount: pendingRFIs.length + materialApprovalSteps.length,
       raisedRFIsCount: raisedRFIs.length,
       obsToCloseCount: observationsToClose.length,
       vendorObsCount: vendorObservations.length,
+      materialApprovalCount: materialApprovalSteps.length,
+      materialTestAlertCount: materialTestAlerts.length,
       totalCount: items.length,
       items: items.sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       ),
     };
+  }
+
+  private async getProjectRoleIds(userId: number, projectId?: number) {
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        user: { id: userId },
+        status: AssignmentStatus.ACTIVE,
+        ...(projectId ? { project: { id: projectId } } : {}),
+      },
+      relations: ['roles', 'project'],
+    });
+    return Array.from(
+      new Set(
+        assignments.flatMap((assignment) =>
+          (assignment.roles || []).map((role) => role.id),
+        ),
+      ),
+    );
   }
 }

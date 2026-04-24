@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
   Unique,
   OneToOne,
+  Index,
 } from 'typeorm';
 import { WbsNode } from './wbs.entity';
 import { ActivitySchedule } from './activity-schedule.entity';
@@ -24,6 +25,7 @@ export enum ActivityStatus {
 
 @Entity()
 @Unique(['projectId', 'activityCode'])
+@Index(['projectId', 'mspUid'], { unique: true })
 export class Activity {
   @PrimaryGeneratedColumn()
   id: number;
@@ -40,6 +42,9 @@ export class Activity {
 
   @Column()
   activityName: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  mspUid: string | null;
 
   @Column({
     type: 'enum',

@@ -10,6 +10,7 @@ import {
   FileTypeValidator,
   UseGuards,
   ParseIntPipe,
+  Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CpmService } from './cpm.service';
@@ -19,6 +20,7 @@ import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { ProjectAssignmentGuard } from '../projects/guards/project-assignment.guard';
 import { ProjectContextGuard } from '../projects/guards/project-context.guard';
+import type { Response } from 'express';
 
 @Controller('projects/:projectId/schedule')
 @UseGuards(
@@ -84,5 +86,20 @@ export class ScheduleController {
     }
 
     return { message: 'File type not yet supported' };
+  }
+
+  @Get('export-msp')
+  @Permissions('SCHEDULE.READ')
+  async exportMsp(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const xml = await this.importService.exportMsProject(projectId);
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="WorkingSchedule_MSP.xml"',
+    );
+    return xml;
   }
 }

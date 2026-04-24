@@ -14,11 +14,9 @@ import { WbsNode } from './entities/wbs.entity';
 import { WorkCalendar } from './entities/work-calendar.entity';
 import { WorkWeek } from './entities/work-week.entity';
 import { ProjectProfile } from '../eps/project-profile.entity';
-import * as xml2js from 'xml2js'; // Need to install if not present. Or use simple regex for basic XML? Better use a library.
-// Assuming xml2js is available or I can suggest adding it.
-// For now I will mock specific parsing or use standard DOMParser if in node?
-// In Node, we need a library like 'xml2js' or 'fast-xml-parser'.
-// I'll check package.json first.
+import * as xml2js from 'xml2js';
+
+const WBS_UID_PREFIX = 900000000;
 
 @Injectable()
 export class ScheduleImportService {
@@ -232,6 +230,13 @@ export class ScheduleImportService {
           });
         });
 
+        const existingWbs = await manager.find(WbsNode, {
+          where: { projectId },
+        });
+        const wbsCodeMap = new Map(
+          existingWbs.map((node) => [node.wbsCode, node]),
+        );
+
         const wbsMap = new Map<string, WbsNode>(); // OutlineNumber -> WbsNode
         const uidToActivityId = new Map<string, number>(); // UID -> Activity ID
         let count = 0;
@@ -250,7 +255,7 @@ export class ScheduleImportService {
             console.log('DEBUG: XML Task Preview:', JSON.stringify(t, null, 2));
           }
 
-          const uid = t.UID;
+          const uid = t.UID ? t.UID.toString() : null;
           const name = t.Name;
           const isSummary = t.Summary === '1'; // MSP Summary flag
           const parts = outlineNumber.split('.');
@@ -268,19 +273,30 @@ export class ScheduleImportService {
           const wbsCode = outlineNumber;
 
           if (isSummary) {
-            // Create WBS Node
-            const wbsNode = manager.create(WbsNode, {
-              projectId,
-              parentId: parentNode?.id,
-              wbsCode,
-              wbsName: name,
-              isControlAccount: false, // Default
-              wbsLevel: parts.length,
-              sequenceNo: parseInt(parts[parts.length - 1]),
-              createdBy: 'Import',
-            });
-            const savedWbs = await manager.save(wbsNode);
-            wbsMap.set(outlineNumber, savedWbs);
+            const existing = wbsCodeMap.get(wbsCode);
+            if (existing) {
+              existing.wbsName = name;
+              existing.parentId = parentNode?.id ?? null;
+              existing.wbsLevel = parts.length;
+              existing.sequenceNo = parseInt(parts[parts.length - 1], 10);
+              const savedWbs = await manager.save(existing);
+              wbsMap.set(outlineNumber, savedWbs);
+              wbsCodeMap.set(wbsCode, savedWbs);
+            } else {
+              const wbsNode = manager.create(WbsNode, {
+                projectId,
+                parentId: parentNode?.id,
+                wbsCode,
+                wbsName: name,
+                isControlAccount: false, // Default
+                wbsLevel: parts.length,
+                sequenceNo: parseInt(parts[parts.length - 1], 10),
+                createdBy: 'Import',
+              });
+              const savedWbs = await manager.save(wbsNode);
+              wbsMap.set(outlineNumber, savedWbs);
+              wbsCodeMap.set(wbsCode, savedWbs);
+            }
           } else {
             // It is a Leaf Task -> Create Activity
             // But Activity needs a Parent WBS.
@@ -355,34 +371,65 @@ export class ScheduleImportService {
                 }
               }
 
-              const activity = manager.create(Activity, {
-                projectId,
-                wbsNode: parentNode,
-                activityCode: uid,
-                activityName: name,
-                activityType: ActivityType.TASK,
-                status: actualFinish
+              if (!uid) continue;
+              const existingActivity = await manager.findOne(Activity, {
+                where: { projectId, mspUid: uid },
+              });
+
+              if (existingActivity) {
+                existingActivity.wbsNode = parentNode;
+                existingActivity.activityName = name;
+                existingActivity.startDatePlanned = start;
+                existingActivity.finishDatePlanned = finish;
+                existingActivity.startDateActual = actualStart;
+                existingActivity.finishDateActual = actualFinish;
+                existingActivity.startDateBaseline = baselineStart;
+                existingActivity.finishDateBaseline = baselineFinish;
+                existingActivity.startDateMSP = start;
+                existingActivity.finishDateMSP = finish;
+                existingActivity.durationPlanned = duration;
+                existingActivity.isMilestone = t.Milestone === '1';
+                existingActivity.status = actualFinish
                   ? ActivityStatus.COMPLETED
                   : actualStart
                     ? ActivityStatus.IN_PROGRESS
-                    : ActivityStatus.NOT_STARTED,
+                    : ActivityStatus.NOT_STARTED;
 
-                // Date Mapping
-                startDatePlanned: start,
-                finishDatePlanned: finish,
-                startDateActual: actualStart,
-                finishDateActual: actualFinish,
-                startDateBaseline: baselineStart,
-                finishDateBaseline: baselineFinish,
+                const savedActivity = await manager.save(existingActivity);
+                uidToActivityId.set(uid, savedActivity.id);
+              } else {
+                const activity = manager.create(Activity, {
+                  projectId,
+                  wbsNode: parentNode,
+                  activityCode: uid,
+                  activityName: name,
+                  mspUid: uid,
+                  activityType: ActivityType.TASK,
+                  status: actualFinish
+                    ? ActivityStatus.COMPLETED
+                    : actualStart
+                      ? ActivityStatus.IN_PROGRESS
+                      : ActivityStatus.NOT_STARTED,
 
-                durationPlanned: duration,
-                isMilestone: t.Milestone === '1',
-                createdBy: 'Import',
-              } as any);
+                  // Date Mapping
+                  startDatePlanned: start,
+                  finishDatePlanned: finish,
+                  startDateActual: actualStart,
+                  finishDateActual: actualFinish,
+                  startDateBaseline: baselineStart,
+                  finishDateBaseline: baselineFinish,
+                  startDateMSP: start,
+                  finishDateMSP: finish,
 
-              const savedActivity = await manager.save(activity);
-              uidToActivityId.set(uid, savedActivity.id);
-              count++;
+                  durationPlanned: duration,
+                  isMilestone: t.Milestone === '1',
+                  createdBy: 'Import',
+                } as any);
+
+                const savedActivity = await manager.save(activity);
+                uidToActivityId.set(uid, savedActivity.id);
+                count++;
+              }
             } catch (err) {
               throw new Error(
                 `Failed to import Task UID: ${uid}, Name: "${name}". Error: ${err.message}`,
@@ -391,6 +438,8 @@ export class ScheduleImportService {
           }
         }
 
+        await manager.delete(ActivityRelationship, { projectId });
+
         // 2. Process Relationships (Second Pass)
         for (const t of tasks) {
           // Check PredecessorLink
@@ -398,11 +447,11 @@ export class ScheduleImportService {
             const links = Array.isArray(t.PredecessorLink)
               ? t.PredecessorLink
               : [t.PredecessorLink];
-            const successorId = uidToActivityId.get(t.UID);
+            const successorId = uidToActivityId.get(t.UID?.toString());
             if (!successorId) continue;
 
             for (const link of links) {
-              const predecessorUid = link.PredecessorUID;
+              const predecessorUid = link.PredecessorUID?.toString();
               const predecessorId = uidToActivityId.get(predecessorUid);
               if (predecessorId) {
                 // Map MSP Type (0=FF, 1=FS, 2=SF, 3=SS) to Enum
@@ -458,6 +507,187 @@ export class ScheduleImportService {
         throw new BadRequestException(`Failed to parse XML: ${e.message}`);
       }
     });
+  }
+
+  async exportMsProject(projectId: number): Promise<string> {
+    const builder = new xml2js.Builder({
+      headless: false,
+      xmldec: { version: '1.0', encoding: 'UTF-8' },
+    });
+
+    const wbsNodes = await this.wbsRepo.find({
+      where: { projectId },
+      order: { wbsLevel: 'ASC', sequenceNo: 'ASC', id: 'ASC' },
+    });
+    const activities = await this.activityRepo.find({
+      where: { projectId },
+      relations: ['wbsNode'],
+      order: { id: 'ASC' },
+    });
+    const relationships = await this.relationshipRepo.find({
+      where: { projectId },
+      relations: ['predecessor', 'successor'],
+    });
+
+    const outlineByWbsId = this.buildWbsOutlineNumbers(wbsNodes);
+
+    const activityById = new Map(activities.map((a) => [a.id, a]));
+    const predecessorLinksBySuccessor = new Map<number, any[]>();
+    for (const rel of relationships) {
+      if (!rel.successor?.id || !rel.predecessor?.id) continue;
+      const existing = predecessorLinksBySuccessor.get(rel.successor.id) || [];
+      existing.push({
+        PredecessorUID: rel.predecessor.mspUid || rel.predecessor.id.toString(),
+        Type: this.mapRelationshipType(rel.relationshipType),
+        LinkLag: this.formatLag(rel.lagDays),
+      });
+      predecessorLinksBySuccessor.set(rel.successor.id, existing);
+    }
+
+    const tasks: any[] = [];
+
+    for (const node of wbsNodes) {
+      const outline = outlineByWbsId.get(node.id);
+      if (!outline) continue;
+      tasks.push({
+        UID: (WBS_UID_PREFIX + node.id).toString(),
+        ID: outline,
+        Name: node.wbsName,
+        OutlineNumber: outline,
+        OutlineLevel: outline.split('.').length.toString(),
+        Summary: '1',
+      });
+    }
+
+    const activitiesByWbs = new Map<number, Activity[]>();
+    for (const activity of activities) {
+      if (!activity.wbsNode) continue;
+      const list = activitiesByWbs.get(activity.wbsNode.id) || [];
+      list.push(activity);
+      activitiesByWbs.set(activity.wbsNode.id, list);
+    }
+
+    for (const [wbsId, list] of activitiesByWbs.entries()) {
+      const outlinePrefix = outlineByWbsId.get(wbsId);
+      if (!outlinePrefix) continue;
+      list.sort((a, b) => a.id - b.id);
+      list.forEach((activity, index) => {
+        if (!activity.mspUid) {
+          activity.mspUid = activity.id.toString();
+        }
+
+        const outline = `${outlinePrefix}.${index + 1}`;
+        const start = activity.startDateMSP || activity.startDatePlanned;
+        const finish = activity.finishDateMSP || activity.finishDatePlanned;
+        const duration = this.formatDuration(activity.durationPlanned);
+        const baseline = this.buildBaseline(activity);
+
+        const task: any = {
+          UID: activity.mspUid,
+          ID: outline,
+          Name: activity.activityName,
+          OutlineNumber: outline,
+          OutlineLevel: outline.split('.').length.toString(),
+          Start: start ? start.toISOString() : undefined,
+          Finish: finish ? finish.toISOString() : undefined,
+          Duration: duration,
+          Milestone: activity.isMilestone ? '1' : '0',
+        };
+
+        const links = predecessorLinksBySuccessor.get(activity.id);
+        if (links && links.length > 0) {
+          task.PredecessorLink = links;
+        }
+        if (baseline) {
+          task.Baseline = baseline;
+        }
+
+        tasks.push(task);
+      });
+    }
+
+    await this.activityRepo.save(activities);
+
+    const project = {
+      Project: {
+        Name: `SETU Working Schedule`,
+        Tasks: { Task: tasks },
+      },
+    };
+
+    return builder.buildObject(project);
+  }
+
+  private buildWbsOutlineNumbers(nodes: WbsNode[]): Map<number, string> {
+    const outlineById = new Map<number, string>();
+    const childrenByParent = new Map<number | null, WbsNode[]>();
+
+    for (const node of nodes) {
+      const list = childrenByParent.get(node.parentId || null) || [];
+      list.push(node);
+      childrenByParent.set(node.parentId || null, list);
+    }
+
+    const isOutline = (code: string) => /^\d+(\.\d+)*$/.test(code);
+
+    const walk = (parentId: number | null, prefix: string | null) => {
+      const children = childrenByParent.get(parentId || null) || [];
+      children.sort((a, b) => {
+        if (a.sequenceNo !== b.sequenceNo) return a.sequenceNo - b.sequenceNo;
+        return a.id - b.id;
+      });
+      children.forEach((child, index) => {
+        const outline =
+          isOutline(child.wbsCode)
+            ? child.wbsCode
+            : prefix
+              ? `${prefix}.${index + 1}`
+              : `${index + 1}`;
+        outlineById.set(child.id, outline);
+        walk(child.id, outline);
+      });
+    };
+
+    walk(null, null);
+    return outlineById;
+  }
+
+  private formatDuration(durationDays: number): string {
+    if (!durationDays || durationDays <= 0) return 'PT0H0M0S';
+    const hours = Math.round(Number(durationDays) * 8);
+    return `PT${hours}H0M0S`;
+  }
+
+  private buildBaseline(activity: Activity) {
+    if (!activity.startDateBaseline || !activity.finishDateBaseline) return null;
+    return [
+      {
+        Number: '0',
+        Start: activity.startDateBaseline.toISOString(),
+        Finish: activity.finishDateBaseline.toISOString(),
+      },
+    ];
+  }
+
+  private mapRelationshipType(type: RelationshipType): string {
+    switch (type) {
+      case RelationshipType.FF:
+        return '0';
+      case RelationshipType.FS:
+        return '1';
+      case RelationshipType.SF:
+        return '2';
+      case RelationshipType.SS:
+        return '3';
+      default:
+        return '1';
+    }
+  }
+
+  private formatLag(lagDays: number | null | undefined): string | undefined {
+    if (!lagDays) return undefined;
+    const val = Math.round(Number(lagDays) * 4800);
+    return `${val}`;
   }
 
   async importPrimaveraP6(projectId: number, fileBuffer: Buffer) {

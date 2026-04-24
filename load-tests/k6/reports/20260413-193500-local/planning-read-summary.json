@@ -1,0 +1,250 @@
+{
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "login status is 2xx": {
+                    "passes": 20,
+                    "fails": 1,
+                    "name": "login status is 2xx",
+                    "path": "::login status is 2xx",
+                    "id": "fc4ad0a473289fccc786b840f605bf12"
+                },
+                "wbs tree status is 2xx": {
+                    "id": "62abb444ceb641cb9947f41969f1918a",
+                    "passes": 20,
+                    "fails": 0,
+                    "name": "wbs tree status is 2xx",
+                    "path": "::wbs tree status is 2xx"
+                },
+                "wbs activities status is 2xx": {
+                    "name": "wbs activities status is 2xx",
+                    "path": "::wbs activities status is 2xx",
+                    "id": "0a7bc16dd85708d8dc6f1919653d3836",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "project schedule status is 2xx": {
+                    "path": "::project schedule status is 2xx",
+                    "id": "2fd3f8f87709d6e82fec3d43f8220006",
+                    "passes": 20,
+                    "fails": 0,
+                    "name": "project schedule status is 2xx"
+                },
+                "planning stats status is 2xx": {
+                    "name": "planning stats status is 2xx",
+                    "path": "::planning stats status is 2xx",
+                    "id": "c1550f5baccaf2018e25736d646b901a",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning matrix status is 2xx": {
+                    "name": "planning matrix status is 2xx",
+                    "path": "::planning matrix status is 2xx",
+                    "id": "5b6df99d9ed721af50f885db9cb0012e",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning unlinked status is 2xx": {
+                    "name": "planning unlinked status is 2xx",
+                    "path": "::planning unlinked status is 2xx",
+                    "id": "b25e0fcc373d2348c2db40fd1dd7594d",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning boq mapper status is 2xx": {
+                    "name": "planning boq mapper status is 2xx",
+                    "path": "::planning boq mapper status is 2xx",
+                    "id": "327defb4ad577a9ae00792e884ba4441",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning gap analysis status is 2xx": {
+                    "name": "planning gap analysis status is 2xx",
+                    "path": "::planning gap analysis status is 2xx",
+                    "id": "dffe5ed8bc6d08013bee7e4e0483dfa1",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning execution ready status is 2xx": {
+                    "name": "planning execution ready status is 2xx",
+                    "path": "::planning execution ready status is 2xx",
+                    "id": "850da0f3153fb06bc2da7fcc57be3b7d",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning distribution matrix status is 2xx": {
+                    "name": "planning distribution matrix status is 2xx",
+                    "path": "::planning distribution matrix status is 2xx",
+                    "id": "61d042f3a3015485b308c2826ef3bfb1",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "planning relationships status is 2xx": {
+                    "fails": 0,
+                    "name": "planning relationships status is 2xx",
+                    "path": "::planning relationships status is 2xx",
+                    "id": "9c6431fd77dca8c761ae3eff3e7e9467",
+                    "passes": 20
+                },
+                "planning versions status is 2xx": {
+                    "passes": 20,
+                    "fails": 0,
+                    "name": "planning versions status is 2xx",
+                    "path": "::planning versions status is 2xx",
+                    "id": "f8dd6ab2206559b39a244b429fb12932"
+                },
+                "workdoc vendors status is 2xx": {
+                    "path": "::workdoc vendors status is 2xx",
+                    "id": "1589e0410110972a48589599d3ef9748",
+                    "passes": 20,
+                    "fails": 0,
+                    "name": "workdoc vendors status is 2xx"
+                },
+                "workdoc project work orders status is 2xx": {
+                    "name": "workdoc project work orders status is 2xx",
+                    "path": "::workdoc project work orders status is 2xx",
+                    "id": "959cda91016cd0dddb3ee3331139dc38",
+                    "passes": 20,
+                    "fails": 0
+                },
+                "workdoc linkage data status is 2xx": {
+                    "name": "workdoc linkage data status is 2xx",
+                    "path": "::workdoc linkage data status is 2xx",
+                    "id": "ab308fa9617ebb8ff8f3779b9d7d98a0",
+                    "passes": 0,
+                    "fails": 20
+                },
+                "workdoc boq tree status is 2xx": {
+                    "id": "3614d5ee37a73d2bf169c3c59c3796af",
+                    "passes": 20,
+                    "fails": 0,
+                    "name": "workdoc boq tree status is 2xx",
+                    "path": "::workdoc boq tree status is 2xx"
+                },
+                "workdoc available boq qty status is 2xx": {
+                    "name": "workdoc available boq qty status is 2xx",
+                    "path": "::workdoc available boq qty status is 2xx",
+                    "id": "cdcdc90230b30ce4cdecbd3d7940c2c8",
+                    "passes": 20,
+                    "fails": 0
+                }
+            },
+        "name": "",
+        "path": ""
+    },
+    "metrics": {
+        "vus_max": {
+            "value": 10,
+            "min": 10,
+            "max": 10
+        },
+        "checks": {
+            "passes": 340,
+            "fails": 21,
+            "value": 0.9418282548476454
+        },
+        "iterations": {
+            "count": 21,
+            "rate": 0.31105315753007806
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(95)": 5331.085610000001,
+            "avg": 1491.9648117647075,
+            "min": 11.5017,
+            "med": 734.84485,
+            "max": 11701.0967,
+            "p(90)": 4232.444640000003
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 10
+        },
+        "http_req_connecting": {
+            "min": 0,
+            "med": 0,
+            "max": 4.5174,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.10725540166204986
+        },
+        "http_req_sending": {
+            "p(95)": 1.1408,
+            "avg": 0.5629983379501385,
+            "min": 0,
+            "med": 0.5228,
+            "max": 28.5018,
+            "p(90)": 0.9244
+        },
+        "data_sent": {
+            "count": 3159912,
+            "rate": 46804.79071986591
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "data_received": {
+            "rate": 1478302.0530032744,
+            "count": 99803980
+        },
+        "http_req_blocked": {
+            "max": 69.3608,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 1.9040662049861499,
+            "min": 0,
+            "med": 0
+        },
+        "http_req_duration": {
+            "avg": 1409.0405908587275,
+            "min": 9.6119,
+            "med": 609.0464,
+            "max": 11701.0967,
+            "p(90)": 4157.7241,
+            "p(95)": 5313.1044,
+            "thresholds": {
+                "p(95)<2500": true,
+                "p(99)<4500": true
+            }
+        },
+        "iteration_duration": {
+            "avg": 30985.54454285715,
+            "min": 1012.2902,
+            "med": 33025.3344,
+            "max": 37184.6605,
+            "p(90)": 35136.6805,
+            "p(95)": 36101.4327
+        },
+        "http_req_failed": {
+            "passes": 21,
+            "fails": 340,
+            "value": 0.05817174515235457
+        },
+        "http_req_receiving": {
+            "avg": 89.21729224376726,
+            "min": 0,
+            "med": 0.7087,
+            "max": 2781.4398,
+            "p(90)": 71.6273,
+            "p(95)": 407.1786
+        },
+        "http_reqs": {
+            "count": 361,
+            "rate": 5.347151898493247
+        },
+        "http_req_waiting": {
+            "avg": 1319.2603002770081,
+            "min": 8.5245,
+            "med": 607.4653,
+            "max": 11701.0967,
+            "p(90)": 3686.9633,
+            "p(95)": 4955.8654
+        }
+    }
+}

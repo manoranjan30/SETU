@@ -52,6 +52,12 @@ import { CostService } from './cost.service';
 import { CostController } from './cost.controller';
 import { ExecutionProgressEntry } from '../execution/entities/execution-progress-entry.entity';
 import { ExecutionProgressAdjustment } from '../execution/entities/execution-progress-adjustment.entity';
+import { BudgetController } from './budget.controller';
+import { BudgetService } from './budget.service';
+import { Budget } from './entities/budget.entity';
+import { BudgetLineItem } from './entities/budget-line-item.entity';
+import { BudgetBoqMap } from './entities/budget-boq-map.entity';
+import { BudgetLineActivityMap } from './entities/budget-line-activity-map.entity';
 
 @Module({
   imports: [
@@ -94,15 +100,20 @@ import { ExecutionProgressAdjustment } from '../execution/entities/execution-pro
       QualityRoom,
       ExecutionProgressEntry,
       ExecutionProgressAdjustment,
+      Budget,
+      BudgetLineItem,
+      BudgetBoqMap,
+      BudgetLineActivityMap,
     ]),
     WbsModule,
     NotificationsModule,
     MilestoneModule,
   ],
-  controllers: [PlanningController, CostController],
+  controllers: [PlanningController, CostController, BudgetController],
   providers: [
     PlanningService,
     CostService,
+    BudgetService,
     ScheduleVersionService,
     ImportExportService,
     SchedulingEngineService,
@@ -111,6 +122,15 @@ import { ExecutionProgressAdjustment } from '../execution/entities/execution-pro
     BuildingLineCoordinateService,
     IssueTrackerService,
   ],
-  exports: [PlanningService, ScheduleVersionService, ReleaseStrategyService, TowerProgressService, BuildingLineCoordinateService, IssueTrackerService, CostService],
+  exports: [
+    PlanningService,
+    ScheduleVersionService,
+    ReleaseStrategyService,
+    TowerProgressService,
+    BuildingLineCoordinateService,
+    IssueTrackerService,
+    CostService,
+    BudgetService,
+  ],
 })
 export class PlanningModule {}

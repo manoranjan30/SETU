@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus,
   Trash2,
@@ -521,8 +522,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
       )}
 
       {/* ---> MODAL: RAISE OBSERVATION <--- */}
-      {showRaiseModal && (
-        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-50 p-4 md:p-6">
+      {showRaiseModal &&
+        createPortal(
+        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-[100] p-4 md:p-6">
           <div className="bg-surface-card rounded-3xl shadow-2xl w-full h-full overflow-hidden animate-in zoom-in duration-200 flex flex-col">
             <div className="p-5 md:p-6 border-b flex justify-between items-center bg-surface-base shrink-0">
               <div>
@@ -772,12 +774,15 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
 
       {/* ---> MODAL: RECTIFY OBSERVATION <--- */}
-      {showRectifyModal && selectedRecord && (
-        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {showRectifyModal &&
+        selectedRecord &&
+        createPortal(
+        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-surface-card rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
             <div className="p-5 border-b bg-warning-muted flex justify-between items-center">
               <h2 className="text-xl font-bold flex items-center gap-2 text-amber-800">
@@ -887,12 +892,15 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
 
       {/* ---> MODAL: VIEW / CLOSE RECORD <--- */}
-      {showCloseModal && selectedRecord && (
-        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+      {showCloseModal &&
+        selectedRecord &&
+        createPortal(
+        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-surface-card rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
             <div className="p-5 border-b flex justify-between items-center bg-surface-base shrink-0">
               <h2 className="text-xl font-bold flex items-center gap-2">
@@ -1027,8 +1035,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               )}
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 };
