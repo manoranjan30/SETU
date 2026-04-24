@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { apiBaseUrl } from "../../api/baseUrl";
 import {
   Settings,
   AlertCircle,
@@ -25,15 +26,13 @@ const SystemSettings = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-
   useEffect(() => {
     fetchSettings();
   }, []);
 
   const fetchSettings = async () => {
     try {
-      const response = await axios.get(`${API_URL}/admin/settings`);
+      const response = await axios.get(`${apiBaseUrl}/admin/settings`);
       setSettings(response.data);
       setLoading(false);
     } catch (e) {
@@ -50,7 +49,7 @@ const SystemSettings = () => {
   const updateSetting = async (key: string, value: string) => {
     setSaving(key);
     try {
-      await axios.post(`${API_URL}/admin/settings/${key}`, { value });
+      await axios.post(`${apiBaseUrl}/admin/settings/${key}`, { value });
       setSettings((prev) =>
         prev.map((s) => (s.key === key ? { ...s, value } : s)),
       );

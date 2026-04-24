@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import api from "../../api/axios";
+import { getPublicFileUrl } from "../../api/baseUrl";
 import { PermissionCode } from "../../config/permissions";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -122,7 +123,6 @@ const CHECKLIST_STATUSES: SnagChecklistStatus[] = [
   "NA",
 ];
 
-const VITE_API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const MAX_SNAG_CYCLES = 3;
 
 function naturalSort(a: string, b: string) {
@@ -130,9 +130,7 @@ function naturalSort(a: string, b: string) {
 }
 
 function getFileUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  return `${VITE_API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  return getPublicFileUrl(path);
 }
 
 function getSnagCycleLabel(roundNumber: number) {

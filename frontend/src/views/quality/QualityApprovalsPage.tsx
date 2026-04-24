@@ -27,6 +27,7 @@ import {
   Siren,
 } from "lucide-react";
 import api from "../../api/axios";
+import { getPublicFileUrl } from "../../api/baseUrl";
 import SignatureModal from "../../components/quality/SignatureModal";
 
 interface QualityInspection {
@@ -346,11 +347,7 @@ export default function QualityApprovalsPage() {
   // Strips the /api suffix from VITE_API_URL so uploads (served at the server
   // root) are resolved correctly even if the API URL includes /api.
   const getFileUrl = (path: string) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-    const origin = apiUrl.replace(/\/api\/?$/, "");
-    return `${origin}${path}`;
+    return getPublicFileUrl(path);
   };
 
   // Filter states

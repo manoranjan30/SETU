@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
 import { AuthModule } from './auth/auth.module';
@@ -434,6 +433,6 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
     ]),
   ],
   controllers: [AppController],
-  providers: [AppService, SeedService],
+  providers: [SeedService],
 })
 export class AppModule {}

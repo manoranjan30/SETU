@@ -1,7 +1,8 @@
 import axios from "axios";
+import { apiBaseUrl } from "./baseUrl";
 
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api",
+  baseURL: apiBaseUrl,
   timeout: 30000, // Increased timeout for PDF processing
 });
 

@@ -14,12 +14,9 @@ import {
   UserCircle2,
 } from "lucide-react";
 import api from "../../../api/axios";
-
-const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/api\/?$/, "");
+import { getPublicFileUrl } from "../../../api/baseUrl";
 const getFileUrl = (path: string) => {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  return `${API_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+  return getPublicFileUrl(path);
 };
 
 interface Props {
