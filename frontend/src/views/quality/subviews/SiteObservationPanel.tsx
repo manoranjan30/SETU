@@ -17,11 +17,10 @@ import {
   Layers,
 } from "lucide-react";
 import api from "../../../api/axios";
+import { getPublicFileUrl } from "../../../api/baseUrl";
 import { useAuth } from "../../../context/AuthContext";
 import { PermissionCode } from "../../../config/permissions";
 import EpsLocationPicker from "../../../components/common/EpsLocationPicker";
-
-const VITE_API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 interface SiteObservationPanelProps {
   projectId: number;
@@ -185,9 +184,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   };
 
   const getFileUrl = (path: string) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-    return `${VITE_API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+    return getPublicFileUrl(path);
   };
 
   // Handlers

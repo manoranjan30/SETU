@@ -285,6 +285,12 @@ If your frontend build uses Vite environment injection, prepare frontend env val
 - `http://<domain>`
 - `https://<domain>` after reverse proxy and SSL
 
+For web deployment, prefer same-origin API calls:
+
+- if `VITE_API_URL` is unset, the web app now defaults to `/api`
+- if `VITE_API_URL` is set, point it at the public origin or public API origin
+- do not rely on browser-side `http://localhost:3000` during staging
+
 ### Step 7: Copy Firebase credentials if needed
 
 If Firebase-backed features are required in staging:
@@ -415,6 +421,23 @@ If the app exits repeatedly, investigate:
 - database credential mismatch
 - missing Firebase file
 
+### Step 13.1: Verify auth route correctly
+
+The backend API is served under `/api`.
+
+Use this exact command on the VM:
+
+```bash
+curl -i -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"password123"}'
+```
+
+Expected result:
+
+- valid login returns JSON with `access_token`
+- `http://localhost/auth/login` is not the correct API route and may return SPA HTML
+
 ### Step 14: Verify app reachability
 
 From the VM:
@@ -433,6 +456,8 @@ Expected result:
 
 - the frontend is served
 - browser loads the login screen or app shell
+- browser login request goes to `/api/auth/login`
+- login response is JSON, not HTML
 
 ### Step 15: Validate container state and resource usage
 
@@ -541,6 +566,12 @@ Then validate and reload:
 nginx -t
 systemctl reload nginx
 ```
+
+Routing note:
+
+- SPA routes are non-`/api`
+- backend routes are `/api/...`
+- keep Flutter and other API clients pointed at `/api`
 
 ## 10. Restart and Recovery Operations
 

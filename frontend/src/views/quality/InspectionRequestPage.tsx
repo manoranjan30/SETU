@@ -11,6 +11,7 @@ import {
   MessageSquareWarning,
 } from "lucide-react";
 import api from "../../api/axios";
+import { getPublicFileUrl } from "../../api/baseUrl";
 import { useAuth } from "../../context/AuthContext";
 import { qualityService } from "../../services/quality.service";
 import type { QualityUnitNode } from "../../types/quality";
@@ -162,11 +163,7 @@ export default function InspectionRequestPage() {
   // Strips the /api suffix from VITE_API_URL so uploads (served at the server
   // root) are resolved correctly even if the API URL includes /api.
   const getFileUrl = (path: string) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-    const origin = apiUrl.replace(/\/api\/?$/, "");
-    return `${origin}${path}`;
+    return getPublicFileUrl(path);
   };
 
   // Load EPS Structure
