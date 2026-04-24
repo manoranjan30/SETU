@@ -3,17 +3,34 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class CreateSnagTables1711101000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TYPE snag_list_status AS ENUM ('snagging','desnagging','released','handover_ready');
-      CREATE TYPE snag_round_snag_phase_status AS ENUM ('open','submitted');
-      CREATE TYPE snag_round_desnag_phase_status AS ENUM ('locked','open','approval_pending','approved','rejected');
-      CREATE TYPE snag_item_status AS ENUM ('open','rectified','closed','on_hold');
-      CREATE TYPE snag_photo_type AS ENUM ('before','after');
-      CREATE TYPE snag_release_approval_status AS ENUM ('pending','approved','rejected');
-      CREATE TYPE snag_release_approval_step_status AS ENUM ('waiting','pending','approved','rejected');
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_list_status') THEN
+          CREATE TYPE snag_list_status AS ENUM ('snagging','desnagging','released','handover_ready');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_round_snag_phase_status') THEN
+          CREATE TYPE snag_round_snag_phase_status AS ENUM ('open','submitted');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_round_desnag_phase_status') THEN
+          CREATE TYPE snag_round_desnag_phase_status AS ENUM ('locked','open','approval_pending','approved','rejected');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_item_status') THEN
+          CREATE TYPE snag_item_status AS ENUM ('open','rectified','closed','on_hold');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_photo_type') THEN
+          CREATE TYPE snag_photo_type AS ENUM ('before','after');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_release_approval_status') THEN
+          CREATE TYPE snag_release_approval_status AS ENUM ('pending','approved','rejected');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_release_approval_step_status') THEN
+          CREATE TYPE snag_release_approval_step_status AS ENUM ('waiting','pending','approved','rejected');
+        END IF;
+      END $$;
     `);
 
     await queryRunner.query(`
-      CREATE TABLE snag_list (
+      CREATE TABLE IF NOT EXISTS snag_list (
         id SERIAL PRIMARY KEY,
         project_id INTEGER NOT NULL REFERENCES eps_node(id) ON DELETE CASCADE,
         eps_node_id INTEGER NULL REFERENCES eps_node(id) ON DELETE SET NULL,
@@ -27,12 +44,12 @@ export class CreateSnagTables1711101000000 implements MigrationInterface {
       );
     `);
     await queryRunner.query(`
-      CREATE UNIQUE INDEX uq_snag_list_project_quality_unit
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_snag_list_project_quality_unit
       ON snag_list(project_id, quality_unit_id);
     `);
 
     await queryRunner.query(`
-      CREATE TABLE snag_round (
+      CREATE TABLE IF NOT EXISTS snag_round (
         id SERIAL PRIMARY KEY,
         snag_list_id INTEGER NOT NULL REFERENCES snag_list(id) ON DELETE CASCADE,
         round_number INTEGER NOT NULL,
@@ -49,7 +66,7 @@ export class CreateSnagTables1711101000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE snag_item (
+      CREATE TABLE IF NOT EXISTS snag_item (
         id SERIAL PRIMARY KEY,
         snag_list_id INTEGER NOT NULL REFERENCES snag_list(id) ON DELETE CASCADE,
         snag_round_id INTEGER NOT NULL REFERENCES snag_round(id) ON DELETE CASCADE,
@@ -73,7 +90,7 @@ export class CreateSnagTables1711101000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE snag_photo (
+      CREATE TABLE IF NOT EXISTS snag_photo (
         id SERIAL PRIMARY KEY,
         snag_item_id INTEGER NOT NULL REFERENCES snag_item(id) ON DELETE CASCADE,
         type snag_photo_type NOT NULL,
@@ -83,7 +100,7 @@ export class CreateSnagTables1711101000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE snag_release_approval (
+      CREATE TABLE IF NOT EXISTS snag_release_approval (
         id SERIAL PRIMARY KEY,
         snag_round_id INTEGER NOT NULL REFERENCES snag_round(id) ON DELETE CASCADE,
         project_id INTEGER NOT NULL REFERENCES eps_node(id) ON DELETE CASCADE,
@@ -96,7 +113,7 @@ export class CreateSnagTables1711101000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE snag_release_approval_step (
+      CREATE TABLE IF NOT EXISTS snag_release_approval_step (
         id SERIAL PRIMARY KEY,
         approval_id INTEGER NOT NULL REFERENCES snag_release_approval(id) ON DELETE CASCADE,
         step_order INTEGER NOT NULL,

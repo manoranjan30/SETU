@@ -10,6 +10,11 @@ export class CreatePluginSystemTables1711000000000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasTable = async (tableName: string) => {
+      const table = await queryRunner.getTable(tableName);
+      return Boolean(table);
+    };
+
     await queryRunner.createTable(
       new Table({
         name: 'plugin_package',
@@ -32,6 +37,7 @@ export class CreatePluginSystemTables1711000000000
         ],
         uniques: [{ columnNames: ['pluginKey', 'version'] }],
       }),
+      true,
     );
 
     await queryRunner.createTable(
@@ -56,6 +62,7 @@ export class CreatePluginSystemTables1711000000000
           { name: 'updatedAt', type: 'timestamp', default: 'now()' },
         ],
       }),
+      true,
     );
 
     await this.createDefinitionTable(queryRunner, 'plugin_permission', [
@@ -135,27 +142,22 @@ export class CreatePluginSystemTables1711000000000
           { name: 'createdAt', type: 'timestamp', default: 'now()' },
         ],
       }),
+      true,
     );
 
-    await queryRunner.createForeignKey(
-      'plugin_install',
-      new TableForeignKey({
-        columnNames: ['pluginPackageId'],
-        referencedTableName: 'plugin_package',
-        referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
-      }),
-    );
+    await this.ensureForeignKey(queryRunner, 'plugin_install', {
+      columnNames: ['pluginPackageId'],
+      referencedTableName: 'plugin_package',
+      referencedColumnNames: ['id'],
+      onDelete: 'CASCADE',
+    });
 
-    await queryRunner.createForeignKey(
-      'plugin_install',
-      new TableForeignKey({
-        columnNames: ['installedById'],
-        referencedTableName: 'user',
-        referencedColumnNames: ['id'],
-        onDelete: 'SET NULL',
-      }),
-    );
+    await this.ensureForeignKey(queryRunner, 'plugin_install', {
+      columnNames: ['installedById'],
+      referencedTableName: 'user',
+      referencedColumnNames: ['id'],
+      onDelete: 'SET NULL',
+    });
 
     for (const table of [
       'plugin_permission',
@@ -166,28 +168,25 @@ export class CreatePluginSystemTables1711000000000
       'plugin_workflow',
       'plugin_setting',
     ]) {
-      await queryRunner.createForeignKey(
-        table,
-        new TableForeignKey({
+      if (await hasTable(table)) {
+        await this.ensureForeignKey(queryRunner, table, {
           columnNames: ['pluginInstallId'],
           referencedTableName: 'plugin_install',
           referencedColumnNames: ['id'],
           onDelete: 'CASCADE',
-        }),
-      );
+        });
+      }
     }
 
-    await queryRunner.createForeignKey(
-      'plugin_audit_log',
-      new TableForeignKey({
-        columnNames: ['pluginInstallId'],
-        referencedTableName: 'plugin_install',
-        referencedColumnNames: ['id'],
-        onDelete: 'SET NULL',
-      }),
-    );
+    await this.ensureForeignKey(queryRunner, 'plugin_audit_log', {
+      columnNames: ['pluginInstallId'],
+      referencedTableName: 'plugin_install',
+      referencedColumnNames: ['id'],
+      onDelete: 'SET NULL',
+    });
 
-    await queryRunner.createIndex(
+    await this.ensureIndex(
+      queryRunner,
       'plugin_install',
       new TableIndex({
         name: 'IDX_plugin_install_pluginKey_status',
@@ -227,6 +226,40 @@ export class CreatePluginSystemTables1711000000000
           ...extraColumns,
         ],
       }),
+      true,
     );
+  }
+
+  private async ensureForeignKey(
+    queryRunner: QueryRunner,
+    tableName: string,
+    definition: ConstructorParameters<typeof TableForeignKey>[0],
+  ) {
+    const table = await queryRunner.getTable(tableName);
+    if (!table) return;
+
+    const exists = table.foreignKeys.some(
+      (foreignKey) =>
+        foreignKey.columnNames.join(',') === definition.columnNames.join(',') &&
+        foreignKey.referencedTableName === definition.referencedTableName,
+    );
+
+    if (!exists) {
+      await queryRunner.createForeignKey(tableName, new TableForeignKey(definition));
+    }
+  }
+
+  private async ensureIndex(
+    queryRunner: QueryRunner,
+    tableName: string,
+    definition: TableIndex,
+  ) {
+    const table = await queryRunner.getTable(tableName);
+    if (!table) return;
+
+    const exists = table.indices.some((index) => index.name === definition.name);
+    if (!exists) {
+      await queryRunner.createIndex(tableName, definition);
+    }
   }
 }

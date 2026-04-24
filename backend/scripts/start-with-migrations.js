@@ -60,6 +60,28 @@ function getMigrationScript() {
   return 'migration:run:dist';
 }
 
+function getSchemaSyncCommand() {
+  const sourceDataSource = path.join(process.cwd(), 'src', 'data-source.ts');
+  if (fs.existsSync(sourceDataSource)) {
+    return {
+      command: 'npm',
+      args: [
+        'exec',
+        'typeorm-ts-node-commonjs',
+        '--',
+        '-d',
+        'src/data-source.ts',
+        'schema:sync',
+      ],
+    };
+  }
+
+  return {
+    command: 'node',
+    args: ['./node_modules/typeorm/cli.js', '-d', 'dist/src/data-source.js', 'schema:sync'],
+  };
+}
+
 function distArtifactsMissing() {
   return !fs.existsSync(path.join(process.cwd(), 'dist', 'src', 'data-source.js'));
 }
@@ -177,6 +199,45 @@ async function releaseMigrationLock(lockHandle) {
   }
 }
 
+async function countUserTables() {
+  const client = new Client(getDbConfig());
+  await client.connect();
+  try {
+    const result = await client.query(`
+      SELECT COUNT(*)::int AS count
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+        AND table_name <> 'migrations'
+    `);
+
+    return result.rows[0]?.count ?? 0;
+  } finally {
+    await client.end();
+  }
+}
+
+async function bootstrapEmptySchemaIfNeeded(migrationScript) {
+  const shouldBootstrap = readBooleanEnv('DB_BOOTSTRAP_EMPTY_SCHEMA', true);
+  if (!shouldBootstrap) {
+    return;
+  }
+
+  const userTableCount = await countUserTables();
+  if (userTableCount > 0) {
+    log(`Detected ${userTableCount} existing application tables. Skipping empty-schema bootstrap.`);
+    return;
+  }
+
+  await prepareBuildArtifactsIfNeeded(migrationScript);
+  const schemaSync = getSchemaSyncCommand();
+  log(
+    `Database is empty. Bootstrapping schema via "${schemaSync.command} ${schemaSync.args.join(' ')}".`,
+  );
+  await runProcess(schemaSync.command, schemaSync.args);
+  log('Empty-database schema bootstrap completed successfully.');
+}
+
 async function runMigrationsIfEnabled() {
   const shouldRun = readBooleanEnv('RUN_DB_MIGRATIONS', true);
   if (!shouldRun) {
@@ -189,6 +250,7 @@ async function runMigrationsIfEnabled() {
 
   try {
     const migrationScript = getMigrationScript();
+    await bootstrapEmptySchemaIfNeeded(migrationScript);
     await prepareBuildArtifactsIfNeeded(migrationScript);
     log(`Running database migrations via "npm run ${migrationScript}".`);
     await runProcess('npm', ['run', migrationScript]);
