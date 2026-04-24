@@ -186,6 +186,12 @@ export const PLANNING_PERMISSIONS: PermissionDef[] = [
   perm('RELEASE_STRATEGY.WRITE', 'Manage Release Strategies', 'PLANNING', C),
   perm('RELEASE_STRATEGY.ACTIVATE', 'Activate Release Strategies', 'PLANNING', S),
   perm('RELEASE_STRATEGY.SIMULATE', 'Simulate Release Strategies', 'PLANNING', S),
+  perm('PLANNING.BUDGET.READ', 'View Budgets', 'PLANNING', R),
+  perm('PLANNING.BUDGET.CREATE', 'Create Budgets', 'PLANNING', C),
+  perm('PLANNING.BUDGET.UPDATE', 'Update Budgets', 'PLANNING', U),
+  perm('PLANNING.BUDGET.DELETE', 'Delete Budgets', 'PLANNING', D),
+  perm('PLANNING.BUDGET.IMPORT', 'Import Budget Lines', 'PLANNING', C),
+  perm('PLANNING.BUDGET.MAP', 'Map Budgets to Activities', 'PLANNING', S),
 ];
 
 export const MILESTONE_PERMISSIONS: PermissionDef[] = [
@@ -372,6 +378,30 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
   perm('QUALITY.STRUCTURE.MANAGE', 'Manage Structure Templates', 'QUALITY', S),
   perm('QUALITY.WORKFLOW.READ', 'View Approval Workflows', 'QUALITY', R),
   perm('QUALITY.WORKFLOW.WRITE', 'Manage Approval Workflows', 'QUALITY', C),
+  ...crud('QUALITY', 'MATERIAL_ITP', 'Material ITP Template'),
+  perm('QUALITY.MATERIAL_ITP.APPROVE', 'Approve Material ITP Template', 'QUALITY', S),
+  perm(
+    'QUALITY.MATERIAL_ITP.REVERSE_APPROVAL',
+    'Reverse Material ITP Approval',
+    'QUALITY',
+    S,
+  ),
+  perm('QUALITY.MATERIAL_RECEIPT.READ', 'View Material Receipts', 'QUALITY', R),
+  perm('QUALITY.MATERIAL_RECEIPT.CREATE', 'Create Material Receipts', 'QUALITY', C),
+  perm('QUALITY.MATERIAL_RECEIPT.UPDATE', 'Update Material Receipts', 'QUALITY', U),
+  perm('QUALITY.MATERIAL_TEST.READ', 'View ITP Test Obligations', 'QUALITY', R),
+  perm('QUALITY.MATERIAL_TEST.LOG', 'Log ITP Test Result', 'QUALITY', C),
+  perm('QUALITY.MATERIAL_TEST.REVIEW', 'Review ITP Test Result', 'QUALITY', U),
+  perm('QUALITY.MATERIAL_TEST.APPROVE', 'Approve ITP Test Result', 'QUALITY', S),
+  perm(
+    'QUALITY.MATERIAL_TEST.REVERSE_APPROVAL',
+    'Reverse ITP Test Result Approval',
+    'QUALITY',
+    S,
+  ),
+  perm('QUALITY.MATERIAL_EVIDENCE.READ', 'View Material Test Evidence', 'QUALITY', R),
+  perm('QUALITY.MATERIAL_EVIDENCE.UPLOAD', 'Upload Material Test Evidence', 'QUALITY', C),
+  perm('QUALITY.MATERIAL_EVIDENCE.DELETE', 'Delete Material Test Evidence', 'QUALITY', D),
 
   // Site Observations
   perm('QUALITY.SITE_OBS.READ', 'View Site Observations', 'QUALITY', R),

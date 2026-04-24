@@ -1,57 +1,75 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import UserManagement from "./pages/UserManagement";
-import RoleManagement from "./pages/RoleManagement";
-import PermissionsTab from "./pages/user-management/PermissionsTab";
-import EpsPage from "./pages/EpsPage";
-import WbsPage from "./pages/WbsPage";
-import TemplatesPage from "./pages/TemplatesPage";
-import TemplateDetailPage from "./pages/TemplateDetailPage";
-
-import CalendarListPage from "./pages/admin/CalendarListPage";
-import CalendarEditor from "./pages/admin/CalendarEditor";
-import BoqPage from "./pages/scope/BoqPage";
-import ExecutionMapper from "./pages/execution/ExecutionMapper";
-import ExecutionDashboard from "./pages/execution/ExecutionDashboard";
-import ProgressDashboard from "./views/progress/ProgressDashboard";
-import PlanningPage from "./pages/PlanningPage";
-import ScheduleComparisonGrid from "./components/planning/versions/ScheduleComparisonGrid";
-import LaborCountView from "./views/labor/LaborCountView";
-import EhsProjectDashboard from "./views/ehs/EhsProjectDashboard";
-import QualityProjectDashboard from "./views/quality/QualityProjectDashboard";
-import ActivityListsPage from "./views/quality/ActivityListsPage";
-import SequenceManagerPage from "./views/quality/SequenceManagerPage";
-import QualitySequencer from "./views/quality/sequencer/QualitySequencer";
-import InspectionRequestPage from "./views/quality/InspectionRequestPage";
-import QualityApprovalsPage from "./views/quality/QualityApprovalsPage";
-import DesignDashboard from "./views/design/DesignDashboard";
-import SystemSettings from "./views/admin/SystemSettings";
-import TemplateBuilder from "./views/admin/TemplateBuilder";
-import SystemLogs from "./views/admin/SystemLogs";
-import VendorMappingPage from "./pages/VendorMappingPage";
-import ApprovalsPage from "./pages/execution/ApprovalsPage";
-import WorkflowDesignerPage from "./views/quality/workflow/WorkflowDesignerPage";
-import UserProfilePage from "./pages/UserProfilePage";
-import { VendorAccessTemplatesPage } from "./pages/admin/VendorAccessTemplatesPage";
-import { VendorUserManagementPage } from "./pages/planning/VendorUserManagementPage";
-import DashboardBuilderHome from "./views/dashboard-builder/DashboardBuilderHome";
-import DashboardDesigner from "./views/dashboard-builder/DashboardDesigner";
-import DashboardViewer from "./views/dashboard-builder/DashboardViewer";
-import ReportBuilderHome from "./views/dashboard-builder/ReportBuilderHome";
-import ReportDesigner from "./views/dashboard-builder/ReportDesigner";
-import ReportViewer from "./views/dashboard-builder/ReportViewer";
-import DashboardRouter from "./DashboardRouter";
-import PluginRegistryPage from "./pages/admin/PluginRegistryPage";
-import PluginHostPage from "./pages/plugins/PluginHostPage";
-import IssueTrackerDepartmentsPage from "./pages/admin/IssueTrackerDepartmentsPage";
-import IssueTrackerPage from "./pages/planning/IssueTrackerPage";
 import { PluginRuntimeProvider } from "./context/PluginRuntimeContext";
-import AiInsightsPage from "./pages/ai-insights/AiInsightsPage";
-import InsightResultPage from "./pages/ai-insights/InsightResultPage";
-import AiInsightsAdminPage from "./pages/ai-insights/AiInsightsAdminPage";
+
+const UserManagement = lazy(() => import("./pages/UserManagement"));
+const RoleManagement = lazy(() => import("./pages/RoleManagement"));
+const PermissionsTab = lazy(() => import("./pages/user-management/PermissionsTab"));
+const EpsPage = lazy(() => import("./pages/EpsPage"));
+const WbsPage = lazy(() => import("./pages/WbsPage"));
+const TemplatesPage = lazy(() => import("./pages/TemplatesPage"));
+const TemplateDetailPage = lazy(() => import("./pages/TemplateDetailPage"));
+const CalendarListPage = lazy(() => import("./pages/admin/CalendarListPage"));
+const CalendarEditor = lazy(() => import("./pages/admin/CalendarEditor"));
+const BoqPage = lazy(() => import("./pages/scope/BoqPage"));
+const ExecutionMapper = lazy(() => import("./pages/execution/ExecutionMapper"));
+const ExecutionDashboard = lazy(() => import("./pages/execution/ExecutionDashboard"));
+const ProgressDashboard = lazy(() => import("./views/progress/ProgressDashboard"));
+const PlanningPage = lazy(() => import("./pages/PlanningPage"));
+const ScheduleComparisonGrid = lazy(
+  () => import("./components/planning/versions/ScheduleComparisonGrid"),
+);
+const LaborCountView = lazy(() => import("./views/labor/LaborCountView"));
+const EhsProjectDashboard = lazy(() => import("./views/ehs/EhsProjectDashboard"));
+const QualityProjectDashboard = lazy(
+  () => import("./views/quality/QualityProjectDashboard"),
+);
+const ActivityListsPage = lazy(() => import("./views/quality/ActivityListsPage"));
+const SequenceManagerPage = lazy(() => import("./views/quality/SequenceManagerPage"));
+const QualitySequencer = lazy(() => import("./views/quality/sequencer/QualitySequencer"));
+const InspectionRequestPage = lazy(() => import("./views/quality/InspectionRequestPage"));
+const QualityApprovalsPage = lazy(() => import("./views/quality/QualityApprovalsPage"));
+const DesignDashboard = lazy(() => import("./views/design/DesignDashboard"));
+const SystemSettings = lazy(() => import("./views/admin/SystemSettings"));
+const TemplateBuilder = lazy(() => import("./views/admin/TemplateBuilder"));
+const SystemLogs = lazy(() => import("./views/admin/SystemLogs"));
+const VendorMappingPage = lazy(() => import("./pages/VendorMappingPage"));
+const ApprovalsPage = lazy(() => import("./pages/execution/ApprovalsPage"));
+const WorkflowDesignerPage = lazy(
+  () => import("./views/quality/workflow/WorkflowDesignerPage"),
+);
+const UserProfilePage = lazy(() => import("./pages/UserProfilePage"));
+const VendorAccessTemplatesPage = lazy(() =>
+  import("./pages/admin/VendorAccessTemplatesPage").then((module) => ({
+    default: module.VendorAccessTemplatesPage,
+  })),
+);
+const VendorUserManagementPage = lazy(() =>
+  import("./pages/planning/VendorUserManagementPage").then((module) => ({
+    default: module.VendorUserManagementPage,
+  })),
+);
+const DashboardBuilderHome = lazy(
+  () => import("./views/dashboard-builder/DashboardBuilderHome"),
+);
+const DashboardDesigner = lazy(() => import("./views/dashboard-builder/DashboardDesigner"));
+const DashboardViewer = lazy(() => import("./views/dashboard-builder/DashboardViewer"));
+const ReportBuilderHome = lazy(() => import("./views/dashboard-builder/ReportBuilderHome"));
+const ReportDesigner = lazy(() => import("./views/dashboard-builder/ReportDesigner"));
+const ReportViewer = lazy(() => import("./views/dashboard-builder/ReportViewer"));
+const DashboardRouter = lazy(() => import("./DashboardRouter"));
+const PluginRegistryPage = lazy(() => import("./pages/admin/PluginRegistryPage"));
+const PluginHostPage = lazy(() => import("./pages/plugins/PluginHostPage"));
+const IssueTrackerDepartmentsPage = lazy(
+  () => import("./pages/admin/IssueTrackerDepartmentsPage"),
+);
+const IssueTrackerPage = lazy(() => import("./pages/planning/IssueTrackerPage"));
+const AiInsightsPage = lazy(() => import("./pages/ai-insights/AiInsightsPage"));
+const InsightResultPage = lazy(() => import("./pages/ai-insights/InsightResultPage"));
+const AiInsightsAdminPage = lazy(() => import("./pages/ai-insights/AiInsightsAdminPage"));
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -75,9 +93,16 @@ const ProtectedRoute = ({ children, permission }: ProtectedRouteProps) => {
   return <>{children}</>;
 };
 
+const RouteFallback = () => (
+  <div className="flex h-screen items-center justify-center bg-surface-base text-sm font-semibold text-text-muted">
+    Loading module...
+  </div>
+);
+
 const AppRoutes = () => {
   return (
-    <Routes>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route
         path="/dashboard"
@@ -508,7 +533,8 @@ const AppRoutes = () => {
         />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 };
 

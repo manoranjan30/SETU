@@ -1,0 +1,23 @@
+﻿{
+    "generatedAt":  "2026-04-13T19:24:16",
+    "baseUrl":  "http://localhost:3000",
+    "scenarioSet":  "smoke",
+    "runDirectory":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-192416",
+    "environment":  {
+                        "projectId":  "2",
+                        "companyId":  "1",
+                        "activityId":  "1967",
+                        "epsNodeId":  "410"
+                    },
+    "scenarios":  [
+                      {
+                          "name":  "smoke-auth",
+                          "scenarioPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\scenarios\\smoke-auth.js",
+                          "summaryPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-192416\\smoke-auth-summary.json",
+                          "stdoutPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-192416\\smoke-auth-stdout.txt",
+                          "stderrPath":  "C:\\Users\\omano\\OneDrive - Puravankara Limited\\Manoranjan\\Antigravity Experiment\\000 Project PM\\SETU\\load-tests\\k6\\reports\\20260413-192416\\smoke-auth-stderr.txt",
+                          "exitCode":  0,
+                          "status":  "passed"
+                      }
+                  ]
+}

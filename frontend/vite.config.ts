@@ -23,16 +23,23 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1100,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
-            if (id.includes('ag-grid')) return 'vendor-aggrid';
+            if (id.includes('ag-grid-react')) return 'vendor-aggrid-react';
+            if (id.includes('ag-grid-community')) return 'vendor-aggrid-community';
             if (id.includes('pdfjs-dist') || id.includes('react-pdf')) return 'vendor-pdf';
             if (id.includes('lucide-react')) return 'vendor-lucide';
             if (id.includes('recharts')) return 'vendor-recharts';
             if (id.includes('three')) return 'vendor-three';
+            if (id.includes('react-router')) return 'vendor-router';
+            if (id.includes('@xyflow')) return 'vendor-flow';
+            if (id.includes('@dnd-kit')) return 'vendor-dnd';
+            if (id.includes('xlsx')) return 'vendor-xlsx';
+            if (id.includes('react-grid-layout')) return 'vendor-grid-layout';
+            if (id.includes('axios')) return 'vendor-axios';
             return 'vendor';
           }
         },

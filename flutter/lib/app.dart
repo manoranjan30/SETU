@@ -40,14 +40,14 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
   // is set in initState, before any context is available).
   final _navigatorKey = GlobalKey<NavigatorState>();
 
+  // Cached once in initState so that repeated auth-state rebuilds do not
+  // restart the SharedPreferences lookup and flash a loading spinner each time.
+  late final Future<bool> _isServerConfigured;
+
   @override
   void initState() {
     super.initState();
-    // Wire notification taps to our handler.  This must happen in initState
-    // so that cold-start notification taps (delivered before the first frame)
-    // are captured.  The callback is set on the singleton NotificationService
-    // instance — there is only one, so this assignment is safe to do once.
-    // Handle notification taps — navigate to the relevant screen
+    _isServerConfigured = ServerConfigService.instance.isConfigured();
     sl<NotificationService>().onNotificationTap = _handleNotificationTap;
   }
 
@@ -259,6 +259,58 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
             // Clear photo cache on logout — frees ~150 MB of device storage
             // that accumulated from viewing site photos during the session.
             SetuPhotoCacheManager().emptyCache();
+          } else if (authState is AuthError) {
+            // When AuthLoading fires, _buildHome replaces LoginPage with a
+            // full-screen spinner, unmounting LoginPage's BlocConsumer.
+            // That means LoginPage's own error dialog listener never fires.
+            // Handle it here so the user always gets feedback on login failure.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final ctx = _navigatorKey.currentContext;
+              if (ctx == null) return;
+              showDialog(
+                context: ctx,
+                builder: (_) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red, size: 20),
+                      SizedBox(width: 8),
+                      Text('Login Failed',
+                          style: TextStyle(fontSize: 17)),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(authState.message,
+                          style: const TextStyle(fontSize: 14)),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Text('Troubleshooting Tips:',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '• Ensure phone is on same WiFi as server\n'
+                        '• Check server is running (docker ps)\n'
+                        '• Verify firewall allows the backend port',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            });
           }
         },
         builder: (context, authState) {
@@ -295,7 +347,7 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
       // FutureBuilder avoids blocking the build — shows a short spinner then
       // routes to either ServerSetupPage or LoginPage.
       return FutureBuilder<bool>(
-        future: ServerConfigService.instance.isConfigured(),
+        future: _isServerConfigured,
         builder: (context, snap) {
           if (!snap.hasData) {
             return const Scaffold(

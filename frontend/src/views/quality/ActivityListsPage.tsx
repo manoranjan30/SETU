@@ -337,7 +337,9 @@ const CopyListModal = ({
   onClose: () => void;
   onCopy: () => void;
 }) => {
-  const [projects, setProjects] = useState<{ id: number; name: string }[]>([]);
+  const [projects, setProjects] = useState<
+    { id: number; name: string; status?: string | null }[]
+  >([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
     null,
   );

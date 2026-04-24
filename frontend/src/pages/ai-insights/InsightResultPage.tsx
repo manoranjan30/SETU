@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Brain, ArrowLeft, CheckCircle2, XCircle, Loader2,
-  Clock, TrendingUp, TrendingDown, Minus,
+  TrendingUp, TrendingDown, Minus,
   AlertTriangle, Info, CheckCircle, Trash2,
 } from "lucide-react";
 import { aiInsightsService } from "../../services/aiInsights.service";

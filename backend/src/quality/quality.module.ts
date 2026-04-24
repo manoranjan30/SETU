@@ -79,6 +79,16 @@ import { UserProjectAssignment } from '../projects/entities/user-project-assignm
 import { AuditModule } from '../audit/audit.module';
 import { QualityRatingService } from './quality-rating.service';
 import { QualityRatingController } from './quality-rating.controller';
+import { MaterialItpService } from './material-itp.service';
+import { MaterialItpController } from './material-itp.controller';
+import { QualityMaterialItpTemplate } from './entities/quality-material-itp-template.entity';
+import { QualityMaterialItpCheckpoint } from './entities/quality-material-itp-checkpoint.entity';
+import { QualityMaterialReceipt } from './entities/quality-material-receipt.entity';
+import { QualityMaterialTestObligation } from './entities/quality-material-test-obligation.entity';
+import { QualityMaterialTestResult } from './entities/quality-material-test-result.entity';
+import { QualityMaterialEvidenceFile } from './entities/quality-material-evidence-file.entity';
+import { QualityMaterialApprovalRun } from './entities/quality-material-approval-run.entity';
+import { QualityMaterialApprovalStep } from './entities/quality-material-approval-step.entity';
 
 @Module({
   imports: [
@@ -125,6 +135,14 @@ import { QualityRatingController } from './quality-rating.controller';
       UserProjectAssignment,
       QualityRatingConfig,
       ProjectRating,
+      QualityMaterialItpTemplate,
+      QualityMaterialItpCheckpoint,
+      QualityMaterialReceipt,
+      QualityMaterialTestObligation,
+      QualityMaterialTestResult,
+      QualityMaterialEvidenceFile,
+      QualityMaterialApprovalRun,
+      QualityMaterialApprovalStep,
       TempUser,
       User,
       Vendor,
@@ -141,6 +159,7 @@ import { QualityRatingController } from './quality-rating.controller';
     ApprovalWorkflowController,
     SiteObservationController,
     QualityRatingController,
+    MaterialItpController,
   ],
   providers: [
     QualityService,
@@ -158,6 +177,7 @@ import { QualityRatingController } from './quality-rating.controller';
     InspectionWorkflowService,
     SiteObservationService,
     QualityRatingService,
+    MaterialItpService,
   ],
   exports: [
     QualityService,
@@ -173,6 +193,7 @@ import { QualityRatingController } from './quality-rating.controller';
     InspectionWorkflowService,
     SiteObservationService,
     QualityRatingService,
+    MaterialItpService,
   ],
 })
 export class QualityModule {}

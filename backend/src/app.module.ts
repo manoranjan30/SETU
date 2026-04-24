@@ -53,6 +53,10 @@ import { ReleaseStrategy } from './planning/entities/release-strategy.entity';
 import { ReleaseStrategyCondition } from './planning/entities/release-strategy-condition.entity';
 import { ReleaseStrategyStep } from './planning/entities/release-strategy-step.entity';
 import { ReleaseStrategyVersionAudit } from './planning/entities/release-strategy-version-audit.entity';
+import { Budget } from './planning/entities/budget.entity';
+import { BudgetLineItem } from './planning/entities/budget-line-item.entity';
+import { BudgetBoqMap } from './planning/entities/budget-boq-map.entity';
+import { BudgetLineActivityMap } from './planning/entities/budget-line-activity-map.entity';
 
 import { ResourcesModule } from './resources/resources.module';
 import { ResourceMaster } from './resources/entities/resource-master.entity';
@@ -82,6 +86,14 @@ import { EhsCompetency } from './ehs/entities/ehs-competency.entity';
 import { QualityModule } from './quality/quality.module';
 import { QualityInspection } from './quality/entities/quality-inspection.entity';
 import { QualityMaterialTest } from './quality/entities/quality-material-test.entity';
+import { QualityMaterialItpTemplate } from './quality/entities/quality-material-itp-template.entity';
+import { QualityMaterialItpCheckpoint } from './quality/entities/quality-material-itp-checkpoint.entity';
+import { QualityMaterialReceipt } from './quality/entities/quality-material-receipt.entity';
+import { QualityMaterialTestObligation } from './quality/entities/quality-material-test-obligation.entity';
+import { QualityMaterialTestResult } from './quality/entities/quality-material-test-result.entity';
+import { QualityMaterialEvidenceFile } from './quality/entities/quality-material-evidence-file.entity';
+import { QualityMaterialApprovalRun } from './quality/entities/quality-material-approval-run.entity';
+import { QualityMaterialApprovalStep } from './quality/entities/quality-material-approval-step.entity';
 import { QualityObservationNcr } from './quality/entities/quality-observation-ncr.entity';
 import { QualityChecklist } from './quality/entities/quality-checklist.entity';
 import { QualityItem } from './quality/entities/quality-item.entity';
@@ -232,6 +244,10 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
         ReleaseStrategyCondition,
         ReleaseStrategyStep,
         ReleaseStrategyVersionAudit,
+        Budget,
+        BudgetLineItem,
+        BudgetBoqMap,
+        BudgetLineActivityMap,
         // Resources
         ResourceMaster,
         AnalysisTemplate,
@@ -258,6 +274,14 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
         // Quality
         QualityInspection,
         QualityMaterialTest,
+        QualityMaterialItpTemplate,
+        QualityMaterialItpCheckpoint,
+        QualityMaterialReceipt,
+        QualityMaterialTestObligation,
+        QualityMaterialTestResult,
+        QualityMaterialEvidenceFile,
+        QualityMaterialApprovalRun,
+        QualityMaterialApprovalStep,
         QualityObservationNcr,
         QualityChecklist,
         QualityItem,

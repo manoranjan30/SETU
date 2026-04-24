@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus,
   Edit2,
@@ -241,8 +242,9 @@ const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
         ))}
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {isModalOpen &&
+        createPortal(
+        <div className="fixed inset-0 bg-surface-overlay backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-surface-card rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-surface-base">
               <h2 className="text-xl font-bold flex items-center gap-2">
@@ -452,8 +454,9 @@ const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
               </div>
             </form>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 };

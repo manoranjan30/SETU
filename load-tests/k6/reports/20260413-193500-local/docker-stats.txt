@@ -1,0 +1,33 @@
+2026-04-13T19:32:05
+setu_frontend_dev	78.64%	156MiB / 15.57GiB setu_backend_dev	0.00%	170.6MiB / 15.57GiB setu_pdf_tool_dev	16.07%	60.34MiB / 15.57GiB setu_postgres	0.00%	55.23MiB / 15.57GiB
+
+2026-04-13T19:32:12
+setu_frontend_dev	65.04%	156.3MiB / 15.57GiB setu_backend_dev	0.00%	170.6MiB / 15.57GiB setu_pdf_tool_dev	16.58%	60.59MiB / 15.57GiB setu_postgres	0.00%	55.23MiB / 15.57GiB
+
+2026-04-13T19:32:20
+setu_frontend_dev	59.06%	155.3MiB / 15.57GiB setu_backend_dev	112.45%	181.7MiB / 15.57GiB setu_pdf_tool_dev	15.10%	60.33MiB / 15.57GiB setu_postgres	53.00%	78.93MiB / 15.57GiB
+
+2026-04-13T19:32:27
+setu_frontend_dev	63.26%	155.5MiB / 15.57GiB setu_backend_dev	114.22%	245.7MiB / 15.57GiB setu_pdf_tool_dev	16.47%	60.58MiB / 15.57GiB setu_postgres	6.19%	81.43MiB / 15.57GiB
+
+2026-04-13T19:32:35
+setu_frontend_dev	77.52%	155.8MiB / 15.57GiB setu_backend_dev	132.66%	303MiB / 15.57GiB setu_pdf_tool_dev	15.45%	60.34MiB / 15.57GiB setu_postgres	48.09%	79.85MiB / 15.57GiB
+
+2026-04-13T19:32:43
+setu_frontend_dev	59.75%	156MiB / 15.57GiB setu_backend_dev	153.18%	344.7MiB / 15.57GiB setu_pdf_tool_dev	13.69%	60.34MiB / 15.57GiB setu_postgres	9.86%	83.47MiB / 15.57GiB
+
+2026-04-13T19:32:50
+setu_frontend_dev	59.97%	155.8MiB / 15.57GiB setu_backend_dev	113.74%	356.7MiB / 15.57GiB setu_pdf_tool_dev	16.07%	60.34MiB / 15.57GiB setu_postgres	39.82%	85.42MiB / 15.57GiB
+
+2026-04-13T19:32:58
+setu_frontend_dev	40.03%	155.5MiB / 15.57GiB setu_backend_dev	180.98%	374.5MiB / 15.57GiB setu_pdf_tool_dev	16.77%	60.34MiB / 15.57GiB setu_postgres	22.22%	80.07MiB / 15.57GiB
+
+2026-04-13T19:33:05
+setu_frontend_dev	61.66%	155.3MiB / 15.57GiB setu_backend_dev	123.22%	380.5MiB / 15.57GiB setu_pdf_tool_dev	11.58%	60.59MiB / 15.57GiB setu_postgres	40.82%	82.71MiB / 15.57GiB
+
+2026-04-13T19:33:13
+setu_frontend_dev	56.98%	156.5MiB / 15.57GiB setu_backend_dev	130.75%	384.3MiB / 15.57GiB setu_pdf_tool_dev	16.55%	60.33MiB / 15.57GiB setu_postgres	12.89%	85MiB / 15.57GiB
+
+2026-04-13T19:33:21
+setu_frontend_dev	50.12%	156.3MiB / 15.57GiB setu_backend_dev	0.35%	383.4MiB / 15.57GiB setu_pdf_tool_dev	12.34%	60.33MiB / 15.57GiB setu_postgres	0.02%	85.01MiB / 15.57GiB
+

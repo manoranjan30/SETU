@@ -12,6 +12,7 @@ import {
   Download,
   Upload,
   RefreshCcw,
+  FileCode2,
 } from "lucide-react";
 import api from "../../../api/axios";
 import RevisionImportModal from "./RevisionImportModal";
@@ -144,13 +145,39 @@ const WorkingScheduleList: React.FC = () => {
             Schedule.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark shadow-sm transition-colors"
-        >
-          <Plus size={18} />
-          New Revision (Clone)
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              try {
+                const res = await api.get(
+                  `/projects/${projectId}/schedule/export-msp`,
+                  { responseType: "blob" },
+                );
+                const url = window.URL.createObjectURL(new Blob([res.data]));
+                const link = document.createElement("a");
+                link.href = url;
+                link.setAttribute("download", "WorkingSchedule_MSP.xml");
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+              } catch (err) {
+                console.error("MSP export failed", err);
+                alert("Failed to export MSP XML");
+              }
+            }}
+            className="flex items-center gap-2 border border-border-default text-text-secondary px-4 py-2 rounded-lg hover:bg-surface-base shadow-sm transition-colors"
+          >
+            <FileCode2 size={18} />
+            Export MSP XML
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark shadow-sm transition-colors"
+          >
+            <Plus size={18} />
+            New Revision (Clone)
+          </button>
+        </div>
       </div>
 
       {/* Compare Version Modal */}

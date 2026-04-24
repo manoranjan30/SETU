@@ -112,14 +112,6 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
     return ids;
   }, [searchTerm, treeData]);
 
-  const toggleNode = (e: React.MouseEvent, nodeId: number) => {
-    e.stopPropagation();
-    const next = new Set(expandedNodes);
-    if (next.has(nodeId)) next.delete(nodeId);
-    else next.add(nodeId);
-    setExpandedNodes(next);
-  };
-
   const handleSelect = (node: EpsNode, parents: EpsNode[]) => {
     const fullPath = [...parents, node].map((n) => n.name).join(" > ");
     setSelectedLabel(fullPath);

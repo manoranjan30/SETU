@@ -11,6 +11,7 @@ import {
 import { EpsNode } from '../../eps/eps.entity';
 import { MeasurementElement } from './measurement-element.entity';
 import { BoqSubItem } from './boq-sub-item.entity';
+import { BudgetLineItem } from '../../planning/entities/budget-line-item.entity';
 
 export enum BoqQtyMode {
   MANUAL = 'MANUAL',
@@ -43,6 +44,13 @@ export class BoqItem {
 
   @Column({ nullable: true })
   epsNodeId: number | null;
+
+  @Column({ nullable: true })
+  budgetLineItemId: number | null;
+
+  @ManyToOne(() => BudgetLineItem, { nullable: true })
+  @JoinColumn({ name: 'budgetLineItemId' })
+  budgetLineItem: BudgetLineItem | null;
 
   // Manual vs Derived from Measurements
   @Column({

@@ -12,6 +12,7 @@ import {
   MessageSquareMore,
   Landmark,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -105,6 +106,11 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       icon: <TrendingUp size={18} />,
       label: "Cost & Cashflow",
     },
+    {
+      key: "budget",
+      icon: <Wallet size={18} />,
+      label: "Budget",
+    },
   ];
 
   const visibleMenuItems = menuItems.filter(
@@ -154,6 +160,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "gantt_version",
           "lookahead",
           "cost",
+          "budget",
         ].includes(currentView) ? (
           children
         ) : (

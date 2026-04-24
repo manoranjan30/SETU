@@ -5,6 +5,7 @@ export interface InsightTemplate {
   name: string;
   slug: string;
   description: string | null;
+  promptTemplate?: string | null;
   isSystem: boolean;
   isActive: boolean;
   requiredPermission: string;

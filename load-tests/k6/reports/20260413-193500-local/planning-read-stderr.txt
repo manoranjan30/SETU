@@ -1,0 +1,3 @@
+time="2026-04-13T19:32:54+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": EOF"
+time="2026-04-13T19:32:54+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/planning-read.js:17:24(15)\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-04-13T19:33:26+05:30" level=error msg="thresholds on metrics 'http_req_duration' have been crossed"

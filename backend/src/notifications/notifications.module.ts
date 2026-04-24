@@ -8,6 +8,9 @@ import { PendingTasksController } from './pending-tasks.controller';
 import { QualityInspection } from '../quality/entities/quality-inspection.entity';
 import { InspectionWorkflowStep } from '../quality/entities/inspection-workflow-step.entity';
 import { ActivityObservation } from '../quality/entities/activity-observation.entity';
+import { QualityMaterialApprovalRun } from '../quality/entities/quality-material-approval-run.entity';
+import { QualityMaterialApprovalStep } from '../quality/entities/quality-material-approval-step.entity';
+import { QualityMaterialTestObligation } from '../quality/entities/quality-material-test-obligation.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { Role } from '../roles/role.entity';
 import { EpsNode } from '../eps/eps.entity';
@@ -23,6 +26,9 @@ import { NotificationComposerService } from './notification-composer.service';
       QualityInspection,
       InspectionWorkflowStep,
       ActivityObservation,
+      QualityMaterialApprovalRun,
+      QualityMaterialApprovalStep,
+      QualityMaterialTestObligation,
       TempUser,
       Role,
       EpsNode,

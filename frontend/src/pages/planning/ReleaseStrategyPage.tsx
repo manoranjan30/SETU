@@ -26,8 +26,41 @@ import {
 import { PermissionCode } from "../../config/permissions";
 
 const MODULE_OPTIONS = ["QUALITY", "PLANNING", "BOQ", "WORKORDER", "MICRO", "EXECUTION", "EHS", "DESIGN"];
-const PROCESS_OPTIONS = ["RFI_APPROVAL", "INSPECTION_APPROVAL", "QA_QC_APPROVAL", "OBSERVATION_RECTIFICATION_APPROVAL", "SNAG_RELEASE_APPROVAL", "MICRO_SCHEDULE_APPROVAL", "WORK_ORDER_RELEASE", "BOQ_CHANGE_APPROVAL", "LOOKAHEAD_RELEASE", "DOCUMENT_RELEASE"];
-const DOCUMENT_TYPES = ["FLOOR_RFI", "UNIT_RFI", "ROOM_RFI", "INSPECTION", "QA_QC_CHECKLIST", "OBSERVATION_RECTIFICATION", "SNAG_ROUND_RELEASE", "MICRO_SCHEDULE", "WORK_ORDER", "BOQ_CHANGE", "LOOKAHEAD", "DRAWING"];
+const PROCESS_OPTIONS = [
+  "RFI_APPROVAL",
+  "INSPECTION_APPROVAL",
+  "QA_QC_APPROVAL",
+  "OBSERVATION_RECTIFICATION_APPROVAL",
+  "MATERIAL_ITP_APPROVAL",
+  "MATERIAL_TEST_RESULT_APPROVAL",
+  "SNAG_RELEASE_APPROVAL",
+  "MICRO_SCHEDULE_APPROVAL",
+  "WORK_ORDER_RELEASE",
+  "BOQ_CHANGE_APPROVAL",
+  "LOOKAHEAD_RELEASE",
+  "DOCUMENT_RELEASE",
+];
+const DOCUMENT_TYPES = [
+  "FLOOR_RFI",
+  "UNIT_RFI",
+  "ROOM_RFI",
+  "INSPECTION",
+  "QA_QC_CHECKLIST",
+  "OBSERVATION_RECTIFICATION",
+  "MATERIAL_ITP_TEMPLATE",
+  "MATERIAL_TEST_RESULT",
+  "SNAG_ROUND_RELEASE",
+  "MICRO_SCHEDULE",
+  "WORK_ORDER",
+  "BOQ_CHANGE",
+  "LOOKAHEAD",
+  "DRAWING",
+];
+const PROCESS_DOCUMENT_TYPE: Record<string, string> = {
+  MATERIAL_ITP_APPROVAL: "MATERIAL_ITP_TEMPLATE",
+  MATERIAL_TEST_RESULT_APPROVAL: "MATERIAL_TEST_RESULT",
+  SNAG_RELEASE_APPROVAL: "SNAG_ROUND_RELEASE",
+};
 const OPERATOR_OPTIONS: ConditionOperator[] = ["EQ", "NE", "IN", "NOT_IN", "GT", "GTE", "LT", "LTE", "BETWEEN", "EXISTS", "NOT_EXISTS"];
 const APPROVER_MODES: ApproverMode[] = ["USER", "PROJECT_ROLE"];
 const SNAG_RELEASE_PROCESS_CODE = "SNAG_RELEASE_APPROVAL";
@@ -280,8 +313,22 @@ export default function ReleaseStrategyPage() {
       normalizeStrategyForProcess({
         ...prev,
         processCode,
+        moduleCode:
+          processCode.startsWith("MATERIAL_") || processCode === SNAG_RELEASE_PROCESS_CODE
+            ? "QUALITY"
+            : prev.moduleCode,
+        documentType: PROCESS_DOCUMENT_TYPE[processCode] || prev.documentType,
       }),
     );
+    setSimulation((prev) => ({
+      ...prev,
+      moduleCode:
+        processCode.startsWith("MATERIAL_") || processCode === SNAG_RELEASE_PROCESS_CODE
+          ? "QUALITY"
+          : prev.moduleCode,
+      processCode,
+      documentType: PROCESS_DOCUMENT_TYPE[processCode] || prev.documentType,
+    }));
   };
 
   const saveStrategy = async () => {
