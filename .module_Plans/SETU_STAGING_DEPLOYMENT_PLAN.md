@@ -16,6 +16,14 @@ As of `2026-04-24`, the deployment is in progress and these facts are now confir
   - `/opt/setu/app/SETU`
 - until we flatten the directory structure later, all repository-level commands should be run from:
   - `/opt/setu/app/SETU`
+- Nest backend API is served under `/api`
+- the web frontend now defaults to same-origin `/api` calls when `VITE_API_URL` is unset
+- duplicate legacy startup seeding from `AppService` has been removed from active `AppModule` wiring
+- Nginx reverse proxy on port `80` is now part of the working staging path
+- browser login on the public IP was blocked until Nginx header buffers were increased for the large JWT payload
+- admin login is now verified working in staging through:
+  - `POST /api/auth/login`
+  - browser login via the public URL through Nginx
 
 This document is updated below to match that current server state.
 
@@ -40,6 +48,17 @@ Default behavior:
 
 - if the database has no application tables, bootstrap runs automatically
 - if the database already has application tables, bootstrap is skipped and normal migrations continue
+
+## Web Routing Update
+
+As of `2026-04-25`, the staging web deployment also has these confirmed behaviors:
+
+- the browser-facing URL is expected to be served through Nginx on port `80`
+- the SPA is served from `/`
+- backend routes are served from `/api/...`
+- `/auth/login` is not a valid API URL for staging verification
+- `POST /api/auth/login` is the correct auth endpoint for both web and mobile/API clients
+- Flutter/mobile clients remain compatible because the backend API contract and `/api` route prefix are unchanged
 
 ## 1. Objective
 
@@ -437,6 +456,7 @@ Expected result:
 
 - valid login returns JSON with `access_token`
 - `http://localhost/auth/login` is not the correct API route and may return SPA HTML
+- if login works from this command but fails in the browser, inspect the browser network tab for `/api/auth/login` and `/api/auth/profile`
 
 ### Step 14: Verify app reachability
 
@@ -450,6 +470,12 @@ From a browser on the same network:
 
 ```text
 http://192.168.10.2:3000
+```
+
+From the public staging path after Nginx is configured:
+
+```text
+http://<public-ip>
 ```
 
 Expected result:
@@ -548,6 +574,8 @@ server {
     server_name _;
 
     client_max_body_size 100M;
+    client_header_buffer_size 16k;
+    large_client_header_buffers 4 32k;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -556,6 +584,8 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 }
 ```
@@ -572,6 +602,7 @@ Routing note:
 - SPA routes are non-`/api`
 - backend routes are `/api/...`
 - keep Flutter and other API clients pointed at `/api`
+- the increased Nginx header buffers are required for the current large JWT payload used by the web app
 
 ## 10. Restart and Recovery Operations
 
@@ -659,8 +690,9 @@ Staging is considered successful when all of the following are true:
 
 - stack starts cleanly after a fresh `docker-compose up -d`
 - migrations run without manual intervention
-- frontend is reachable from browser
+- frontend is reachable from browser through the intended staging URL
 - login succeeds
+- direct `POST /api/auth/login` returns JSON with `access_token`
 - core modules load
 - Material ITP and approval flows load without UI overlap or missing approval panels
 - uploads persist across container restart
@@ -678,6 +710,7 @@ After the first stable staging cycle, the next improvements should be:
 6. add SSL once domain routing is finalized
 7. document update procedure and operator checklist
 8. create a dedicated staging branch instead of deploying directly from `master`
+9. reduce JWT payload size so staging/prod are less dependent on enlarged Nginx header buffers
 
 ## 15. Immediate Action List
 
