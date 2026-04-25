@@ -40,6 +40,16 @@ interface EpsNode {
   children?: EpsNode[];
 }
 
+interface EpsImportResponse {
+  message: string;
+  rowCount: number;
+  processedRows: number;
+  skippedRows: number;
+  createdCount: number;
+  existingCount: number;
+  recognizedHeaders: string[];
+}
+
 const EpsPage = () => {
   const { user } = useAuth();
   const [nodes, setNodes] = useState<EpsNode[]>([]);
@@ -206,11 +216,23 @@ const EpsPage = () => {
 
     setLoading(true);
     try {
-      await api.post("/eps/import", formData, {
+      const response = await api.post<EpsImportResponse>("/eps/import", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      alert("Import successful");
-      fetchNodes();
+      const summary = response.data;
+      await fetchNodes();
+      alert(
+        [
+          summary.message,
+          `Rows: ${summary.rowCount}`,
+          `Processed: ${summary.processedRows}`,
+          `Created: ${summary.createdCount}`,
+          `Already existed: ${summary.existingCount}`,
+          summary.skippedRows > 0 ? `Skipped: ${summary.skippedRows}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
     } catch (err: any) {
       alert(err.response?.data?.message || "Import failed");
     } finally {

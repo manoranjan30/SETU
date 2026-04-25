@@ -17,6 +17,16 @@ import { ForbiddenException } from '@nestjs/common';
 
 @Injectable()
 export class EpsService {
+  private readonly importColumnMap: Record<EpsNodeType, string> = {
+    [EpsNodeType.COMPANY]: 'company',
+    [EpsNodeType.PROJECT]: 'project',
+    [EpsNodeType.BLOCK]: 'block',
+    [EpsNodeType.TOWER]: 'tower',
+    [EpsNodeType.FLOOR]: 'floor',
+    [EpsNodeType.UNIT]: 'unit',
+    [EpsNodeType.ROOM]: 'room',
+  };
+
   constructor(
     @InjectRepository(EpsNode)
     private epsRepository: Repository<EpsNode>,
@@ -120,12 +130,20 @@ export class EpsService {
       bufferStream.end(fileBuffer);
 
       bufferStream
-        .pipe(csv())
+        .pipe(
+          csv({
+            mapHeaders: ({ header }: { header: string }) =>
+              this.normalizeImportHeader(header),
+          }),
+        )
         .on('data', (data: any) => results.push(data))
         .on('end', async () => {
           try {
-            await this.processCsvData(results, userId);
-            resolve({ message: 'Import successful', count: results.length });
+            const summary = await this.processCsvData(results, userId);
+            resolve({
+              message: 'Import successful',
+              ...summary,
+            });
           } catch (e) {
             reject(e);
           }
@@ -134,7 +152,32 @@ export class EpsService {
     });
   }
 
+  private normalizeImportHeader(header: string): string {
+    return (header || '')
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private getImportNodeName(
+    row: Record<string, any>,
+    type: EpsNodeType,
+  ): string | null {
+    const key = this.importColumnMap[type];
+    const rawValue = row[key];
+    if (typeof rawValue !== 'string') {
+      return null;
+    }
+
+    const trimmed = rawValue.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
   private async processCsvData(rows: any[], userId: string) {
+    if (rows.length === 0) {
+      throw new BadRequestException('CSV file is empty.');
+    }
+
     const levels = [
       EpsNodeType.COMPANY,
       EpsNodeType.PROJECT,
@@ -145,20 +188,63 @@ export class EpsService {
       EpsNodeType.ROOM,
     ];
 
+    const recognizedHeaders = levels.filter((type) =>
+      rows.some((row) => row[this.importColumnMap[type]] !== undefined),
+    );
+
+    if (recognizedHeaders.length === 0) {
+      throw new BadRequestException(
+        'CSV headers are invalid. Use: Company, Project, Block, Tower, Floor, Unit, Room.',
+      );
+    }
+
+    let createdCount = 0;
+    let existingCount = 0;
+    let processedRows = 0;
+    let skippedRows = 0;
+
     for (const row of rows) {
       let parentId: number | null = null;
+      let rowHasData = false;
+      let rowTouchedNode = false;
       for (const type of levels) {
-        const nodeName = row[type.charAt(0) + type.slice(1).toLowerCase()];
-        if (nodeName && nodeName.trim() !== '') {
-          parentId = await this.findOrCreateNode(
-            nodeName.trim(),
+        const nodeName = this.getImportNodeName(row, type);
+        if (nodeName) {
+          rowHasData = true;
+          const result = await this.findOrCreateNode(
+            nodeName,
             type,
             parentId,
             userId,
           );
+          parentId = result.id;
+          createdCount += result.created ? 1 : 0;
+          existingCount += result.created ? 0 : 1;
+          rowTouchedNode = true;
         }
       }
+
+      if (rowHasData && rowTouchedNode) {
+        processedRows += 1;
+      } else {
+        skippedRows += 1;
+      }
     }
+
+    if (createdCount === 0 && existingCount === 0) {
+      throw new BadRequestException(
+        'CSV was parsed, but no EPS nodes could be created. Check the template headers and data.',
+      );
+    }
+
+    return {
+      processedRows,
+      skippedRows,
+      createdCount,
+      existingCount,
+      rowCount: rows.length,
+      recognizedHeaders,
+    };
   }
 
   private async findOrCreateNode(
@@ -166,14 +252,14 @@ export class EpsService {
     type: EpsNodeType,
     parentId: number | null,
     userId: string,
-  ): Promise<number> {
+  ): Promise<{ id: number; created: boolean }> {
     const whereCondition: any = { name, type };
     whereCondition.parentId = parentId ? parentId : IsNull();
 
     const existing = await this.epsRepository.findOne({
       where: whereCondition,
     });
-    if (existing) return existing.id;
+    if (existing) return { id: existing.id, created: false };
 
     const newNode = this.epsRepository.create({
       name,
@@ -185,7 +271,7 @@ export class EpsService {
     });
 
     const saved = await this.epsRepository.save(newNode);
-    return saved.id;
+    return { id: saved.id, created: true };
   }
 
   async create(createDto: CreateEpsNodeDto, user: any): Promise<EpsNode> {
