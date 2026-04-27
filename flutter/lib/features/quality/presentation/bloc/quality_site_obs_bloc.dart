@@ -139,6 +139,8 @@ class QualitySiteObsLoading extends QualitySiteObsState {
 /// The observation list is visible.
 ///
 /// [fromCache] = true means we are showing offline data.
+/// [cacheAge] is set when [fromCache] is true — the UI uses this to warn the
+/// user when the cached data is older than 4 hours.
 /// [hasMore] = true means there are more pages to load.
 /// [isLoadingMore] = true means a load-more request is in flight.
 class QualitySiteObsLoaded extends QualitySiteObsState {
@@ -146,6 +148,7 @@ class QualitySiteObsLoaded extends QualitySiteObsState {
   final String? appliedStatusFilter;
   final String? appliedSeverityFilter;
   final bool fromCache;
+  final DateTime? cacheAge;
   final bool hasMore;
   final bool isLoadingMore;
 
@@ -154,6 +157,7 @@ class QualitySiteObsLoaded extends QualitySiteObsState {
     this.appliedStatusFilter,
     this.appliedSeverityFilter,
     this.fromCache = false,
+    this.cacheAge,
     this.hasMore = false,
     this.isLoadingMore = false,
   });
@@ -169,6 +173,7 @@ class QualitySiteObsLoaded extends QualitySiteObsState {
       appliedStatusFilter: appliedStatusFilter,
       appliedSeverityFilter: appliedSeverityFilter,
       fromCache: fromCache ?? this.fromCache,
+      cacheAge: cacheAge,
       hasMore: hasMore ?? this.hasMore,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
@@ -180,6 +185,7 @@ class QualitySiteObsLoaded extends QualitySiteObsState {
         appliedStatusFilter,
         appliedSeverityFilter,
         fromCache,
+        cacheAge,
         hasMore,
         isLoadingMore,
       ];
@@ -365,11 +371,18 @@ class QualitySiteObsBloc
             .map((r) => QualitySiteObservation.fromJson(
                 jsonDecode(r.rawData) as Map<String, dynamic>))
             .toList();
+        // Use the oldest cachedAt across rows so the staleness indicator
+        // reflects the age of the least-fresh item in the list.
+        final oldest = cached.isEmpty
+            ? null
+            : cached.map((r) => r.cachedAt).reduce(
+                (a, b) => a.isBefore(b) ? a : b);
         emit(QualitySiteObsLoaded(
           observations: obs,
           appliedStatusFilter: statusFilter,
           appliedSeverityFilter: severityFilter,
           fromCache: true,
+          cacheAge: oldest,
           hasMore: false,
         ));
       } catch (cacheErr) {
@@ -379,26 +392,45 @@ class QualitySiteObsBloc
   }
 
   /// Creates a new site observation via the sync queue (offline-first).
+  ///
+  /// An optimistic placeholder row (`local_<timestamp>`) is inserted into the
+  /// Drift cache immediately so the observation appears in the list right away
+  /// even when offline. The `local_` prefix acts as a "pending upload" marker
+  /// that the UI uses to show a badge. The row is replaced by the real server
+  /// copy the next time `cacheQualitySiteObs` is called after a successful sync.
   Future<void> _onCreate(
     CreateQualitySiteObs event,
     Emitter<QualitySiteObsState> emit,
   ) async {
     try {
+      final payload = {
+        'projectId': event.projectId,
+        if (event.epsNodeId != null) 'epsNodeId': event.epsNodeId,
+        'description': event.description,
+        'severity': event.severity,
+        if (event.category != null) 'category': event.category,
+        if (event.locationLabel != null) 'locationLabel': event.locationLabel,
+        if (event.photoUrls.isNotEmpty) 'photoUrls': event.photoUrls,
+      };
       await _syncService.addToQueue(
         entityType: 'quality_site_obs_create',
         entityId: event.projectId,
         operation: 'create',
-        payload: {
-          'projectId': event.projectId,
-          if (event.epsNodeId != null) 'epsNodeId': event.epsNodeId,
-          'description': event.description,
-          'severity': event.severity,
-          if (event.category != null) 'category': event.category,
-          if (event.locationLabel != null) 'locationLabel': event.locationLabel,
-          if (event.photoUrls.isNotEmpty) 'photoUrls': event.photoUrls,
-        },
+        payload: payload,
         priority: 2,
       );
+
+      // Optimistic insert — visible immediately in the list.
+      final localId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      await _db.cacheQualitySiteObs([
+        {
+          ...payload,
+          'id': localId,
+          'status': 'OPEN',
+          'createdAt': DateTime.now().toIso8601String(),
+        }
+      ], event.projectId);
+
       final syncResult = await _syncService.syncAll();
       // Suffix '_offline' tells the UI to show "Saved — will sync when online".
       emit(QualitySiteObsActionSuccess(

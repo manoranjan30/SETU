@@ -129,6 +129,58 @@ const statusBadge: Record<string, string> = {
   ARCHIVED: "bg-surface-raised text-text-muted",
 };
 
+const getSimulationState = (result: any) => {
+  if (!result) return null;
+  if (!result.matched) {
+    return {
+      label: "No matching strategy",
+      className: "border-amber-200 bg-warning-muted text-amber-900",
+    };
+  }
+  const hasUnresolved = (result.resolvedSteps || []).some(
+    (step: any) => !step.approvers || step.approvers.length === 0,
+  );
+  if (hasUnresolved) {
+    return {
+      label: "Matched with gaps",
+      className: "border-blue-200 bg-blue-50 text-blue-900",
+    };
+  }
+  return {
+    label: "Fully resolved",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  };
+};
+
+const getSimulationStepRuntimeView = (
+  step: any,
+  index: number,
+  resolvedSteps: any[],
+) => {
+  const approvers = step.approvers || [];
+  if (approvers.length === 0) {
+    return {
+      label: "Assigned To Others",
+      className: "bg-surface-raised text-text-secondary",
+      description:
+        "No live project actor resolves for this level right now. QA/QC would treat this as a blocked level.",
+    };
+  }
+  if (index === 0) {
+    return {
+      label: "Actionable Now",
+      className: "bg-emerald-100 text-emerald-700",
+      description: `Your approval is active at workflow level ${step.levelNo}.`,
+    };
+  }
+  const previousStep = resolvedSteps[index - 1];
+  return {
+    label: "Assigned Later",
+    className: "bg-blue-100 text-blue-700",
+    description: `Waiting for level ${previousStep?.levelNo || index} to complete before level ${step.levelNo} can activate.`,
+  };
+};
+
 export default function ReleaseStrategyPage() {
   const { projectId } = useParams();
   const pId = Number(projectId);
@@ -394,10 +446,11 @@ export default function ReleaseStrategyPage() {
   const activeConflict = conflicts.find(
     (conflict) => form.id && conflict.strategyIds.includes(form.id),
   );
+  const simulationState = getSimulationState(simulationResult);
 
   return (
-    <div className="grid h-full grid-cols-12 gap-4">
-      <section className="col-span-12 rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm xl:col-span-3">
+    <div className="grid h-full grid-cols-12 gap-4 p-4">
+      <section className="col-span-12 rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm xl:col-span-2">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-text-primary">Release Strategies</h2>
@@ -472,7 +525,7 @@ export default function ReleaseStrategyPage() {
         </div>
       </section>
 
-      <section className="col-span-12 space-y-4 xl:col-span-6">
+      <section className="col-span-12 space-y-4 xl:col-span-7">
         <div className="rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -1011,7 +1064,82 @@ export default function ReleaseStrategyPage() {
             >
               Run Simulation
             </button>
-            {simulationResult && (
+            {simulationResult && simulationState && (
+              <div className="rounded-xl border border-border-subtle bg-surface-base p-3 text-xs text-text-secondary">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-text-primary">
+                      {simulationResult.strategyName || "Strategy simulation"}
+                    </div>
+                    <div className="mt-1 text-[11px] text-text-muted">
+                      Steps resolved: {simulationResult.resolvedSteps?.length || 0}
+                    </div>
+                  </div>
+                  <span
+                    className={`rounded-full border px-2.5 py-1 font-semibold ${simulationState.className}`}
+                  >
+                    {simulationState.label}
+                  </span>
+                </div>
+                {!simulationResult.matched &&
+                (simulationResult.unmatchedConditions?.length || 0) > 0 ? (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-warning-muted px-3 py-2 text-[11px] text-amber-900">
+                    <div className="font-semibold">Unmatched conditions</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {simulationResult.unmatchedConditions.map(
+                        (condition: any, index: number) => (
+                          <span
+                            key={`${condition.fieldKey || "condition"}-${index}`}
+                            className="rounded-full bg-white/70 px-2 py-0.5"
+                          >
+                            {condition.fieldKey} {condition.operator}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mt-3 space-y-2">
+                  {(simulationResult.resolvedSteps || []).map((step: any, index: number, steps: any[]) => {
+                    const approverNames = (step.approvers || []).map(
+                      (actor: any) => actor.displayName,
+                    );
+                    const runtimeView = getSimulationStepRuntimeView(step, index, steps);
+                    return (
+                      <div
+                        key={`${step.levelNo}-${step.stepName}`}
+                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold text-text-primary">
+                            Level {step.levelNo}: {step.stepName}
+                          </div>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${runtimeView.className}`}
+                          >
+                            {runtimeView.label}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-text-muted">
+                          Mode: {step.approverMode} | Minimum approvals:{" "}
+                          {step.minApprovalsRequired || 1} | Delegate:{" "}
+                          {step.canDelegate ? "Yes" : "No"}
+                        </div>
+                        <div className="mt-2 text-[11px] font-medium text-text-primary">
+                          {runtimeView.description}
+                        </div>
+                        <div className="mt-2 text-[11px] text-text-secondary">
+                          {approverNames.length > 0
+                            ? approverNames.join(", ")
+                            : "No eligible project actor resolved for this level."}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {false && simulationResult && (
               <div className="rounded-xl border border-border-subtle bg-surface-base p-3 text-xs text-text-secondary">
                 <div className="font-semibold text-text-primary">
                   {simulationResult.matched ? "Matched" : "Not matched"}

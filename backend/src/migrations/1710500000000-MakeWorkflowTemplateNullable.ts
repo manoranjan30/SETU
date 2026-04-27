@@ -6,6 +6,10 @@ export class MakeWorkflowTemplateNullable1710500000000
   name = 'MakeWorkflowTemplateNullable1710500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('inspection_workflow_runs'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE inspection_workflow_runs
       ALTER COLUMN "workflowTemplateId" DROP NOT NULL
@@ -13,6 +17,10 @@ export class MakeWorkflowTemplateNullable1710500000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('inspection_workflow_runs'))) {
+      return;
+    }
+
     await queryRunner.query(`
       DELETE FROM inspection_workflow_runs
       WHERE "workflowTemplateId" IS NULL

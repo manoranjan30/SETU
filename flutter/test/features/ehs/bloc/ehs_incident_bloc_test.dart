@@ -8,15 +8,17 @@ import '../../../helpers/mocks.mocks.dart';
 
 void main() {
   late MockSetuApiClient mockApi;
+  late MockSyncService mockSync;
 
   setUp(() {
     mockApi = MockSetuApiClient();
+    mockSync = MockSyncService();
     // Provide an empty in-memory SharedPreferences for all tests.
     SharedPreferences.setMockInitialValues({});
   });
 
   EhsIncidentBloc buildBloc() =>
-      EhsIncidentBloc(apiClient: mockApi);
+      EhsIncidentBloc(apiClient: mockApi, syncService: mockSync);
 
   // ── 1. Initial state ─────────────────────────────────────────────────────────
 

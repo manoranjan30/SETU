@@ -13,6 +13,7 @@ import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dar
 import 'package:setu_mobile/features/projects/presentation/pages/projects_list_page.dart';
 import 'package:setu_mobile/features/server_setup/presentation/pages/server_setup_page.dart';
 import 'package:setu_mobile/core/media/photo_cache_manager.dart';
+import 'package:setu_mobile/core/update/app_update_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Root widget of the SETU Mobile application.
@@ -49,6 +50,76 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
     super.initState();
     _isServerConfigured = ServerConfigService.instance.isConfigured();
     sl<NotificationService>().onNotificationTap = _handleNotificationTap;
+    _checkForUpdate();
+  }
+
+  /// Checks the backend for a newer or mandatory app version.
+  /// Shows a non-dismissible dialog on force update; a dismissible one otherwise.
+  Future<void> _checkForUpdate() async {
+    final result = await sl<AppUpdateService>().checkForUpdate();
+    if (!result.hasUpdate) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _navigatorKey.currentContext;
+      if (ctx == null) return;
+
+      showDialog(
+        context: ctx,
+        barrierDismissible: !result.isForced,
+        builder: (_) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(
+                result.isForced
+                    ? Icons.system_update_outlined
+                    : Icons.new_releases_outlined,
+                color: result.isForced ? Colors.red : Colors.blue,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                result.isForced ? 'Update Required' : 'Update Available',
+                style: const TextStyle(fontSize: 17),
+              ),
+            ],
+          ),
+          content: Text(
+            result.message ??
+                (result.isForced
+                    ? 'This version is no longer supported. Please update SETU to continue.'
+                    : 'A newer version of SETU is available. Update for the latest features and fixes.'),
+            style: const TextStyle(fontSize: 14),
+          ),
+          actions: [
+            if (!result.isForced)
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Later'),
+              ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: const Text('Update Now'),
+              onPressed: () {
+                // Show the URL in a snackbar — user can copy and open in browser,
+                // or admin can configure the updateUrl to an auto-download link.
+                Navigator.of(ctx).pop();
+                if (result.updateUrl != null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('Download: ${result.updateUrl}'),
+                      duration: const Duration(seconds: 10),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   /// Handles a notification tap from any of the three FCM delivery scenarios
@@ -109,15 +180,29 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
         break;
       case 'INSPECTION_APPROVED':
       case 'APPROVED':
+      case 'RFI_APPROVED':
+      case 'RFI_FULLY_APPROVED':
+      case 'STAGE_APPROVED':
         message = 'Your RFI has been approved — select a project to view.';
         color = Colors.green.shade700;
         icon = Icons.check_circle_outline;
         break;
       case 'INSPECTION_REJECTED':
       case 'REJECTED':
+      case 'RFI_WORKFLOW_REJECTED':
         message = 'Your RFI was rejected — select a project to view details.';
         color = Colors.red.shade700;
         icon = Icons.cancel_outlined;
+        break;
+      case 'RFI_APPROVAL_REVERSED':
+        message = 'Your RFI approval was reversed — please resubmit.';
+        color = Colors.deepOrange.shade700;
+        icon = Icons.undo_rounded;
+        break;
+      case 'STAGE_LEVEL_PENDING':
+        message = 'Stage approval required — select a project to review.';
+        color = Colors.orange.shade700;
+        icon = Icons.pending_actions_outlined;
         break;
       case 'WORKFLOW_STEP_ASSIGNED':
         message = 'An inspection step is assigned to you — select a project.';
@@ -139,6 +224,18 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
         message = 'Progress entry submitted — select a project to review.';
         color = Colors.teal.shade700;
         icon = Icons.bar_chart_outlined;
+        break;
+      case 'PROGRESS_APPROVED':
+      case 'PROGRESS_REJECTED':
+        message = type == 'PROGRESS_APPROVED'
+            ? 'Your progress entry was approved.'
+            : 'Your progress entry was rejected — select a project to view.';
+        color = type == 'PROGRESS_APPROVED'
+            ? Colors.green.shade700
+            : Colors.red.shade700;
+        icon = type == 'PROGRESS_APPROVED'
+            ? Icons.check_circle_outline
+            : Icons.cancel_outlined;
         break;
       // ── Quality Observations ────────────────────────────────────────────────
       case 'QUALITY_OBS_RAISED':
@@ -259,6 +356,9 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
             // Clear photo cache on logout — frees ~150 MB of device storage
             // that accumulated from viewing site photos during the session.
             SetuPhotoCacheManager().emptyCache();
+            // Remove FCM token from backend so this device stops receiving
+            // push notifications until the next login registers a fresh token.
+            sl<SetuApiClient>().clearFcmToken().catchError((_) {});
           } else if (authState is AuthError) {
             // When AuthLoading fires, _buildHome replaces LoginPage with a
             // full-screen spinner, unmounting LoginPage's BlocConsumer.

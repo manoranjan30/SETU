@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { PermissionCode } from "../../config/permissions";
@@ -20,6 +20,7 @@ import {
   MapPin,
   Building2,
   ChevronLeft,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
   Layers,
@@ -64,6 +65,8 @@ interface QualityInspection {
   drawingNo?: string;
   partNo?: number;
   partLabel?: string;
+  vendorName?: string;
+  contractorName?: string;
   locationPath?: string;
   pendingObservationCount?: number;
   legacyActivityObservationCount?: number;
@@ -81,6 +84,18 @@ interface QualityInspection {
     strategyName?: string;
     processCode?: string;
     documentType?: string;
+    actorState?:
+      | "CAN_ACT_NOW"
+      | "ASSIGNED_LATER"
+      | "NOT_ASSIGNED"
+      | "ALREADY_ACTED_OR_NOT_ACTIVE"
+      | "COMPLETED"
+      | null;
+    currentUserCanApprove?: boolean;
+    currentUserAssignedLevels?: number[];
+    currentUserFutureLevels?: number[];
+    currentUserBlockedReason?: string | null;
+    currentUserActionHint?: string | null;
     pendingStep?: {
       stepOrder?: number;
       stepName?: string;
@@ -109,6 +124,10 @@ interface QualityInspection {
     approvedStages?: number;
     totalStages?: number;
     pendingFinalApproval?: boolean;
+    currentUserCanApprove?: boolean;
+    currentUserActionHint?: string | null;
+    currentUserBlockedReason?: string | null;
+    activeLevel?: number | null;
   };
   slaDueAt?: string;
   isLocked?: boolean;
@@ -135,14 +154,30 @@ type SavedView =
   | "Overdue Focus"
   | "High Risk"
   | "Ready For Closeout";
+type ReportPreset =
+  | "TOWER_SUMMARY"
+  | "PARTIAL_TRACKER"
+  | "LEVEL_PENDING"
+  | "OBS_AGEING"
+  | "BOTTLENECKS"
+  | "VENDOR_PERFORMANCE";
 type SlaBucket = "All" | "Overdue" | "Due <24h" | "Due 24-48h" | "Upcoming";
+type ListSortOption =
+  | "NEWEST"
+  | "OLDEST"
+  | "RISK_HIGH"
+  | "RISK_LOW"
+  | "TOWER"
+  | "FLOOR"
+  | "PENDING_LEVEL"
+  | "STATUS";
 
 const APPROVAL_TABS: Array<{ key: ApprovalTab; label: string }> = [
+  { key: "DASHBOARD", label: "Dashboard" },
   { key: "PENDING", label: "Pending QC" },
   { key: "ALL", label: "All RFIs" },
   { key: "APPROVED", label: "Approved" },
   { key: "REJECTED", label: "Rejected" },
-  { key: "DASHBOARD", label: "Dashboard" },
 ];
 
 const SAVED_VIEWS: SavedView[] = [
@@ -160,8 +195,21 @@ const SLA_BUCKETS: SlaBucket[] = [
   "Upcoming",
 ];
 
+const REPORT_PRESETS: Array<{ key: ReportPreset; label: string }> = [
+  { key: "TOWER_SUMMARY", label: "Tower / Floor Summary" },
+  { key: "PARTIAL_TRACKER", label: "Partial Approval Tracker" },
+  { key: "LEVEL_PENDING", label: "Approval Level Pending" },
+  { key: "OBS_AGEING", label: "Open Observation Ageing" },
+  { key: "BOTTLENECKS", label: "Approver Bottlenecks" },
+  { key: "VENDOR_PERFORMANCE", label: "Contractor / Vendor Performance" },
+];
+
 function isPendingStatus(status: QualityInspection["status"]) {
   return status === "PENDING" || status === "PARTIALLY_APPROVED";
+}
+
+function isApprovedStatus(status: QualityInspection["status"]) {
+  return status === "APPROVED" || status === "PROVISIONALLY_APPROVED";
 }
 
 function parseLocationHierarchy(insp: QualityInspection) {
@@ -189,6 +237,30 @@ function getFloorLabel(insp: QualityInspection) {
   if (insp.floorName) return insp.floorName;
   const hierarchy = parseLocationHierarchy(insp);
   return hierarchy.find((h) => h.toLowerCase().includes("floor")) || "Unmapped";
+}
+
+function getBlockLabel(insp: Partial<QualityInspection>) {
+  if (insp.blockName?.trim()) return insp.blockName.trim();
+  const hierarchy = parseLocationHierarchy(insp as QualityInspection);
+  return hierarchy[0] || "Unmapped";
+}
+
+function getTowerLabel(insp: Partial<QualityInspection>) {
+  if (insp.towerName?.trim()) return insp.towerName.trim();
+  const hierarchy = parseLocationHierarchy(insp as QualityInspection);
+  return hierarchy[1] || "Unmapped";
+}
+
+function getUnitLabel(insp: Partial<QualityInspection>) {
+  if (insp.unitName?.trim()) return insp.unitName.trim();
+  const hierarchy = parseLocationHierarchy(insp as QualityInspection);
+  return hierarchy[3] || "Unmapped";
+}
+
+function getRoomLabel(insp: Partial<QualityInspection>) {
+  if (insp.roomName?.trim()) return insp.roomName.trim();
+  const hierarchy = parseLocationHierarchy(insp as QualityInspection);
+  return hierarchy[4] || "Unmapped";
 }
 
 function getGoLabel(insp: Partial<QualityInspection>) {
@@ -267,9 +339,169 @@ function getPriorityScore(insp: QualityInspection) {
   return score;
 }
 
+function getCounterpartyLabel(insp: Partial<QualityInspection>) {
+  return (
+    insp.contractorName?.trim() ||
+    insp.vendorName?.trim() ||
+    "Internal Team / Unmapped"
+  );
+}
+
+function getWorkflowStateBadge(insp: QualityInspection) {
+  const actorState = insp.workflowSummary?.actorState;
+  if (actorState === "CAN_ACT_NOW") {
+    return {
+      label: "Actionable Now",
+      className: "bg-emerald-100 text-emerald-700",
+    };
+  }
+  if (actorState === "ASSIGNED_LATER") {
+    return {
+      label: "Assigned Later",
+      className: "bg-blue-100 text-blue-700",
+    };
+  }
+  if (actorState === "NOT_ASSIGNED") {
+    return {
+      label: "Assigned To Others",
+      className: "bg-surface-raised text-text-secondary",
+    };
+  }
+  if (actorState === "ALREADY_ACTED_OR_NOT_ACTIVE") {
+    return {
+      label: "Not Active For You",
+      className: "bg-amber-100 text-amber-700",
+    };
+  }
+  if (actorState === "COMPLETED") {
+    return {
+      label: "Workflow Complete",
+      className: "bg-emerald-100 text-emerald-700",
+    };
+  }
+  return null;
+}
+
+function getPendingApproverDisplay(insp: Partial<QualityInspection>) {
+  const pendingNames =
+    insp.workflowSummary?.pendingStep?.pendingApproverNames ||
+    insp.pendingApproverNames ||
+    [];
+  if (pendingNames.length > 0) {
+    return pendingNames.join(", ");
+  }
+  if (insp.pendingApprovalDisplay?.trim()) {
+    return insp.pendingApprovalDisplay.trim();
+  }
+  if (insp.pendingApprovalLabel?.trim()) {
+    return insp.pendingApprovalLabel.trim();
+  }
+  return "No live approver resolved";
+}
+
+function getWorkflowActorTone(
+  actorState?:
+    | "CAN_ACT_NOW"
+    | "ASSIGNED_LATER"
+    | "NOT_ASSIGNED"
+    | "ALREADY_ACTED_OR_NOT_ACTIVE"
+    | "COMPLETED"
+    | null,
+) {
+  switch (actorState) {
+    case "CAN_ACT_NOW":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "ASSIGNED_LATER":
+      return "border-blue-200 bg-blue-50 text-blue-800";
+    case "NOT_ASSIGNED":
+      return "border-slate-200 bg-surface-raised text-text-secondary";
+    case "ALREADY_ACTED_OR_NOT_ACTIVE":
+      return "border-amber-200 bg-warning-muted text-amber-800";
+    case "COMPLETED":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    default:
+      return "border-border-subtle bg-surface-base text-text-secondary";
+  }
+}
+
+function getWorkflowStepMeta(step: any, isCurrent: boolean, isLastStepNode: boolean, isRaiserStep: boolean) {
+  const isCompleted = step.status === "COMPLETED";
+  const isRejected = step.status === "REJECTED";
+  const delegated =
+    typeof step.comments === "string" &&
+    step.comments.toLowerCase().includes("delegat");
+
+  let colorClass = "bg-surface-raised text-text-muted border-border-default";
+  let stateLabel = "Waiting";
+
+  if (isCompleted) {
+    colorClass = "bg-green-100 text-green-700 border-green-200";
+    stateLabel = isRaiserStep ? "Raised" : "Approved";
+  } else if (isRejected) {
+    colorClass = "bg-red-100 text-red-700 border-red-200";
+    stateLabel = "Rejected";
+  } else if (isCurrent) {
+    colorClass =
+      "bg-indigo-100 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200";
+    stateLabel = "Active Now";
+  } else if (delegated) {
+    colorClass = "bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200";
+    stateLabel = "Delegated";
+  }
+
+  const stepLabel =
+    isLastStepNode && !isRaiserStep
+      ? "Final Approval"
+      : step.stepName || step.workflowNode?.label || `Step ${step.stepOrder}`;
+
+  const subtitle = isCompleted
+    ? isRaiserStep
+      ? "RFI Raised"
+      : `Signed by ${step.signerDisplayName || step.signedBy}${step.signerCompany ? ` - ${step.signerCompany}` : ""}${step.signerRole ? ` - ${step.signerRole}` : ""}`
+    : isRejected
+      ? "Rejected"
+      : isCurrent
+        ? `Pending approval${step.stepName ? ` - ${step.stepName}` : ""}`
+        : delegated
+          ? step.comments || "Delegated to another approver"
+          : "Waiting for previous level";
+
+  return {
+    colorClass,
+    stateLabel,
+    stepLabel,
+    subtitle,
+    isCompleted,
+    delegated,
+  };
+}
+
+function safeCsvCell(value: unknown) {
+  const stringValue =
+    value === null || value === undefined ? "" : String(value).trim();
+  return `"${stringValue.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: Array<unknown[]>) {
+  const csv = [
+    headers.map(safeCsvCell).join(","),
+    ...rows.map((row) => row.map(safeCsvCell).join(",")),
+  ].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function QualityApprovalsPage() {
   const { projectId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [inspections, setInspections] = useState<QualityInspection[]>([]);
   const [selectedInspectionId, setSelectedInspectionId] = useState<
     number | null
@@ -323,6 +555,17 @@ export default function QualityApprovalsPage() {
     }
   }, [selectedInspectionId]);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setDashboardFullscreen(document.fullscreenElement === workspaceRef.current);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   // Reversal Modal
   const [showReversalModal, setShowReversalModal] = useState(false);
   const [reversalReason, setReversalReason] = useState("");
@@ -352,10 +595,88 @@ export default function QualityApprovalsPage() {
 
   // Filter states
   const [filterStatus, setFilterStatus] = useState<ApprovalTab>("PENDING");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBlock, setSelectedBlock] = useState("All Blocks");
+  const [selectedTower, setSelectedTower] = useState("All Towers");
   const [selectedFloor, setSelectedFloor] = useState("All Floors");
+  const [selectedGo, setSelectedGo] = useState("All GOs");
   const [selectedSlaBucket, setSelectedSlaBucket] = useState<SlaBucket>("All");
+  const [selectedSort, setSelectedSort] = useState<ListSortOption>("NEWEST");
   const [selectedView, setSelectedView] = useState<SavedView>("All Pending");
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [selectedReportPreset, setSelectedReportPreset] =
+    useState<ReportPreset>("TOWER_SUMMARY");
+  const [reportDateFrom, setReportDateFrom] = useState("");
+  const [reportDateTo, setReportDateTo] = useState("");
+  const [dashboardFullscreen, setDashboardFullscreen] = useState(false);
+
+  const applyFullscreenThemeVars = () => {
+    const host = workspaceRef.current;
+    if (!host) return;
+    const root = document.documentElement;
+    const source = getComputedStyle(root);
+    Array.from(host.classList)
+      .filter((className) => className.startsWith("theme-"))
+      .forEach((className) => host.classList.remove(className));
+    host.classList.add("theme-shadcn-admin");
+    host.classList.add("fullscreen-themed");
+    const isDarkTheme = false;
+    [
+      "--color-surface-base",
+      "--color-surface-card",
+      "--color-surface-raised",
+      "--color-text-primary",
+      "--color-text-secondary",
+      "--color-text-muted",
+      "--color-text-disabled",
+      "--color-border-default",
+      "--color-border-subtle",
+      "--color-secondary",
+      "--color-success",
+      "--color-warning",
+      "--color-error",
+      "--color-info",
+    ].forEach((token) => {
+      const value = source.getPropertyValue(token);
+      if (value) {
+        host.style.setProperty(token, value.trim());
+      }
+    });
+    host.style.backgroundColor =
+      source.getPropertyValue("--color-surface-base").trim() ||
+      source.backgroundColor ||
+      "#f8fafc";
+    host.style.color =
+      source.getPropertyValue("--color-text-primary").trim() ||
+      source.color ||
+      "#0f172a";
+    host.style.colorScheme = isDarkTheme ? "dark" : "light";
+    host.dataset.fullscreenScheme = isDarkTheme ? "dark" : "light";
+  };
+
+  const exitDashboardFullscreen = async () => {
+    if (document.fullscreenElement === workspaceRef.current) {
+      await document.exitFullscreen();
+    }
+  };
+
+  const handleApprovalTabClick = async (tabKey: ApprovalTab) => {
+    if (tabKey === "DASHBOARD" && filterStatus === "DASHBOARD" && !selectedInspectionId) {
+      if (document.fullscreenElement === workspaceRef.current) {
+        await document.exitFullscreen();
+      } else {
+        applyFullscreenThemeVars();
+        await workspaceRef.current?.requestFullscreen();
+      }
+      return;
+    }
+
+    if (tabKey !== "DASHBOARD") {
+      await exitDashboardFullscreen();
+    }
+
+    setFilterStatus(tabKey);
+  };
 
   useEffect(() => {
     if (projectId) {
@@ -432,12 +753,150 @@ export default function QualityApprovalsPage() {
     }
   }, [selectedInspectionId, refreshKey]);
 
+  const filterOptions = useMemo(() => {
+    const unique = (values: string[]) =>
+      Array.from(new Set(values.filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
+      );
+
+    return {
+      blocks: unique(inspections.map((insp) => getBlockLabel(insp))),
+      towers: unique(inspections.map((insp) => getTowerLabel(insp))),
+      floors: unique(inspections.map((insp) => getFloorLabel(insp))),
+      gos: unique(
+        inspections
+          .map((insp) => getGoLabel(insp))
+          .filter((value): value is string => !!value),
+      ),
+    };
+  }, [inspections]);
+
   const filteredInspections = useMemo(() => {
     if (filterStatus === "DASHBOARD") return inspections;
-    return inspections.filter(
-      (i) => filterStatus === "ALL" || i.status === filterStatus,
-    );
-  }, [inspections, filterStatus]);
+
+    const query = searchQuery.trim().toLowerCase();
+    const matchesTab = (inspection: QualityInspection) => {
+      if (filterStatus === "ALL") return true;
+      if (filterStatus === "PENDING") return isPendingStatus(inspection.status);
+      if (filterStatus === "APPROVED") return isApprovedStatus(inspection.status);
+      if (filterStatus === "REJECTED") return inspection.status === "REJECTED";
+      return true;
+    };
+
+    const matchesSearch = (inspection: QualityInspection) => {
+      if (!query) return true;
+      const haystack = [
+        inspection.id,
+        inspection.status,
+        inspection.activity?.activityName,
+        inspection.drawingNo,
+        inspection.locationPath,
+        inspection.pendingApprovalLabel,
+        inspection.pendingApprovalDisplay,
+        inspection.workflowSummary?.strategyName,
+        inspection.workflowSummary?.processCode,
+        inspection.workflowSummary?.documentType,
+        ...(inspection.pendingApproverNames || []),
+        ...getInspectionScopeTokens(inspection),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    };
+
+    const rows = inspections.filter((inspection) => {
+      if (!matchesTab(inspection)) return false;
+      if (!matchesSearch(inspection)) return false;
+      if (
+        selectedBlock !== "All Blocks" &&
+        getBlockLabel(inspection) !== selectedBlock
+      ) {
+        return false;
+      }
+      if (
+        selectedTower !== "All Towers" &&
+        getTowerLabel(inspection) !== selectedTower
+      ) {
+        return false;
+      }
+      if (
+        selectedFloor !== "All Floors" &&
+        getFloorLabel(inspection) !== selectedFloor
+      ) {
+        return false;
+      }
+      if (
+        selectedGo !== "All GOs" &&
+        (getGoLabel(inspection) || "Unmapped") !== selectedGo
+      ) {
+        return false;
+      }
+      if (
+        selectedSlaBucket !== "All" &&
+        getSlaBucket(inspection) !== selectedSlaBucket
+      ) {
+        return false;
+      }
+      if (showOverdueOnly && getSlaBucket(inspection) !== "Overdue") {
+        return false;
+      }
+      return true;
+    });
+
+    const statusWeight = (inspection: QualityInspection) => {
+      if (isPendingStatus(inspection.status)) return 0;
+      if (isApprovedStatus(inspection.status)) return 1;
+      if (inspection.status === "REJECTED") return 2;
+      return 3;
+    };
+
+    return [...rows].sort((a, b) => {
+      switch (selectedSort) {
+        case "OLDEST":
+          return (
+            new Date(a.requestDate).getTime() - new Date(b.requestDate).getTime()
+          );
+        case "RISK_HIGH":
+          return getPriorityScore(b) - getPriorityScore(a);
+        case "RISK_LOW":
+          return getPriorityScore(a) - getPriorityScore(b);
+        case "TOWER":
+          return getTowerLabel(a).localeCompare(getTowerLabel(b), undefined, {
+            numeric: true,
+            sensitivity: "base",
+          });
+        case "FLOOR":
+          return getFloorLabel(a).localeCompare(getFloorLabel(b), undefined, {
+            numeric: true,
+            sensitivity: "base",
+          });
+        case "PENDING_LEVEL":
+          return (a.pendingApprovalLevel || 999) - (b.pendingApprovalLevel || 999);
+        case "STATUS":
+          return (
+            statusWeight(a) - statusWeight(b) ||
+            new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+          );
+        case "NEWEST":
+        default:
+          return (
+            new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+          );
+      }
+    });
+  }, [
+    filterStatus,
+    inspections,
+    searchQuery,
+    selectedBlock,
+    selectedTower,
+    selectedFloor,
+    selectedGo,
+    selectedSlaBucket,
+    showOverdueOnly,
+    selectedSort,
+  ]);
 
   const approvalMetrics = useMemo(() => {
     const pending = inspections.filter((i) => isPendingStatus(i.status));
@@ -535,6 +994,676 @@ export default function QualityApprovalsPage() {
     };
   }, [approvalMetrics.pending, inspections]);
 
+  const exportRows = useMemo(
+    () => (filterStatus === "DASHBOARD" ? dashboardQueue : filteredInspections),
+    [dashboardQueue, filterStatus, filteredInspections],
+  );
+
+  const dashboardBottlenecks = useMemo(() => {
+    const rows = approvalMetrics.pending.map((insp) => {
+      const pendingOwner = getPendingApproverDisplay(insp);
+      const actorState = insp.workflowSummary?.actorState || "UNSPECIFIED";
+      const observationBlocked = (insp.pendingObservationCount || 0) > 0;
+      return {
+        pendingOwner,
+        actorState,
+        observationBlocked,
+        overdue: getSlaBucket(insp) === "Overdue",
+      };
+    });
+
+    const byOwner = new Map<
+      string,
+      { owner: string; total: number; overdue: number; blockedByObservations: number }
+    >();
+
+    rows.forEach((row) => {
+      const current = byOwner.get(row.pendingOwner) || {
+        owner: row.pendingOwner,
+        total: 0,
+        overdue: 0,
+        blockedByObservations: 0,
+      };
+      current.total += 1;
+      if (row.overdue) current.overdue += 1;
+      if (row.observationBlocked) current.blockedByObservations += 1;
+      byOwner.set(row.pendingOwner, current);
+    });
+
+    const stateCounts = {
+      actionableNow: rows.filter((row) => row.actorState === "CAN_ACT_NOW").length,
+      assignedLater: rows.filter((row) => row.actorState === "ASSIGNED_LATER").length,
+      assignedToOthers: rows.filter((row) => row.actorState === "NOT_ASSIGNED").length,
+      notActive: rows.filter((row) => row.actorState === "ALREADY_ACTED_OR_NOT_ACTIVE").length,
+      blockedByObservations: rows.filter((row) => row.observationBlocked).length,
+    };
+
+    return {
+      stateCounts,
+      ownerRows: Array.from(byOwner.values()).sort((a, b) => {
+        if (b.overdue !== a.overdue) return b.overdue - a.overdue;
+        return b.total - a.total;
+      }),
+    };
+  }, [approvalMetrics.pending]);
+
+  const detailNavigationRows = useMemo(
+    () => (filterStatus === "DASHBOARD" ? dashboardQueue : filteredInspections),
+    [dashboardQueue, filterStatus, filteredInspections],
+  );
+
+  const selectedInspectionIndex = useMemo(
+    () =>
+      selectedInspectionId
+        ? detailNavigationRows.findIndex((row) => row.id === selectedInspectionId)
+        : -1,
+    [detailNavigationRows, selectedInspectionId],
+  );
+
+  const previousInspection =
+    selectedInspectionIndex > 0
+      ? detailNavigationRows[selectedInspectionIndex - 1]
+      : null;
+  const nextInspection =
+    selectedInspectionIndex >= 0 &&
+    selectedInspectionIndex < detailNavigationRows.length - 1
+      ? detailNavigationRows[selectedInspectionIndex + 1]
+      : null;
+
+  const openInspectionDetail = (inspectionId: number | null) => {
+    if (!inspectionId) return;
+    setSelectedInspectionId(inspectionId);
+  };
+
+  useEffect(() => {
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (document.fullscreenElement !== workspaceRef.current || !selectedInspectionId) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTypingSurface =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target?.isContentEditable;
+      if (isTypingSurface) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft" && previousInspection) {
+        event.preventDefault();
+        setSelectedInspectionId(previousInspection.id);
+      }
+      if (event.key === "ArrowRight" && nextInspection) {
+        event.preventDefault();
+        setSelectedInspectionId(nextInspection.id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [nextInspection, previousInspection, selectedInspectionId]);
+
+  const handleDownloadListReport = () => {
+    const suffix =
+      filterStatus === "DASHBOARD"
+        ? "dashboard_queue"
+        : filterStatus.toLowerCase();
+    downloadCsv(
+      `qc_rfi_report_${suffix}_${projectId || "project"}.csv`,
+      [
+        "RFI ID",
+        "Status",
+        "Activity",
+        "Block",
+        "Tower",
+        "Floor",
+        "GO",
+        "Unit",
+        "Room",
+        "Drawing",
+        "Requested Date",
+        "SLA Bucket",
+        "Risk Score",
+        "Pending Level",
+        "Pending Label",
+        "Approvals Progress",
+        "Stage Approved",
+        "Stage Total",
+        "Pending Observations",
+        "Location Path",
+      ],
+      exportRows.map((insp) => [
+        insp.id,
+        insp.status,
+        insp.activity?.activityName || `Activity #${insp.activityId}`,
+        getBlockLabel(insp),
+        getTowerLabel(insp),
+        getFloorLabel(insp),
+        getGoLabel(insp) || "",
+        getUnitLabel(insp),
+        getRoomLabel(insp),
+        insp.drawingNo || "",
+        insp.requestDate,
+        getSlaBucket(insp),
+        getPriorityScore(insp),
+        insp.pendingApprovalLevel || "",
+        insp.pendingApprovalDisplay || insp.pendingApprovalLabel || "",
+        insp.workflowSummary?.pendingStep?.minApprovalsRequired
+          ? `${insp.workflowSummary?.pendingStep?.currentApprovalCount || 0}/${insp.workflowSummary?.pendingStep?.minApprovalsRequired}`
+          : "",
+        insp.stageApprovalSummary?.approvedStages || 0,
+        insp.stageApprovalSummary?.totalStages || 0,
+        insp.pendingObservationCount || 0,
+        insp.locationPath || parseLocationHierarchy(insp).join(" > "),
+      ]),
+    );
+  };
+
+  const handleDownloadTowerSummary = () => {
+    const grouped = new Map<
+      string,
+      {
+        block: string;
+        tower: string;
+        floor: string;
+        total: number;
+        pending: number;
+        partial: number;
+        approved: number;
+        rejected: number;
+      }
+    >();
+
+    exportRows.forEach((insp) => {
+      const block = getBlockLabel(insp);
+      const tower = getTowerLabel(insp);
+      const floor = getFloorLabel(insp);
+      const key = `${block}__${tower}__${floor}`;
+      const current = grouped.get(key) || {
+        block,
+        tower,
+        floor,
+        total: 0,
+        pending: 0,
+        partial: 0,
+        approved: 0,
+        rejected: 0,
+      };
+      current.total += 1;
+      if (insp.status === "PARTIALLY_APPROVED") current.partial += 1;
+      if (isPendingStatus(insp.status)) current.pending += 1;
+      if (isApprovedStatus(insp.status)) current.approved += 1;
+      if (insp.status === "REJECTED") current.rejected += 1;
+      grouped.set(key, current);
+    });
+
+    downloadCsv(
+      `qc_tower_summary_${projectId || "project"}.csv`,
+      [
+        "Block",
+        "Tower",
+        "Floor",
+        "Total RFIs",
+        "Pending RFIs",
+        "Partial Approvals",
+        "Approved RFIs",
+        "Rejected RFIs",
+        "Completion %",
+      ],
+      Array.from(grouped.values())
+        .sort((a, b) =>
+          `${a.block} ${a.tower} ${a.floor}`.localeCompare(
+            `${b.block} ${b.tower} ${b.floor}`,
+            undefined,
+            { numeric: true, sensitivity: "base" },
+          ),
+        )
+        .map((row) => [
+          row.block,
+          row.tower,
+          row.floor,
+          row.total,
+          row.pending,
+          row.partial,
+          row.approved,
+          row.rejected,
+          row.total > 0 ? `${Math.round((row.approved / row.total) * 100)}%` : "0%",
+        ]),
+    );
+  };
+
+  const handleDownloadBottleneckReport = () => {
+    downloadCsv(
+      `qc_bottlenecks_${projectId || "project"}.csv`,
+      ["Pending Owner", "Pending RFIs", "Overdue", "Blocked By Observations"],
+      dashboardBottlenecks.ownerRows.map((row) => [
+        row.owner,
+        row.total,
+        row.overdue,
+        row.blockedByObservations,
+      ]),
+    );
+  };
+
+  const focusQueue = (
+    tab: ApprovalTab,
+    options?: {
+      selectedView?: SavedView;
+      overdueOnly?: boolean;
+      slaBucket?: SlaBucket;
+      tower?: string;
+      floor?: string;
+      go?: string;
+    },
+  ) => {
+    setSelectedInspectionId(null);
+    setFilterStatus(tab);
+    if (options?.selectedView) setSelectedView(options.selectedView);
+    if (typeof options?.overdueOnly === "boolean") {
+      setShowOverdueOnly(options.overdueOnly);
+    }
+    if (options?.slaBucket) setSelectedSlaBucket(options.slaBucket);
+    if (options?.tower) setSelectedTower(options.tower);
+    if (options?.floor) setSelectedFloor(options.floor);
+    if (options?.go) setSelectedGo(options.go);
+  };
+
+  const locationSummaryRows = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        block: string;
+        tower: string;
+        floor: string;
+        total: number;
+        pending: number;
+        partial: number;
+        approved: number;
+        rejected: number;
+      }
+    >();
+
+    exportRows.forEach((insp) => {
+      const block = getBlockLabel(insp);
+      const tower = getTowerLabel(insp);
+      const floor = getFloorLabel(insp);
+      const key = `${block}__${tower}__${floor}`;
+      const current = grouped.get(key) || {
+        block,
+        tower,
+        floor,
+        total: 0,
+        pending: 0,
+        partial: 0,
+        approved: 0,
+        rejected: 0,
+      };
+      current.total += 1;
+      if (isPendingStatus(insp.status)) current.pending += 1;
+      if (insp.status === "PARTIALLY_APPROVED") current.partial += 1;
+      if (isApprovedStatus(insp.status)) current.approved += 1;
+      if (insp.status === "REJECTED") current.rejected += 1;
+      grouped.set(key, current);
+    });
+
+    return Array.from(grouped.values())
+      .map((row) => ({
+        ...row,
+        completion:
+          row.total > 0 ? Math.round((row.approved / row.total) * 100) : 0,
+      }))
+      .sort((a, b) => {
+        if (b.pending !== a.pending) return b.pending - a.pending;
+        if (b.partial !== a.partial) return b.partial - a.partial;
+        return `${a.block} ${a.tower} ${a.floor}`.localeCompare(
+          `${b.block} ${b.tower} ${b.floor}`,
+          undefined,
+          { numeric: true, sensitivity: "base" },
+        );
+      });
+  }, [exportRows]);
+
+  const reportSourceRows = useMemo(() => {
+    const fromTime = reportDateFrom
+      ? new Date(`${reportDateFrom}T00:00:00`).getTime()
+      : null;
+    const toTime = reportDateTo
+      ? new Date(`${reportDateTo}T23:59:59`).getTime()
+      : null;
+
+    return exportRows.filter((insp) => {
+      const requestTime = new Date(insp.requestDate).getTime();
+      if (fromTime != null && requestTime < fromTime) return false;
+      if (toTime != null && requestTime > toTime) return false;
+      return true;
+    });
+  }, [exportRows, reportDateFrom, reportDateTo]);
+
+  const reportPreview = useMemo(() => {
+    const makeDate = (value?: string) =>
+      value ? new Date(value).toLocaleDateString() : "-";
+    const makeDaysOpen = (value?: string) =>
+      value
+        ? Math.max(
+            0,
+            Math.floor((Date.now() - new Date(value).getTime()) / 86400000),
+          )
+        : 0;
+
+    if (selectedReportPreset === "PARTIAL_TRACKER") {
+      const rows = reportSourceRows
+        .filter((insp) => insp.status === "PARTIALLY_APPROVED")
+        .sort(
+          (a, b) =>
+            new Date(a.requestDate).getTime() - new Date(b.requestDate).getTime(),
+        )
+        .map((insp) => [
+          insp.id,
+          insp.activity?.activityName || `Activity #${insp.activityId}`,
+          getBlockLabel(insp),
+          getTowerLabel(insp),
+          getFloorLabel(insp),
+          getGoLabel(insp) || "-",
+          insp.pendingApprovalDisplay ||
+            (insp.pendingApprovalLevel
+              ? `Level ${insp.pendingApprovalLevel}`
+              : "Pending"),
+          getPendingApproverDisplay(insp),
+          insp.pendingObservationCount || 0,
+          makeDate(insp.requestDate),
+          makeDaysOpen(insp.requestDate),
+        ]);
+      return {
+        title: "Partial Approval Tracker",
+        subtitle: "RFIs that are still active after partial progress.",
+        headers: [
+          "RFI",
+          "Activity",
+          "Block",
+          "Tower",
+          "Floor",
+          "GO",
+          "Pending Level",
+          "Current Approver",
+          "Open Obs",
+          "Request Date",
+          "Days Open",
+        ],
+        rows,
+      };
+    }
+
+    if (selectedReportPreset === "LEVEL_PENDING") {
+      const grouped = new Map<
+        string,
+        {
+          level: string;
+          label: string;
+          total: number;
+          actionable: number;
+          assignedLater: number;
+          blockedByObs: number;
+          overdue: number;
+        }
+      >();
+      reportSourceRows
+        .filter((insp) => isPendingStatus(insp.status))
+        .forEach((insp) => {
+          const level = insp.pendingApprovalLevel
+            ? `Level ${insp.pendingApprovalLevel}`
+            : "No Active Level";
+          const label = insp.pendingApprovalLabel?.trim() || "-";
+          const key = `${level}__${label}`;
+          const bucket = grouped.get(key) || {
+            level,
+            label,
+            total: 0,
+            actionable: 0,
+            assignedLater: 0,
+            blockedByObs: 0,
+            overdue: 0,
+          };
+          bucket.total += 1;
+          if (insp.workflowSummary?.currentUserCanApprove) bucket.actionable += 1;
+          if (insp.workflowSummary?.actorState === "ASSIGNED_LATER") {
+            bucket.assignedLater += 1;
+          }
+          if ((insp.pendingObservationCount || 0) > 0) bucket.blockedByObs += 1;
+          if (getSlaBucket(insp) === "Overdue") bucket.overdue += 1;
+          grouped.set(key, bucket);
+        });
+      return {
+        title: "Approval Level Pending Summary",
+        subtitle: "Pending RFIs grouped by live approval level.",
+        headers: [
+          "Level",
+          "Label",
+          "Pending RFIs",
+          "Actionable Now",
+          "Assigned Later",
+          "Obs Blocked",
+          "Overdue",
+        ],
+        rows: Array.from(grouped.values())
+          .sort((a, b) => a.level.localeCompare(b.level, undefined, { numeric: true }))
+          .map((row) => [
+            row.level,
+            row.label,
+            row.total,
+            row.actionable,
+            row.assignedLater,
+            row.blockedByObs,
+            row.overdue,
+          ]),
+      };
+    }
+
+    if (selectedReportPreset === "OBS_AGEING") {
+      const rows = reportSourceRows
+        .filter((insp) => (insp.pendingObservationCount || 0) > 0)
+        .sort((a, b) => (b.pendingObservationCount || 0) - (a.pendingObservationCount || 0))
+        .map((insp) => [
+          insp.id,
+          insp.activity?.activityName || `Activity #${insp.activityId}`,
+          getTowerLabel(insp),
+          getFloorLabel(insp),
+          getGoLabel(insp) || "-",
+          insp.pendingObservationCount || 0,
+          getSlaBucket(insp),
+          makeDaysOpen(insp.requestDate),
+          insp.workflowSummary?.currentUserCanApprove
+            ? insp.workflowSummary.currentUserActionHint || "Your approval is active now."
+            : insp.workflowSummary?.currentUserBlockedReason ||
+              insp.workflowSummary?.currentUserActionHint ||
+              "-",
+        ]);
+      return {
+        title: "Open Observation Ageing",
+        subtitle: "RFIs with unresolved observations and their current ageing pressure.",
+        headers: [
+          "RFI",
+          "Activity",
+          "Tower",
+          "Floor",
+          "GO",
+          "Open Obs",
+          "SLA Bucket",
+          "Days Open",
+          "Action Summary",
+        ],
+        rows,
+      };
+    }
+
+    if (selectedReportPreset === "BOTTLENECKS") {
+      return {
+        title: "Approver Bottleneck Summary",
+        subtitle: "Pending load by current owner, with overdue and observation blockers.",
+        headers: [
+          "Pending Owner",
+          "Pending RFIs",
+          "Overdue",
+          "Blocked By Observations",
+        ],
+        rows: dashboardBottlenecks.ownerRows.map((row) => [
+          row.owner,
+          row.total,
+          row.overdue,
+          row.blockedByObservations,
+        ]),
+      };
+    }
+
+    if (selectedReportPreset === "VENDOR_PERFORMANCE") {
+      const grouped = new Map<
+        string,
+        {
+          name: string;
+          total: number;
+          pending: number;
+          partial: number;
+          approved: number;
+          rejected: number;
+        }
+      >();
+      reportSourceRows.forEach((insp) => {
+        const name = getCounterpartyLabel(insp);
+        const bucket = grouped.get(name) || {
+          name,
+          total: 0,
+          pending: 0,
+          partial: 0,
+          approved: 0,
+          rejected: 0,
+        };
+        bucket.total += 1;
+        if (isPendingStatus(insp.status)) bucket.pending += 1;
+        if (insp.status === "PARTIALLY_APPROVED") bucket.partial += 1;
+        if (isApprovedStatus(insp.status)) bucket.approved += 1;
+        if (insp.status === "REJECTED") bucket.rejected += 1;
+        grouped.set(name, bucket);
+      });
+      return {
+        title: "Contractor / Vendor QA Performance",
+        subtitle: "Operational completion view grouped by responsible external team.",
+        headers: [
+          "Contractor / Vendor",
+          "Total RFIs",
+          "Pending",
+          "Partial",
+          "Approved",
+          "Rejected",
+          "Completion %",
+        ],
+        rows: Array.from(grouped.values())
+          .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+          .map((row) => [
+            row.name,
+            row.total,
+            row.pending,
+            row.partial,
+            row.approved,
+            row.rejected,
+            row.total > 0 ? `${Math.round((row.approved / row.total) * 100)}%` : "0%",
+          ]),
+      };
+    }
+
+    const grouped = new Map<
+      string,
+      {
+        block: string;
+        tower: string;
+        floor: string;
+        total: number;
+        pending: number;
+        partial: number;
+        approved: number;
+        rejected: number;
+      }
+    >();
+    reportSourceRows.forEach((insp) => {
+      const block = getBlockLabel(insp);
+      const tower = getTowerLabel(insp);
+      const floor = getFloorLabel(insp);
+      const key = `${block}__${tower}__${floor}`;
+      const bucket = grouped.get(key) || {
+        block,
+        tower,
+        floor,
+        total: 0,
+        pending: 0,
+        partial: 0,
+        approved: 0,
+        rejected: 0,
+      };
+      bucket.total += 1;
+      if (isPendingStatus(insp.status)) bucket.pending += 1;
+      if (insp.status === "PARTIALLY_APPROVED") bucket.partial += 1;
+      if (isApprovedStatus(insp.status)) bucket.approved += 1;
+      if (insp.status === "REJECTED") bucket.rejected += 1;
+      grouped.set(key, bucket);
+    });
+    return {
+      title: "Pending vs Completed by Block / Tower / Floor",
+      subtitle: "Meeting-ready location summary for the current QA/QC filter scope.",
+      headers: [
+        "Block",
+        "Tower",
+        "Floor",
+        "Total RFIs",
+        "Pending RFIs",
+        "Partial Approvals",
+        "Approved RFIs",
+        "Rejected RFIs",
+        "Completion %",
+      ],
+      rows: Array.from(grouped.values())
+        .sort((a, b) =>
+          `${a.block} ${a.tower} ${a.floor}`.localeCompare(
+            `${b.block} ${b.tower} ${b.floor}`,
+            undefined,
+            { numeric: true, sensitivity: "base" },
+          ),
+        )
+        .map((row) => [
+          row.block,
+          row.tower,
+          row.floor,
+          row.total,
+          row.pending,
+          row.partial,
+          row.approved,
+          row.rejected,
+          row.total > 0 ? `${Math.round((row.approved / row.total) * 100)}%` : "0%",
+        ]),
+    };
+  }, [
+    dashboardBottlenecks.ownerRows,
+    reportDateFrom,
+    reportDateTo,
+    reportSourceRows,
+    selectedReportPreset,
+  ]);
+
+  const handleDownloadReportPreview = () => {
+    downloadCsv(
+      `qc_${selectedReportPreset.toLowerCase()}_${projectId || "project"}.csv`,
+      reportPreview.headers,
+      reportPreview.rows,
+    );
+  };
+
+  const isDashboardMode = filterStatus === "DASHBOARD" && !selectedInspectionId;
+
+  useEffect(() => {
+    if (filterStatus !== "DASHBOARD" && document.fullscreenElement === workspaceRef.current) {
+      void document.exitFullscreen();
+    }
+  }, [filterStatus]);
+
   const filteredObservations = useMemo(() => {
     if (obsTab === "PENDING")
       return observations.filter(
@@ -617,6 +1746,115 @@ export default function QualityApprovalsPage() {
       return err.message.trim();
     }
     return fallback;
+  };
+
+  const getStageApprovalActionReason = (stage: any) => {
+    if (!canApproveInspection) {
+      return "You do not have approval permission for this checklist stage.";
+    }
+    if (isStageApproved(stage)) {
+      return "This stage is already approved and locked.";
+    }
+    if (inspectionDetail?.isLocked) {
+      return "This RFI is locked after approval.";
+    }
+    if (!isStageChecklistComplete(stage)) {
+      return "Complete all checklist items in this stage before approval.";
+    }
+    if (getStagePendingObservationCount(stage.id) > 0) {
+      return "Close all observations for this stage before approval.";
+    }
+    if (inspectionDetail?.workflowSummary?.currentUserCanApprove === false) {
+      return (
+        inspectionDetail?.workflowSummary?.currentUserBlockedReason ||
+        "Your approval is not active at the current level."
+      );
+    }
+    return null;
+  };
+
+  const getStageActionLabel = (stage: any) => {
+    const pendingDisplay = stage?.stageApproval?.pendingDisplay;
+    if (pendingDisplay?.trim()) {
+      return `Approve ${pendingDisplay.trim()}`;
+    }
+    return "Approve Stage";
+  };
+
+  const getStageStatusChips = (stage: any) => {
+    const chips: Array<{ label: string; className: string }> = [];
+    const stageApproval = stage?.stageApproval;
+    const blockerReason = getStageApprovalActionReason(stage);
+    const pendingObservations = getStagePendingObservationCount(stage.id);
+    const checklistComplete = isStageChecklistComplete(stage);
+
+    if (stageApproval?.fullyApproved || isStageApproved(stage)) {
+      chips.push({
+        label: "Stage Approved",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-800",
+      });
+    } else if (stageApproval?.pendingDisplay) {
+      chips.push({
+        label: `Waiting: ${stageApproval.pendingDisplay}`,
+        className: "border-amber-200 bg-warning-muted text-amber-800",
+      });
+    } else {
+      chips.push({
+        label: "Approval Pending",
+        className: "border-blue-200 bg-blue-50 text-blue-800",
+      });
+    }
+
+    chips.push({
+      label: checklistComplete ? "Checklist Complete" : "Checklist Incomplete",
+      className: checklistComplete
+        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+        : "border-slate-200 bg-surface-raised text-text-secondary",
+    });
+
+    if (pendingObservations > 0) {
+      chips.push({
+        label: `${pendingObservations} Observation${pendingObservations > 1 ? "s" : ""} Open`,
+        className: "border-red-200 bg-red-50 text-red-800",
+      });
+    }
+
+    if (stageApproval?.activeLevel) {
+      chips.push({
+        label: `Active Level ${stageApproval.activeLevel}`,
+        className: "border-indigo-200 bg-indigo-50 text-indigo-800",
+      });
+    }
+
+    if (currentWorkflowStep?.canDelegate) {
+      chips.push({
+        label: "Delegation Enabled",
+        className: "border-violet-200 bg-violet-50 text-violet-800",
+      });
+    }
+
+    if (
+      blockerReason &&
+      inspectionDetail?.workflowSummary?.currentUserCanApprove === false
+    ) {
+      chips.push({
+        label: "Blocked For You",
+        className: "border-blue-200 bg-blue-50 text-blue-800",
+      });
+    }
+
+    return chips;
+  };
+
+  const getInspectionActionSummary = (inspection: QualityInspection) => {
+    if (inspection.workflowSummary?.currentUserCanApprove) {
+      return inspection.workflowSummary.currentUserActionHint || "Your approval is active now.";
+    }
+    return (
+      inspection.workflowSummary?.currentUserBlockedReason ||
+      inspection.workflowSummary?.currentUserActionHint ||
+      null
+    );
   };
 
   const updateStage = async (stageId: number, payload: Record<string, any>) => {
@@ -1024,9 +2262,99 @@ export default function QualityApprovalsPage() {
     });
   }, [inspectionDetail]);
 
+  const currentWorkflowStep = useMemo(() => {
+    if (!workflowState?.steps?.length || !workflowState?.currentStepOrder) return null;
+    return workflowState.steps.find(
+      (step: any) => step.stepOrder === workflowState.currentStepOrder,
+    );
+  }, [workflowState]);
+
+  const activeApproverSummary = useMemo(() => {
+    if (!inspectionDetail) return null;
+    const pendingStep = inspectionDetail.workflowSummary?.pendingStep;
+    const activeLevel = pendingStep?.stepOrder || inspectionDetail.pendingApprovalLevel || null;
+    const currentCount = pendingStep?.currentApprovalCount || 0;
+    const requiredCount = pendingStep?.minApprovalsRequired || 1;
+    const pendingApproverText = getPendingApproverDisplay(inspectionDetail);
+
+    return {
+      title:
+        activeLevel != null
+          ? `Level ${activeLevel}${inspectionDetail.pendingApprovalLabel ? ` - ${inspectionDetail.pendingApprovalLabel}` : ""}`
+          : "Approval workflow complete",
+      subtitle:
+        activeLevel != null
+          ? pendingApproverText
+          : "No pending approver remains on this RFI.",
+      quorumText:
+        activeLevel != null && requiredCount > 1
+          ? `${currentCount}/${requiredCount} approvals received`
+          : activeLevel != null
+            ? currentCount > 0
+              ? `${currentCount} approval recorded at this level`
+              : "Waiting for the first approval at this level"
+            : "All configured levels are already complete",
+    };
+  }, [inspectionDetail]);
+
+  const workflowReasonChips = useMemo(() => {
+    if (!inspectionDetail) return [];
+    const summary = inspectionDetail.workflowSummary;
+    const chips: Array<{ label: string; className: string }> = [];
+    const badge = getWorkflowStateBadge(inspectionDetail);
+    if (badge) {
+      chips.push({
+        label: badge.label,
+        className: `${badge.className} border-transparent`,
+      });
+    }
+    if (inspectionDetail.pendingApprovalLevel) {
+      chips.push({
+        label: `Active Level ${inspectionDetail.pendingApprovalLevel}`,
+        className: "border-amber-200 bg-warning-muted text-amber-800",
+      });
+    }
+    if ((summary?.currentUserFutureLevels || []).length > 0) {
+      chips.push({
+        label: `Your Next Level ${summary?.currentUserFutureLevels?.[0]}`,
+        className: "border-blue-200 bg-blue-50 text-blue-800",
+      });
+    }
+    if ((summary?.pendingStep?.minApprovalsRequired || 1) > 1) {
+      chips.push({
+        label: `Quorum ${summary?.pendingStep?.currentApprovalCount || 0}/${summary?.pendingStep?.minApprovalsRequired}`,
+        className: "border-indigo-200 bg-indigo-50 text-indigo-800",
+      });
+    }
+    if (currentWorkflowStep?.canDelegate) {
+      chips.push({
+        label: "Delegation Enabled",
+        className: "border-violet-200 bg-violet-50 text-violet-800",
+      });
+    }
+    if (
+      typeof currentWorkflowStep?.comments === "string" &&
+      currentWorkflowStep.comments.toLowerCase().includes("delegat")
+    ) {
+      chips.push({
+        label: "Delegated",
+        className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
+      });
+    }
+    return chips;
+  }, [currentWorkflowStep, inspectionDetail]);
+
   return (
     <>
-      <div className="h-full flex flex-col bg-surface-base">
+      <div
+        ref={workspaceRef}
+        className="h-full flex flex-col bg-surface-base"
+        style={{
+          backgroundColor: "var(--color-surface-base)",
+          color: "var(--color-text-primary)",
+          colorScheme: "inherit",
+        }}
+      >
         {/* Header */}
         <header
           className={`bg-surface-card border-b flex justify-between items-center sticky top-0 z-10 shrink-0 gap-4 ${
@@ -1074,9 +2402,21 @@ export default function QualityApprovalsPage() {
                       ? "bg-secondary text-white shadow-sm"
                       : "bg-surface-raised text-text-secondary hover:bg-gray-200"
                   }`}
-                  onClick={() => setFilterStatus(tab.key)}
+                  onClick={() => void handleApprovalTabClick(tab.key)}
+                  title={
+                    tab.key === "DASHBOARD" && filterStatus === "DASHBOARD" && !selectedInspectionId
+                      ? dashboardFullscreen
+                        ? "Click to exit fullscreen dashboard"
+                        : "Click again to open the dashboard in fullscreen"
+                      : undefined
+                  }
                 >
                   {tab.label}
+                  {tab.key === "DASHBOARD" && filterStatus === "DASHBOARD" && !selectedInspectionId
+                    ? dashboardFullscreen
+                      ? " · Fullscreen"
+                      : ""
+                    : ""}
                 </button>
               ))}
             </div>
@@ -1086,7 +2426,7 @@ export default function QualityApprovalsPage() {
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {/* Left Panel: List of RFIs */}
           <aside
-            className={`${selectedInspectionId && filterStatus !== "DASHBOARD" ? "hidden" : "flex"} ${filterStatus === "DASHBOARD" ? "w-full border-r-0" : "w-[420px] border-r"} bg-surface-card flex-col shrink-0 flex-grow-0`}
+            className={`${isDashboardMode ? "hidden" : selectedInspectionId ? "hidden" : "flex"} w-[440px] border-r bg-surface-card flex-col shrink-0 flex-grow-0`}
           >
             <div className="p-4 border-b space-y-3">
               <div className="grid grid-cols-3 gap-2 text-xs">
@@ -1107,6 +2447,120 @@ export default function QualityApprovalsPage() {
                     {approvalMetrics.rejected.length}
                   </div>
                   <div className="text-red-800/80">Rejected</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by activity, drawing, tower, floor, GO..."
+                  className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={selectedBlock}
+                    onChange={(e) => setSelectedBlock(e.target.value)}
+                    className="rounded-lg border border-border-default bg-surface-base px-2 py-2 text-xs"
+                  >
+                    <option>All Blocks</option>
+                    {filterOptions.blocks.map((block) => (
+                      <option key={block} value={block}>
+                        {block}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedTower}
+                    onChange={(e) => setSelectedTower(e.target.value)}
+                    className="rounded-lg border border-border-default bg-surface-base px-2 py-2 text-xs"
+                  >
+                    <option>All Towers</option>
+                    {filterOptions.towers.map((tower) => (
+                      <option key={tower} value={tower}>
+                        {tower}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedFloor}
+                    onChange={(e) => setSelectedFloor(e.target.value)}
+                    className="rounded-lg border border-border-default bg-surface-base px-2 py-2 text-xs"
+                  >
+                    <option>All Floors</option>
+                    {filterOptions.floors.map((floor) => (
+                      <option key={floor} value={floor}>
+                        {floor}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedGo}
+                    onChange={(e) => setSelectedGo(e.target.value)}
+                    className="rounded-lg border border-border-default bg-surface-base px-2 py-2 text-xs"
+                  >
+                    <option>All GOs</option>
+                    <option value="Unmapped">Unmapped</option>
+                    {filterOptions.gos.map((go) => (
+                      <option key={go} value={go}>
+                        {go}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedSlaBucket}
+                    onChange={(e) =>
+                      setSelectedSlaBucket(e.target.value as SlaBucket)
+                    }
+                    className="rounded-lg border border-border-default bg-surface-base px-2 py-2 text-xs"
+                  >
+                    {SLA_BUCKETS.map((bucket) => (
+                      <option key={bucket} value={bucket}>
+                        SLA: {bucket}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedSort}
+                    onChange={(e) =>
+                      setSelectedSort(e.target.value as ListSortOption)
+                    }
+                    className="rounded-lg border border-border-default bg-surface-base px-2 py-2 text-xs"
+                  >
+                    <option value="NEWEST">Sort: Newest first</option>
+                    <option value="OLDEST">Sort: Oldest first</option>
+                    <option value="RISK_HIGH">Sort: Highest risk</option>
+                    <option value="RISK_LOW">Sort: Lowest risk</option>
+                    <option value="TOWER">Sort: Tower</option>
+                    <option value="FLOOR">Sort: Floor</option>
+                    <option value="PENDING_LEVEL">Sort: Pending level</option>
+                    <option value="STATUS">Sort: Status</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={showOverdueOnly}
+                      onChange={(e) => setShowOverdueOnly(e.target.checked)}
+                    />
+                    Overdue only
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleDownloadListReport}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                      RFI Report
+                    </button>
+                    <button
+                      onClick={handleDownloadTowerSummary}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                      Tower Summary
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1168,6 +2622,88 @@ export default function QualityApprovalsPage() {
                       <div className="text-2xl font-bold text-teal-700">
                         {approvalMetrics.floorsCompleted}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-surface-card p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-text-primary">
+                          Tower / Floor Completion Matrix
+                        </div>
+                        <div className="text-xs text-text-muted">
+                          Operational view of pending, partial, approved, and rejected RFIs.
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleDownloadTowerSummary}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                      >
+                        <FileDown className="w-3.5 h-3.5" />
+                        Download Matrix
+                      </button>
+                    </div>
+
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-border-subtle text-text-muted">
+                            <th className="px-3 py-2 font-medium">Block</th>
+                            <th className="px-3 py-2 font-medium">Tower</th>
+                            <th className="px-3 py-2 font-medium">Floor</th>
+                            <th className="px-3 py-2 font-medium">Pending</th>
+                            <th className="px-3 py-2 font-medium">Partial</th>
+                            <th className="px-3 py-2 font-medium">Approved</th>
+                            <th className="px-3 py-2 font-medium">Rejected</th>
+                            <th className="px-3 py-2 font-medium">Completion</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {locationSummaryRows.slice(0, 12).map((row) => (
+                            <tr
+                              key={`${row.block}-${row.tower}-${row.floor}`}
+                              className="border-b border-border-subtle/70"
+                            >
+                              <td className="px-3 py-2 text-text-secondary">{row.block}</td>
+                              <td className="px-3 py-2 text-text-primary">{row.tower}</td>
+                              <td className="px-3 py-2 text-text-secondary">{row.floor}</td>
+                              <td className="px-3 py-2">
+                                <span className="rounded-full bg-warning-muted px-2 py-0.5 font-semibold text-amber-800">
+                                  {row.pending}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className="rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-800">
+                                  {row.partial}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
+                                  {row.approved}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className="rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-700">
+                                  {row.rejected}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2 w-24 overflow-hidden rounded-full bg-surface-raised">
+                                    <div
+                                      className="h-full rounded-full bg-secondary"
+                                      style={{ width: `${row.completion}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-semibold text-text-primary">
+                                    {row.completion}%
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
@@ -1334,8 +2870,7 @@ export default function QualityApprovalsPage() {
                             <button
                               key={insp.id}
                               onClick={() => {
-                                setSelectedInspectionId(insp.id);
-                                setFilterStatus("PENDING");
+                                openInspectionDetail(insp.id);
                               }}
                               className="w-full text-left border rounded-lg p-2.5 bg-surface-card hover:border-indigo-300 hover:bg-secondary-muted transition"
                             >
@@ -1390,10 +2925,12 @@ export default function QualityApprovalsPage() {
                   const scopeTokens = getInspectionScopeTokens(insp);
                   const bucket = getSlaBucket(insp);
                   const priority = getPriorityScore(insp);
+                  const workflowStateBadge = getWorkflowStateBadge(insp);
+                  const inspectionActionSummary = getInspectionActionSummary(insp);
                   return (
                     <div
                       key={insp.id}
-                      onClick={() => setSelectedInspectionId(insp.id)}
+                      onClick={() => openInspectionDetail(insp.id)}
                       className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedInspectionId === insp.id ? "border-secondary bg-secondary-muted ring-1 ring-indigo-200" : "border-border-default hover:border-indigo-300 hover:shadow-sm bg-surface-card"}`}
                     >
                       <div className="flex justify-between items-start mb-2 gap-2">
@@ -1456,6 +2993,13 @@ export default function QualityApprovalsPage() {
                           Risk Score: {priority}
                         </span>
                         <div className="flex items-center gap-2">
+                          {workflowStateBadge ? (
+                            <span
+                              className={`rounded-full px-2 py-0.5 font-semibold ${workflowStateBadge.className}`}
+                            >
+                              {workflowStateBadge.label}
+                            </span>
+                          ) : null}
                           {(insp.pendingObservationCount || 0) > 0 && (
                             <span className="text-red-700 inline-flex items-center gap-1">
                               <Siren className="w-3 h-3" />{" "}
@@ -1465,6 +3009,11 @@ export default function QualityApprovalsPage() {
                         </div>
                       </div>
                       <div className="mt-2 space-y-1 text-[11px]">
+                        {inspectionActionSummary ? (
+                          <div className="rounded-md bg-surface-raised px-2 py-1 text-text-secondary">
+                            {inspectionActionSummary}
+                          </div>
+                        ) : null}
                         {insp.pendingApprovalLevel ? (
                           <div className="rounded-md bg-warning-muted px-2 py-1 text-amber-800">
                             {insp.pendingApprovalDisplay ||
@@ -1507,20 +3056,588 @@ export default function QualityApprovalsPage() {
 
           {/* Right Panel: Checklist Execution */}
           <main
-            className={`${filterStatus === "DASHBOARD" ? "hidden" : "flex-1"} min-w-0 bg-surface-base flex flex-col relative overflow-hidden`}
+            className="flex-1 min-w-0 bg-surface-base flex flex-col relative overflow-hidden"
           >
-            {!selectedInspectionId ? (
+            {isDashboardMode ? (
+              <div
+                className={`flex-1 overflow-y-auto bg-surface-base ${
+                  dashboardFullscreen ? "p-2" : ""
+                }`}
+                style={{
+                  backgroundColor: "var(--color-surface-base)",
+                  color: "var(--color-text-primary)",
+                  colorScheme: "light",
+                }}
+              >
+                <div
+                  className={`grid min-h-full grid-cols-12 gap-4 ${
+                    dashboardFullscreen ? "p-3 lg:p-4" : "p-4 lg:p-5"
+                  }`}
+                >
+                  <section className="col-span-12 rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div>
+                        <div className="text-xs uppercase tracking-[0.2em] text-secondary">
+                          Vision QA Dashboard
+                        </div>
+                        <h3 className="mt-1 text-2xl font-semibold text-text-primary">
+                          QA/QC Approval Command Center
+                        </h3>
+                        <p className="mt-1 text-sm text-text-muted">
+                          Full-screen operational view for pending floors, SLA pressure, and priority RFIs.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={handleDownloadListReport}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          RFI Report
+                        </button>
+                        <button
+                          onClick={handleDownloadTowerSummary}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          Tower Matrix
+                        </button>
+                        <button
+                          onClick={handleDownloadReportPreview}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          Active Report
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(260px,2fr)_repeat(5,minmax(120px,1fr))]">
+                      <input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by activity, drawing, tower, floor, GO..."
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      />
+                      <select
+                        value={selectedBlock}
+                        onChange={(e) => setSelectedBlock(e.target.value)}
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      >
+                        <option>All Blocks</option>
+                        {filterOptions.blocks.map((block) => (
+                          <option key={block} value={block}>
+                            {block}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedTower}
+                        onChange={(e) => setSelectedTower(e.target.value)}
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      >
+                        <option>All Towers</option>
+                        {filterOptions.towers.map((tower) => (
+                          <option key={tower} value={tower}>
+                            {tower}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedFloor}
+                        onChange={(e) => setSelectedFloor(e.target.value)}
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      >
+                        <option>All Floors</option>
+                        {filterOptions.floors.map((floor) => (
+                          <option key={floor} value={floor}>
+                            {floor}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedGo}
+                        onChange={(e) => setSelectedGo(e.target.value)}
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      >
+                        <option>All GOs</option>
+                        <option value="Unmapped">Unmapped</option>
+                        {filterOptions.gos.map((go) => (
+                          <option key={go} value={go}>
+                            {go}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedSlaBucket}
+                        onChange={(e) =>
+                          setSelectedSlaBucket(e.target.value as SlaBucket)
+                        }
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      >
+                        {SLA_BUCKETS.map((bucket) => (
+                          <option key={bucket} value={bucket}>
+                            SLA: {bucket}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {SAVED_VIEWS.map((view) => (
+                          <button
+                            key={view}
+                            onClick={() => setSelectedView(view)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                              selectedView === view
+                                ? "bg-secondary border-secondary text-white"
+                                : "bg-surface-base border-border-default text-text-secondary hover:border-secondary/30"
+                            }`}
+                          >
+                            {view}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex items-center gap-2 text-xs text-text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={showOverdueOnly}
+                            onChange={(e) => setShowOverdueOnly(e.target.checked)}
+                          />
+                          Overdue only
+                        </label>
+                        <select
+                          value={selectedSort}
+                          onChange={(e) =>
+                            setSelectedSort(e.target.value as ListSortOption)
+                          }
+                          className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs"
+                        >
+                          <option value="NEWEST">Sort: Newest first</option>
+                          <option value="OLDEST">Sort: Oldest first</option>
+                          <option value="RISK_HIGH">Sort: Highest risk</option>
+                          <option value="RISK_LOW">Sort: Lowest risk</option>
+                          <option value="TOWER">Sort: Tower</option>
+                          <option value="FLOOR">Sort: Floor</option>
+                          <option value="PENDING_LEVEL">Sort: Pending level</option>
+                          <option value="STATUS">Sort: Status</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(240px,1.4fr)_repeat(2,minmax(150px,1fr))]">
+                      <select
+                        value={selectedReportPreset}
+                        onChange={(e) =>
+                          setSelectedReportPreset(e.target.value as ReportPreset)
+                        }
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      >
+                        {REPORT_PRESETS.map((preset) => (
+                          <option key={preset.key} value={preset.key}>
+                            Report: {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="date"
+                        value={reportDateFrom}
+                        onChange={(e) => setReportDateFrom(e.target.value)}
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      />
+                      <input
+                        type="date"
+                        value={reportDateTo}
+                        onChange={(e) => setReportDateTo(e.target.value)}
+                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2.5 text-sm"
+                      />
+                    </div>
+                  </section>
+
+                  <section className="col-span-12 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                    <button
+                      type="button"
+                      onClick={() => focusQueue("ALL", { overdueOnly: false, slaBucket: "All" })}
+                      className="rounded-xl border bg-surface-card p-4 text-left shadow-sm transition hover:border-secondary/30 hover:bg-surface-base"
+                    >
+                      <div className="text-xs uppercase tracking-wide text-text-muted">Total RFIs</div>
+                      <div className="mt-2 text-3xl font-bold text-text-primary">{inspections.length}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        focusQueue("PENDING", {
+                          selectedView: "All Pending",
+                          overdueOnly: false,
+                          slaBucket: "All",
+                        })
+                      }
+                      className="rounded-xl border border-amber-100 bg-warning-muted p-4 text-left shadow-sm"
+                    >
+                      <div className="text-xs uppercase tracking-wide text-amber-800/80">Pending</div>
+                      <div className="mt-2 text-3xl font-bold text-amber-700">{approvalMetrics.pending.length}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => focusQueue("APPROVED", { overdueOnly: false, slaBucket: "All" })}
+                      className="rounded-xl border border-emerald-100 bg-success-muted p-4 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100"
+                    >
+                      <div className="text-xs uppercase tracking-wide text-emerald-800/80">Approved</div>
+                      <div className="mt-2 text-3xl font-bold text-emerald-700">{approvalMetrics.approved.length}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        focusQueue("PENDING", {
+                          selectedView: "Overdue Focus",
+                          overdueOnly: true,
+                          slaBucket: "Overdue",
+                        });
+                      }}
+                      className="rounded-xl border border-red-100 bg-error-muted p-4 text-left shadow-sm"
+                    >
+                      <div className="text-xs uppercase tracking-wide text-red-800/80">Overdue</div>
+                      <div className="mt-2 text-3xl font-bold text-red-700">{dashboardStats.overdueCount}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        focusQueue("PENDING", {
+                          selectedView: "All Pending",
+                          overdueOnly: false,
+                          slaBucket: "All",
+                        })
+                      }
+                      className="rounded-xl border border-orange-100 bg-orange-50 p-4 text-left shadow-sm transition hover:border-orange-300 hover:bg-orange-100"
+                    >
+                      <div className="text-xs uppercase tracking-wide text-orange-800/80">Floors Pending</div>
+                      <div className="mt-2 text-3xl font-bold text-orange-700">{approvalMetrics.floorsPending}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => focusQueue("APPROVED", { overdueOnly: false, slaBucket: "All" })}
+                      className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-left shadow-sm transition hover:border-teal-300 hover:bg-teal-100"
+                    >
+                      <div className="text-xs uppercase tracking-wide text-teal-800/80">Floors Complete</div>
+                      <div className="mt-2 text-3xl font-bold text-teal-700">{approvalMetrics.floorsCompleted}</div>
+                    </button>
+                  </section>
+
+                  <section className="col-span-12 xl:col-span-7 rounded-2xl border bg-surface-card p-4 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-semibold text-text-primary">Priority Pending Queue</div>
+                        <div className="text-xs text-text-muted">Risk-prioritized RFIs that still need action.</div>
+                      </div>
+                      <div className="text-xs text-text-muted">{dashboardQueue.length} items</div>
+                    </div>
+                    <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
+                      {dashboardQueue.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border-default p-6 text-sm text-text-muted">
+                          No pending items for the current dashboard filters.
+                        </div>
+                      ) : (
+                        dashboardQueue.slice(0, 32).map((insp) => {
+                          const location = parseLocationHierarchy(insp);
+                          const bucket = getSlaBucket(insp);
+                          const workflowStateBadge = getWorkflowStateBadge(insp);
+                          return (
+                            <button
+                              key={insp.id}
+                              onClick={() => {
+                                openInspectionDetail(insp.id);
+                              }}
+                              className="w-full rounded-xl border border-border-default bg-surface-base p-3 text-left transition hover:border-secondary/40 hover:bg-secondary-muted"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-text-primary">
+                                    {insp.activity?.activityName || `Activity #${insp.activityId}`}
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-text-secondary">
+                                    <span className="inline-flex items-center gap-1">
+                                      <MapPin className="h-3 w-3" />
+                                      {location.join(" > ") || `Node ${insp.epsNodeId}`}
+                                    </span>
+                                    {insp.drawingNo ? <span>Drawing {insp.drawingNo}</span> : null}
+                                  </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                      bucket === "Overdue"
+                                        ? "bg-red-100 text-red-700"
+                                        : bucket === "Due <24h"
+                                          ? "bg-amber-100 text-amber-700"
+                                          : "bg-info-muted text-blue-700"
+                                    }`}
+                                  >
+                                    {bucket}
+                                  </span>
+                                  <span className="text-[10px] text-text-muted">
+                                    Score {getPriorityScore(insp)}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                {insp.pendingApprovalLevel ? (
+                                  <span className="rounded-full bg-warning-muted px-2 py-0.5 font-semibold text-amber-800">
+                                    Level {insp.pendingApprovalLevel}
+                                    {insp.pendingApprovalLabel
+                                      ? ` - ${insp.pendingApprovalLabel}`
+                                      : ""}
+                                  </span>
+                                ) : null}
+                                {workflowStateBadge ? (
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 font-semibold ${workflowStateBadge.className}`}
+                                  >
+                                    {workflowStateBadge.label}
+                                  </span>
+                                ) : null}
+                                {(insp.pendingObservationCount || 0) > 0 ? (
+                                  <span className="rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-700">
+                                    {insp.pendingObservationCount} observations
+                                  </span>
+                                ) : null}
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="col-span-12 xl:col-span-5 grid gap-4">
+                    <div className="rounded-2xl border bg-surface-card p-4 shadow-sm">
+                      <div className="mb-3 text-base font-semibold text-text-primary">Tower / Floor Completion Matrix</div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-left text-xs">
+                          <thead className="sticky top-0 bg-surface-card">
+                            <tr className="border-b border-border-subtle text-text-muted">
+                              <th className="px-3 py-2 font-medium">Tower</th>
+                              <th className="px-3 py-2 font-medium">Floor</th>
+                              <th className="px-3 py-2 font-medium">Pending</th>
+                              <th className="px-3 py-2 font-medium">Approved</th>
+                              <th className="px-3 py-2 font-medium">Completion</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {locationSummaryRows.slice(0, 14).map((row) => (
+                              <tr
+                                key={`${row.block}-${row.tower}-${row.floor}`}
+                                className="cursor-pointer border-b border-border-subtle/70 hover:bg-surface-base"
+                                onClick={() =>
+                                  focusQueue("PENDING", {
+                                    selectedView: "All Pending",
+                                    tower: row.tower,
+                                    floor: row.floor,
+                                    overdueOnly: false,
+                                    slaBucket: "All",
+                                  })
+                                }
+                              >
+                                <td className="px-3 py-2 font-medium text-text-primary">{row.tower}</td>
+                                <td className="px-3 py-2 text-text-secondary">{row.floor}</td>
+                                <td className="px-3 py-2 text-amber-700">{row.pending + row.partial}</td>
+                                <td className="px-3 py-2 text-emerald-700">{row.approved}</td>
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 w-24 overflow-hidden rounded-full bg-surface-raised">
+                                      <div className="h-full rounded-full bg-secondary" style={{ width: `${row.completion}%` }} />
+                                    </div>
+                                    <span className="font-semibold text-text-primary">{row.completion}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                      <div className="rounded-2xl border bg-surface-card p-4 shadow-sm">
+                        <div className="mb-3 text-base font-semibold text-text-primary">SLA Distribution</div>
+                        <div className="space-y-2 text-sm">
+                          <button type="button" onClick={() => focusQueue("PENDING", { selectedView: "Overdue Focus", overdueOnly: true, slaBucket: "Overdue" })} className="flex w-full justify-between rounded-lg px-2 py-1 hover:bg-surface-base"><span>Overdue</span><span className="font-bold text-red-700">{dashboardStats.overdueCount}</span></button>
+                          <button type="button" onClick={() => focusQueue("PENDING", { selectedView: "All Pending", overdueOnly: false, slaBucket: "Due <24h" })} className="flex w-full justify-between rounded-lg px-2 py-1 hover:bg-surface-base"><span>Due &lt;24h</span><span className="font-bold text-amber-700">{dashboardStats.due24}</span></button>
+                          <button type="button" onClick={() => focusQueue("PENDING", { selectedView: "All Pending", overdueOnly: false, slaBucket: "Due 24-48h" })} className="flex w-full justify-between rounded-lg px-2 py-1 hover:bg-surface-base"><span>Due 24-48h</span><span className="font-bold text-blue-700">{dashboardStats.due48}</span></button>
+                          <button type="button" onClick={() => focusQueue("PENDING", { selectedView: "All Pending", overdueOnly: false, slaBucket: "Upcoming" })} className="flex w-full justify-between rounded-lg px-2 py-1 hover:bg-surface-base"><span>Upcoming</span><span className="font-bold text-emerald-700">{dashboardStats.upcoming}</span></button>
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border bg-surface-card p-4 shadow-sm">
+                        <div className="mb-3 text-base font-semibold text-text-primary">Data Health</div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between"><span>Missing Location</span><span className="font-bold text-red-700">{dashboardStats.missingLocation}</span></div>
+                          <div className="flex justify-between"><span>Missing Workflow</span><span className="font-bold text-amber-700">{dashboardStats.missingWorkflow}</span></div>
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border bg-surface-card p-4 shadow-sm md:col-span-2 xl:col-span-1">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div className="text-base font-semibold text-text-primary">Approver Bottlenecks</div>
+                          <button
+                            type="button"
+                            onClick={handleDownloadBottleneckReport}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-2.5 py-1.5 text-[11px] font-medium text-text-secondary hover:bg-surface-raised"
+                          >
+                            <FileDown className="h-3.5 w-3.5" />
+                            Export
+                          </button>
+                        </div>
+                        <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">
+                            Actionable {dashboardBottlenecks.stateCounts.actionableNow}
+                          </span>
+                          <span className="rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-800">
+                            Later {dashboardBottlenecks.stateCounts.assignedLater}
+                          </span>
+                          <span className="rounded-full bg-surface-raised px-2 py-1 font-semibold text-text-secondary">
+                            Others {dashboardBottlenecks.stateCounts.assignedToOthers}
+                          </span>
+                          <span className="rounded-full bg-red-50 px-2 py-1 font-semibold text-red-800">
+                            Obs Blocked {dashboardBottlenecks.stateCounts.blockedByObservations}
+                          </span>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          {dashboardBottlenecks.ownerRows.slice(0, 4).map((row) => (
+                            <div key={row.owner} className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="font-medium text-text-primary">{row.owner}</div>
+                                <div className="text-xs text-text-muted">{row.total} pending</div>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                                <span className="rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-800">
+                                  {row.overdue} overdue
+                                </span>
+                                <span className="rounded-full bg-warning-muted px-2 py-0.5 font-semibold text-amber-800">
+                                  {row.blockedByObservations} obs blocked
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="col-span-12 rounded-2xl border bg-surface-card p-4 shadow-sm">
+                    <div className="mb-3 text-base font-semibold text-text-primary">Floor Status Board</div>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+                      {Array.from(approvalMetrics.floorMap.entries())
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([floor, rows]) => {
+                          const pendingCount = rows.filter((r) => isPendingStatus(r.status)).length;
+                          const approvedCount = rows.filter((r) => isApprovedStatus(r.status)).length;
+                          const rejectedCount = rows.filter((r) => r.status === "REJECTED").length;
+                          return (
+                            <button
+                              type="button"
+                              key={floor}
+                              onClick={() =>
+                                focusQueue("PENDING", {
+                                  selectedView: "All Pending",
+                                  floor,
+                                  overdueOnly: false,
+                                  slaBucket: "All",
+                                })
+                              }
+                              className="rounded-xl border border-border-default bg-surface-base p-3 text-left transition hover:border-secondary/30 hover:bg-secondary-muted"
+                            >
+                              <div className="truncate text-sm font-semibold text-text-primary">{floor}</div>
+                              <div className="mt-2 flex items-center gap-2 text-xs">
+                                <span className="rounded-full bg-warning-muted px-2 py-0.5 font-semibold text-amber-800">P:{pendingCount}</span>
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">A:{approvedCount}</span>
+                                <span className="rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-700">R:{rejectedCount}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </section>
+
+                  <section className="col-span-12 rounded-2xl border bg-surface-card p-4 shadow-sm">
+                    <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-text-primary">
+                          {reportPreview.title}
+                        </div>
+                        <div className="text-sm text-text-muted">
+                          {reportPreview.subtitle}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                        <span className="rounded-full bg-surface-base px-3 py-1 font-medium">
+                          {reportPreview.rows.length} rows
+                        </span>
+                        {(reportDateFrom || reportDateTo) && (
+                          <span className="rounded-full bg-surface-base px-3 py-1 font-medium">
+                            {reportDateFrom || "Start"} to {reportDateTo || "Today"}
+                          </span>
+                        )}
+                        <button
+                          onClick={handleDownloadReportPreview}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          Download Preview
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-border-subtle">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className="bg-surface-raised">
+                          <tr className="border-b border-border-subtle text-text-muted">
+                            {reportPreview.headers.map((header) => (
+                              <th key={header} className="px-3 py-2 font-medium whitespace-nowrap">
+                                {header}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportPreview.rows.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={reportPreview.headers.length}
+                                className="px-3 py-6 text-center text-sm text-text-muted"
+                              >
+                                No rows match the current report and date filters.
+                              </td>
+                            </tr>
+                          ) : (
+                            reportPreview.rows.slice(0, 18).map((row, rowIndex) => (
+                              <tr
+                                key={`${selectedReportPreset}-${rowIndex}`}
+                                className="border-b border-border-subtle/70 hover:bg-surface-base"
+                              >
+                                {row.map((cell, cellIndex) => (
+                                  <td
+                                    key={`${selectedReportPreset}-${rowIndex}-${cellIndex}`}
+                                    className="px-3 py-2 whitespace-nowrap text-text-secondary"
+                                  >
+                                    {String(cell)}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : !selectedInspectionId ? (
               <div className="flex-1 flex flex-col items-center justify-center text-text-disabled">
                 <ClipboardCheck className="w-16 h-16 mb-4 text-gray-200" />
                 <h3 className="text-lg font-medium text-text-primary mb-1">
-                  {filterStatus === "DASHBOARD"
-                    ? "Dashboard Active"
-                    : "Select an RFI"}
+                  Select an RFI
                 </h3>
                 <p className="max-w-sm text-center">
-                  {filterStatus === "DASHBOARD"
-                    ? "Use the left dashboard priority queue to open a specific RFI, or switch tabs to browse by status."
-                    : "Select an RFI from the left panel to review and execute its checklist."}
+                  Select an RFI from the left panel to review and execute its checklist.
                 </p>
               </div>
             ) : loadingDetail ? (
@@ -1613,9 +3730,39 @@ export default function QualityApprovalsPage() {
                           Waiting for final approval
                         </span>
                       ) : null}
+                      {getWorkflowStateBadge(inspectionDetail) ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-semibold ${getWorkflowStateBadge(inspectionDetail)?.className}`}
+                        >
+                          {getWorkflowStateBadge(inspectionDetail)?.label}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
+                    {dashboardFullscreen ? (
+                      <span className="hidden rounded-full bg-surface-raised px-3 py-1 text-[11px] font-medium text-text-muted xl:inline-flex">
+                        Use Left / Right arrows to move through RFIs
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => openInspectionDetail(previousInspection?.id || null)}
+                      disabled={!previousInspection}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-base border border-border-default text-text-secondary rounded-lg text-sm font-medium hover:bg-surface-raised shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openInspectionDetail(nextInspection?.id || null)}
+                      disabled={!nextInspection}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-base border border-border-default text-text-secondary rounded-lg text-sm font-medium hover:bg-surface-raised shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => setSelectedInspectionId(null)}
                       className="flex items-center gap-2 px-3 py-1.5 bg-surface-base border border-border-default text-text-secondary rounded-lg text-sm font-medium hover:bg-surface-raised shadow-sm"
@@ -1724,8 +3871,6 @@ export default function QualityApprovalsPage() {
                             .map((step: any, sIdx: number) => {
                               const isCurrent =
                                 workflowState.currentStepOrder === step.stepOrder;
-                              const isCompleted = step.status === "COMPLETED";
-                              const isRejected = step.status === "REJECTED";
                               const isRaiserStep =
                                 step.workflowNode?.stepType === "RAISE_RFI" ||
                                 (step.stepOrder === 1 &&
@@ -1739,34 +3884,19 @@ export default function QualityApprovalsPage() {
                                     (s: any) => s.stepOrder,
                                   ),
                                 );
-
-                              let colorClass =
-                                "bg-surface-raised text-text-muted border-border-default";
-                              if (isCompleted)
-                                colorClass =
-                                  "bg-green-100 text-green-700 border-green-200";
-                              if (isRejected)
-                                colorClass =
-                                  "bg-red-100 text-red-700 border-red-200";
-                              if (isCurrent)
-                                colorClass =
-                                  "bg-indigo-100 text-indigo-700 border-indigo-300 ring-2 ring-indigo-200";
-
-                              const stepLabel =
-                                isLastStepNode && !isRaiserStep
-                                  ? "Final Approval"
-                                  : step.stepName ||
-                                    step.workflowNode?.label ||
-                                    `Step ${step.stepOrder}`;
-                              const stepSubtitle = isCompleted
-                                ? isRaiserStep
-                                  ? "RFI Raised"
-                                  : `Signed by ${step.signerDisplayName || step.signedBy}${step.signerCompany ? ` - ${step.signerCompany}` : ""}${step.signerRole ? ` - ${step.signerRole}` : ""}`
-                                : isRejected
-                                  ? "Rejected"
-                                  : isCurrent
-                                    ? `Pending Approval${step.stepName ? ` - ${step.stepName}` : ""}`
-                                    : "Waiting";
+                              const {
+                                colorClass,
+                                stateLabel,
+                                stepLabel,
+                                subtitle: stepSubtitle,
+                                isCompleted,
+                                delegated,
+                              } = getWorkflowStepMeta(
+                                step,
+                                isCurrent,
+                                isLastStepNode,
+                                isRaiserStep,
+                              );
 
                               return (
                                 <div
@@ -1774,14 +3904,36 @@ export default function QualityApprovalsPage() {
                                   className="flex items-center gap-2 shrink-0"
                                 >
                                   <div
-                                    className={`flex flex-col border rounded-lg px-2.5 py-1 ${colorClass}`}
+                                    className={`flex min-w-[176px] flex-col border rounded-lg px-2.5 py-2 ${colorClass}`}
                                   >
-                                    <span className="text-[10px] font-bold uppercase">
-                                      {stepLabel}
-                                    </span>
-                                    <span className="text-[10px] truncate max-w-[100px]">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[10px] font-bold uppercase">
+                                        {stepLabel}
+                                      </span>
+                                      <span className="rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+                                        {stateLabel}
+                                      </span>
+                                    </div>
+                                    <span className="mt-1 text-[10px] truncate max-w-[150px]">
                                       {stepSubtitle}
                                     </span>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {isCurrent ? (
+                                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide">
+                                          Current approver
+                                        </span>
+                                      ) : null}
+                                      {delegated ? (
+                                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide">
+                                          Delegated
+                                        </span>
+                                      ) : null}
+                                      {(step.minApprovalsRequired || 1) > 1 ? (
+                                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide">
+                                          {(step.currentApprovalCount || 0)}/{step.minApprovalsRequired} quorum
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </div>
                                   {sIdx < workflowState.steps.length - 1 && (
                                     <div
@@ -1800,6 +3952,102 @@ export default function QualityApprovalsPage() {
                 {/* Checklist Area */}
                 <div className="flex-1 overflow-y-auto px-4 py-3 lg:px-6">
                   <div className="mx-auto w-full max-w-[1500px] space-y-4">
+                    {inspectionDetail.workflowSummary?.currentUserActionHint && (
+                      <div
+                        className={`rounded-xl border px-4 py-3 text-sm ${
+                          inspectionDetail.workflowSummary?.currentUserCanApprove
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-blue-200 bg-blue-50 text-blue-800"
+                        }`}
+                      >
+                        {inspectionDetail.workflowSummary.currentUserActionHint}
+                      </div>
+                    )}
+
+                    {activeApproverSummary && (
+                      <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
+                        <div className="rounded-xl border bg-surface-card p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                Live Active Approver
+                              </div>
+                              <div className="mt-2 text-lg font-semibold text-text-primary">
+                                {activeApproverSummary.title}
+                              </div>
+                              <div className="mt-1 text-sm text-text-secondary">
+                                {activeApproverSummary.subtitle}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-border-subtle bg-surface-base px-3 py-2 text-right">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                                Progress
+                              </div>
+                              <div className="mt-1 text-sm font-semibold text-text-primary">
+                                {activeApproverSummary.quorumText}
+                              </div>
+                            </div>
+                          </div>
+                          {inspectionDetail.workflowSummary?.pendingStep?.pendingApproverNames?.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {inspectionDetail.workflowSummary.pendingStep.pendingApproverNames.map(
+                                (name: string, index: number) => (
+                                  <span
+                                    key={`active-approver-${index}`}
+                                    className="inline-flex items-center rounded-full border border-border-subtle bg-surface-base px-3 py-1 text-xs font-medium text-text-secondary"
+                                  >
+                                    {name}
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="rounded-xl border bg-surface-card p-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                            Your Standing
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {workflowReasonChips.map((chip, index) => (
+                              <span
+                                key={`wf-reason-chip-${index}`}
+                                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${chip.className}`}
+                              >
+                                {chip.label}
+                              </span>
+                            ))}
+                          </div>
+                          <div
+                            className={`mt-3 rounded-xl border px-3 py-3 text-sm ${getWorkflowActorTone(
+                              inspectionDetail.workflowSummary?.actorState,
+                            )}`}
+                          >
+                            {inspectionDetail.workflowSummary?.currentUserBlockedReason ||
+                              inspectionDetail.workflowSummary?.currentUserActionHint ||
+                              "No user-specific approval restriction is active right now."}
+                          </div>
+                          {(inspectionDetail.workflowSummary?.currentUserAssignedLevels || []).length >
+                          0 ? (
+                            <div className="mt-3 text-xs text-text-secondary">
+                              Assigned levels:{" "}
+                              <span className="font-semibold text-text-primary">
+                                {inspectionDetail.workflowSummary.currentUserAssignedLevels.join(", ")}
+                              </span>
+                            </div>
+                          ) : null}
+                          {(inspectionDetail.workflowSummary?.currentUserFutureLevels || []).length >
+                          0 ? (
+                            <div className="mt-2 text-xs text-text-secondary">
+                              Waiting levels:{" "}
+                              <span className="font-semibold text-text-primary">
+                                {inspectionDetail.workflowSummary.currentUserFutureLevels.join(", ")}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
                     {/* Workflow Completed Banner */}
                     {workflowState?.status === "COMPLETED" && (
                       <div className="bg-success-muted border border-emerald-300 rounded-xl px-5 py-3 flex items-center gap-3 text-emerald-800">
@@ -1934,6 +4182,8 @@ export default function QualityApprovalsPage() {
                       inspectionDetail.stages.map((stage: any, sIdx: number) => {
                         const stageApproval = stage.stageApproval;
                         const stageLevels = stageApproval?.levels || [];
+                        const stageStatusChips = getStageStatusChips(stage);
+                        const stageActionReason = getStageApprovalActionReason(stage);
                         const latestStageApproval = [...(stage.signatures || [])]
                           .reverse()
                           .find(
@@ -1991,6 +4241,18 @@ export default function QualityApprovalsPage() {
                                       ` - ${latestStageApproval.signerRoleLabel}`}
                                   </p>
                                 ) : null}
+                                {stageStatusChips.length > 0 ? (
+                                  <div className="mt-3 flex flex-wrap gap-1.5">
+                                    {stageStatusChips.map((chip, chipIdx) => (
+                                      <span
+                                        key={`stage-status-chip-${stage.id}-${chipIdx}`}
+                                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${chip.className}`}
+                                      >
+                                        {chip.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-text-muted">
@@ -2036,6 +4298,52 @@ export default function QualityApprovalsPage() {
                               </div>
                             </div>
                             <div className="border-b bg-surface-base/60 px-3 py-2">
+                              <div className="mb-3 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+                                <div className="rounded-lg border border-border-subtle bg-surface-card px-3 py-3">
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                    Stage Approval Readiness
+                                  </div>
+                                  <div className="mt-2 text-sm font-semibold text-text-primary">
+                                    {stageApproval?.fullyApproved
+                                      ? "This stage is fully approved and locked."
+                                      : stageActionReason
+                                        ? stageActionReason
+                                        : "This stage is ready for your approval action."}
+                                  </div>
+                                  <div className="mt-2 text-xs text-text-secondary">
+                                    {stageApproval?.pendingDisplay
+                                      ? `Current approval path: ${stageApproval.pendingDisplay}`
+                                      : stage.isLocked
+                                        ? "No further action is required on this stage."
+                                        : "Complete the checklist, close observations, and then approve the active level."}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-border-subtle bg-surface-card px-3 py-3">
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                    Action Snapshot
+                                  </div>
+                                  <div className="mt-2 space-y-1.5 text-xs text-text-secondary">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span>Checklist</span>
+                                      <span className="font-semibold text-text-primary">
+                                        {isStageChecklistComplete(stage) ? "Complete" : "Pending Items"}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span>Observations</span>
+                                      <span className="font-semibold text-text-primary">
+                                        {getStagePendingObservationCount(stage.id)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span>Approval Progress</span>
+                                      <span className="font-semibold text-text-primary">
+                                        {stageApproval?.pendingDisplay || (stageApproval?.fullyApproved ? "Complete" : "Pending")}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                               {stageLevels.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
                                   {stageLevels.map((level: any) => (
@@ -2066,7 +4374,16 @@ export default function QualityApprovalsPage() {
                                             ]
                                               .filter(Boolean)
                                               .join(" - ")
-                                          : "Awaiting approval"}
+                                          : inspectionDetail.workflowSummary
+                                                  ?.currentUserCanApprove &&
+                                                inspectionDetail.workflowSummary
+                                                  ?.pendingStep?.stepOrder ===
+                                                  level.stepOrder
+                                            ? "Your approval is active at this level."
+                                            : inspectionDetail.workflowSummary
+                                                    ?.currentUserFutureLevels?.includes?.(level.stepOrder)
+                                              ? `Waiting for earlier level before level ${level.stepOrder} activates.`
+                                              : "Awaiting approval"}
                                         {level.autoInherited
                                           ? " (auto-filled by higher level approval)"
                                           : ""}
@@ -2207,17 +4524,23 @@ export default function QualityApprovalsPage() {
                             ) &&
                               (!inspectionDetail.isLocked || isAdmin) && (
                               <div className="border-t bg-surface-base px-4 py-3">
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                  <div className="text-xs text-text-muted">
-                                    {isStageApproved(stage)
-                                      ? "This stage is already approved and locked."
-                                      : isStageChecklistComplete(stage)
+                                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                    <div className="text-xs text-text-muted">
+                                      {isStageApproved(stage)
+                                        ? "This stage is already approved and locked."
+                                        : isStageChecklistComplete(stage)
                                         ? stageApproval?.pendingDisplay
                                           ? `Checklist complete. Approving now will record up to your allowed level. Remaining: ${stageApproval.pendingDisplay}.`
                                           : "All checklist items are complete. This stage is ready for approval."
                                         : "Complete all checklist items in this stage, then approve it."}
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
+                                      {!isStageApproved(stage) &&
+                                      stageActionReason ? (
+                                        <div className="mt-1 text-blue-700">
+                                          {stageActionReason}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
                                     <button
                                       onClick={() => {
                                         setSelectedObservationStageId(stage.id);
@@ -2227,28 +4550,14 @@ export default function QualityApprovalsPage() {
                                     >
                                       Observations ({getStagePendingObservationCount(stage.id)})
                                     </button>
-                                    <button
-                                      onClick={() => handleApproveStage(stage)}
-                                      disabled={
-                                        !canApproveInspection ||
-                                        isStageApproved(stage) ||
-                                        inspectionDetail.isLocked ||
-                                        !isStageChecklistComplete(stage) ||
-                                        getStagePendingObservationCount(stage.id) > 0
-                                      }
+                                      <button
+                                        onClick={() => handleApproveStage(stage)}
+                                      disabled={Boolean(stageActionReason)}
                                       className="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-secondary-dark disabled:opacity-50 text-sm font-medium"
-                                      title={
-                                        !canApproveInspection
-                                          ? "You do not have approval access for this stage."
-                                          : getStagePendingObservationCount(stage.id) > 0
-                                            ? "Close all observations for this stage before approval."
-                                          : !isStageChecklistComplete(stage)
-                                            ? "Complete all checklist items in this stage before approval."
-                                            : ""
-                                      }
+                                      title={stageActionReason || ""}
                                     >
                                       <ShieldCheck className="w-4 h-4 inline mr-1" />
-                                      Approve Stage
+                                      {getStageActionLabel(stage)}
                                     </button>
                                   </div>
                                 </div>

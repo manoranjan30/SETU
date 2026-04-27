@@ -216,6 +216,10 @@ export class UsersService {
     await this.usersRepository.update(userId, { fcmToken: token });
   }
 
+  async clearFcmToken(userId: number): Promise<void> {
+    await this.usersRepository.update(userId, { fcmToken: null });
+  }
+
   async remove(id: number): Promise<void> {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) return;

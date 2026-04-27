@@ -8,6 +8,7 @@ import {
   UserProjectAssignment,
   AssignmentStatus,
 } from '../projects/entities/user-project-assignment.entity';
+import { NotificationLog } from './notification-log.entity';
 
 @Injectable()
 export class PushNotificationService implements OnModuleInit {
@@ -21,6 +22,8 @@ export class PushNotificationService implements OnModuleInit {
     private readonly usersRepo: Repository<User>,
     @InjectRepository(UserProjectAssignment)
     private readonly assignmentRepo: Repository<UserProjectAssignment>,
+    @InjectRepository(NotificationLog)
+    private readonly logRepo: Repository<NotificationLog>,
   ) {}
 
   async onModuleInit() {
@@ -32,7 +35,6 @@ export class PushNotificationService implements OnModuleInit {
       return;
     }
 
-    // Resolve the path relative to the current working directory if it's relative
     const resolvedPath = path.isAbsolute(serviceAccountPath)
       ? serviceAccountPath
       : path.resolve(process.cwd(), serviceAccountPath);
@@ -80,7 +82,10 @@ export class PushNotificationService implements OnModuleInit {
         .filter((t): t is string => !!t);
       if (tokens.length === 0) return;
 
-      await this._send(tokens, title, body, data);
+      await this._sendWithLog(tokens, title, body, data, {
+        type: data?.type ?? 'DIRECT',
+        recipientCount: tokens.length,
+      });
     } catch (err) {
       this.handleSendFailure(err, 'sendToUsers');
     }
@@ -88,8 +93,11 @@ export class PushNotificationService implements OnModuleInit {
 
   /**
    * Send a notification to all active users who have a given permissionCode
-   * via any of their roles. WARNING: This is GLOBAL (not project-scoped).
-   * Prefer sendToProjectRole() for project-specific notifications.
+   * via any of their roles.
+   *
+   * @deprecated This is a GLOBAL broadcast — it sends to ALL projects.
+   * Use sendToProjectPermission() for project-scoped notifications.
+   * Only call this for truly system-wide events (e.g. server maintenance alerts).
    */
   async sendToPermission(
     permissionCode: string,
@@ -98,6 +106,11 @@ export class PushNotificationService implements OnModuleInit {
     data?: Record<string, string>,
   ): Promise<void> {
     if (!this.isPushAvailable()) return;
+
+    this.logger.warn(
+      `[sendToPermission] GLOBAL broadcast for permissionCode="${permissionCode}" — ` +
+        `consider sendToProjectPermission() for project-scoped sends.`,
+    );
 
     try {
       const users = await this.usersRepo
@@ -113,7 +126,11 @@ export class PushNotificationService implements OnModuleInit {
         .filter((t): t is string => !!t);
       if (tokens.length === 0) return;
 
-      await this._send(tokens, title, body, data);
+      await this._sendWithLog(tokens, title, body, data, {
+        type: data?.type ?? 'GLOBAL_PERM',
+        permissionCode,
+        recipientCount: tokens.length,
+      });
     } catch (err) {
       this.handleSendFailure(err, 'sendToPermission');
     }
@@ -122,7 +139,6 @@ export class PushNotificationService implements OnModuleInit {
   /**
    * Project-Scoped: Send notification to all ACTIVE users assigned
    * to a specific project with a specific role.
-   * This ensures notifications never leak across projects.
    */
   async sendToProjectRole(
     projectId: number,
@@ -163,7 +179,12 @@ export class PushNotificationService implements OnModuleInit {
       this.logger.log(
         `[sendToProjectRole] Sending to ${tokens.length} token(s) for project=${projectId}, role=${roleId}`,
       );
-      await this._send(tokens, title, body, data);
+      await this._sendWithLog(tokens, title, body, data, {
+        type: data?.type ?? 'PROJECT_ROLE',
+        projectId,
+        roleId,
+        recipientCount: tokens.length,
+      });
     } catch (err) {
       this.handleSendFailure(err, 'sendToProjectRole');
     }
@@ -172,7 +193,6 @@ export class PushNotificationService implements OnModuleInit {
   /**
    * Project-Scoped: Send notification to all ACTIVE users in a project
    * whose roles carry a specific permissionCode.
-   * Fixes the global broadcast problem of sendToPermission().
    */
   async sendToProjectPermission(
     projectId: number,
@@ -214,7 +234,12 @@ export class PushNotificationService implements OnModuleInit {
       this.logger.log(
         `[sendToProjectPermission] Sending to ${tokens.length} token(s) for project=${projectId}, perm=${permissionCode}`,
       );
-      await this._send(tokens, title, body, data);
+      await this._sendWithLog(tokens, title, body, data, {
+        type: data?.type ?? 'PROJECT_PERM',
+        projectId,
+        permissionCode,
+        recipientCount: tokens.length,
+      });
     } catch (err) {
       this.handleSendFailure(err, 'sendToProjectPermission');
     }
@@ -223,7 +248,6 @@ export class PushNotificationService implements OnModuleInit {
   /**
    * Project-Scoped: Resolve ALL users matching a workflow node's
    * assigned role within that project and return their user IDs.
-   * Used by InspectionWorkflowService for multi-user approval resolution.
    */
   async resolveProjectRoleUsers(
     projectId: number,
@@ -243,38 +267,88 @@ export class PushNotificationService implements OnModuleInit {
       .filter((id): id is number => !!id);
   }
 
-  private async _send(
+  // ─── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Send to tokens and write an audit log row.
+   * Retries once on transient failure before giving up.
+   */
+  private async _sendWithLog(
     tokens: string[],
     title: string,
     body: string,
-    data?: Record<string, string>,
+    data: Record<string, string> | undefined,
+    logMeta: {
+      type: string;
+      projectId?: number;
+      permissionCode?: string;
+      roleId?: number;
+      recipientCount: number;
+    },
   ): Promise<void> {
     if (!this.isPushAvailable()) return;
 
-    try {
-      const message = {
-        tokens,
-        notification: { title, body },
-        ...(data ? { data } : {}),
-        android: {
-          notification: {
-            channelId: 'setu_quality',
-            priority: 'high' as const,
-          },
-        },
-        apns: {
-          payload: { aps: { sound: 'default' } },
-        },
-      };
+    const message = {
+      tokens,
+      notification: { title, body },
+      ...(data ? { data } : {}),
+      android: {
+        notification: { channelId: 'setu_quality', priority: 'high' as const },
+      },
+      apns: { payload: { aps: { sound: 'default' } } },
+    };
 
-      const response =
-        await this.messagingInstance.sendEachForMulticast(message);
-      this.logger.log(
-        `FCM: ${response.successCount} sent, ${response.failureCount} failed (${tokens.length} tokens)`,
-      );
-    } catch (err) {
-      this.handleSendFailure(err, '_send');
+    let successCount = 0;
+    let failureCount = 0;
+    const failedTokens: string[] = [];
+
+    // One retry for transient Firebase failures
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      try {
+        const response =
+          await this.messagingInstance.sendEachForMulticast(message);
+
+        successCount = response.successCount;
+        failureCount = response.failureCount;
+
+        // Collect tokens that failed so we can log them
+        response.responses?.forEach((r: any, i: number) => {
+          if (!r.success) failedTokens.push(tokens[i]);
+        });
+
+        this.logger.log(
+          `FCM: ${successCount} sent, ${failureCount} failed (${tokens.length} tokens)`,
+        );
+        break;
+      } catch (err) {
+        if (attempt === 0 && this.isTransientFirebaseNetworkError(err)) {
+          this.logger.warn(`[_sendWithLog] Transient error, retrying once…`);
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+        failureCount = tokens.length;
+        this.handleSendFailure(err, '_sendWithLog');
+        break;
+      }
     }
+
+    // Persist audit log (non-blocking)
+    this.logRepo
+      .save(
+        this.logRepo.create({
+          type: logMeta.type,
+          projectId: logMeta.projectId ?? null,
+          permissionCode: logMeta.permissionCode ?? null,
+          roleId: logMeta.roleId ?? null,
+          recipientCount: logMeta.recipientCount,
+          successCount,
+          failureCount,
+          failedTokens: failedTokens.length > 0 ? failedTokens : null,
+        }),
+      )
+      .catch((e) =>
+        this.logger.warn('[_sendWithLog] Failed to save notification log', e),
+      );
   }
 
   private isPushAvailable(): boolean {
@@ -301,7 +375,9 @@ export class PushNotificationService implements OnModuleInit {
     const message = String(
       error?.message || error?.errorInfo?.message || '',
     ).toLowerCase();
-    const code = String(error?.code || error?.errorInfo?.code || '').toLowerCase();
+    const code = String(
+      error?.code || error?.errorInfo?.code || '',
+    ).toLowerCase();
 
     return (
       code.includes('network-error') ||

@@ -4,6 +4,10 @@ export class AddBudgetModule1769600000000 implements MigrationInterface {
   name = 'AddBudgetModule1769600000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasEpsNode = await queryRunner.hasTable('eps_node');
+    const hasWbsNode = await queryRunner.hasTable('wbs_node');
+    const hasBoqItem = await queryRunner.hasTable('boq_item');
+
     await queryRunner.query(`
       DO $$
       BEGIN
@@ -19,6 +23,10 @@ export class AddBudgetModule1769600000000 implements MigrationInterface {
       END
       $$;
     `);
+
+    if (!hasEpsNode || !hasWbsNode || !hasBoqItem) {
+      return;
+    }
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "budget" (

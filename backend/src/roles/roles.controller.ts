@@ -10,19 +10,18 @@ import {
 } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
-import {
-  ALL_PERMISSION_PRESETS,
-  COMPOSITE_ROLE_TEMPLATES,
-  resolvePresetPermissions,
-} from '../auth/permission-presets';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { RoleCatalogService } from './role-catalog.service';
 
 @Controller('roles')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RolesController {
-  constructor(private readonly rolesService: RolesService) {}
+  constructor(
+    private readonly rolesService: RolesService,
+    private readonly roleCatalogService: RoleCatalogService,
+  ) {}
 
   // ─── Permission Preset Endpoints (MUST be before :id routes) ──────────────
 
@@ -30,14 +29,14 @@ export class RolesController {
   @Get('presets')
   @Roles('Admin')
   getPresets() {
-    return ALL_PERMISSION_PRESETS;
+    return this.roleCatalogService.listActionPresets();
   }
 
   /** Returns all 8 composite role templates */
   @Get('templates')
   @Roles('Admin')
   getRoleTemplates() {
-    return COMPOSITE_ROLE_TEMPLATES;
+    return this.roleCatalogService.listRoleTemplates();
   }
 
   /**
@@ -51,8 +50,7 @@ export class RolesController {
   @Post('presets/resolve')
   @Roles('Admin')
   resolvePresets(@Body() body: { presetIds: string[] }) {
-    const codes = resolvePresetPermissions(body.presetIds ?? []);
-    return { codes, count: codes.length };
+    return this.roleCatalogService.resolveFromPresetCodes(body.presetIds ?? []);
   }
 
   // ─── Standard CRUD Endpoints ───────────────────────────────────────────────

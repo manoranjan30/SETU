@@ -6,6 +6,15 @@ export class QualityChecklistSmartImport1710200000000
   name = 'QualityChecklistSmartImport1710200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasChecklistTemplates = await queryRunner.hasTable(
+      'quality_checklist_templates',
+    );
+    const hasStageTemplates = await queryRunner.hasTable(
+      'quality_stage_templates',
+    );
+    const hasInspections = await queryRunner.hasTable('quality_inspections');
+
+    if (hasChecklistTemplates) {
     await queryRunner.query(`
       ALTER TABLE quality_checklist_templates
       ADD COLUMN IF NOT EXISTS checklist_no VARCHAR(50),
@@ -16,18 +25,24 @@ export class QualityChecklistSmartImport1710200000000
       ADD COLUMN IF NOT EXISTS applicable_trade VARCHAR(100),
       ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT FALSE
     `);
+    }
 
+    if (hasStageTemplates) {
     await queryRunner.query(`
       ALTER TABLE quality_stage_templates
       ADD COLUMN IF NOT EXISTS signature_slots JSONB
     `);
+    }
 
+    if (hasInspections) {
     await queryRunner.query(`
       ALTER TABLE quality_inspections
       ADD COLUMN IF NOT EXISTS drawing_no VARCHAR(100),
       ADD COLUMN IF NOT EXISTS contractor_name VARCHAR(255)
     `);
+    }
 
+    if (hasChecklistTemplates) {
     await queryRunner.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_checklist_no_project
       ON quality_checklist_templates("projectId", checklist_no)
@@ -38,24 +53,38 @@ export class QualityChecklistSmartImport1710200000000
       CREATE INDEX IF NOT EXISTS idx_quality_checklist_global
       ON quality_checklist_templates(is_global)
     `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS idx_quality_checklist_global`,
+    const hasChecklistTemplates = await queryRunner.hasTable(
+      'quality_checklist_templates',
     );
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS idx_quality_checklist_no_project`,
+    const hasStageTemplates = await queryRunner.hasTable(
+      'quality_stage_templates',
     );
+    const hasInspections = await queryRunner.hasTable('quality_inspections');
+
+    if (hasChecklistTemplates) {
+      await queryRunner.query(`DROP INDEX IF EXISTS idx_quality_checklist_global`);
+      await queryRunner.query(
+        `DROP INDEX IF EXISTS idx_quality_checklist_no_project`,
+      );
+    }
+    if (hasInspections) {
     await queryRunner.query(`
       ALTER TABLE quality_inspections
       DROP COLUMN IF EXISTS contractor_name,
       DROP COLUMN IF EXISTS drawing_no
     `);
+    }
+    if (hasStageTemplates) {
     await queryRunner.query(`
       ALTER TABLE quality_stage_templates
       DROP COLUMN IF EXISTS signature_slots
     `);
+    }
+    if (hasChecklistTemplates) {
     await queryRunner.query(`
       ALTER TABLE quality_checklist_templates
       DROP COLUMN IF EXISTS is_global,
@@ -66,5 +95,6 @@ export class QualityChecklistSmartImport1710200000000
       DROP COLUMN IF EXISTS rev_no,
       DROP COLUMN IF EXISTS checklist_no
     `);
+    }
   }
 }

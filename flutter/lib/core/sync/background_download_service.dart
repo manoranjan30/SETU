@@ -307,6 +307,24 @@ class BackgroundDownloadService {
     await _performDownload(prefs);
   }
 
+  /// Trigger a download only if the last completed download is older than
+  /// [staleAfter]. Defaults to 1 hour so reconnect events don't spam the
+  /// server when the device frequently drops and regains signal on-site.
+  ///
+  /// Called by [ConnectivitySyncService] when the device comes back online,
+  /// ensuring the offline cache is refreshed with current server data without
+  /// requiring a WorkManager flag to be set first.
+  Future<void> downloadIfStale({
+    Duration staleAfter = const Duration(hours: 1),
+  }) async {
+    if (_isDownloading) return;
+    final prefs = await SharedPreferences.getInstance();
+    final lastSync = prefs.getInt(prefLastSyncMs) ?? 0;
+    final ageMs = DateTime.now().millisecondsSinceEpoch - lastSync;
+    if (ageMs < staleAfter.inMilliseconds) return; // still fresh — skip
+    await _performDownload(prefs);
+  }
+
   // ---- Core download logic ------------------------------------------------
 
   /// Execute the full download sequence and update SharedPreferences state.

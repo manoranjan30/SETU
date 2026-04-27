@@ -6,6 +6,10 @@ export class AddSnagRoundSkipMetadata1711302000000
   name = 'AddSnagRoundSkipMetadata1711302000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('snag_round'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE snag_round
       ADD COLUMN IF NOT EXISTS is_skipped boolean NOT NULL DEFAULT false
@@ -43,6 +47,10 @@ export class AddSnagRoundSkipMetadata1711302000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('snag_round'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE snag_round
       DROP CONSTRAINT IF EXISTS FK_snag_round_skipped_by_user

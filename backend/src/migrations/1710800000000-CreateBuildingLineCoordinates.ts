@@ -6,6 +6,10 @@ export class CreateBuildingLineCoordinates1710800000000
   name = 'CreateBuildingLineCoordinates1710800000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('eps_node'))) {
+      return;
+    }
+
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS building_line_coordinates (
         id SERIAL PRIMARY KEY,

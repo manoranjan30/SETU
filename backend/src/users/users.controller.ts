@@ -117,6 +117,11 @@ export class UsersController {
     return this.usersService.saveFcmToken(+req.user.id, body.token);
   }
 
+  @Delete('fcm-token')
+  clearFcmToken(@Request() req) {
+    return this.usersService.clearFcmToken(+req.user.id);
+  }
+
   @Delete(':id')
   @Roles('Admin')
   remove(@Param('id') id: string) {

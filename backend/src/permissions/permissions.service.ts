@@ -2,7 +2,11 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Permission, PermissionScope } from './permission.entity';
-import { ALL_PERMISSIONS, MIGRATION_MAP } from '../auth/permission-registry';
+import {
+  ALL_PERMISSIONS,
+  MIGRATION_MAP,
+  type PermissionDef,
+} from '../auth/permission-registry';
 
 @Injectable()
 export class PermissionsService implements OnModuleInit {
@@ -22,6 +26,10 @@ export class PermissionsService implements OnModuleInit {
     return this.permissionsRepository.find({
       order: { moduleName: 'ASC', permissionCode: 'ASC' },
     });
+  }
+
+  getCatalogDefinitionMap(): Map<string, PermissionDef> {
+    return new Map(ALL_PERMISSIONS.map((def) => [def.code, def]));
   }
 
   /**
@@ -75,13 +83,56 @@ export class PermissionsService implements OnModuleInit {
           permissionCode: def.code,
           permissionName: def.name,
           moduleName: def.module,
+          entityName: this.extractEntityName(def.code),
           actionType: def.action,
           scopeLevel: def.scope ?? PermissionScope.PROJECT,
+          description: def.description,
           isSystem: true,
           isActive: true,
         });
         await this.permissionsRepository.save(newPerm);
         created++;
+      } else {
+        let changed = false;
+
+        if (exists.permissionName !== def.name) {
+          exists.permissionName = def.name;
+          changed = true;
+        }
+        if (exists.moduleName !== def.module) {
+          exists.moduleName = def.module;
+          changed = true;
+        }
+        const entityName = this.extractEntityName(def.code);
+        if (exists.entityName !== entityName) {
+          exists.entityName = entityName;
+          changed = true;
+        }
+        if (exists.actionType !== def.action) {
+          exists.actionType = def.action;
+          changed = true;
+        }
+        const scopeLevel = def.scope ?? PermissionScope.PROJECT;
+        if (exists.scopeLevel !== scopeLevel) {
+          exists.scopeLevel = scopeLevel;
+          changed = true;
+        }
+        if ((exists.description ?? null) !== (def.description ?? null)) {
+          exists.description = def.description ?? null;
+          changed = true;
+        }
+        if (!exists.isSystem) {
+          exists.isSystem = true;
+          changed = true;
+        }
+        if (!exists.isActive) {
+          exists.isActive = true;
+          changed = true;
+        }
+
+        if (changed) {
+          await this.permissionsRepository.save(exists);
+        }
       }
     }
 
@@ -92,5 +143,14 @@ export class PermissionsService implements OnModuleInit {
     this.logger.log(
       `Permission Registry: ${ALL_PERMISSIONS.length} total defined, ${created} newly created.`,
     );
+  }
+
+  private extractEntityName(code: string): string | null {
+    const parts = code.split('.');
+    if (parts.length >= 3) {
+      return parts[1];
+    }
+
+    return parts.length === 2 ? parts[0] : null;
   }
 }

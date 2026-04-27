@@ -14,6 +14,9 @@ export class RolesService {
   async create(createRoleDto: CreateRoleDto): Promise<Role> {
     const { permissionIds, ...roleData } = createRoleDto;
     const role = this.rolesRepository.create(roleData);
+    role.isSystem = false;
+    role.isLocked = false;
+    role.isActive = true;
 
     if (permissionIds && permissionIds.length > 0) {
       // We assume IDs are valid or ignore invalid ones.
@@ -25,7 +28,9 @@ export class RolesService {
   }
 
   findAll(): Promise<Role[]> {
-    return this.rolesRepository.find();
+    return this.rolesRepository.find({
+      order: { isSystem: 'DESC', isLocked: 'DESC', name: 'ASC' },
+    });
   }
 
   findOne(id: number): Promise<Role | null> {
@@ -42,8 +47,8 @@ export class RolesService {
     });
 
     if (!role) return null;
-    if (role.name === 'Admin') {
-      throw new ForbiddenException('Cannot modify the Admin role');
+    if (role.isLocked || role.name === 'Admin') {
+      throw new ForbiddenException('Cannot modify a locked system role');
     }
 
     // Update fields
@@ -58,8 +63,8 @@ export class RolesService {
 
   async remove(id: number): Promise<void> {
     const role = await this.rolesRepository.findOneBy({ id });
-    if (role && role.name === 'Admin') {
-      throw new ForbiddenException('Cannot delete the Admin role');
+    if (role && (role.isLocked || role.name === 'Admin')) {
+      throw new ForbiddenException('Cannot delete a locked system role');
     }
     await this.rolesRepository.delete(id);
   }

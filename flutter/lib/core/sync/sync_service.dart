@@ -179,6 +179,35 @@ class SyncService {
           syncStatus: Value(SyncStatus.syncing.value),
         ));
 
+        // Resolve any locally-saved photo paths to server URLs before building
+        // the payload. Photos must be uploaded before the entry so the server
+        // receives fully-qualified URLs in the same request.
+        final rawPhotos = entry.photoPaths
+                ?.split(',')
+                .where((p) => p.isNotEmpty)
+                .toList() ??
+            <String>[];
+        final resolvedPhotos = rawPhotos.isNotEmpty
+            ? await _resolvePhotos(rawPhotos)
+            : <String>[];
+
+        // Update local photoPaths with resolved URLs so the local record
+        // stays consistent even if the entry was already synced once.
+        if (resolvedPhotos.isNotEmpty) {
+          await (_database.update(_database.progressEntries)
+                ..where((t) => t.id.equals(entry.id)))
+              .write(ProgressEntriesCompanion(
+            photoPaths: Value(resolvedPhotos.join(',')),
+          ));
+          // Remove any stale 'photo' queue rows for this entry since
+          // photos are now resolved inline.
+          await (_database.delete(_database.syncQueue)
+                ..where((t) =>
+                    t.entityType.equals('photo') &
+                    t.entityId.equals(entry.id)))
+              .go();
+        }
+
         // Build payload for POST /execution/:projectId/measurements.
         // The `microActivityId` column is repurposed to carry the `planId`
         // because that field was added after the initial table design — a
@@ -192,6 +221,7 @@ class SyncService {
           'executedQty': entry.quantity,
           'date': entry.date,
           if (entry.remarks != null) 'notes': entry.remarks,
+          if (resolvedPhotos.isNotEmpty) 'photos': resolvedPhotos,
         };
 
         // Call the correct execution measurements endpoint.
@@ -436,11 +466,6 @@ class SyncService {
   ///
   /// The cap prevents extremely long waits for items that have failed many
   /// times — the user should see an error and take action before that point.
-  int _calculateBackoffDelay(int retryCount) {
-    final delay = baseBackoffDelaySeconds * pow(2, retryCount - 1);
-    return min(delay.toInt(), maxBackoffDelaySeconds);
-  }
-
   /// Process the sync queue (non-quality items only).
   ///
   /// Quality items are handled exclusively by [_processQualityQueue] because
@@ -850,6 +875,14 @@ class SyncService {
               closureNotes: payload['closureNotes'] as String?,
             );
             break;
+
+          case 'ehs_incident_create':
+            // EHS incidents carry no photos — submit the payload directly.
+            await _apiClient.createEhsIncident(
+              projectId: payload['projectId'] as int,
+              payload: payload,
+            );
+            break;
         }
 
         // Remove from queue on success — the server has confirmed receipt.
@@ -860,6 +893,15 @@ class SyncService {
         _logger.i('Quality queue synced: ${item.entityType} #${item.id}');
       } on DioException catch (e) {
         final statusCode = e.response?.statusCode ?? 0;
+
+        // 409 Conflict — the approval was superseded by another user.
+        // Treat as a permanent error with a human-readable message so the
+        // user knows they need to review the current approval status rather
+        // than waiting for a retry that will never succeed.
+        final errorMsg = statusCode == 409
+            ? 'Your approval was superseded — please review the current status'
+            : _extractErrorMessage(e.response?.data);
+
         // 4xx = permanent validation error — force retryCount to maxRetryAttempts
         // so the item is treated as permanently failed on the next cycle rather
         // than being retried. This prevents an invalid RFI payload from
@@ -873,7 +915,7 @@ class SyncService {
             .write(SyncQueueCompanion(
           retryCount: Value(newRetry),
           lastAttemptAt: Value(DateTime.now()),
-          lastError: Value(_extractErrorMessage(e.response?.data)),
+          lastError: Value(errorMsg),
         ));
         _logger.e('Quality sync failed: ${item.entityType} #${item.id}',
             error: e);

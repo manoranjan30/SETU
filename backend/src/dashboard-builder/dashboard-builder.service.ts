@@ -241,8 +241,9 @@ export class DashboardBuilderService {
         const rolesWithDashboard = await this.roleRepo.find({
           where: { id: In(roleIds), dashboardId: Not(IsNull()) },
         });
-        if (rolesWithDashboard.length > 0) {
-          return this.findOne(rolesWithDashboard[0].dashboardId);
+        const fallbackDashboardId = rolesWithDashboard[0]?.dashboardId;
+        if (fallbackDashboardId != null) {
+          return this.findOne(fallbackDashboardId);
         }
       }
     }

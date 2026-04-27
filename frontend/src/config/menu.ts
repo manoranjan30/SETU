@@ -28,6 +28,7 @@ export const MENU_CONFIG: MenuItem[] = [
     label: "Projects",
     path: "/dashboard/eps",
     icon: Database,
+    permission: PermissionCode.EPS_NODE_READ,
   },
   {
     label: "Site Execution",
@@ -45,17 +46,17 @@ export const MENU_CONFIG: MenuItem[] = [
       {
         label: "User Management",
         path: "/dashboard/users",
-        permission: PermissionCode.USER_READ,
+        permission: PermissionCode.MANAGE_USERS,
       },
       {
         label: "Role Management",
         path: "/dashboard/roles",
-        permission: PermissionCode.ROLE_READ,
+        permission: PermissionCode.MANAGE_ROLES,
       },
       {
         label: "System Permissions",
         path: "/dashboard/permissions",
-        permission: PermissionCode.ROLE_UPDATE, // Viewing permissions usually requires role management rights
+        permission: PermissionCode.MANAGE_ROLES,
       },
       {
         label: "System Logs",

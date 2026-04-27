@@ -6,12 +6,20 @@ export class AddCustomFeaturesToBuildingLineCoordinates1710903000000
   name = 'AddCustomFeaturesToBuildingLineCoordinates1710903000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('building_line_coordinates'))) {
+      return;
+    }
+
     await queryRunner.query(
       `ALTER TABLE "building_line_coordinates" ADD COLUMN IF NOT EXISTS "customFeatures" jsonb`,
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('building_line_coordinates'))) {
+      return;
+    }
+
     await queryRunner.query(
       `ALTER TABLE "building_line_coordinates" DROP COLUMN IF EXISTS "customFeatures"`,
     );

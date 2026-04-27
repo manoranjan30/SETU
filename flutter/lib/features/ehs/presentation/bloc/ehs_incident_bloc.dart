@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/sync/background_download_service.dart';
+import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 
 // ═══════════════════════════════════════════ EVENTS ══════════════════════════
@@ -123,16 +124,20 @@ class EhsIncidentActionError extends EhsIncidentState {
 
 /// Manages EHS (Environment, Health & Safety) incident reporting.
 ///
-/// Unlike site observations, incidents are NOT offline-first — they are submitted
-/// directly to the server because incident records require immediate visibility
-/// for site safety teams.
+/// Incidents are now offline-first via the sync queue so they are not lost
+/// when the device loses connectivity on-site. The [SyncService] replays
+/// queued incidents against the server on the next successful connection.
 ///
 /// [IncidentType] values: nearMiss, FAC, MTC, LTI, propertyDamage, environmental.
 class EhsIncidentBloc extends Bloc<EhsIncidentEvent, EhsIncidentState> {
   final SetuApiClient _api;
+  final SyncService _syncService;
 
-  EhsIncidentBloc({required SetuApiClient apiClient})
-      : _api = apiClient,
+  EhsIncidentBloc({
+    required SetuApiClient apiClient,
+    required SyncService syncService,
+  })  : _api = apiClient,
+        _syncService = syncService,
         super(EhsIncidentInitial()) {
     on<LoadEhsIncidents>(_onLoad);
     on<RefreshEhsIncidents>(_onRefresh);
@@ -200,36 +205,41 @@ class EhsIncidentBloc extends Bloc<EhsIncidentEvent, EhsIncidentState> {
     }
   }
 
-  /// Submits a new incident report to the server.
+  /// Submits a new incident report via the sync queue (offline-first).
   ///
   /// The [IncidentType.apiValue] getter converts the Dart enum to the
   /// backend's string representation (e.g. IncidentType.lti → 'LTI').
-  /// [affectedPersons] is omitted from the payload if the list is empty to
-  /// avoid sending an unnecessary empty array to the server.
+  /// If online, the queue is flushed immediately; if offline, the incident
+  /// is persisted locally and replayed when connectivity is restored.
   Future<void> _onCreate(
     CreateEhsIncident event,
     Emitter<EhsIncidentState> emit,
   ) async {
     try {
-      await _api.createEhsIncident(
-        projectId: event.projectId,
-        payload: {
-          'projectId': event.projectId,
-          'incidentDate': event.incidentDate,
-          // Convert enum to the backend's expected string value.
-          'incidentType': event.incidentType.apiValue,
-          'location': event.location,
-          'description': event.description,
-          'immediateCause': event.immediateCause,
-          // Only include if there are affected persons to report.
-          if (event.affectedPersons.isNotEmpty)
-            'affectedPersons': event.affectedPersons,
-          'firstAidGiven': event.firstAidGiven,
-          'hospitalVisit': event.hospitalVisit,
-          'daysLost': event.daysLost,
-        },
+      final payload = {
+        'projectId': event.projectId,
+        'incidentDate': event.incidentDate,
+        'incidentType': event.incidentType.apiValue,
+        'location': event.location,
+        'description': event.description,
+        'immediateCause': event.immediateCause,
+        if (event.affectedPersons.isNotEmpty)
+          'affectedPersons': event.affectedPersons,
+        'firstAidGiven': event.firstAidGiven,
+        'hospitalVisit': event.hospitalVisit,
+        'daysLost': event.daysLost,
+      };
+      await _syncService.addToQueue(
+        entityType: 'ehs_incident_create',
+        entityId: event.projectId,
+        operation: 'create',
+        payload: payload,
+        priority: 3, // Incidents are high-priority safety records.
       );
-      emit(const EhsIncidentActionSuccess('Incident reported successfully'));
+      final syncResult = await _syncService.syncAll();
+      emit(EhsIncidentActionSuccess(syncResult.success
+          ? 'Incident reported successfully'
+          : 'Incident saved — will submit when online'));
     } catch (e) {
       emit(EhsIncidentActionError('Failed to report incident. $e'));
     }

@@ -6,6 +6,10 @@ type DashboardItem = {
   id: number;
   status: string;
   activity?: { activityName?: string };
+  workflowSummary?: {
+    actorState?: string | null;
+    currentUserActionHint?: string | null;
+  };
   pendingApprovalLevel?: number | null;
   pendingApprovalLabel?: string | null;
   pendingApprovalDisplay?: string | null;
@@ -72,6 +76,9 @@ function ApprovalList({
                           : ""
                       }`}
                   </div>
+                ) : null}
+                {item.workflowSummary?.currentUserActionHint ? (
+                  <div>{item.workflowSummary.currentUserActionHint}</div>
                 ) : null}
                 {item.stageApprovalSummary?.totalStages ? (
                   <div>

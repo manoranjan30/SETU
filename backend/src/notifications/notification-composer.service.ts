@@ -29,6 +29,8 @@ type ObservationInput = NotificationScopeInput & {
   severity: string;
   category?: string | null;
   statusLabel?: string | null;
+  /** Explicit FCM data.type override — if omitted the composer derives it. */
+  notificationType?: string;
 };
 
 type InspectionInput = NotificationScopeInput & {
@@ -116,15 +118,17 @@ export class NotificationComposerService {
   ): Promise<NotificationPayload> {
     const scope = await this.contextService.resolve(input);
     const title = `${input.severity} ${input.moduleLabel} Observation Raised`;
+    // EHS raised notifications always use EHS_OBS_CRITICAL so Flutter routes
+    // them to the EHS site observations module via DeepLinkService.
+    const type =
+      input.notificationType ??
+      (input.moduleLabel === 'EHS' ? 'EHS_OBS_CRITICAL' : 'QUALITY_OBS_RAISED');
     return this.buildPayload(
       title,
       `${input.moduleLabel} observation raised${input.category ? ` under ${input.category}` : ''}.`,
       scope,
       [],
-      {
-        type: `${input.moduleLabel.toUpperCase()}_OBS_RAISED`,
-        severity: input.severity,
-      },
+      { type, severity: input.severity },
     );
   }
 
@@ -133,12 +137,18 @@ export class NotificationComposerService {
   ): Promise<NotificationPayload> {
     const scope = await this.contextService.resolve(input);
     const statusLabel = input.statusLabel || `${input.moduleLabel} Observation Updated`;
+    // Callers must pass notificationType so Flutter's DeepLinkService can
+    // route to the correct module (OBS_RECTIFIED, OBS_CLOSED, EHS_OBS_RECTIFIED,
+    // EHS_OBS_CLOSED). Fallback kept for backwards compatibility.
+    const type =
+      input.notificationType ??
+      `${input.moduleLabel.toUpperCase()}_OBS_UPDATED`;
     return this.buildPayload(
       statusLabel,
       `${input.moduleLabel} observation status changed${input.category ? ` for ${input.category}` : ''}.`,
       scope,
       [],
-      { type: `${input.moduleLabel.toUpperCase()}_OBS_UPDATED` },
+      { type },
     );
   }
 

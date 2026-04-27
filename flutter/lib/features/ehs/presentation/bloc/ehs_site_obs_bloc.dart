@@ -136,12 +136,15 @@ class EhsSiteObsLoading extends EhsSiteObsState {
 /// The observation list is visible.
 ///
 /// [fromCache] = true means we are showing offline data.
+/// [cacheAge] is set when [fromCache] is true — the UI uses this to warn the
+/// user when the cached data is older than 4 hours.
 /// [hasMore] / [isLoadingMore] drive the infinite-scroll footer.
 class EhsSiteObsLoaded extends EhsSiteObsState {
   final List<EhsSiteObservation> observations;
   final String? appliedStatusFilter;
   final String? appliedSeverityFilter;
   final bool fromCache;
+  final DateTime? cacheAge;
   final bool hasMore;
   final bool isLoadingMore;
 
@@ -150,6 +153,7 @@ class EhsSiteObsLoaded extends EhsSiteObsState {
     this.appliedStatusFilter,
     this.appliedSeverityFilter,
     this.fromCache = false,
+    this.cacheAge,
     this.hasMore = false,
     this.isLoadingMore = false,
   });
@@ -165,6 +169,7 @@ class EhsSiteObsLoaded extends EhsSiteObsState {
       appliedStatusFilter: appliedStatusFilter,
       appliedSeverityFilter: appliedSeverityFilter,
       fromCache: fromCache ?? this.fromCache,
+      cacheAge: cacheAge,
       hasMore: hasMore ?? this.hasMore,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
@@ -176,6 +181,7 @@ class EhsSiteObsLoaded extends EhsSiteObsState {
         appliedStatusFilter,
         appliedSeverityFilter,
         fromCache,
+        cacheAge,
         hasMore,
         isLoadingMore,
       ];
@@ -319,11 +325,14 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
               .map((r) => EhsSiteObservation.fromJson(
                   jsonDecode(r.rawData) as Map<String, dynamic>))
               .toList();
+          final oldest = cached.map((r) => r.cachedAt).reduce(
+              (a, b) => a.isBefore(b) ? a : b);
           emit(EhsSiteObsLoaded(
             observations: obs,
             appliedStatusFilter: statusFilter,
             appliedSeverityFilter: severityFilter,
             fromCache: true,
+            cacheAge: oldest,
             hasMore: false,
           ));
           // Fall through — try to refresh from server in background.
@@ -370,32 +379,49 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
       final current = state;
       if (current is EhsSiteObsLoaded && current.fromCache) return;
       // Nothing was cached — show error.
-      emit(EhsSiteObsError(
+      emit(const EhsSiteObsError(
           'Failed to load EHS observations. No cached data available.'));
     }
   }
 
   /// Creates a new EHS safety observation via the sync queue (offline-first).
+  ///
+  /// An optimistic placeholder row (`local_<timestamp>`) is inserted into the
+  /// Drift cache immediately so the observation appears in the list right away
+  /// even when offline. Cleaned up when `cacheEhsSiteObs` is next called.
   Future<void> _onCreate(
     CreateEhsSiteObs event,
     Emitter<EhsSiteObsState> emit,
   ) async {
     try {
+      final payload = {
+        'projectId': event.projectId,
+        if (event.epsNodeId != null) 'epsNodeId': event.epsNodeId,
+        'description': event.description,
+        'severity': event.severity,
+        if (event.category != null) 'category': event.category,
+        if (event.locationLabel != null) 'locationLabel': event.locationLabel,
+        if (event.photoUrls.isNotEmpty) 'photoUrls': event.photoUrls,
+      };
       await _syncService.addToQueue(
         entityType: 'ehs_site_obs_create',
         entityId: event.projectId,
         operation: 'create',
-        payload: {
-          'projectId': event.projectId,
-          if (event.epsNodeId != null) 'epsNodeId': event.epsNodeId,
-          'description': event.description,
-          'severity': event.severity,
-          if (event.category != null) 'category': event.category,
-          if (event.locationLabel != null) 'locationLabel': event.locationLabel,
-          if (event.photoUrls.isNotEmpty) 'photoUrls': event.photoUrls,
-        },
+        payload: payload,
         priority: 2,
       );
+
+      // Optimistic insert — visible in the list immediately.
+      final localId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      await _db.cacheEhsSiteObs([
+        {
+          ...payload,
+          'id': localId,
+          'status': 'OPEN',
+          'createdAt': DateTime.now().toIso8601String(),
+        }
+      ], event.projectId);
+
       final syncResult = await _syncService.syncAll();
       // '_offline' suffix tells the UI to show "Saved — will sync when online".
       emit(EhsSiteObsActionSuccess(

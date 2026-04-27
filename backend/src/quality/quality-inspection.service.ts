@@ -197,7 +197,13 @@ export class QualityInspectionService {
     return Array.from(vendorMap.values());
   }
 
-  async getInspections(projectId: number, epsNodeId?: number, listId?: number) {
+  async getInspections(
+    projectId: number,
+    epsNodeId?: number,
+    listId?: number,
+    viewerUserId?: number,
+    viewerIsAdmin: boolean = false,
+  ) {
     const query = this.inspectionRepo
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.activity', 'activity')
@@ -245,7 +251,11 @@ export class QualityInspectionService {
     const unitsById = new Map<number, QualityUnit>(units.map((u) => [u.id, u]));
     const roomsById = new Map<number, QualityRoom>(rooms.map((r) => [r.id, r]));
 
-    const inspectionsWithWorkflow = await this.attachWorkflowSummary(inspections);
+    const inspectionsWithWorkflow = await this.attachWorkflowSummary(
+      inspections,
+      viewerUserId,
+      viewerIsAdmin,
+    );
 
     return inspectionsWithWorkflow.map((inspection) => {
       const ancestry = this.buildEpsAncestry(inspection.epsNodeId, epsById);
@@ -302,7 +312,11 @@ export class QualityInspectionService {
       .getMany();
   }
 
-  async getInspectionDetails(id: number) {
+  async getInspectionDetails(
+    id: number,
+    viewerUserId?: number,
+    viewerIsAdmin: boolean = false,
+  ) {
     const inspection = await this.inspectionRepo.findOne({
       where: { id },
       relations: [
@@ -327,12 +341,21 @@ export class QualityInspectionService {
         item.photos = toRelativePaths(item.photos);
       }
     }
-    const [withWorkflow] = await this.attachWorkflowSummary([inspection]);
+    const [withWorkflow] = await this.attachWorkflowSummary(
+      [inspection],
+      viewerUserId,
+      viewerIsAdmin,
+    );
     return withWorkflow;
   }
 
   async getApprovalDashboard(projectId: number, userId: number) {
-    const inspections = (await this.getInspections(projectId)) as any[];
+    const inspections = (await this.getInspections(
+      projectId,
+      undefined,
+      undefined,
+      userId,
+    )) as any[];
     const actorSnapshot = await this.getApproverSnapshot(projectId, userId);
     const userRoleIds = await this.getUserProjectRoleIds(projectId, userId);
 
@@ -1593,6 +1616,124 @@ export class QualityInspectionService {
     return this.approvalRuntimeService.getProjectRoleIds(projectId, userId);
   }
 
+  private matchesStepForUser(
+    step: {
+      assignedUserId?: number | null;
+      assignedUserIds?: number[] | null;
+      assignedRoleId?: number | null;
+    } | null | undefined,
+    userId: number,
+    userRoleIds: number[],
+    isAdmin: boolean,
+  ) {
+    if (!step) return false;
+    if (isAdmin) return true;
+    const assignedUserIds = step.assignedUserIds?.length
+      ? step.assignedUserIds
+      : step.assignedUserId
+        ? [step.assignedUserId]
+        : [];
+    if (assignedUserIds.includes(userId)) {
+      return true;
+    }
+    if (step.assignedRoleId && userRoleIds.includes(step.assignedRoleId)) {
+      return true;
+    }
+    return false;
+  }
+
+  private buildCurrentUserWorkflowContext(
+    sortedSteps: any[],
+    pendingStep: any,
+    pendingApproverNames: string[],
+    stagePendingContext: any,
+    userId?: number,
+    userRoleIds: number[] = [],
+    isAdmin: boolean = false,
+  ) {
+    const activeStep = stagePendingContext?.level || pendingStep || null;
+    const activeLevel = activeStep?.stepOrder ?? null;
+
+    if (!userId) {
+      return {
+        actorState: null,
+        currentUserCanApprove: false,
+        currentUserAssignedLevels: [] as number[],
+        currentUserFutureLevels: [] as number[],
+        currentUserBlockedReason: null as string | null,
+        currentUserActionHint: null as string | null,
+      };
+    }
+
+    const assignedLevels = isAdmin
+      ? sortedSteps.map((step) => step.stepOrder)
+      : sortedSteps
+          .filter((step) =>
+            this.matchesStepForUser(step, userId, userRoleIds, isAdmin),
+          )
+          .map((step) => step.stepOrder);
+    const highestAssignedLevel =
+      assignedLevels.length > 0 ? assignedLevels[assignedLevels.length - 1] : null;
+    const canApproveNow =
+      activeStep != null &&
+      activeLevel != null &&
+      highestAssignedLevel != null &&
+      highestAssignedLevel >= activeLevel;
+    const futureLevels = assignedLevels.filter(
+      (level) => activeLevel != null && level > activeLevel,
+    );
+
+    let actorState: string | null = null;
+    let blockedReason: string | null = null;
+    let actionHint: string | null = null;
+
+    if (!activeStep) {
+      actorState = 'COMPLETED';
+      actionHint = 'All approval levels are completed for this RFI.';
+    } else if (canApproveNow) {
+      actorState = 'CAN_ACT_NOW';
+      const isHigherLevelTakeover =
+        highestAssignedLevel != null &&
+        activeLevel != null &&
+        highestAssignedLevel > activeLevel;
+      if (isHigherLevelTakeover) {
+        actionHint =
+          stagePendingContext != null
+            ? `Your higher-level stage approval is active now. Approving at level ${highestAssignedLevel} will automatically record all pending lower stage approvals through level ${highestAssignedLevel}.`
+            : `Your higher-level workflow approval is active now. Approving at level ${highestAssignedLevel} will automatically record all pending lower workflow approvals through level ${highestAssignedLevel}.`;
+      } else {
+        actionHint =
+          stagePendingContext != null
+            ? `Your approval is active at stage level ${activeStep.stepOrder}.`
+            : `Your approval is active at workflow level ${activeStep.stepOrder}.`;
+      }
+    } else if (assignedLevels.length > 0 && activeLevel != null) {
+      actorState = 'ALREADY_ACTED_OR_NOT_ACTIVE';
+      blockedReason =
+        assignedLevels[0] < activeLevel
+          ? `Your assigned approval level is already complete. The RFI is now waiting at level ${activeLevel}.`
+          : 'Your approval is not active at the current level.';
+      actionHint = blockedReason;
+    } else {
+      actorState = 'NOT_ASSIGNED';
+      const approverLabel =
+        pendingApproverNames.join(', ') ||
+        activeStep.stepName ||
+        'another approver';
+      blockedReason = `This RFI is currently assigned to ${approverLabel}.`;
+      actionHint = blockedReason;
+    }
+
+    return {
+      actorState,
+      currentUserCanApprove: canApproveNow,
+      currentUserAssignedLevels: assignedLevels,
+      currentUserFutureLevels: futureLevels,
+      currentUserBlockedReason: blockedReason,
+      currentUserActionHint: actionHint,
+    };
+  }
+
   private getActiveStageApprovalSignatures(stage: any) {
     return (stage?.signatures || [])
       .filter(
@@ -1724,6 +1865,8 @@ export class QualityInspectionService {
 
   private async attachWorkflowSummary<T extends { id: number; stages?: any[] }>(
     inspections: T[],
+    viewerUserId?: number,
+    viewerIsAdmin: boolean = false,
   ): Promise<(T & Record<string, any>)[]> {
     if (inspections.length === 0) return [];
 
@@ -1791,6 +1934,7 @@ export class QualityInspectionService {
 
     const actorMapByProject = new Map<number, Map<number, any>>();
     const roleMapByProject = new Map<number, Map<number, string>>();
+    const viewerRoleIdsByProject = new Map<number, number[]>();
     const projectIds = Array.from(
       new Set(
         inspections
@@ -1810,6 +1954,15 @@ export class QualityInspectionService {
           projectId,
           await this.approvalRuntimeService.getProjectRoleNameMap(projectId),
         );
+        if (viewerUserId) {
+          viewerRoleIdsByProject.set(
+            projectId,
+            await this.approvalRuntimeService.getProjectRoleIds(
+              projectId,
+              viewerUserId,
+            ),
+          );
+        }
       }),
     );
 
@@ -1897,6 +2050,16 @@ export class QualityInspectionService {
         }`;
       }
 
+      const currentUserContext = this.buildCurrentUserWorkflowContext(
+        sortedSteps,
+        pendingStep,
+        pendingApproverNames,
+        stagePendingContext,
+        viewerUserId,
+        viewerRoleIdsByProject.get(projectId) || [],
+        viewerIsAdmin,
+      );
+
       return {
         ...inspection,
         pendingObservationCount:
@@ -1929,6 +2092,12 @@ export class QualityInspectionService {
             run?.processCode || (inspection as any).processCode || null,
           documentType:
             run?.documentType || (inspection as any).documentType || null,
+          actorState: currentUserContext.actorState,
+          currentUserCanApprove: currentUserContext.currentUserCanApprove,
+          currentUserAssignedLevels: currentUserContext.currentUserAssignedLevels,
+          currentUserFutureLevels: currentUserContext.currentUserFutureLevels,
+          currentUserBlockedReason: currentUserContext.currentUserBlockedReason,
+          currentUserActionHint: currentUserContext.currentUserActionHint,
           pendingStep: stagePendingContext
             ? {
                 stepOrder: stagePendingContext.level.stepOrder,
@@ -1990,6 +2159,11 @@ export class QualityInspectionService {
             approvedStages > 0 &&
             approvedStages === totalStages &&
             (inspection as any).status !== InspectionStatus.APPROVED,
+          currentUserCanApprove: currentUserContext.currentUserCanApprove,
+          currentUserActionHint: currentUserContext.currentUserActionHint,
+          currentUserBlockedReason: currentUserContext.currentUserBlockedReason,
+          activeLevel:
+            stagePendingContext?.level?.stepOrder || pendingStep?.stepOrder || null,
         },
       };
     });

@@ -25,6 +25,7 @@ import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_b
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:setu_mobile/core/config/server_config_service.dart';
+import 'package:setu_mobile/core/update/app_update_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/app.dart';
 
@@ -84,18 +85,19 @@ void main() async {
   final apiClient = SetuApiClient(tokenManager);
   final authService = AuthService(apiClient, tokenManager);
   final syncService = SyncService(database, apiClient, networkInfo);
-  // ConnectivitySyncService listens for network changes and triggers sync
-  // automatically when the device regains connectivity.
-  final connectivitySyncService = ConnectivitySyncService(
-    networkInfo: networkInfo,
-    syncService: syncService,
-  );
-
   // BackgroundDownloadService fetches large data sets (e.g. project EPS tree)
   // in the background using WorkManager when the device is on Wi-Fi.
   final backgroundDownloadService = BackgroundDownloadService(
     apiClient: apiClient,
     database: database,
+  );
+
+  // ConnectivitySyncService listens for network changes and triggers sync
+  // automatically when the device regains connectivity.
+  final connectivitySyncService = ConnectivitySyncService(
+    networkInfo: networkInfo,
+    syncService: syncService,
+    backgroundDownloadService: backgroundDownloadService,
   );
 
   // Initialize WorkManager for background WiFi downloads
@@ -181,6 +183,7 @@ void initDependencies({
   sl.registerSingleton<SyncService>(syncService);
   sl.registerSingleton<ConnectivitySyncService>(connectivitySyncService);
   sl.registerSingleton<BackgroundDownloadService>(backgroundDownloadService);
+  sl.registerSingleton<AppUpdateService>(AppUpdateService(apiClient));
 
   // BLoCs
   // Factories ensure each feature screen starts with a clean BLoC state.
@@ -215,6 +218,5 @@ void initDependencies({
       ));
   // LaborBloc is API-only (no offline/sync requirement) — no database needed.
   sl.registerFactory(() => LaborBloc(apiClient: sl()));
-  // EhsIncidentBloc is API-only — incidents are always submitted online.
-  sl.registerFactory(() => EhsIncidentBloc(apiClient: sl()));
+  sl.registerFactory(() => EhsIncidentBloc(apiClient: sl(), syncService: sl()));
 }

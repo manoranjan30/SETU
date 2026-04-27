@@ -6,6 +6,13 @@ export class AddBudgetLineActivityMap1769700000000
   name = 'AddBudgetLineActivityMap1769700000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (
+      !(await queryRunner.hasTable('budget_line_item')) ||
+      !(await queryRunner.hasTable('activity'))
+    ) {
+      return;
+    }
+
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "budget_line_activity_map" (
         "id" SERIAL NOT NULL,

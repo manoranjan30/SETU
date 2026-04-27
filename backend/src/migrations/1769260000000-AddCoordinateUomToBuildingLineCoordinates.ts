@@ -6,6 +6,10 @@ export class AddCoordinateUomToBuildingLineCoordinates1769260000000
   name = 'AddCoordinateUomToBuildingLineCoordinates1769260000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('building_line_coordinates'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE "building_line_coordinates"
       ADD COLUMN IF NOT EXISTS "coordinateUom" varchar(16) NOT NULL DEFAULT 'mm'
@@ -18,6 +22,10 @@ export class AddCoordinateUomToBuildingLineCoordinates1769260000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('building_line_coordinates'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE "building_line_coordinates"
       DROP COLUMN IF EXISTS "coordinateUom"

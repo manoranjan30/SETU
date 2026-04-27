@@ -4,6 +4,7 @@ export class CreateAiInsightsTables1769300000000 implements MigrationInterface {
   name = 'CreateAiInsightsTables1769300000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasUser = await queryRunner.hasTable('user');
     // ─── AI Model Config (provider settings managed in admin panel) ───────────
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "ai_model_config" (
@@ -38,6 +39,10 @@ export class CreateAiInsightsTables1769300000000 implements MigrationInterface {
     `);
 
     // ─── Insight Templates ────────────────────────────────────────────────────
+    if (!hasUser) {
+      return;
+    }
+
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "insight_template" (
         "id"                 SERIAL PRIMARY KEY,

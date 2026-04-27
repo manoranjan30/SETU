@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
@@ -109,7 +112,21 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
     super.dispose();
   }
 
+  /// Copies the compressed photo to the app's persistent pending-observations
+  /// directory so it survives process kill until the sync service can upload it.
+  Future<String> _savePhotoLocally(String sourcePath) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final pendingDir = Directory(p.join(dir.path, 'pending_obs_photos'));
+    await pendingDir.create(recursive: true);
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_site_obs.jpg';
+    final dest = File(p.join(pendingDir.path, fileName));
+    await File(sourcePath).copy(dest.path);
+    return dest.path;
+  }
+
   /// Shows camera/gallery picker → markup editor → compresses → uploads.
+  /// When offline the compressed file is saved locally and added as a local
+  /// path placeholder — [SyncService._resolvePhotos] uploads it on next sync.
   Future<void> _pickPhoto() async {
     if (_photoUrls.length >= 5) return;
 
@@ -141,17 +158,38 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
     if (!mounted) return;
     setState(() => _uploading = true);
     String? compressed;
+    bool savedLocally = false;
     try {
       compressed = await PhotoCompressor.compress(uploadPath);
-      final result = await sl<SetuApiClient>().uploadFile(filePath: compressed);
-      final url = result['url'] as String? ?? result['path'] as String? ?? '';
-      if (url.isNotEmpty) setState(() => _photoUrls.add(url));
+      try {
+        // Online path: upload immediately and store the server URL.
+        final result = await sl<SetuApiClient>().uploadFile(filePath: compressed);
+        final url = result['url'] as String? ?? result['path'] as String? ?? '';
+        if (url.isNotEmpty && mounted) setState(() => _photoUrls.add(url));
+      } catch (_) {
+        // Offline path: persist the compressed copy locally.
+        // SyncService._resolvePhotos() uploads it when connectivity returns.
+        final localPath = await _savePhotoLocally(compressed);
+        savedLocally = true;
+        if (mounted) {
+          setState(() => _photoUrls.add(localPath));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('Photo saved locally — will upload when online.'),
+            backgroundColor: Colors.orange.shade700,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
     } catch (_) {
       if (mounted) {
-        setState(() => _errorMessage = 'Photo upload failed. Please retry.');
+        setState(() => _errorMessage = 'Could not capture photo. Please try again.');
       }
     } finally {
-      if (compressed != null) PhotoCompressor.deleteTempFile(compressed);
+      // Delete the compressed temp file only when we did NOT save it as the
+      // local copy — if savedLocally is true, the file IS the local copy.
+      if (compressed != null && !savedLocally) {
+        PhotoCompressor.deleteTempFile(compressed);
+      }
       if (annotatedPath != null) PhotoCompressor.deleteTempFile(annotatedPath);
       PhotoCompressor.deleteTempFile(xfile.path);
       if (mounted) setState(() => _uploading = false);
@@ -517,6 +555,43 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
       }
       if (mounted) setState(() => _nodes = nodes);
     } catch (_) {
+      // Offline fallback: rebuild tree from Drift-cached flat node list.
+      await _loadFromCache();
+    }
+  }
+
+  Future<void> _loadFromCache() async {
+    try {
+      final cached = await sl<AppDatabase>().getEpsNodesForProject(widget.projectId);
+      if (cached.isEmpty) {
+        if (mounted) setState(() => _error = 'No cached locations. Connect to load.');
+        return;
+      }
+      // Build parent→children map from flat list.
+      final childrenByParent = <int?, List<EpsTreeNode>>{};
+      for (final n in cached) {
+        childrenByParent.putIfAbsent(n.parentId, () => []);
+        childrenByParent[n.parentId]!.add(EpsTreeNode(
+          id: n.id,
+          label: n.name,
+          type: n.type,
+          children: const [],
+        ));
+      }
+      // Recursively attach children.
+      List<EpsTreeNode> attach(List<EpsTreeNode> nodes) {
+        return nodes.map((n) {
+          final kids = childrenByParent[n.id] ?? [];
+          return EpsTreeNode(id: n.id, label: n.label, type: n.type, children: attach(kids));
+        }).toList();
+      }
+      var roots = attach(childrenByParent[null] ?? []);
+      // Mirror the API convention: skip single project-root wrapper.
+      if (roots.length == 1 && roots.first.children.isNotEmpty) {
+        roots = roots.first.children;
+      }
+      if (mounted) setState(() => _nodes = roots);
+    } catch (e) {
       if (mounted) setState(() => _error = 'Failed to load locations.');
     }
   }

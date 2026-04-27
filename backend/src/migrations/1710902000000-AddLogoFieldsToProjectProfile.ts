@@ -6,6 +6,10 @@ export class AddLogoFieldsToProjectProfile1710902000000
   name = 'AddLogoFieldsToProjectProfile1710902000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('project_profile'))) {
+      return;
+    }
+
     await queryRunner.query(
       `ALTER TABLE "project_profile" ADD COLUMN IF NOT EXISTS "companyLogoUrl" character varying`,
     );
@@ -15,6 +19,10 @@ export class AddLogoFieldsToProjectProfile1710902000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('project_profile'))) {
+      return;
+    }
+
     await queryRunner.query(
       `ALTER TABLE "project_profile" DROP COLUMN IF EXISTS "projectLogoUrl"`,
     );

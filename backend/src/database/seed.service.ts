@@ -54,12 +54,19 @@ export class SeedService implements OnApplicationBootstrap {
         this.roleRepo.create({
           name: 'Admin',
           description: 'System Administrator',
+          isSystem: true,
+          isLocked: true,
+          isActive: true,
           permissions: allPermissions,
         }),
       );
       this.logger.log('Seeded Admin Role with ALL permissions');
     } else {
       // Always update Admin to have ALL permissions (auto-grant new ones)
+      adminRole.description = 'System Administrator';
+      adminRole.isSystem = true;
+      adminRole.isLocked = true;
+      adminRole.isActive = true;
       adminRole.permissions = allPermissions;
       await this.roleRepo.save(adminRole);
       this.logger.log('Updated Admin Role with latest permissions');
@@ -76,9 +83,9 @@ export class SeedService implements OnApplicationBootstrap {
         [
           'VIEW_DASHBOARD',
           'VIEW_PROJECTS',
-          'Execution.Entry.Read',
+          'EXECUTION.ENTRY.READ',
           'SCHEDULE.READ',
-          'BOQ.Item.Read',
+          'BOQ.ITEM.READ',
           'WBS.NODE.READ',
           'WBS.ACTIVITY.READ',
         ].includes(p.permissionCode),
@@ -87,6 +94,9 @@ export class SeedService implements OnApplicationBootstrap {
         this.roleRepo.create({
           name: 'User',
           description: 'Standard User',
+          isSystem: true,
+          isLocked: false,
+          isActive: true,
           permissions: userPermissions,
         }),
       );
@@ -97,13 +107,16 @@ export class SeedService implements OnApplicationBootstrap {
         [
           'VIEW_DASHBOARD',
           'VIEW_PROJECTS',
-          'Execution.Entry.Read',
+          'EXECUTION.ENTRY.READ',
           'SCHEDULE.READ',
-          'BOQ.Item.Read',
+          'BOQ.ITEM.READ',
           'WBS.NODE.READ',
           'WBS.ACTIVITY.READ',
         ].includes(p.permissionCode),
       );
+      userRole.description = 'Standard User';
+      userRole.isSystem = true;
+      userRole.isActive = true;
       userRole.permissions = userPermissions;
       await this.roleRepo.save(userRole);
       this.logger.log('Updated Standard User Role Permissions');

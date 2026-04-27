@@ -267,15 +267,31 @@ export class CreateMaterialItpModule1769900000000 implements MigrationInterface 
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmit_project_status" ON "quality_material_itp_templates" ("projectId", "status")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmit_material" ON "quality_material_itp_templates" ("projectId", "materialName", "materialCode")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmic_template_sequence" ON "quality_material_itp_checkpoints" ("templateId", "sequence")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmr_project_received" ON "quality_material_receipts" ("projectId", "receivedDate")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmto_project_status_due" ON "quality_material_test_obligations" ("projectId", "status", "dueDate")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmtr_project_review" ON "quality_material_test_results" ("projectId", "reviewStatus")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qme_owner" ON "quality_material_evidence_files" ("ownerType", "ownerId")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmar_document" ON "quality_material_approval_runs" ("documentType", "documentId")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmas_run_status" ON "quality_material_approval_steps" ("runId", "status")`);
+    if (await queryRunner.hasTable('quality_material_itp_templates')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmit_project_status" ON "quality_material_itp_templates" ("projectId", "status")`);
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmit_material" ON "quality_material_itp_templates" ("projectId", "materialName", "materialCode")`);
+    }
+    if (await queryRunner.hasTable('quality_material_itp_checkpoints')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmic_template_sequence" ON "quality_material_itp_checkpoints" ("templateId", "sequence")`);
+    }
+    if (await queryRunner.hasTable('quality_material_receipts')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmr_project_received" ON "quality_material_receipts" ("projectId", "receivedDate")`);
+    }
+    if (await queryRunner.hasTable('quality_material_test_obligations')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmto_project_status_due" ON "quality_material_test_obligations" ("projectId", "status", "dueDate")`);
+    }
+    if (await queryRunner.hasTable('quality_material_test_results')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmtr_project_review" ON "quality_material_test_results" ("projectId", "reviewStatus")`);
+    }
+    if (await queryRunner.hasTable('quality_material_evidence_files')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qme_owner" ON "quality_material_evidence_files" ("ownerType", "ownerId")`);
+    }
+    if (await queryRunner.hasTable('quality_material_approval_runs')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmar_document" ON "quality_material_approval_runs" ("documentType", "documentId")`);
+    }
+    if (await queryRunner.hasTable('quality_material_approval_steps')) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_qmas_run_status" ON "quality_material_approval_steps" ("runId", "status")`);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -298,4 +314,3 @@ export class CreateMaterialItpModule1769900000000 implements MigrationInterface 
     await queryRunner.query(`DROP TABLE IF EXISTS "quality_material_itp_templates"`);
   }
 }
-

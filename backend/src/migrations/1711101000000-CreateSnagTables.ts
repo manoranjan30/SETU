@@ -2,6 +2,11 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateSnagTables1711101000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasEpsNode = await queryRunner.hasTable('eps_node');
+    const hasQualityUnit = await queryRunner.hasTable('quality_unit');
+    const hasQualityRoom = await queryRunner.hasTable('quality_room');
+    const hasUser = await queryRunner.hasTable('user');
+
     await queryRunner.query(`
       DO $$
       BEGIN
@@ -28,6 +33,10 @@ export class CreateSnagTables1711101000000 implements MigrationInterface {
         END IF;
       END $$;
     `);
+
+    if (!hasEpsNode || !hasQualityUnit || !hasQualityRoom || !hasUser) {
+      return;
+    }
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS snag_list (

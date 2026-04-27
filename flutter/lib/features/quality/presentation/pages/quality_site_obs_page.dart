@@ -12,6 +12,7 @@ import 'package:setu_mobile/shared/widgets/obs_status_badge.dart';
 import 'package:setu_mobile/shared/widgets/raise_site_obs_sheet.dart';
 import 'package:setu_mobile/shared/widgets/severity_badge.dart';
 import 'package:setu_mobile/shared/widgets/shimmer_list.dart';
+import 'package:setu_mobile/shared/widgets/sync_status_banner.dart';
 
 /// Quality Site Observations — status tabs + severity filter chips + swipe actions.
 class QualitySiteObsPage extends StatefulWidget {
@@ -217,6 +218,7 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
           : null,
       body: Column(
         children: [
+          const SyncStatusBanner(),
           // Severity filter chip bar
           Container(
             color: Theme.of(context).colorScheme.surface,
@@ -267,6 +269,10 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
                 final obs =
                     loadedState?.observations ?? <QualitySiteObservation>[];
                 final fromCache = loadedState?.fromCache ?? false;
+                final cacheAge = loadedState?.cacheAge;
+                final isStale = cacheAge != null &&
+                    DateTime.now().difference(cacheAge) >
+                        const Duration(hours: 4);
 
                 final isLoadingMore = loadedState?.isLoadingMore ?? false;
                 final hasMore = loadedState?.hasMore ?? false;
@@ -278,18 +284,30 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
-                        color: Colors.orange.shade50,
+                        color: isStale
+                            ? Colors.red.shade50
+                            : Colors.orange.shade50,
                         child: Row(
                           children: [
-                            Icon(Icons.cloud_off_rounded,
-                                size: 14,
-                                color: Colors.orange.shade700),
+                            Icon(
+                              isStale
+                                  ? Icons.warning_amber_rounded
+                                  : Icons.cloud_off_rounded,
+                              size: 14,
+                              color: isStale
+                                  ? Colors.red.shade700
+                                  : Colors.orange.shade700,
+                            ),
                             const SizedBox(width: 6),
                             Text(
-                              'Showing cached data — pull to refresh',
+                              isStale
+                                  ? 'Cached data may be outdated — pull to refresh'
+                                  : 'Showing cached data — pull to refresh',
                               style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.orange.shade700),
+                                  color: isStale
+                                      ? Colors.red.shade700
+                                      : Colors.orange.shade700),
                             ),
                           ],
                         ),
@@ -536,6 +554,31 @@ class _QualityObsCard extends StatelessWidget {
                   if (obs.category != null) ...[
                     const SizedBox(width: 6),
                     _CategoryChip(obs.category!),
+                  ],
+                  if (obs.id.startsWith('local_')) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cloud_upload_outlined,
+                              size: 11,
+                              color: Colors.orange.shade800),
+                          const SizedBox(width: 3),
+                          Text('Pending',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.orange.shade800,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
                   ],
                   const Spacer(),
                   if (obs.photoUrls.isNotEmpty)

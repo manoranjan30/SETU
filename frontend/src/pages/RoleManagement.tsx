@@ -1,140 +1,80 @@
-import React, { useEffect, useState, useMemo } from "react";
-import api from "../api/axios";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Plus,
-  Trash,
-  Edit,
-  X,
-  Zap,
-  ShieldCheck,
+  BadgeCheck,
+  Briefcase,
   ChevronRight,
   Eye,
-  ClipboardCheck,
-  BadgeCheck,
-  CalendarDays,
-  Settings2,
   FileSpreadsheet,
-  Database,
-  Search,
-  Users,
-  UserCog,
-  FileImage,
-  Upload,
-  ShieldAlert,
   HardHat,
-  Package,
-  Terminal,
-  Briefcase,
-  LayoutGrid,
   Layers,
-  CheckCircle2,
-  GanttChart,
-  ClipboardList,
-  BookOpen,
+  Lock,
+  Package,
+  Pencil,
+  Plus,
   RefreshCw,
+  Search,
+  Settings2,
+  ShieldCheck,
+  Trash,
+  UserCog,
+  Zap,
 } from "lucide-react";
-
-// ─── Types ─────────────────────────────────────────────────────────────────
+import api from "../api/axios";
 
 interface Permission {
   id: number;
   permissionCode: string;
   permissionName: string;
   moduleName: string;
+  entityName?: string;
+  actionType: string;
+  scopeLevel: string;
+  description?: string;
 }
 
 interface Role {
   id: number;
   name: string;
   description?: string;
+  isLocked?: boolean;
+  isSystem?: boolean;
+  isActive?: boolean;
   permissions: Permission[];
 }
 
-interface PermissionPreset {
-  id: string;
+interface ActionPreset {
+  id: number;
+  code: string;
   name: string;
-  description: string;
+  description?: string;
   group: string;
   tier: 1 | 2 | 3;
   icon: string;
+  isSystem: boolean;
+  isLocked: boolean;
+  isActive: boolean;
   permissions: string[];
 }
 
-interface CompositeRoleTemplate {
-  id: string;
+interface RoleTemplate {
+  id: number;
+  code: string;
   name: string;
-  description: string;
+  description?: string;
   icon: string;
-  presetIds: string[];
+  isSystem: boolean;
+  isLocked: boolean;
+  isActive: boolean;
+  presetCodes: string[];
+  presets: Array<{
+    code: string;
+    name: string;
+    tier: 1 | 2 | 3;
+    icon: string;
+  }>;
 }
 
-// ─── Icon Map ─────────────────────────────────────────────────────────────────
-
-const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
-  Eye,
-  ClipboardCheck,
-  BadgeCheck,
-  CalendarDays,
-  GanttChart,
-  Settings2,
-  FileSpreadsheet,
-  ClipboardList,
-  Database,
-  Search,
-  ShieldCheck,
-  ShieldAlert,
-  HardHat,
-  FileImage,
-  Upload,
-  Users,
-  UserCog,
-  Package,
-  Terminal,
-  Briefcase,
-  BookOpen,
-};
-
-const PresetIcon: React.FC<{ name: string; className?: string }> = ({
-  name,
-  className,
-}) => {
-  const Icon = ICON_MAP[name] ?? Zap;
-  return <Icon className={className} />;
-};
-
-// ─── Tier Helpers ─────────────────────────────────────────────────────────────
-
-const TIER_CONFIG = {
-  1: {
-    label: "Viewer",
-    color: "bg-slate-100 text-slate-600 border-border-default",
-    dot: "bg-slate-400",
-  },
-  2: {
-    label: "Contributor",
-    color: "bg-primary-muted text-blue-700 border-blue-200",
-    dot: "bg-primary",
-  },
-  3: {
-    label: "Full Control",
-    color: "bg-success-muted text-emerald-700 border-emerald-200",
-    dot: "bg-emerald-500",
-  },
-} as const;
-
-const TierBadge: React.FC<{ tier: 1 | 2 | 3 }> = ({ tier }) => {
-  const cfg = TIER_CONFIG[tier];
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${cfg.color}`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />T{tier}{" "}
-      {cfg.label}
-    </span>
-  );
-};
-
-// ─── Preset Group Order ────────────────────────────────────────────────────────
+type ActiveTab = "builder" | "presets" | "templates";
 
 const GROUP_ORDER = [
   "Project Execution",
@@ -147,787 +87,1134 @@ const GROUP_ORDER = [
   "Administration",
 ];
 
-// ─── Active Tab Type ──────────────────────────────────────────────────────────
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  Eye,
+  BadgeCheck,
+  HardHat,
+  Layers,
+  FileSpreadsheet,
+  ShieldCheck,
+  Settings2,
+  UserCog,
+  Package,
+  Briefcase,
+};
 
-type ActiveTab = "roles" | "presets" | "templates";
+const tierClass: Record<1 | 2 | 3, string> = {
+  1: "bg-slate-100 text-slate-700 border-slate-200",
+  2: "bg-blue-50 text-blue-700 border-blue-200",
+  3: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+const emptyPresetForm = {
+  id: null as number | null,
+  code: "",
+  name: "",
+  description: "",
+  group: GROUP_ORDER[0],
+  tier: 1 as 1 | 2 | 3,
+  icon: "ShieldCheck",
+  permissionCodes: [] as string[],
+};
+
+const emptyTemplateForm = {
+  id: null as number | null,
+  code: "",
+  name: "",
+  description: "",
+  icon: "Briefcase",
+  presetCodes: [] as string[],
+};
 
 const RoleManagement: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("builder");
   const [roles, setRoles] = useState<Role[]>([]);
-  const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
-  const [allPresets, setAllPresets] = useState<PermissionPreset[]>([]);
-  const [allTemplates, setAllTemplates] = useState<CompositeRoleTemplate[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [presets, setPresets] = useState<ActionPreset[]>([]);
+  const [templates, setTemplates] = useState<RoleTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>(
     [],
   );
-  const [editingRole, setEditingRole] = useState<Role | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("roles");
+  const [selectedPresetCodes, setSelectedPresetCodes] = useState<string[]>([]);
+  const [selectedTemplateCode, setSelectedTemplateCode] = useState("");
+  const [permissionSearch, setPermissionSearch] = useState("");
 
-  // Applied preset IDs (for visual feedback only — actual state is selectedPermissionIds)
-  const [appliedPresetIds, setAppliedPresetIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [presetForm, setPresetForm] = useState(emptyPresetForm);
+  const [presetSearch, setPresetSearch] = useState("");
+  const [templateForm, setTemplateForm] = useState(emptyTemplateForm);
 
   useEffect(() => {
-    fetchRoles();
-    fetchPermissions();
-    fetchPresets();
-    fetchTemplates();
+    void loadAll();
   }, []);
 
-  const fetchRoles = async () => {
+  const loadAll = async () => {
+    setLoading(true);
     try {
-      const res = await api.get("/roles");
-      setRoles(res.data);
-    } catch {
-      /* silent */
+      const [rolesRes, permissionsRes, presetsRes, templatesRes] =
+        await Promise.all([
+          api.get<Role[]>("/roles"),
+          api.get<Permission[]>("/permissions"),
+          api.get<ActionPreset[]>("/role-presets"),
+          api.get<RoleTemplate[]>("/role-templates"),
+        ]);
+      setRoles(rolesRes.data);
+      setPermissions(permissionsRes.data);
+      setPresets(presetsRes.data);
+      setTemplates(templatesRes.data);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchPermissions = async () => {
-    try {
-      const res = await api.get("/permissions");
-      setAllPermissions(res.data);
-    } catch {
-      /* silent */
-    }
+  const permissionByCode = useMemo(
+    () => new Map(permissions.map((permission) => [permission.permissionCode, permission])),
+    [permissions],
+  );
+
+  const permissionsByModule = useMemo(() => {
+    const filtered = permissions.filter((permission) => {
+      const query = permissionSearch.trim().toLowerCase();
+      if (!query) return true;
+      return (
+        permission.permissionCode.toLowerCase().includes(query) ||
+        permission.permissionName.toLowerCase().includes(query) ||
+        permission.moduleName.toLowerCase().includes(query)
+      );
+    });
+
+    return filtered.reduce(
+      (acc, permission) => {
+        const bucket = acc[permission.moduleName] ?? [];
+        bucket.push(permission);
+        acc[permission.moduleName] = bucket.sort((a, b) =>
+          a.permissionCode.localeCompare(b.permissionCode),
+        );
+        return acc;
+      },
+      {} as Record<string, Permission[]>,
+    );
+  }, [permissions, permissionSearch]);
+
+  const presetGroups = useMemo(() => {
+    return presets.reduce(
+      (acc, preset) => {
+        if (!acc[preset.group]) acc[preset.group] = [];
+        acc[preset.group].push(preset);
+        return acc;
+      },
+      {} as Record<string, ActionPreset[]>,
+    );
+  }, [presets]);
+
+  const affectedModules = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedPermissionIds
+            .map((id) => permissions.find((permission) => permission.id === id)?.moduleName)
+            .filter(Boolean),
+        ),
+      ),
+    [permissions, selectedPermissionIds],
+  );
+
+  const builderSummary = {
+    permissions: selectedPermissionIds.length,
+    presets: selectedPresetCodes.length,
+    modules: affectedModules.length,
   };
 
-  const fetchPresets = async () => {
-    try {
-      const res = await api.get("/roles/presets");
-      setAllPresets(res.data);
-    } catch {
-      /* silent */
-    }
+  const togglePermissionId = (permissionId: number) => {
+    setSelectedPermissionIds((current) =>
+      current.includes(permissionId)
+        ? current.filter((id) => id !== permissionId)
+        : [...current, permissionId],
+    );
   };
 
-  const fetchTemplates = async () => {
-    try {
-      const res = await api.get("/roles/templates");
-      setAllTemplates(res.data);
-    } catch {
-      /* silent */
-    }
-  };
-
-  // ─── Form Handlers ────────────────────────────────────────────────────────
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingRole) {
-        await api.put(`/roles/${editingRole.id}`, {
-          name,
-          description,
-          permissionIds: selectedPermissionIds,
-        });
-      } else {
-        await api.post("/roles", {
-          name,
-          description,
-          permissionIds: selectedPermissionIds,
-        });
-      }
-      resetForm();
-      fetchRoles();
-    } catch {
-      alert("Failed to save role.");
-    }
-  };
-
-  const startEdit = (role: Role) => {
-    setEditingRole(role);
-    setName(role.name);
-    setDescription(role.description ?? "");
-    setSelectedPermissionIds(role.permissions.map((p) => p.id));
-    setAppliedPresetIds(new Set());
-    setActiveTab("roles");
-  };
-
-  const resetForm = () => {
+  const resetRoleBuilder = () => {
     setEditingRole(null);
     setName("");
     setDescription("");
     setSelectedPermissionIds([]);
-    setAppliedPresetIds(new Set());
+    setSelectedPresetCodes([]);
+    setSelectedTemplateCode("");
+    setPermissionSearch("");
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this role? This cannot be undone.")) return;
-    try {
-      await api.delete(`/roles/${id}`);
-      fetchRoles();
-    } catch {
-      alert("Failed to delete role.");
-    }
-  };
+  const applyPresetToBuilder = (preset: ActionPreset) => {
+    const ids = preset.permissions
+      .map((code) => permissionByCode.get(code)?.id)
+      .filter(Boolean) as number[];
 
-  // ─── Permission Toggles ───────────────────────────────────────────────────
-
-  const togglePermission = (id: number) => {
-    setSelectedPermissionIds((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    setSelectedPermissionIds((current) => Array.from(new Set([...current, ...ids])));
+    setSelectedPresetCodes((current) =>
+      current.includes(preset.code) ? current : [...current, preset.code],
     );
+    setActiveTab("builder");
   };
 
-  /** Apply a single preset — adds its permissions to the current selection */
-  const applyPreset = (preset: PermissionPreset) => {
-    const idsToSelect = allPermissions
-      .filter((p) => preset.permissions.includes(p.permissionCode))
-      .map((p) => p.id);
-
-    setSelectedPermissionIds((prev) =>
-      Array.from(new Set([...prev, ...idsToSelect])),
+  const applyTemplateToBuilder = (template: RoleTemplate) => {
+    const templateCodes = Array.from(
+      new Set(
+        template.presetCodes.flatMap(
+          (presetCode) =>
+            presets.find((preset) => preset.code === presetCode)?.permissions ?? [],
+        ),
+      ),
     );
-    setAppliedPresetIds((prev) => new Set([...prev, preset.id]));
-    setActiveTab("roles");
-  };
 
-  /** Apply a composite template — stacks all its presets */
-  const applyTemplate = (template: CompositeRoleTemplate) => {
-    const presetCodes = allPresets
-      .filter((p) => template.presetIds.includes(p.id))
-      .flatMap((p) => p.permissions);
+    const ids = templateCodes
+      .map((code) => permissionByCode.get(code)?.id)
+      .filter(Boolean) as number[];
 
-    const idsToSelect = allPermissions
-      .filter((p) => presetCodes.includes(p.permissionCode))
-      .map((p) => p.id);
-
-    setSelectedPermissionIds(Array.from(new Set(idsToSelect)));
-    setAppliedPresetIds(new Set(template.presetIds));
-
-    // Pre-fill the role name if creating new
-    if (!editingRole && !name) {
+    setSelectedPermissionIds(ids);
+    setSelectedPresetCodes(template.presetCodes);
+    setSelectedTemplateCode(template.code);
+    if (!editingRole) {
       setName(template.name);
-      setDescription(template.description);
+      setDescription(template.description ?? "");
     }
-    setActiveTab("roles");
+    setActiveTab("builder");
   };
 
-  // ─── Derived state ────────────────────────────────────────────────────────
+  const startEditRole = (role: Role) => {
+    setEditingRole(role);
+    setName(role.name);
+    setDescription(role.description ?? "");
+    setSelectedPermissionIds(role.permissions.map((permission) => permission.id));
+    setSelectedPresetCodes([]);
+    setSelectedTemplateCode("");
+    setActiveTab("builder");
+  };
 
-  const groupedPermissions = useMemo(
+  const saveRole = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const payload = { name, description, permissionIds: selectedPermissionIds };
+
+    try {
+      if (editingRole) {
+        await api.put(`/roles/${editingRole.id}`, payload);
+      } else {
+        await api.post("/roles", payload);
+      }
+      await loadAll();
+      resetRoleBuilder();
+    } catch (error: any) {
+      alert(error?.response?.data?.message || "Failed to save role");
+    }
+  };
+
+  const deleteRole = async (role: Role) => {
+    if (role.isLocked) return;
+    if (!confirm(`Delete role "${role.name}"?`)) return;
+    try {
+      await api.delete(`/roles/${role.id}`);
+      await loadAll();
+      if (editingRole?.id === role.id) resetRoleBuilder();
+    } catch (error: any) {
+      alert(error?.response?.data?.message || "Failed to delete role");
+    }
+  };
+
+  const savePreset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      if (presetForm.id) {
+        await api.put(`/role-presets/${presetForm.id}`, presetForm);
+      } else {
+        await api.post("/role-presets", presetForm);
+      }
+      setPresetForm(emptyPresetForm);
+      await loadAll();
+    } catch (error: any) {
+      alert(error?.response?.data?.message || "Failed to save preset");
+    }
+  };
+
+  const editPreset = (preset: ActionPreset) => {
+    if (preset.isLocked) return;
+    setPresetForm({
+      id: preset.id,
+      code: preset.code,
+      name: preset.name,
+      description: preset.description ?? "",
+      group: preset.group,
+      tier: preset.tier,
+      icon: preset.icon,
+      permissionCodes: preset.permissions,
+    });
+    setActiveTab("presets");
+  };
+
+  const clonePreset = async (preset: ActionPreset) => {
+    await api.post(`/role-presets/${preset.id}/clone`);
+    await loadAll();
+    setActiveTab("presets");
+  };
+
+  const archivePreset = async (preset: ActionPreset) => {
+    if (preset.isLocked) return;
+    if (!confirm(`Archive preset "${preset.name}"?`)) return;
+    await api.delete(`/role-presets/${preset.id}`);
+    await loadAll();
+    if (presetForm.id === preset.id) setPresetForm(emptyPresetForm);
+  };
+
+  const togglePresetPermissionCode = (permissionCode: string) => {
+    setPresetForm((current) => ({
+      ...current,
+      permissionCodes: current.permissionCodes.includes(permissionCode)
+        ? current.permissionCodes.filter((code) => code !== permissionCode)
+        : [...current.permissionCodes, permissionCode],
+    }));
+  };
+
+  const saveTemplate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      if (templateForm.id) {
+        await api.put(`/role-templates/${templateForm.id}`, templateForm);
+      } else {
+        await api.post("/role-templates", templateForm);
+      }
+      setTemplateForm(emptyTemplateForm);
+      await loadAll();
+    } catch (error: any) {
+      alert(error?.response?.data?.message || "Failed to save template");
+    }
+  };
+
+  const editTemplate = (template: RoleTemplate) => {
+    if (template.isLocked) return;
+    setTemplateForm({
+      id: template.id,
+      code: template.code,
+      name: template.name,
+      description: template.description ?? "",
+      icon: template.icon,
+      presetCodes: template.presetCodes,
+    });
+    setActiveTab("templates");
+  };
+
+  const cloneTemplate = async (template: RoleTemplate) => {
+    await api.post(`/role-templates/${template.id}/clone`);
+    await loadAll();
+    setActiveTab("templates");
+  };
+
+  const archiveTemplate = async (template: RoleTemplate) => {
+    if (template.isLocked) return;
+    if (!confirm(`Archive template "${template.name}"?`)) return;
+    await api.delete(`/role-templates/${template.id}`);
+    await loadAll();
+    if (templateForm.id === template.id) setTemplateForm(emptyTemplateForm);
+  };
+
+  const toggleTemplatePresetCode = (presetCode: string) => {
+    setTemplateForm((current) => ({
+      ...current,
+      presetCodes: current.presetCodes.includes(presetCode)
+        ? current.presetCodes.filter((code) => code !== presetCode)
+        : [...current.presetCodes, presetCode],
+    }));
+  };
+
+  const filteredPresetFormPermissions = useMemo(() => {
+    const query = presetSearch.trim().toLowerCase();
+    return permissions.filter((permission) => {
+      if (!query) return true;
+      return (
+        permission.permissionCode.toLowerCase().includes(query) ||
+        permission.permissionName.toLowerCase().includes(query) ||
+        permission.moduleName.toLowerCase().includes(query)
+      );
+    });
+  }, [permissions, presetSearch]);
+
+  const presetFormPermissionsByModule = useMemo(
     () =>
-      allPermissions.reduce(
-        (acc, perm) => {
-          if (!acc[perm.moduleName]) acc[perm.moduleName] = [];
-          acc[perm.moduleName].push(perm);
+      filteredPresetFormPermissions.reduce(
+        (acc, permission) => {
+          const bucket = acc[permission.moduleName] ?? [];
+          bucket.push(permission);
+          acc[permission.moduleName] = bucket;
           return acc;
         },
         {} as Record<string, Permission[]>,
       ),
-    [allPermissions],
+    [filteredPresetFormPermissions],
   );
 
-  const groupedPresets = useMemo(
-    () =>
-      GROUP_ORDER.reduce(
-        (acc, group) => {
-          acc[group] = allPresets.filter((p) => p.group === group);
-          return acc;
-        },
-        {} as Record<string, PermissionPreset[]>,
-      ),
-    [allPresets],
-  );
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+  if (loading) {
+    return <div className="p-6 text-sm text-text-muted">Loading permissions...</div>;
+  }
 
   return (
-    <div className="p-4 max-w-7xl mx-auto min-h-screen">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+    <div className="ui-shell p-6 space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h2 className="text-4xl font-black text-brand-black tracking-tight">
-            Role Authority
-          </h2>
-          <p className="text-text-muted font-medium mt-1">
-            Manage roles using atomic presets or full composite templates.
+          <h1 className="ui-title text-4xl">Role Authority</h1>
+          <p className="text-sm text-text-muted mt-2">
+            Build roles from reusable action presets and locked system templates,
+            while keeping Admin fully protected.
           </p>
         </div>
-
-        <div className="flex bg-surface-raised p-1.5 rounded-2xl border border-border-default shadow-inner">
-          {(
-            [
-              { key: "roles", icon: ShieldCheck, label: "Role Editor" },
-              { key: "presets", icon: Zap, label: "Action Presets" },
-              { key: "templates", icon: Layers, label: "Role Templates" },
-            ] as { key: ActiveTab; icon: React.FC<any>; label: string }[]
-          ).map(({ key, icon: Icon, label }) => (
+        <div className="flex gap-2">
+          {[
+            { key: "builder", label: "Role Builder", icon: ShieldCheck },
+            { key: "presets", label: "Action Presets", icon: Zap },
+            { key: "templates", label: "Role Templates", icon: Layers },
+          ].map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
-              className={`px-5 py-2.5 rounded-xl font-bold transition-all flex items-center space-x-2 ${
+              onClick={() => setActiveTab(key as ActiveTab)}
+              className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
                 activeTab === key
-                  ? "bg-surface-card shadow-md text-primary scale-105"
-                  : "text-text-muted hover:text-text-secondary hover:bg-gray-200"
+                  ? "border-primary bg-primary-muted text-primary"
+                  : "border-border-default bg-surface-card text-text-secondary hover:bg-surface-raised"
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span className="text-sm">{label}</span>
+              <Icon className="h-4 w-4" />
+              {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ═══ TAB: ROLE EDITOR ══════════════════════════════════════════════ */}
-      {activeTab === "roles" && (
-        <div className="space-y-10">
-          <div className="bg-surface-card p-8 rounded-3xl shadow-xl border border-border-subtle">
-            <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-50">
+      {activeTab === "builder" && (
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <form className="ui-card p-6 space-y-6" onSubmit={saveRole}>
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-2xl font-bold text-gray-800">
-                  {editingRole ? "Update Role" : "New Role"}
-                </h3>
-                <p className="text-primary font-bold text-xs uppercase tracking-widest mt-1">
-                  {appliedPresetIds.size > 0
-                    ? `${appliedPresetIds.size} preset(s) applied`
-                    : "Configure Access Control"}
+                <h2 className="text-xl font-semibold text-text-primary">
+                  {editingRole ? "Edit Role" : "Create Role"}
+                </h2>
+                <p className="text-sm text-text-muted mt-1">
+                  Start with a template or stack presets, then fine-tune only if you need to.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                {selectedPermissionIds.length > 0 && (
+              {editingRole && (
+                <button
+                  type="button"
+                  className="ui-btn-secondary text-sm"
+                  onClick={resetRoleBuilder}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  Role Name
+                </span>
+                <input
+                  className="ui-input w-full"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Site Engineer"
+                  required
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  Description
+                </span>
+                <input
+                  className="ui-input w-full"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Short summary of this role"
+                />
+              </label>
+            </div>
+
+            <div className="rounded-2xl border border-border-default bg-surface-base p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-text-primary">Quick Start</h3>
+                  <p className="text-sm text-text-muted">
+                    Use a role template for a full starting point, then keep stacking presets if needed.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {templates.slice(0, 6).map((template) => (
                   <button
+                    key={template.code}
                     type="button"
-                    onClick={() => {
-                      setSelectedPermissionIds([]);
-                      setAppliedPresetIds(new Set());
-                    }}
-                    className="text-text-disabled hover:text-error text-xs font-bold px-3 py-2 rounded-xl hover:bg-error-muted transition-all flex items-center gap-1.5"
+                    onClick={() => applyTemplateToBuilder(template)}
+                    className={`rounded-xl border p-4 text-left transition-colors ${
+                      selectedTemplateCode === template.code
+                        ? "border-primary bg-primary-muted"
+                        : "border-border-default bg-surface-card hover:bg-surface-raised"
+                    }`}
                   >
-                    <X className="w-3.5 h-3.5" /> Clear All
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="h-4 w-4 text-text-muted" />
+                      <span className="font-semibold text-text-primary">{template.name}</span>
+                      {template.isLocked && <Lock className="h-3.5 w-3.5 text-text-muted" />}
+                    </div>
+                    <p className="mt-2 text-sm text-text-muted line-clamp-2">
+                      {template.description}
+                    </p>
                   </button>
-                )}
-                {editingRole && (
-                  <button
-                    onClick={resetForm}
-                    className="text-error hover:bg-error-muted px-4 py-2 rounded-xl flex items-center text-sm font-bold transition-all border border-transparent hover:border-red-100"
-                  >
-                    <X className="w-4 h-4 mr-2" /> Cancel Edit
-                  </button>
-                )}
+                ))}
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+            <div className="rounded-2xl border border-border-default bg-surface-base p-4">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-text-disabled uppercase mb-2 ml-1">
-                    Role Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Site Engineer"
-                    className="block w-full border-2 border-border-subtle rounded-2xl p-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 transition-all font-bold text-lg text-brand-black"
-                    required
-                  />
+                  <h3 className="font-semibold text-text-primary">Applied Presets</h3>
+                  <p className="text-sm text-text-muted">
+                    Presets stay additive. Template application resets the permission base, then presets can extend it.
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-text-disabled uppercase mb-2 ml-1">
-                    Description
-                  </label>
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Optional description"
-                    className="block w-full border-2 border-border-subtle rounded-2xl p-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 transition-all text-text-secondary"
-                  />
-                </div>
-              </div>
-
-              {/* Shortcut bar */}
-              <div className="flex gap-3 flex-wrap">
-                <span className="text-xs font-bold text-text-disabled uppercase self-center mr-1">
-                  Quick Apply:
-                </span>
                 <button
                   type="button"
                   onClick={() => setActiveTab("presets")}
-                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 bg-primary-muted text-primary rounded-xl hover:bg-info-muted transition-all border border-blue-100"
+                  className="text-sm font-semibold text-primary"
                 >
-                  <Zap className="w-3.5 h-3.5" /> Atomic Presets
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("templates")}
-                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 bg-success-muted text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-100"
-                >
-                  <Layers className="w-3.5 h-3.5" /> Role Templates
+                  Browse presets
                 </button>
               </div>
 
-              {/* Permission Matrix */}
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-                      <ShieldCheck className="w-6 h-6 text-white" />
-                    </div>
-                    <h4 className="text-xl font-bold text-gray-800">
-                      Permission Matrix
-                    </h4>
-                  </div>
-                  <div className="text-xs font-bold text-text-disabled bg-surface-base px-3 py-1.5 rounded-full border border-border-subtle">
-                    {selectedPermissionIds.length} of {allPermissions.length}{" "}
-                    selected
-                  </div>
-                </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedPresetCodes.length === 0 && (
+                  <span className="text-sm text-text-muted">No presets applied yet.</span>
+                )}
+                {selectedPresetCodes.map((code) => {
+                  const preset = presets.find((item) => item.code === code);
+                  if (!preset) return null;
+                  return (
+                    <span
+                      key={code}
+                      className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-card px-3 py-1 text-xs font-semibold text-text-secondary"
+                    >
+                      <Zap className="h-3 w-3" />
+                      {preset.name}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {Object.entries(groupedPermissions)
-                    .sort()
-                    .map(([module, perms]) => (
-                      <div
-                        key={module}
-                        className="bg-surface-base/30 rounded-3xl border border-border-subtle p-5 hover:bg-surface-card hover:shadow-xl hover:border-blue-100 transition-all group"
-                      >
-                        <div className="flex items-center justify-between mb-5 border-b border-border-subtle pb-3">
-                          <h5 className="font-extrabold text-brand-black uppercase tracking-wider text-xs">
-                            {module}
-                          </h5>
-                          <div className="bg-surface-raised text-text-muted text-[10px] font-black px-2 py-1 rounded-lg">
-                            {
-                              perms.filter((p) =>
-                                selectedPermissionIds.includes(p.id),
-                              ).length
-                            }
-                            /{perms.length}
-                          </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-border-default bg-surface-base p-4">
+                <div className="text-xs uppercase tracking-wider text-text-muted">Permissions</div>
+                <div className="mt-2 text-2xl font-semibold text-text-primary">
+                  {builderSummary.permissions}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border-default bg-surface-base p-4">
+                <div className="text-xs uppercase tracking-wider text-text-muted">Presets</div>
+                <div className="mt-2 text-2xl font-semibold text-text-primary">
+                  {builderSummary.presets}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border-default bg-surface-base p-4">
+                <div className="text-xs uppercase tracking-wider text-text-muted">Modules</div>
+                <div className="mt-2 text-2xl font-semibold text-text-primary">
+                  {builderSummary.modules}
+                </div>
+              </div>
+            </div>
+
+            <details className="rounded-2xl border border-border-default bg-surface-base">
+              <summary className="cursor-pointer list-none px-4 py-3 font-semibold text-text-primary">
+                Advanced Permission Review
+              </summary>
+              <div className="border-t border-border-default p-4 space-y-4">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-disabled" />
+                  <input
+                    className="ui-input w-full pl-10"
+                    value={permissionSearch}
+                    onChange={(event) => setPermissionSearch(event.target.value)}
+                    placeholder="Filter permissions by code, name, or module"
+                  />
+                </div>
+                <div className="space-y-4 max-h-[420px] overflow-auto pr-1">
+                  {Object.entries(permissionsByModule).map(([moduleName, modulePermissions]) => (
+                    <div key={moduleName} className="rounded-xl border border-border-default bg-surface-card p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h4 className="font-semibold text-text-primary">{moduleName}</h4>
+                        <span className="text-xs text-text-muted">{modulePermissions.length} permissions</span>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {modulePermissions.map((permission) => (
+                          <label
+                            key={permission.id}
+                            className="flex items-start gap-3 rounded-lg border border-border-subtle px-3 py-2 text-sm hover:bg-surface-raised"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedPermissionIds.includes(permission.id)}
+                              onChange={() => togglePermissionId(permission.id)}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="font-medium text-text-primary">
+                                {permission.permissionName}
+                              </div>
+                              <div className="text-xs text-text-muted font-mono">
+                                {permission.permissionCode}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </details>
+
+            <div className="flex items-center justify-between gap-4 border-t border-border-default pt-4">
+              <div className="text-sm text-text-muted">
+                Built-in Admin stays locked and outside this editor.
+              </div>
+              <button type="submit" className="ui-btn-primary">
+                {editingRole ? "Save Role" : "Create Role"}
+              </button>
+            </div>
+          </form>
+
+          <div className="space-y-6">
+            <div className="ui-card p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-text-primary">Role Directory</h2>
+                  <p className="text-sm text-text-muted mt-1">
+                    Locked system roles stay visible, but only custom roles are editable.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {roles.map((role) => (
+                  <div
+                    key={role.id}
+                    className="rounded-xl border border-border-default bg-surface-base p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-text-primary">{role.name}</span>
+                          {role.isLocked && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border-default bg-surface-card px-2 py-0.5 text-[11px] font-semibold text-text-muted">
+                              <Lock className="h-3 w-3" />
+                              Locked
+                            </span>
+                          )}
+                          {role.name === "Admin" && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                              Full Access
+                            </span>
+                          )}
                         </div>
-                        <div className="space-y-2.5">
-                          {perms.map((perm) => {
-                            const isSelected = selectedPermissionIds.includes(
-                              perm.id,
-                            );
-                            return (
-                              <label
-                                key={perm.id}
-                                className={`flex items-start p-3.5 rounded-2xl cursor-pointer transition-all border ${
-                                  isSelected
-                                    ? "bg-primary border-primary shadow-lg shadow-blue-100"
-                                    : "bg-surface-card border-border-subtle hover:border-border-strong"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => togglePermission(perm.id)}
-                                  className="hidden"
-                                />
-                                <div className="flex flex-col">
-                                  <span
-                                    className={`text-sm font-bold ${isSelected ? "text-white" : "text-gray-800"}`}
-                                  >
-                                    {perm.permissionName}
-                                  </span>
-                                  <span
-                                    className={`text-[10px] font-mono mt-1 ${isSelected ? "text-blue-100 opacity-80" : "text-text-disabled"}`}
-                                  >
-                                    {perm.permissionCode}
-                                  </span>
-                                </div>
-                              </label>
-                            );
-                          })}
+                        {role.description && (
+                          <p className="mt-1 text-sm text-text-muted">{role.description}</p>
+                        )}
+                        <div className="mt-2 text-xs text-text-disabled">
+                          {role.permissions.length} permissions
                         </div>
                       </div>
-                    ))}
-                </div>
+                      <div className="flex gap-2">
+                        {!role.isLocked && role.name !== "Admin" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditRole(role)}
+                              className="ui-btn-secondary"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteRole(role)}
+                              className="ui-btn-secondary text-error"
+                            >
+                              <Trash className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {role.permissions.slice(0, 6).map((permission) => (
+                        <span
+                          key={permission.id}
+                          className="rounded-lg border border-border-default bg-surface-card px-2 py-1 text-[11px] font-mono text-text-muted"
+                        >
+                          {permission.permissionCode}
+                        </span>
+                      ))}
+                      {role.permissions.length > 6 && (
+                        <span className="rounded-lg border border-border-default bg-surface-card px-2 py-1 text-[11px] text-text-muted">
+                          +{role.permissions.length - 6} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-
-              <div className="pt-6 flex items-center justify-between border-t border-gray-50">
-                <div className="text-text-disabled text-sm font-medium">
-                  {selectedPermissionIds.length} permissions will be saved to
-                  this role.
-                </div>
-                <button
-                  type="submit"
-                  className={`px-10 py-4 rounded-3xl font-black text-white shadow-2xl transition-all transform hover:scale-105 active:scale-95 flex items-center space-x-3 ${
-                    editingRole
-                      ? "bg-primary shadow-blue-200"
-                      : "bg-green-600 shadow-green-200"
-                  }`}
-                >
-                  {editingRole ? (
-                    <Edit className="w-5 h-5" />
-                  ) : (
-                    <Plus className="w-5 h-5" />
-                  )}
-                  <span>{editingRole ? "Save Changes" : "Create Role"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Roles Directory Table */}
-          <div className="bg-surface-card rounded-[40px] shadow-2xl border border-gray-50 overflow-hidden">
-            <div className="px-10 py-8 bg-surface-base/50 border-b border-border-subtle">
-              <h3 className="text-2xl font-black text-gray-800">
-                Role Directory
-              </h3>
-              <p className="text-text-muted text-sm mt-1">
-                {roles.length} roles defined in the system
-              </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead>
-                  <tr className="bg-surface-card">
-                    <th className="px-10 py-5 text-left text-[11px] font-black text-text-disabled uppercase tracking-[0.2em]">
-                      #
-                    </th>
-                    <th className="px-10 py-5 text-left text-[11px] font-black text-text-disabled uppercase tracking-[0.2em]">
-                      Role Name
-                    </th>
-                    <th className="px-10 py-5 text-left text-[11px] font-black text-text-disabled uppercase tracking-[0.2em]">
-                      Permissions
-                    </th>
-                    <th className="px-10 py-5 text-right text-[11px] font-black text-text-disabled uppercase tracking-[0.2em]">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-surface-card divide-y divide-gray-50">
-                  {roles.map((role) => (
-                    <tr
-                      key={role.id}
-                      className="hover:bg-primary-muted/20 transition-all group"
-                    >
-                      <td className="px-10 py-6 text-xs font-black text-gray-300 font-mono">
-                        #{role.id}
-                      </td>
-                      <td className="px-10 py-6 whitespace-nowrap">
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`w-3 h-3 rounded-full ${role.name === "Admin" ? "bg-secondary" : "bg-emerald-500"}`}
-                          />
-                          <div>
-                            <div className="text-lg font-extrabold text-brand-black">
-                              {role.name}
-                            </div>
-                            {role.description && (
-                              <div className="text-xs text-text-disabled mt-0.5">
-                                {role.description}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "presets" && (
+        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-6">
+            {GROUP_ORDER.map((group) => {
+              const groupPresets = presetGroups[group] ?? [];
+              if (groupPresets.length === 0) return null;
+              return (
+                <div key={group} className="ui-card p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-text-primary">{group}</h2>
+                    <span className="text-xs text-text-muted">{groupPresets.length} presets</span>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {groupPresets.map((preset) => {
+                      const Icon = ICON_MAP[preset.icon] ?? Zap;
+                      return (
+                        <div
+                          key={preset.code}
+                          className="rounded-xl border border-border-default bg-surface-base p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <Icon className="h-4 w-4 text-text-muted" />
+                              <div>
+                                <div className="font-semibold text-text-primary">{preset.name}</div>
+                                <div className="text-xs font-mono text-text-disabled">
+                                  {preset.code}
+                                </div>
                               </div>
+                            </div>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${tierClass[preset.tier]}`}
+                            >
+                              Tier {preset.tier}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm text-text-muted">{preset.description}</p>
+                          <div className="mt-3 text-xs text-text-disabled">
+                            {preset.permissions.length} permissions
+                            {preset.isLocked ? " · locked system preset" : ""}
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => applyPresetToBuilder(preset)}
+                              className="ui-btn-primary text-sm"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                              Apply
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => clonePreset(preset)}
+                              className="ui-btn-secondary text-sm"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                              Clone
+                            </button>
+                            {!preset.isLocked && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => editPreset(preset)}
+                                  className="ui-btn-secondary text-sm"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => archivePreset(preset)}
+                                  className="ui-btn-secondary text-sm text-error"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                  Archive
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
-                      </td>
-                      <td className="px-10 py-6 max-w-lg">
-                        <div className="flex flex-wrap gap-1.5">
-                          {role.permissions?.slice(0, 8).map((p) => (
-                            <span
-                              key={p.id}
-                              className="inline-flex px-2 py-1 rounded-lg text-[10px] font-bold bg-surface-base text-text-muted border border-border-subtle"
-                            >
-                              {p.permissionCode}
-                            </span>
-                          ))}
-                          {(role.permissions?.length ?? 0) > 8 && (
-                            <span className="inline-flex px-2 py-1 rounded-lg text-[10px] font-bold bg-primary-muted text-primary border border-blue-100">
-                              +{role.permissions.length - 8} more
-                            </span>
-                          )}
-                          {(!role.permissions ||
-                            role.permissions.length === 0) && (
-                            <span className="text-sm italic text-gray-300">
-                              No permissions
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-10 py-6 whitespace-nowrap text-right">
-                        {role.name !== "Admin" ? (
-                          <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => startEdit(role)}
-                              className="p-2.5 bg-primary-muted text-primary hover:bg-primary hover:text-white rounded-2xl transition-all"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(role.id)}
-                              className="p-2.5 bg-error-muted text-error hover:bg-red-600 hover:text-white rounded-2xl transition-all"
-                              title="Delete"
-                            >
-                              <Trash className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="inline-flex px-5 py-2 rounded-2xl text-xs font-black bg-secondary text-white uppercase tracking-widest">
-                            Immutable
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TAB: ACTION PRESETS ══════════════════════════════════════════ */}
-      {activeTab === "presets" && (
-        <div className="space-y-10">
-          {/* Hero */}
-          <div className="bg-primary p-10 rounded-[50px] shadow-2xl relative overflow-hidden">
-            <div className="relative z-10 max-w-2xl">
-              <h3 className="text-4xl font-black text-white mb-3">
-                Atomic Action Presets
-              </h3>
-              <p className="text-blue-100 text-base font-medium leading-relaxed">
-                22 focused permission bundles organised by job function. Each
-                preset adds to your current editor selection — you can stack
-                multiple presets.
-              </p>
-            </div>
-            <Zap className="absolute right-[-40px] bottom-[-40px] w-72 h-72 text-primary opacity-15 transform rotate-12" />
-          </div>
-
-          {/* Tier legend */}
-          <div className="flex items-center gap-6 px-2">
-            <span className="text-xs font-bold text-text-disabled uppercase">
-              Tiers:
-            </span>
-            {([1, 2, 3] as const).map((t) => (
-              <TierBadge key={t} tier={t} />
-            ))}
-            <span className="text-xs text-text-disabled ml-2">
-              Click "Deploy" to merge into current role editor
-            </span>
-          </div>
-
-          {/* Grouped presets */}
-          {GROUP_ORDER.map((group) => {
-            const presets = groupedPresets[group] ?? [];
-            if (presets.length === 0) return null;
-            return (
-              <div key={group}>
-                <div className="flex items-center gap-3 mb-5">
-                  <LayoutGrid className="w-5 h-5 text-text-disabled" />
-                  <h4 className="text-lg font-black text-text-secondary">
-                    {group}
-                  </h4>
-                  <span className="text-xs font-bold text-text-disabled bg-surface-raised px-2 py-1 rounded-lg">
-                    {presets.length} presets
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {presets.map((preset) => {
-                    const isApplied = appliedPresetIds.has(preset.id);
-                    return (
-                      <div
-                        key={preset.id}
-                        className={`bg-surface-card p-7 rounded-[28px] border-2 transition-all flex flex-col shadow-lg ${
-                          isApplied
-                            ? "border-blue-400 shadow-blue-100"
-                            : "border-transparent hover:border-blue-200 hover:shadow-xl"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between mb-4">
-                          <div
-                            className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                              isApplied ? "bg-primary" : "bg-surface-base"
-                            }`}
-                          >
-                            <PresetIcon
-                              name={preset.icon}
-                              className={`w-6 h-6 ${isApplied ? "text-white" : "text-primary"}`}
-                            />
-                          </div>
-                          <TierBadge tier={preset.tier} />
-                        </div>
-
-                        <h5 className="text-lg font-black text-gray-800 mb-2">
-                          {preset.name}
-                        </h5>
-                        <p className="text-text-muted text-sm leading-relaxed mb-5 flex-1">
-                          {preset.description}
-                        </p>
-
-                        <div className="flex flex-wrap gap-1.5 mb-5">
-                          {preset.permissions.slice(0, 5).map((code) => (
-                            <span
-                              key={code}
-                              className="bg-surface-base text-text-disabled text-[10px] font-mono px-2 py-1 rounded-lg border border-border-subtle"
-                            >
-                              {code}
-                            </span>
-                          ))}
-                          {preset.permissions.length > 5 && (
-                            <span className="bg-primary-muted text-primary text-[10px] font-bold px-2 py-1 rounded-lg">
-                              +{preset.permissions.length - 5} more
-                            </span>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => applyPreset(preset)}
-                          className={`w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all ${
-                            isApplied
-                              ? "bg-primary text-white"
-                              : "bg-gray-900 text-white hover:bg-primary hover:shadow-xl hover:shadow-blue-200 active:scale-95"
-                          }`}
-                        >
-                          {isApplied ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4" /> Applied
-                            </>
-                          ) : (
-                            <>
-                              <Zap className="w-4 h-4" /> Deploy Preset
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Architecture note */}
-          <div className="bg-warning-muted border border-amber-100 p-7 rounded-3xl flex items-start gap-5">
-            <div className="bg-amber-100 p-3 rounded-2xl flex-shrink-0">
-              <ShieldCheck className="w-6 h-6 text-warning" />
-            </div>
-            <div>
-              <h5 className="font-black text-amber-900 text-base mb-1">
-                How Presets Work
-              </h5>
-              <p className="text-amber-700 text-sm font-medium leading-relaxed">
-                Clicking "Deploy" adds permissions to your current Role Editor
-                selection without removing any existing ones. Presets are{" "}
-                <strong>additive and stackable</strong>. Once deployed, switch
-                to the <strong>Role Editor</strong> tab to review the final
-                permission list and click Save.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TAB: ROLE TEMPLATES ══════════════════════════════════════════ */}
-      {activeTab === "templates" && (
-        <div className="space-y-8">
-          {/* Hero */}
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-10 rounded-[50px] shadow-2xl relative overflow-hidden">
-            <div className="relative z-10 max-w-2xl">
-              <h3 className="text-4xl font-black text-white mb-3">
-                Composite Role Templates
-              </h3>
-              <p className="text-slate-300 text-base font-medium leading-relaxed">
-                8 pre-built role configurations that stack multiple presets in
-                one click. Applying a template overwrites the editor to that
-                role's complete permission set.
-              </p>
-            </div>
-            <Layers className="absolute right-[-30px] bottom-[-30px] w-72 h-72 text-text-secondary opacity-40" />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {allTemplates.map((template) => {
-              const templatePresets = allPresets.filter((p) =>
-                template.presetIds.includes(p.id),
-              );
-              const totalCodes = new Set(
-                templatePresets.flatMap((p) => p.permissions),
-              );
-
-              return (
-                <div
-                  key={template.id}
-                  className="bg-surface-card p-8 rounded-[32px] border-2 border-transparent hover:border-border-default hover:shadow-2xl transition-all flex flex-col shadow-lg"
-                >
-                  <div className="flex items-start gap-4 mb-5">
-                    <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-                      <PresetIcon
-                        name={template.icon}
-                        className="w-7 h-7 text-text-secondary"
-                      />
-                    </div>
-                    <div>
-                      <h4 className="text-xl font-black text-gray-800">
-                        {template.name}
-                      </h4>
-                      <p className="text-text-muted text-sm mt-1">
-                        {template.description}
-                      </p>
-                    </div>
+                      );
+                    })}
                   </div>
-
-                  {/* Preset stack */}
-                  <div className="mb-5">
-                    <p className="text-[10px] font-black uppercase text-text-disabled mb-2 tracking-widest">
-                      Preset Stack ({template.presetIds.length})
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {templatePresets.map((p) => (
-                        <span
-                          key={p.id}
-                          className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-surface-base text-slate-600 border border-slate-100"
-                        >
-                          <PresetIcon name={p.icon} className="w-3.5 h-3.5" />
-                          {p.name}
-                          <TierBadge tier={p.tier} />
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Summary */}
-                  <div className="flex items-center gap-3 mb-6 px-3 py-2.5 bg-surface-base rounded-2xl border border-slate-100">
-                    <CheckCircle2 className="w-4 h-4 text-text-disabled" />
-                    <span className="text-sm font-bold text-slate-600">
-                      {totalCodes.size} unique permissions
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => applyTemplate(template)}
-                    className="mt-auto w-full py-3.5 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center gap-2 hover:bg-primary hover:shadow-xl hover:shadow-blue-200 transition-all active:scale-95"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Apply Full Template
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
                 </div>
               );
             })}
           </div>
 
-          {/* Warning note */}
-          <div className="bg-orange-50 border border-orange-100 p-6 rounded-3xl flex items-start gap-4">
-            <div className="bg-orange-100 p-3 rounded-2xl flex-shrink-0">
-              <RefreshCw className="w-5 h-5 text-orange-600" />
+          <form className="ui-card p-6 space-y-5" onSubmit={savePreset}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-text-primary">
+                  {presetForm.id ? "Edit Action Preset" : "Create Action Preset"}
+                </h2>
+                <p className="text-sm text-text-muted mt-1">
+                  Build a reusable permission bundle for real job functions.
+                </p>
+              </div>
+              {presetForm.id && (
+                <button
+                  type="button"
+                  className="ui-btn-secondary text-sm"
+                  onClick={() => setPresetForm(emptyPresetForm)}
+                >
+                  Reset
+                </button>
+              )}
             </div>
-            <div>
-              <h5 className="font-black text-orange-900 text-sm mb-1">
-                Template applies a full replacement
-              </h5>
-              <p className="text-orange-700 text-sm leading-relaxed">
-                Unlike Presets (which add to existing selections), applying a
-                Role Template will
-                <strong> replace</strong> the editor's current permission
-                selection with the template's full stack. Go to the{" "}
-                <strong>Role Editor</strong> tab afterwards to adjust, then
-                click Save.
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <input
+                className="ui-input"
+                placeholder="Code"
+                value={presetForm.code}
+                onChange={(event) =>
+                  setPresetForm((current) => ({ ...current, code: event.target.value }))
+                }
+                required
+              />
+              <input
+                className="ui-input"
+                placeholder="Name"
+                value={presetForm.name}
+                onChange={(event) =>
+                  setPresetForm((current) => ({ ...current, name: event.target.value }))
+                }
+                required
+              />
+              <select
+                className="ui-input"
+                value={presetForm.group}
+                onChange={(event) =>
+                  setPresetForm((current) => ({ ...current, group: event.target.value }))
+                }
+              >
+                {GROUP_ORDER.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="ui-input"
+                value={presetForm.tier}
+                onChange={(event) =>
+                  setPresetForm((current) => ({
+                    ...current,
+                    tier: Number(event.target.value) as 1 | 2 | 3,
+                  }))
+                }
+              >
+                <option value={1}>Tier 1</option>
+                <option value={2}>Tier 2</option>
+                <option value={3}>Tier 3</option>
+              </select>
+            </div>
+
+            <input
+              className="ui-input"
+              placeholder="Icon"
+              value={presetForm.icon}
+              onChange={(event) =>
+                setPresetForm((current) => ({ ...current, icon: event.target.value }))
+              }
+            />
+
+            <textarea
+              className="ui-input min-h-[90px]"
+              placeholder="Description"
+              value={presetForm.description}
+              onChange={(event) =>
+                setPresetForm((current) => ({ ...current, description: event.target.value }))
+              }
+            />
+
+            <div className="rounded-2xl border border-border-default bg-surface-base p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-text-primary">Permission Set</h3>
+                  <p className="text-sm text-text-muted">
+                    Choose exactly what this preset grants.
+                  </p>
+                </div>
+                <span className="text-xs text-text-muted">
+                  {presetForm.permissionCodes.length} selected
+                </span>
+              </div>
+              <div className="relative mt-4">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-disabled" />
+                <input
+                  className="ui-input w-full pl-10"
+                  value={presetSearch}
+                  onChange={(event) => setPresetSearch(event.target.value)}
+                  placeholder="Filter permissions"
+                />
+              </div>
+              <div className="mt-4 max-h-[420px] space-y-4 overflow-auto pr-1">
+                {Object.entries(presetFormPermissionsByModule).map(([moduleName, modulePermissions]) => (
+                  <div key={moduleName}>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      {moduleName}
+                    </div>
+                    <div className="grid gap-2">
+                      {modulePermissions.map((permission) => (
+                        <label
+                          key={permission.id}
+                          className="flex items-start gap-3 rounded-lg border border-border-subtle bg-surface-card px-3 py-2 text-sm hover:bg-surface-raised"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={presetForm.permissionCodes.includes(permission.permissionCode)}
+                            onChange={() =>
+                              togglePresetPermissionCode(permission.permissionCode)
+                            }
+                            className="mt-1"
+                          />
+                          <div>
+                            <div className="font-medium text-text-primary">
+                              {permission.permissionName}
+                            </div>
+                            <div className="text-xs font-mono text-text-muted">
+                              {permission.permissionCode}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button type="submit" className="ui-btn-primary">
+                <Plus className="h-4 w-4" />
+                {presetForm.id ? "Save Preset" : "Create Preset"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {activeTab === "templates" && (
+        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-6">
+            <div className="ui-card p-6 space-y-4">
+              <h2 className="text-xl font-semibold text-text-primary">Role Templates</h2>
+              <p className="text-sm text-text-muted">
+                Templates stack presets into role-ready starting points. Locked system templates can be cloned, not edited.
               </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {templates.map((template) => (
+                  <div
+                    key={template.code}
+                    className="rounded-xl border border-border-default bg-surface-base p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-4 w-4 text-text-muted" />
+                          <span className="font-semibold text-text-primary">{template.name}</span>
+                          {template.isLocked && <Lock className="h-3.5 w-3.5 text-text-muted" />}
+                        </div>
+                        <div className="mt-1 text-xs font-mono text-text-disabled">
+                          {template.code}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-text-muted">{template.description}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {template.presets.map((preset) => (
+                        <span
+                          key={preset.code}
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${tierClass[preset.tier]}`}
+                        >
+                          {preset.name}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => applyTemplateToBuilder(template)}
+                        className="ui-btn-primary text-sm"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cloneTemplate(template)}
+                        className="ui-btn-secondary text-sm"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Clone
+                      </button>
+                      {!template.isLocked && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => editTemplate(template)}
+                            className="ui-btn-secondary text-sm"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => archiveTemplate(template)}
+                            className="ui-btn-secondary text-sm text-error"
+                          >
+                            <Trash className="h-4 w-4" />
+                            Archive
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+
+          <form className="ui-card p-6 space-y-5" onSubmit={saveTemplate}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-text-primary">
+                  {templateForm.id ? "Edit Role Template" : "Create Role Template"}
+                </h2>
+                <p className="text-sm text-text-muted mt-1">
+                  Compose templates from reusable presets so roles stay consistent.
+                </p>
+              </div>
+              {templateForm.id && (
+                <button
+                  type="button"
+                  className="ui-btn-secondary text-sm"
+                  onClick={() => setTemplateForm(emptyTemplateForm)}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <input
+                className="ui-input"
+                placeholder="Code"
+                value={templateForm.code}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({ ...current, code: event.target.value }))
+                }
+                required
+              />
+              <input
+                className="ui-input"
+                placeholder="Name"
+                value={templateForm.name}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({ ...current, name: event.target.value }))
+                }
+                required
+              />
+            </div>
+
+            <input
+              className="ui-input"
+              placeholder="Icon"
+              value={templateForm.icon}
+              onChange={(event) =>
+                setTemplateForm((current) => ({ ...current, icon: event.target.value }))
+              }
+            />
+
+            <textarea
+              className="ui-input min-h-[90px]"
+              placeholder="Description"
+              value={templateForm.description}
+              onChange={(event) =>
+                setTemplateForm((current) => ({
+                  ...current,
+                  description: event.target.value,
+                }))
+              }
+            />
+
+            <div className="rounded-2xl border border-border-default bg-surface-base p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-text-primary">Preset Stack</h3>
+                  <p className="text-sm text-text-muted">
+                    Choose the presets that make up this template.
+                  </p>
+                </div>
+                <span className="text-xs text-text-muted">
+                  {templateForm.presetCodes.length} selected
+                </span>
+              </div>
+              <div className="mt-4 space-y-3 max-h-[420px] overflow-auto pr-1">
+                {GROUP_ORDER.map((group) => {
+                  const groupPresets = presetGroups[group] ?? [];
+                  if (!groupPresets.length) return null;
+                  return (
+                    <div key={group}>
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        {group}
+                      </div>
+                      <div className="grid gap-2">
+                        {groupPresets.map((preset) => (
+                          <label
+                            key={preset.code}
+                            className="flex items-start gap-3 rounded-lg border border-border-subtle bg-surface-card px-3 py-2 text-sm hover:bg-surface-raised"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={templateForm.presetCodes.includes(preset.code)}
+                              onChange={() => toggleTemplatePresetCode(preset.code)}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="font-medium text-text-primary">
+                                {preset.name}
+                              </div>
+                              <div className="text-xs text-text-muted font-mono">
+                                {preset.code}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button type="submit" className="ui-btn-primary">
+                <Plus className="h-4 w-4" />
+                {templateForm.id ? "Save Template" : "Create Template"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

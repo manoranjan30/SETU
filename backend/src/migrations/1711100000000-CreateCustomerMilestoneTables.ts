@@ -4,6 +4,12 @@ export class CreateCustomerMilestoneTables1711100000000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasEpsNode = await queryRunner.hasTable('eps_node');
+    const hasActivity = await queryRunner.hasTable('activity');
+    const hasQualityActivity = await queryRunner.hasTable('quality_activity');
+    const hasQualityUnit = await queryRunner.hasTable('quality_unit');
+    const hasUser = await queryRunner.hasTable('user');
+
     await queryRunner.query(`
       DO $$
       BEGIN
@@ -21,6 +27,16 @@ export class CreateCustomerMilestoneTables1711100000000
         END IF;
       END $$;
     `);
+
+    if (
+      !hasEpsNode ||
+      !hasActivity ||
+      !hasQualityActivity ||
+      !hasQualityUnit ||
+      !hasUser
+    ) {
+      return;
+    }
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS customer_milestone_template (

@@ -159,6 +159,8 @@ import { AuditLog } from './audit/audit-log.entity';
 import { TempUserModule } from './temp-user/temp-user.module';
 import { TempRoleTemplate } from './temp-user/entities/temp-role-template.entity';
 import { TempUser } from './temp-user/entities/temp-user.entity';
+import { ActionPreset } from './roles/action-preset.entity';
+import { RoleTemplate } from './roles/role-template.entity';
 
 // Dashboard Builder
 import { CustomDashboard } from './dashboard-builder/entities/custom-dashboard.entity';
@@ -203,6 +205,10 @@ import { InsightTemplate } from './ai-insights/entities/insight-template.entity'
 import { InsightRun } from './ai-insights/entities/insight-run.entity';
 import { ExecutionProgressEntry } from './execution/entities/execution-progress-entry.entity';
 import { ExecutionProgressAdjustment } from './execution/entities/execution-progress-adjustment.entity';
+// App Config & Notification Log
+import { AppConfigModule } from './app-config/app-config.module';
+import { AppConfig } from './app-config/entities/app-config.entity';
+import { NotificationLog } from './notifications/notification-log.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -347,6 +353,8 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
         AuditLog,
         TempRoleTemplate,
         TempUser,
+        ActionPreset,
+        RoleTemplate,
         // Dashboard Builder
         CustomDashboard,
         DashboardWidget,
@@ -381,6 +389,9 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
         AiModelConfig,
         InsightTemplate,
         InsightRun,
+        // App Config & Notification Log
+        AppConfig,
+        NotificationLog,
       ],
       synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
       migrationsRun: process.env.TYPEORM_MIGRATIONS_RUN === 'true',
@@ -424,6 +435,7 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
     SnagModule,
     AiInsightsModule,
     SyncModule,
+    AppConfigModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

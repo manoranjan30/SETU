@@ -10,6 +10,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "migration:run": "typeorm-ts-node-commonjs -d src/data-source.ts migration:run",
     "migration:run:dist": "node ./node_modules/typeorm/cli.js -d dist/src/data-source.js migration:run",
+    "migration:run:dist:trace": "node ./scripts/run-migrations-with-trace.js",
     "migration:revert": "typeorm-ts-node-commonjs -d src/data-source.ts migration:revert",
     "migration:show": "typeorm-ts-node-commonjs -d src/data-source.ts migration:show",
     "progress:reset": "ts-node src/scripts/reset-progress-state.ts",

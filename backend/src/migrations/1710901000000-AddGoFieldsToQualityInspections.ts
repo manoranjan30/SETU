@@ -6,6 +6,10 @@ export class AddGoFieldsToQualityInspections1710901000000
   name = 'AddGoFieldsToQualityInspections1710901000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('quality_inspections'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE "quality_inspections"
       ADD COLUMN IF NOT EXISTS "go_no" integer
@@ -36,6 +40,10 @@ export class AddGoFieldsToQualityInspections1710901000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('quality_inspections'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE "quality_inspections"
       DROP COLUMN IF EXISTS "go_label"

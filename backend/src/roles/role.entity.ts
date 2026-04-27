@@ -16,11 +16,20 @@ export class Role {
   @Column({ unique: true })
   name: string;
 
-  @Column({ nullable: true })
-  description: string;
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
-  @Column({ nullable: true })
-  dashboardId: number; // For role-based dashboards
+  @Column({ type: 'int', nullable: true })
+  dashboardId: number | null; // For role-based dashboards
+
+  @Column({ default: false })
+  isSystem: boolean;
+
+  @Column({ default: false })
+  isLocked: boolean;
+
+  @Column({ default: true })
+  isActive: boolean;
 
   @ManyToMany(() => Permission, { eager: true, cascade: true })
   @JoinTable()
