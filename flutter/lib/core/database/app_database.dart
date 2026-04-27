@@ -499,8 +499,14 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// Uses [InsertMode.insertOrReplace] so that updated observation state
   /// (e.g. status transitions from OPEN → CLOSED) overwrites the stale row.
+  /// Any optimistic-insert rows (id starts with `local_`) are removed first
+  /// so they are replaced by the confirmed server copy.
   Future<void> cacheQualitySiteObs(
       List<Map<String, dynamic>> items, int projectId) async {
+    await (delete(cachedQualitySiteObs)
+          ..where((t) =>
+              t.projectId.equals(projectId) & t.id.like('local_%')))
+        .go();
     await batch((b) {
       for (final item in items) {
         b.insert(
@@ -536,8 +542,15 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Cache EHS site observations from API response.
+  ///
+  /// Removes optimistic-insert rows (id starts with `local_`) before writing
+  /// server data so confirmed server copies replace the pending placeholders.
   Future<void> cacheEhsSiteObs(
       List<Map<String, dynamic>> items, int projectId) async {
+    await (delete(cachedEhsSiteObs)
+          ..where((t) =>
+              t.projectId.equals(projectId) & t.id.like('local_%')))
+        .go();
     await batch((b) {
       for (final item in items) {
         b.insert(

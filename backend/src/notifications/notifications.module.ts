@@ -17,12 +17,14 @@ import { EpsNode } from '../eps/eps.entity';
 import { Activity } from '../wbs/entities/activity.entity';
 import { NotificationContextService } from './notification-context.service';
 import { NotificationComposerService } from './notification-composer.service';
+import { NotificationLog } from './notification-log.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       User,
       UserProjectAssignment,
+      NotificationLog,
       QualityInspection,
       InspectionWorkflowStep,
       ActivityObservation,

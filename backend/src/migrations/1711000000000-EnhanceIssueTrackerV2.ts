@@ -4,37 +4,46 @@ export class EnhanceIssueTrackerV21711000000000 implements MigrationInterface {
   name = 'EnhanceIssueTrackerV21711000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasDepartments = await queryRunner.hasTable('issue_tracker_departments');
+    const hasIssues = await queryRunner.hasTable('issue_tracker_issues');
+    const hasSteps = await queryRunner.hasTable('issue_tracker_steps');
     // ─── 1. Alter issue_tracker_departments: make it global ───────────────────
     // Drop projectId and memberUserIds; add sequenceOrder, defaultSlaDays, icon
-    await queryRunner.query(`
-      ALTER TABLE "issue_tracker_departments"
-        DROP COLUMN IF EXISTS "projectId",
-        DROP COLUMN IF EXISTS "memberUserIds",
-        ADD COLUMN IF NOT EXISTS "sequenceOrder" integer NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "defaultSlaDays" integer,
-        ADD COLUMN IF NOT EXISTS "icon" character varying(60)
-    `);
+    if (hasDepartments) {
+      await queryRunner.query(`
+        ALTER TABLE "issue_tracker_departments"
+          DROP COLUMN IF EXISTS "projectId",
+          DROP COLUMN IF EXISTS "memberUserIds",
+          ADD COLUMN IF NOT EXISTS "sequenceOrder" integer NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS "defaultSlaDays" integer,
+          ADD COLUMN IF NOT EXISTS "icon" character varying(60)
+      `);
+    }
 
     // ─── 2. Alter issue_tracker_issues: add priority, issueNumber, etc. ───────
-    await queryRunner.query(`
-      ALTER TABLE "issue_tracker_issues"
-        ADD COLUMN IF NOT EXISTS "issueNumber" character varying(20),
-        ADD COLUMN IF NOT EXISTS "priority" character varying(20) NOT NULL DEFAULT 'MEDIUM',
-        ADD COLUMN IF NOT EXISTS "customFlowDepartmentIds" jsonb,
-        ADD COLUMN IF NOT EXISTS "attachmentCount" integer NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "commentCount" integer NOT NULL DEFAULT 0
-    `);
+    if (hasIssues) {
+      await queryRunner.query(`
+        ALTER TABLE "issue_tracker_issues"
+          ADD COLUMN IF NOT EXISTS "issueNumber" character varying(20),
+          ADD COLUMN IF NOT EXISTS "priority" character varying(20) NOT NULL DEFAULT 'MEDIUM',
+          ADD COLUMN IF NOT EXISTS "customFlowDepartmentIds" jsonb,
+          ADD COLUMN IF NOT EXISTS "attachmentCount" integer NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS "commentCount" integer NOT NULL DEFAULT 0
+      `);
+    }
 
     // ─── 3. Alter issue_tracker_steps: add coordinator close + commitment history ──
-    await queryRunner.query(`
-      ALTER TABLE "issue_tracker_steps"
-        ADD COLUMN IF NOT EXISTS "slaDays" integer,
-        ADD COLUMN IF NOT EXISTS "committedDateHistory" jsonb,
-        ADD COLUMN IF NOT EXISTS "coordinatorRemarks" text,
-        ADD COLUMN IF NOT EXISTS "coordinatorClosedAt" TIMESTAMP WITH TIME ZONE,
-        ADD COLUMN IF NOT EXISTS "coordinatorClosedById" integer,
-        ADD COLUMN IF NOT EXISTS "memberRespondedAt" TIMESTAMP WITH TIME ZONE
-    `);
+    if (hasSteps) {
+      await queryRunner.query(`
+        ALTER TABLE "issue_tracker_steps"
+          ADD COLUMN IF NOT EXISTS "slaDays" integer,
+          ADD COLUMN IF NOT EXISTS "committedDateHistory" jsonb,
+          ADD COLUMN IF NOT EXISTS "coordinatorRemarks" text,
+          ADD COLUMN IF NOT EXISTS "coordinatorClosedAt" TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS "coordinatorClosedById" integer,
+          ADD COLUMN IF NOT EXISTS "memberRespondedAt" TIMESTAMP WITH TIME ZONE
+      `);
+    }
 
     // ─── 4. Create issue_tracker_dept_project_config ──────────────────────────
     await queryRunner.query(`
@@ -122,34 +131,40 @@ export class EnhanceIssueTrackerV21711000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "issue_tracker_dept_project_config"`);
 
     // Revert issue_tracker_steps
-    await queryRunner.query(`
-      ALTER TABLE "issue_tracker_steps"
-        DROP COLUMN IF EXISTS "slaDays",
-        DROP COLUMN IF EXISTS "committedDateHistory",
-        DROP COLUMN IF EXISTS "coordinatorRemarks",
-        DROP COLUMN IF EXISTS "coordinatorClosedAt",
-        DROP COLUMN IF EXISTS "coordinatorClosedById",
-        DROP COLUMN IF EXISTS "memberRespondedAt"
-    `);
+    if (await queryRunner.hasTable('issue_tracker_steps')) {
+      await queryRunner.query(`
+        ALTER TABLE "issue_tracker_steps"
+          DROP COLUMN IF EXISTS "slaDays",
+          DROP COLUMN IF EXISTS "committedDateHistory",
+          DROP COLUMN IF EXISTS "coordinatorRemarks",
+          DROP COLUMN IF EXISTS "coordinatorClosedAt",
+          DROP COLUMN IF EXISTS "coordinatorClosedById",
+          DROP COLUMN IF EXISTS "memberRespondedAt"
+      `);
+    }
 
     // Revert issue_tracker_issues
-    await queryRunner.query(`
-      ALTER TABLE "issue_tracker_issues"
-        DROP COLUMN IF EXISTS "issueNumber",
-        DROP COLUMN IF EXISTS "priority",
-        DROP COLUMN IF EXISTS "customFlowDepartmentIds",
-        DROP COLUMN IF EXISTS "attachmentCount",
-        DROP COLUMN IF EXISTS "commentCount"
-    `);
+    if (await queryRunner.hasTable('issue_tracker_issues')) {
+      await queryRunner.query(`
+        ALTER TABLE "issue_tracker_issues"
+          DROP COLUMN IF EXISTS "issueNumber",
+          DROP COLUMN IF EXISTS "priority",
+          DROP COLUMN IF EXISTS "customFlowDepartmentIds",
+          DROP COLUMN IF EXISTS "attachmentCount",
+          DROP COLUMN IF EXISTS "commentCount"
+      `);
+    }
 
     // Revert issue_tracker_departments (restore old columns)
-    await queryRunner.query(`
-      ALTER TABLE "issue_tracker_departments"
-        ADD COLUMN IF NOT EXISTS "projectId" integer NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS "memberUserIds" jsonb,
-        DROP COLUMN IF EXISTS "sequenceOrder",
-        DROP COLUMN IF EXISTS "defaultSlaDays",
-        DROP COLUMN IF EXISTS "icon"
-    `);
+    if (await queryRunner.hasTable('issue_tracker_departments')) {
+      await queryRunner.query(`
+        ALTER TABLE "issue_tracker_departments"
+          ADD COLUMN IF NOT EXISTS "projectId" integer NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS "memberUserIds" jsonb,
+          DROP COLUMN IF EXISTS "sequenceOrder",
+          DROP COLUMN IF EXISTS "defaultSlaDays",
+          DROP COLUMN IF EXISTS "icon"
+      `);
+    }
   }
 }

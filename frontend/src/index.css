@@ -942,6 +942,38 @@ table td[class*="sticky"] {
   animation: uiFadeUp 320ms ease-out backwards;
 }
 
+.fullscreen-themed:fullscreen,
+.fullscreen-themed:-webkit-full-screen {
+  background-color: var(--color-surface-base) !important;
+  background-image: none !important;
+  color: var(--color-text-primary) !important;
+}
+
+.fullscreen-themed[data-fullscreen-scheme="light"]:fullscreen,
+.fullscreen-themed[data-fullscreen-scheme="light"]:-webkit-full-screen {
+  color-scheme: light;
+}
+
+.fullscreen-themed[data-fullscreen-scheme="dark"]:fullscreen,
+.fullscreen-themed[data-fullscreen-scheme="dark"]:-webkit-full-screen {
+  color-scheme: dark;
+}
+
+.fullscreen-themed:fullscreen :where(.bg-surface-base),
+.fullscreen-themed:-webkit-full-screen :where(.bg-surface-base) {
+  background-color: var(--color-surface-base) !important;
+}
+
+.fullscreen-themed:fullscreen :where(.bg-surface-card),
+.fullscreen-themed:-webkit-full-screen :where(.bg-surface-card) {
+  background-color: var(--color-surface-card) !important;
+}
+
+.fullscreen-themed:fullscreen :where(.bg-surface-raised),
+.fullscreen-themed:-webkit-full-screen :where(.bg-surface-raised) {
+  background-color: var(--color-surface-raised) !important;
+}
+
 .ui-animate-card {
   animation: uiScaleIn 260ms ease-out backwards;
 }

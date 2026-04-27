@@ -497,6 +497,12 @@ class ApiEndpoints {
   /// this specific device.
   static const String fcmToken = '/users/fcm-token';
 
+  /// DELETE /users/fcm-token — Clear device FCM token on logout
+  static const String clearFcmToken = '/users/fcm-token';
+
+  /// GET /app/config?platform=android — App version config (no auth required)
+  static String appConfig(String platform) => '/app/config?platform=$platform';
+
   // ==================== LABOR ENDPOINTS ====================
 
   /// GET /labor/categories?projectId=X

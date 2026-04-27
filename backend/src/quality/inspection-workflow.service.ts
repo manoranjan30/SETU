@@ -200,6 +200,29 @@ export class InspectionWorkflowService {
     );
   }
 
+  private async getHighestEligibleStepAtOrAboveCurrent(
+    inspection: QualityInspection,
+    run: InspectionWorkflowRun,
+    userId: number,
+    isAdmin: boolean,
+  ) {
+    const sortedSteps = [...(run.steps || [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    const currentOrder = run.currentStepOrder || sortedSteps[0]?.stepOrder || 1;
+    const candidates = sortedSteps.filter((step) => step.stepOrder >= currentOrder);
+    const eligible: InspectionWorkflowStep[] = [];
+
+    for (const step of candidates) {
+      try {
+        await this.assertUserCanApproveStep(inspection, step, userId, isAdmin);
+        eligible.push(step);
+      } catch {
+        // not eligible for this level
+      }
+    }
+
+    return eligible.length > 0 ? eligible[eligible.length - 1] : null;
+  }
+
   async assertUserCanApproveInspectionStep(
     inspectionId: number,
     userId: number,
@@ -231,7 +254,19 @@ export class InspectionWorkflowService {
     }
 
     const targetOrder = stepOrder ?? run.currentStepOrder;
-    const targetStep = run.steps.find((step) => step.stepOrder === targetOrder);
+    let targetStep = run.steps.find((step) => step.stepOrder === targetOrder);
+
+    if (!stepOrder) {
+      const highestEligibleStep = await this.getHighestEligibleStepAtOrAboveCurrent(
+        run.inspection,
+        run,
+        userId,
+        isAdmin,
+      );
+      if (highestEligibleStep) {
+        targetStep = highestEligibleStep;
+      }
+    }
 
     if (!targetStep) {
       throw new NotFoundException('Workflow step not found');
@@ -466,21 +501,31 @@ export class InspectionWorkflowService {
       );
     }
 
-    const currentStep = run.steps.find(
+    const sortedSteps = [...(run.steps || [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    const currentStep = sortedSteps.find(
       (step) => step.stepOrder === run.currentStepOrder,
     );
     if (!currentStep) {
       throw new NotFoundException('Current workflow step not found');
     }
 
+    const effectiveStep =
+      (await this.getHighestEligibleStepAtOrAboveCurrent(
+        inspection,
+        run,
+        userId,
+        isAdmin,
+      )) || currentStep;
+
     if (
-      currentStep.status !== WorkflowStepStatus.PENDING &&
-      currentStep.status !== WorkflowStepStatus.IN_PROGRESS
+      effectiveStep.status !== WorkflowStepStatus.PENDING &&
+      effectiveStep.status !== WorkflowStepStatus.IN_PROGRESS &&
+      effectiveStep.status !== WorkflowStepStatus.WAITING
     ) {
       throw new BadRequestException('This workflow step is not open for approval');
     }
 
-    await this.assertUserCanApproveStep(inspection, currentStep, userId, isAdmin);
+    await this.assertUserCanApproveStep(inspection, effectiveStep, userId, isAdmin);
 
     let effectiveSignatureId = signatureId;
     const now = new Date();
@@ -495,7 +540,7 @@ export class InspectionWorkflowService {
 
     const existingApprovals = await this.signatureRepo.count({
       where: {
-        workflowStepId: currentStep.id,
+        workflowStepId: effectiveStep.id,
         signedByUserId: userId,
         isReversed: false,
       } as any,
@@ -510,16 +555,16 @@ export class InspectionWorkflowService {
       const signatureHash = this.generateSignatureHash(signatureData, userId, now);
       const sig = this.signatureRepo.create({
         inspectionId,
-        workflowStepId: currentStep.id,
+        workflowStepId: effectiveStep.id,
         userId,
         signedByUserId: userId,
         actionType: 'FINAL_APPROVE',
-        role: actor?.primaryRoleLabel || currentStep.stepName || 'Approver',
+        role: actor?.primaryRoleLabel || effectiveStep.stepName || 'Approver',
         signedBy: signedByName,
         signerDisplayName: actor?.displayName || signedByName,
         signerCompany: actor?.companyLabel || 'Internal Team',
         signerRoleLabel:
-          actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || currentStep.stepName,
+          actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || effectiveStep.stepName,
         sourceType: actor?.sourceType || 'PERMANENT',
         signatureData,
         lockHash: signatureHash,
@@ -531,38 +576,104 @@ export class InspectionWorkflowService {
       effectiveSignatureId = savedSig.id;
     }
 
-    currentStep.status = WorkflowStepStatus.COMPLETED;
-    currentStep.signatureId =
-      effectiveSignatureId && effectiveSignatureId > 0 ? effectiveSignatureId : null;
-    currentStep.signedBy = signedByName;
-    currentStep.signerDisplayName = actor?.displayName || signedByName;
-    currentStep.signerCompany = actor?.companyLabel || 'Internal Team';
-    currentStep.signerRole =
-      actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || currentStep.stepName;
-    const approvedUserIds = Array.from(
-      new Set([...(currentStep.approvedUserIds || []), userId]),
+    const inheritedSteps = sortedSteps.filter(
+      (step) =>
+        step.stepOrder >= currentStep.stepOrder &&
+        step.stepOrder < effectiveStep.stepOrder &&
+        step.status !== WorkflowStepStatus.COMPLETED,
     );
-    currentStep.approvedUserIds = approvedUserIds;
-    currentStep.currentApprovalCount = approvedUserIds.length;
-    currentStep.comments = comments || currentStep.comments || '';
 
-    const requiredApprovals = Math.max(1, currentStep.minApprovalsRequired || 1);
-    const stepSatisfied = currentStep.currentApprovalCount >= requiredApprovals;
+    if (inheritedSteps.length > 0) {
+      const inheritedSignatureData =
+        signatureData ||
+        `auto-inherited-workflow-approval:${inspectionId}:${effectiveStep.stepOrder}:${userId}:${now.toISOString()}`;
+      const inheritedSignatureHash = this.generateSignatureHash(
+        inheritedSignatureData,
+        userId,
+        now,
+      );
+      const inheritedSignatures = await this.signatureRepo.save(
+        inheritedSteps.map((step) =>
+          this.signatureRepo.create({
+            inspectionId,
+            workflowStepId: step.id,
+            approvalLevelOrder: step.stepOrder,
+            approvalLevelName: step.stepName || `Level ${step.stepOrder}`,
+            approvalAssignedUserId: step.assignedUserId ?? null,
+            approvalAssignedRoleId: step.assignedRoleId ?? null,
+            isAutoInherited: true,
+            inheritedFromStepOrder: effectiveStep.stepOrder,
+            userId,
+            signedByUserId: userId,
+            actionType: 'FINAL_APPROVE',
+            role: actor?.primaryRoleLabel || effectiveStep.stepName || 'Approver',
+            signedBy: signedByName,
+            signerDisplayName: actor?.displayName || signedByName,
+            signerCompany: actor?.companyLabel || 'Internal Team',
+            signerRoleLabel:
+              actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || effectiveStep.stepName,
+            sourceType: actor?.sourceType || 'PERMANENT',
+            signatureData: inheritedSignatureData,
+            lockHash: inheritedSignatureHash,
+            metadata: { timestamp: now, autoInherited: true } as any,
+          }),
+        ),
+      );
+
+      inheritedSteps.forEach((step, index) => {
+        const inheritedSignature = inheritedSignatures[index];
+        step.status = WorkflowStepStatus.COMPLETED;
+        step.signatureId = inheritedSignature?.id || null;
+        step.signedBy = signedByName;
+        step.signerDisplayName = actor?.displayName || signedByName;
+        step.signerCompany = actor?.companyLabel || 'Internal Team';
+        step.signerRole =
+          actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || step.stepName;
+        step.approvedUserIds = Array.from(
+          new Set([...(step.approvedUserIds || []), userId]),
+        );
+        step.currentApprovalCount = Math.max(1, step.minApprovalsRequired || 1);
+        step.comments =
+          comments ||
+          `Auto-approved by higher level ${effectiveStep.stepOrder}`;
+        step.completedAt = now;
+      });
+      await this.stepRepo.save(inheritedSteps);
+    }
+
+    effectiveStep.status = WorkflowStepStatus.COMPLETED;
+    effectiveStep.signatureId =
+      effectiveSignatureId && effectiveSignatureId > 0 ? effectiveSignatureId : null;
+    effectiveStep.signedBy = signedByName;
+    effectiveStep.signerDisplayName = actor?.displayName || signedByName;
+    effectiveStep.signerCompany = actor?.companyLabel || 'Internal Team';
+    effectiveStep.signerRole =
+      actor?.primaryRoleLabel || actor?.projectRoleNames?.[0] || effectiveStep.stepName;
+    const approvedUserIds = Array.from(
+      new Set([...(effectiveStep.approvedUserIds || []), userId]),
+    );
+    effectiveStep.approvedUserIds = approvedUserIds;
+    effectiveStep.currentApprovalCount = approvedUserIds.length;
+    effectiveStep.comments = comments || effectiveStep.comments || '';
+
+    const requiredApprovals = Math.max(1, effectiveStep.minApprovalsRequired || 1);
+    const stepSatisfied = effectiveStep.currentApprovalCount >= requiredApprovals;
 
     if (!stepSatisfied) {
-      currentStep.status = WorkflowStepStatus.IN_PROGRESS;
-      currentStep.completedAt = null;
-      await this.stepRepo.save(currentStep);
+      effectiveStep.status = WorkflowStepStatus.IN_PROGRESS;
+      effectiveStep.completedAt = null;
+      run.currentStepOrder = effectiveStep.stepOrder;
+      await this.stepRepo.save(effectiveStep);
       const savedRun = await this.runRepo.save(run);
       return { run: savedRun, isFinal: false };
     }
 
-    currentStep.status = WorkflowStepStatus.COMPLETED;
-    currentStep.completedAt = now;
-    await this.stepRepo.save(currentStep);
+    effectiveStep.status = WorkflowStepStatus.COMPLETED;
+    effectiveStep.completedAt = now;
+    await this.stepRepo.save(effectiveStep);
 
-    const nextStep = run.steps.find(
-      (step) => step.stepOrder === run.currentStepOrder + 1,
+    const nextStep = sortedSteps.find(
+      (step) => step.stepOrder === effectiveStep.stepOrder + 1,
     );
     let isFinal = false;
 

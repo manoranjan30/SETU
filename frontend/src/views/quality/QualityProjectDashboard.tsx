@@ -12,6 +12,8 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import api from "../../api/axios";
+import { useAuth } from "../../context/AuthContext";
+import { PermissionCode } from "../../config/permissions";
 import QualityOverview from "./subviews/QualityOverview";
 import QualityInspection from "./subviews/QualityInspection";
 import QualityMaterialTest from "./subviews/QualityMaterialTest";
@@ -31,41 +33,137 @@ import ActivityListsPage from "./ActivityListsPage";
 const QualityProjectDashboard = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [project, setProject] = useState<any>(null);
+  const [isLoadingProject, setIsLoadingProject] = useState(true);
+  const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     const fetchProject = async () => {
-      if (!projectId) return;
+      if (!projectId) {
+        setIsLoadingProject(false);
+        setProjectLoadError("Project id is missing.");
+        return;
+      }
       try {
+        setIsLoadingProject(true);
+        setProjectLoadError(null);
         const response = await api.get(`/eps/${projectId}`);
         setProject(response.data);
       } catch (error) {
         console.error(error);
+        setProject(null);
+        setProjectLoadError("Unable to load project details for Quality Control.");
+      } finally {
+        setIsLoadingProject(false);
       }
     };
     fetchProject();
   }, [projectId]);
 
-  if (!project) return null;
-
   const tabs = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard },
-    { id: "approval-board", label: "Approval Board", icon: ShieldCheck },
-    { id: "requests", label: "Quality Requests", icon: FileText },
-    { id: "approvals", label: "QA/QC Approvals", icon: ShieldCheck },
-    { id: "activities", label: "Activity Lists", icon: ClipboardCheck },
-    { id: "inspections", label: "Inspections", icon: ClipboardCheck },
-    { id: "materials", label: "Materials", icon: FlaskConical },
-    { id: "observation-ncr", label: "Site Observations", icon: Eye },
-    { id: "rating-config", label: "Rating Config", icon: ShieldCheck },
-    { id: "project-rating", label: "Project Rating", icon: LayoutDashboard },
-    { id: "checklists", label: "Checklists", icon: CheckSquare },
-    { id: "snags", label: "Snag List", icon: Hammer },
-    { id: "structure", label: "Structure", icon: LayoutDashboard },
-    { id: "audits", label: "Audits", icon: ShieldCheck },
-    { id: "documents", label: "Documents", icon: FileText },
+    {
+      id: "overview",
+      label: "Overview",
+      icon: LayoutDashboard,
+      visible: hasPermission(PermissionCode.QUALITY_DASHBOARD_READ),
+    },
+    {
+      id: "approval-board",
+      label: "Approval Board",
+      icon: ShieldCheck,
+      visible: hasPermission(PermissionCode.QUALITY_INSPECTION_READ),
+    },
+    {
+      id: "requests",
+      label: "Quality Requests",
+      icon: FileText,
+      visible: hasPermission(PermissionCode.QUALITY_INSPECTION_RAISE),
+    },
+    {
+      id: "approvals",
+      label: "QA/QC Approvals",
+      icon: ShieldCheck,
+      visible: hasPermission(PermissionCode.QUALITY_INSPECTION_READ),
+    },
+    {
+      id: "activities",
+      label: "Activity Lists",
+      icon: ClipboardCheck,
+      visible: hasPermission(PermissionCode.QUALITY_ACTIVITYLIST_READ),
+    },
+    {
+      id: "inspections",
+      label: "Inspections",
+      icon: ClipboardCheck,
+      visible: hasPermission(PermissionCode.QUALITY_INSPECTION_READ),
+    },
+    {
+      id: "materials",
+      label: "Materials",
+      icon: FlaskConical,
+      visible:
+        hasPermission(PermissionCode.QUALITY_MATERIAL_TEST_READ) ||
+        hasPermission(PermissionCode.QUALITY_TEST_READ),
+    },
+    {
+      id: "observation-ncr",
+      label: "Site Observations",
+      icon: Eye,
+      visible: hasPermission(PermissionCode.QUALITY_SITE_OBS_READ),
+    },
+    {
+      id: "rating-config",
+      label: "Rating Config",
+      icon: ShieldCheck,
+      visible: hasPermission(PermissionCode.QUALITY_DASHBOARD_READ),
+    },
+    {
+      id: "project-rating",
+      label: "Project Rating",
+      icon: LayoutDashboard,
+      visible: hasPermission(PermissionCode.QUALITY_DASHBOARD_READ),
+    },
+    {
+      id: "checklists",
+      label: "Checklists",
+      icon: CheckSquare,
+      visible: hasPermission(PermissionCode.QUALITY_CHECKLIST_READ),
+    },
+    {
+      id: "snags",
+      label: "Snag List",
+      icon: Hammer,
+      visible: hasPermission(PermissionCode.QUALITY_SNAG_READ),
+    },
+    {
+      id: "structure",
+      label: "Structure",
+      icon: LayoutDashboard,
+      visible: hasPermission(PermissionCode.QUALITY_STRUCTURE_MANAGE),
+    },
+    {
+      id: "audits",
+      label: "Audits",
+      icon: ShieldCheck,
+      visible: hasPermission(PermissionCode.QUALITY_AUDIT_READ),
+    },
+    {
+      id: "documents",
+      label: "Documents",
+      icon: FileText,
+      visible: hasPermission(PermissionCode.QUALITY_DOCUMENT_READ),
+    },
   ];
+  const visibleTabs = tabs.filter((tab) => tab.visible);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [activeTab, visibleTabs]);
 
   const renderActiveTab = () => {
     const numericProjectId = Number(projectId);
@@ -105,6 +203,72 @@ const QualityProjectDashboard = () => {
     }
   };
 
+  const fullScreenTabs = new Set([
+    "overview",
+    "approval-board",
+    "requests",
+    "approvals",
+    "activities",
+    "inspections",
+    "materials",
+    "observation-ncr",
+    "project-rating",
+    "checklists",
+    "snags",
+    "audits",
+    "documents",
+  ]);
+
+  if (isLoadingProject) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-base text-sm font-medium text-text-muted">
+        Loading Quality Control...
+      </div>
+    );
+  }
+
+  if (projectLoadError) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-base p-6">
+        <div className="max-w-md rounded-2xl border border-border-default bg-surface-card p-6 text-center shadow-sm">
+          <div className="text-lg font-semibold text-text-primary">
+            Quality Control is unavailable
+          </div>
+          <div className="mt-2 text-sm text-text-muted">{projectLoadError}</div>
+          <button
+            onClick={() => navigate("/dashboard/eps")}
+            className="mt-4 rounded-lg border border-border-default px-4 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised"
+          >
+            Back to Projects
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-base text-sm font-medium text-text-muted">
+        Project details are not available.
+      </div>
+    );
+  }
+
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface-base p-6">
+        <div className="max-w-md rounded-2xl border border-border-default bg-surface-card p-6 text-center shadow-sm">
+          <div className="text-lg font-semibold text-text-primary">
+            No Quality tabs available
+          </div>
+          <div className="mt-2 text-sm text-text-muted">
+            This user can open the Quality module route, but no Quality sections are currently visible for the assigned permissions.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ui-shell flex flex-col h-full ui-animate-page">
       {/* Header */}
@@ -123,7 +287,7 @@ const QualityProjectDashboard = () => {
         </div>
 
         <div className="ui-tab-rail overflow-x-auto no-scrollbar py-0.5">
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -139,7 +303,13 @@ const QualityProjectDashboard = () => {
       </div>
 
       {/* Content Area */}
-      <div className="ui-stagger flex-1 overflow-y-auto p-4">{renderActiveTab()}</div>
+      <div
+        className={`ui-stagger flex-1 overflow-y-auto ${
+          fullScreenTabs.has(activeTab) ? "p-0" : "p-4"
+        }`}
+      >
+        {renderActiveTab()}
+      </div>
     </div>
   );
 };

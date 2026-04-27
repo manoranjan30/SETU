@@ -14,6 +14,7 @@ export class CreatePluginSystemTables1711000000000
       const table = await queryRunner.getTable(tableName);
       return Boolean(table);
     };
+    const hasUserTable = await hasTable('user');
 
     await queryRunner.createTable(
       new Table({
@@ -152,12 +153,14 @@ export class CreatePluginSystemTables1711000000000
       onDelete: 'CASCADE',
     });
 
-    await this.ensureForeignKey(queryRunner, 'plugin_install', {
-      columnNames: ['installedById'],
-      referencedTableName: 'user',
-      referencedColumnNames: ['id'],
-      onDelete: 'SET NULL',
-    });
+    if (hasUserTable) {
+      await this.ensureForeignKey(queryRunner, 'plugin_install', {
+        columnNames: ['installedById'],
+        referencedTableName: 'user',
+        referencedColumnNames: ['id'],
+        onDelete: 'SET NULL',
+      });
+    }
 
     for (const table of [
       'plugin_permission',

@@ -1152,6 +1152,19 @@ class SetuApiClient {
     );
   }
 
+  /// Removes the FCM token from the backend so this device stops receiving
+  /// push notifications after the user logs out.
+  Future<void> clearFcmToken() async {
+    await _dio.delete(ApiEndpoints.clearFcmToken);
+  }
+
+  /// Fetches version metadata from the backend to decide if an update is needed.
+  /// Returns the raw JSON map — no auth required, called before/at login.
+  Future<Map<String, dynamic>> getAppConfig({String platform = 'android'}) async {
+    final response = await _dio.get(ApiEndpoints.appConfig(platform));
+    return response.data as Map<String, dynamic>;
+  }
+
   // ==================== DELTA SYNC ENDPOINTS ====================
 
   /// GET /sync/progress?projectId=X&since=ISO

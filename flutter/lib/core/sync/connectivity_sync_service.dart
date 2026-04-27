@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:setu_mobile/core/network/network_info.dart';
+import 'package:setu_mobile/core/sync/background_download_service.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 
 /// Connectivity-triggered auto-sync service.
@@ -33,6 +34,7 @@ import 'package:setu_mobile/core/sync/sync_service.dart';
 class ConnectivitySyncService extends ChangeNotifier {
   final NetworkInfo _networkInfo;
   final SyncService _syncService;
+  final BackgroundDownloadService _backgroundDownloadService;
   final Logger _logger = Logger();
 
   StreamSubscription<bool>? _connectivitySubscription;
@@ -80,8 +82,10 @@ class ConnectivitySyncService extends ChangeNotifier {
   ConnectivitySyncService({
     required NetworkInfo networkInfo,
     required SyncService syncService,
+    required BackgroundDownloadService backgroundDownloadService,
   })  : _networkInfo = networkInfo,
-        _syncService = syncService {
+        _syncService = syncService,
+        _backgroundDownloadService = backgroundDownloadService {
     _initialize();
   }
 
@@ -159,7 +163,15 @@ class ConnectivitySyncService extends ChangeNotifier {
         await syncNow();
       }
 
-      // 2. Fire onReconnected so BLoCs refresh their READ caches.
+      // 2. Pre-cache fresh server data for offline use (EPS tree, project list,
+      //    etc.) so the next time the device goes offline the data is not stale.
+      //    Use downloadIfStale (1 h threshold) — avoids hammering the server on
+      //    every brief network blip while still refreshing after a long outage.
+      _backgroundDownloadService.downloadIfStale().catchError(
+        (e) => _logger.w('Background pre-cache failed on reconnect: $e'),
+      );
+
+      // 3. Fire onReconnected so BLoCs refresh their READ caches.
       //    This ensures users never carry stale cached data — every screen
       //    re-fetches fresh data from the server after coming back online.
       if (!_reconnectedCtrl.isClosed) {

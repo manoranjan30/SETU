@@ -49,6 +49,9 @@ function resolveCommand(command) {
 
 function getMigrationScript() {
   if (process.env.DB_MIGRATION_SCRIPT) {
+    if (process.env.DB_MIGRATION_SCRIPT === 'migration:run:dist') {
+      return 'migration:run:dist:trace';
+    }
     return process.env.DB_MIGRATION_SCRIPT;
   }
 
@@ -57,7 +60,7 @@ function getMigrationScript() {
     return 'migration:run';
   }
 
-  return 'migration:run:dist';
+  return 'migration:run:dist:trace';
 }
 
 function getSchemaSyncCommand() {

@@ -4,6 +4,7 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dart';
+import 'package:setu_mobile/shared/widgets/sync_status_banner.dart';
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart'
     as widgets;
 
@@ -145,6 +146,7 @@ class _EhsIncidentsPageState extends State<EhsIncidentsPage> {
               state is EhsIncidentLoaded && state.fromCache;
           return Column(
             children: [
+              const SyncStatusBanner(),
               if (fromCache) const OfflineBanner(),
               Expanded(
                 child: RefreshIndicator(

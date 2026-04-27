@@ -35,8 +35,8 @@ export class Permission {
   @Column()
   moduleName: string; // e.g., EPS, AUTH
 
-  @Column({ nullable: true })
-  entityName: string; // e.g., NODE, USER
+  @Column({ type: 'varchar', nullable: true })
+  entityName: string | null; // e.g., NODE, USER
 
   @Column({
     type: 'enum',
@@ -52,8 +52,8 @@ export class Permission {
   })
   scopeLevel: PermissionScope;
 
-  @Column({ nullable: true })
-  description: string;
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
   @Column({ default: true })
   isSystem: boolean; // Cannot be deleted manually

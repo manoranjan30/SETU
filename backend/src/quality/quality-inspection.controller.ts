@@ -40,8 +40,15 @@ export class QualityInspectionController {
     @Query('epsNodeId', new ParseIntPipe({ optional: true }))
     epsNodeId?: number,
     @Query('listId', new ParseIntPipe({ optional: true })) listId?: number,
+    @Request() req?,
   ) {
-    return this.service.getInspections(projectId, epsNodeId, listId);
+    return this.service.getInspections(
+      projectId,
+      epsNodeId,
+      listId,
+      req?.user?.userId || req?.user?.id,
+      req?.user?.role === 'Admin' || req?.user?.roles?.includes('Admin'),
+    );
   }
 
   @Get('active-vendors')
@@ -84,8 +91,12 @@ export class QualityInspectionController {
 
   @Get(':id')
   @Permissions('QUALITY.INSPECTION.READ')
-  getInspectionDetails(@Param('id', ParseIntPipe) id: number) {
-    return this.service.getInspectionDetails(id);
+  getInspectionDetails(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.service.getInspectionDetails(
+      id,
+      req?.user?.userId || req?.user?.id,
+      req?.user?.role === 'Admin' || req?.user?.roles?.includes('Admin'),
+    );
   }
 
   @Get(':id/report')

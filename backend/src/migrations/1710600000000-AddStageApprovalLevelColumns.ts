@@ -6,6 +6,10 @@ export class AddStageApprovalLevelColumns1710600000000
   name = 'AddStageApprovalLevelColumns1710600000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('quality_signatures'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE quality_signatures
       ADD COLUMN IF NOT EXISTS "approvalLevelOrder" integer
@@ -38,6 +42,10 @@ export class AddStageApprovalLevelColumns1710600000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('quality_signatures'))) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE quality_signatures
       DROP COLUMN IF EXISTS "inheritedFromStepOrder"

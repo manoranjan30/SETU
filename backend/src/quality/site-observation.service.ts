@@ -132,10 +132,10 @@ export class SiteObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    if (
-      dto.severity === SiteObservationSeverity.CRITICAL ||
-      dto.severity === SiteObservationSeverity.MAJOR
-    ) {
+    // Notify all project team members with QUALITY.OBSERVATION.RESOLVE
+    // permission for every severity — checkers and closers need to be
+    // aware of all observations, not just CRITICAL/MAJOR.
+    {
       const notification =
         await this.notificationComposer.composeObservationRaised({
           moduleLabel: 'Quality',
@@ -205,6 +205,7 @@ export class SiteObservationService {
           category: obs.category,
           subjectLabel: obs.category || 'Site observation',
           statusLabel: 'Quality Observation Rectified',
+          notificationType: 'OBS_RECTIFIED',
         });
 
       this.pushService
@@ -273,6 +274,7 @@ export class SiteObservationService {
           category: obs.category,
           subjectLabel: obs.category || 'Site observation',
           statusLabel: 'Quality Observation Closed',
+          notificationType: 'OBS_CLOSED',
         });
 
       this.pushService

@@ -22,6 +22,15 @@ export class RefactorExecutionProgressStorage1769500000000
   name = 'RefactorExecutionProgressStorage1769500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasWorkOrderItems = await queryRunner.hasTable('work_order_items');
+    const hasWoActivityPlan = await queryRunner.hasTable('wo_activity_plan');
+    const hasEpsNode = await queryRunner.hasTable('eps_node');
+    const hasMeasurementProgress = await queryRunner.hasTable('measurement_progress');
+    const hasMeasurementElement = await queryRunner.hasTable('measurement_element');
+    const hasQuantityProgressRecord = await queryRunner.hasTable(
+      'quantity_progress_record',
+    );
+
     await queryRunner.query(`
       DO $$
       BEGIN
@@ -35,6 +44,10 @@ export class RefactorExecutionProgressStorage1769500000000
       END
       $$;
     `);
+
+    if (!hasWorkOrderItems) {
+      return;
+    }
 
     await queryRunner.query(`
       ALTER TABLE "work_order_items"
@@ -103,27 +116,31 @@ export class RefactorExecutionProgressStorage1769500000000
         )
     `);
 
-    await queryRunner.query(`
-      ALTER TABLE "wo_activity_plan"
-      ADD COLUMN IF NOT EXISTS "execution_eps_node_id" integer
-    `);
-    await queryRunner.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM information_schema.table_constraints
-          WHERE constraint_name = 'FK_wo_activity_plan_execution_eps_node'
-            AND table_name = 'wo_activity_plan'
-        ) THEN
-          ALTER TABLE "wo_activity_plan"
-          ADD CONSTRAINT "FK_wo_activity_plan_execution_eps_node"
-          FOREIGN KEY ("execution_eps_node_id") REFERENCES "eps_node"("id")
-          ON DELETE SET NULL ON UPDATE NO ACTION;
-        END IF;
-      END
-      $$;
-    `);
+    if (hasWoActivityPlan) {
+      await queryRunner.query(`
+        ALTER TABLE "wo_activity_plan"
+        ADD COLUMN IF NOT EXISTS "execution_eps_node_id" integer
+      `);
+      if (hasEpsNode) {
+        await queryRunner.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1
+              FROM information_schema.table_constraints
+              WHERE constraint_name = 'FK_wo_activity_plan_execution_eps_node'
+                AND table_name = 'wo_activity_plan'
+            ) THEN
+              ALTER TABLE "wo_activity_plan"
+              ADD CONSTRAINT "FK_wo_activity_plan_execution_eps_node"
+              FOREIGN KEY ("execution_eps_node_id") REFERENCES "eps_node"("id")
+              ON DELETE SET NULL ON UPDATE NO ACTION;
+            END IF;
+          END
+          $$;
+        `);
+      }
+    }
 
     await queryRunner.query(`
       DO $$
@@ -316,8 +333,12 @@ export class RefactorExecutionProgressStorage1769500000000
       $$;
     `);
 
-    await this.backfillExecutionScopes(queryRunner);
-    await this.backfillExecutionEntries(queryRunner);
+    if (hasWoActivityPlan && hasEpsNode && hasMeasurementElement) {
+      await this.backfillExecutionScopes(queryRunner);
+    }
+    if (hasMeasurementProgress && hasMeasurementElement && hasQuantityProgressRecord) {
+      await this.backfillExecutionEntries(queryRunner);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

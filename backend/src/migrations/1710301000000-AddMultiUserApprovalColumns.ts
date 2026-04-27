@@ -6,6 +6,14 @@ export class AddMultiUserApprovalColumns1710301000000
   name = 'AddMultiUserApprovalColumns1710301000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const hasReleaseStrategySteps = await queryRunner.hasTable(
+      'release_strategy_steps',
+    );
+    const hasInspectionWorkflowSteps = await queryRunner.hasTable(
+      'inspection_workflow_steps',
+    );
+
+    if (hasReleaseStrategySteps) {
     await queryRunner.query(`
       ALTER TABLE release_strategy_steps
       ADD COLUMN IF NOT EXISTS "userIds" JSONB
@@ -20,7 +28,9 @@ export class AddMultiUserApprovalColumns1710301000000
       END
       WHERE "userIds" IS NULL
     `);
+    }
 
+    if (hasInspectionWorkflowSteps) {
     await queryRunner.query(`
       ALTER TABLE inspection_workflow_steps
       ADD COLUMN IF NOT EXISTS "assignedUserIds" JSONB
@@ -35,17 +45,22 @@ export class AddMultiUserApprovalColumns1710301000000
       END
       WHERE "assignedUserIds" IS NULL
     `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (await queryRunner.hasTable('inspection_workflow_steps')) {
     await queryRunner.query(`
       ALTER TABLE inspection_workflow_steps
       DROP COLUMN IF EXISTS "assignedUserIds"
     `);
+    }
 
+    if (await queryRunner.hasTable('release_strategy_steps')) {
     await queryRunner.query(`
       ALTER TABLE release_strategy_steps
       DROP COLUMN IF EXISTS "userIds"
     `);
+    }
   }
 }

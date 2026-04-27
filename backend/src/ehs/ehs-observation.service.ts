@@ -133,6 +133,9 @@ export class EhsObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
+    // Notify all project team members with EHS.OBSERVATION.CLOSE permission
+    // for CRITICAL and MAJOR observations — minor/info EHS observations do
+    // not warrant immediate push notifications.
     if (
       dto.severity === EhsObservationSeverity.CRITICAL ||
       dto.severity === EhsObservationSeverity.MAJOR
@@ -206,6 +209,7 @@ export class EhsObservationService {
           category: obs.category,
           subjectLabel: obs.category || 'EHS observation',
           statusLabel: 'EHS Observation Rectified',
+          notificationType: 'EHS_OBS_RECTIFIED',
         });
 
       this.pushService
@@ -274,6 +278,7 @@ export class EhsObservationService {
           category: obs.category,
           subjectLabel: obs.category || 'EHS observation',
           statusLabel: 'EHS Observation Closed',
+          notificationType: 'EHS_OBS_CLOSED',
         });
 
       this.pushService

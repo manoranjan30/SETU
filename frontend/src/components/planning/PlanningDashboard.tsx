@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   Calendar,
   Table,
@@ -35,47 +36,56 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       key: "schedule",
       icon: <Calendar size={18} />,
       label: "Master Schedule",
+      permission: PermissionCode.SCHEDULE_READ,
     },
     {
       key: "micro_schedule",
       icon: <ListChecks size={18} />,
       label: "Micro Schedule",
+      permission: PermissionCode.MICRO_SCHEDULE_READ,
     },
     {
       key: "matrix",
       icon: <Layers size={18} />,
       label: "Schedule Mapper",
+      permission: PermissionCode.PLANNING_MATRIX_READ,
     },
     {
       key: "mapper",
       icon: <Split size={18} />,
       label: "WO Qty Mapper",
+      permission: PermissionCode.WORKORDER_MAPPING_READ,
     },
     {
       key: "contracts",
       icon: <FileText size={18} />,
       label: "Contracts (WO)",
+      permission: PermissionCode.WORKORDER_ORDER_READ,
     },
     {
       key: "schedules", // New Item
       icon: <Layers size={18} />,
       label: "Working Schedules",
+      permission: PermissionCode.SCHEDULE_VERSION_READ,
     },
 
     {
       key: "lookahead",
       icon: <Table size={18} />,
       label: "Lookahead Plan",
+      permission: PermissionCode.PLANNING_LOOKAHEAD_CREATE,
     },
     {
       key: "recovery",
       icon: <CheckSquare size={18} />,
       label: "Recovery Plans",
+      permission: PermissionCode.PLANNING_RECOVERY_MANAGE,
     },
     {
       key: "temp_users",
       icon: <Users size={18} />,
       label: "Vendor Users",
+      permission: PermissionCode.TEMP_USER_VIEW,
     },
     {
       key: "release_strategy",
@@ -105,17 +115,25 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       key: "cost",
       icon: <TrendingUp size={18} />,
       label: "Cost & Cashflow",
+      permission: PermissionCode.BOQ_READ,
     },
     {
       key: "budget",
       icon: <Wallet size={18} />,
       label: "Budget",
+      permission: PermissionCode.PLANNING_BUDGET_READ,
     },
   ];
 
   const visibleMenuItems = menuItems.filter(
     (item: any) => !item.permission || hasPermission(item.permission),
   );
+
+  useEffect(() => {
+    if (!visibleMenuItems.some((item) => item.key === currentView) && visibleMenuItems[0]) {
+      onViewChange(visibleMenuItems[0].key);
+    }
+  }, [currentView, onViewChange, visibleMenuItems]);
 
   return (
     <div className="ui-shell flex h-screen overflow-hidden ui-animate-page">
@@ -159,6 +177,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "schedules",
           "gantt_version",
           "lookahead",
+          "release_strategy",
           "cost",
           "budget",
         ].includes(currentView) ? (

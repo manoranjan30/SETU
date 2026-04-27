@@ -6,6 +6,13 @@ export class LinkActivityObservationsToStages1710700000000
   name = 'LinkActivityObservationsToStages1710700000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    if (
+      !(await queryRunner.hasTable('activity_observations')) ||
+      !(await queryRunner.hasTable('quality_inspection_stages'))
+    ) {
+      return;
+    }
+
     await queryRunner.query(`
       ALTER TABLE activity_observations
       ADD COLUMN IF NOT EXISTS "stageId" integer
@@ -36,6 +43,10 @@ export class LinkActivityObservationsToStages1710700000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await queryRunner.hasTable('activity_observations'))) {
+      return;
+    }
+
     await queryRunner.query(`
       DROP INDEX IF EXISTS "IDX_activity_observations_stageId"
     `);

@@ -56,18 +56,26 @@ class PendingDeepLink {
       // Quality inspection (RFI) workflow events — all land on the
       // approvals page because the user either needs to act or review.
       case 'PENDING_APPROVAL':
+      case 'STAGE_LEVEL_PENDING':
       case 'RFI_RAISED':
       case 'INSPECTION_APPROVED':
       case 'APPROVED':
+      case 'RFI_APPROVED':
+      case 'RFI_FULLY_APPROVED':
+      case 'STAGE_APPROVED':
       case 'INSPECTION_REJECTED':
       case 'REJECTED':
+      case 'RFI_WORKFLOW_REJECTED':
+      case 'RFI_APPROVAL_REVERSED':
       case 'WORKFLOW_STEP_ASSIGNED':
       case 'WORKFLOW_DELEGATED':
       case 'WORKFLOW_REVERSED':
         return 'quality_approvals';
 
-      // Progress entry submitted for approval
+      // Progress entry submitted for approval / decision sent back to submitter
       case 'PROGRESS_SUBMITTED':
+      case 'PROGRESS_APPROVED':
+      case 'PROGRESS_REJECTED':
         return 'progress_approvals';
 
       default:

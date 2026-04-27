@@ -1,6 +1,12 @@
 import 'reflect-metadata';
-import { DataSource } from 'typeorm';
+import { DataSource, type LoggerOptions } from 'typeorm';
 import { join } from 'path';
+
+const logging =
+  ((process.env.TYPEORM_LOGGING?.split(',')
+    .map((value) => value.trim())
+    .filter(Boolean) as LoggerOptions) ??
+    (['error', 'warn', 'schema', 'migration'] as LoggerOptions));
 
 export default new DataSource({
   type: 'postgres',
@@ -11,5 +17,6 @@ export default new DataSource({
   database: process.env.DATABASE_NAME || 'setu_db',
   entities: [join(__dirname, '**', '*.entity.{ts,js}')],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
+  logging,
   synchronize: false,
 });
