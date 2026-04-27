@@ -63,6 +63,7 @@ export interface CreateInspectionDto {
   vendorId?: number;
   vendorName?: string;
   drawingNo: string;
+  elementName?: string;
   goNo?: number;
   goLabel?: string;
   contractorName?: string;
@@ -75,6 +76,15 @@ export interface UpdateInspectionStatusDto {
   comments?: string;
   inspectedBy?: string;
   inspectionDate?: string;
+}
+
+export interface ExpandGoSeriesDto {
+  projectId: number;
+  epsNodeId: number;
+  activityId: number;
+  newTotalParts: number;
+  qualityUnitId?: number;
+  qualityRoomId?: number;
 }
 
 @Injectable()
@@ -317,32 +327,18 @@ export class QualityInspectionService {
     viewerUserId?: number,
     viewerIsAdmin: boolean = false,
   ) {
-    const inspection = await this.inspectionRepo.findOne({
-      where: { id },
-      relations: [
-        'activity',
-        'stages',
-        'stages.stageTemplate',
-        'stages.items',
-        'stages.items.itemTemplate',
-        'stages.signatures',
-      ],
-      order: {
-        stages: {
-          stageTemplate: { sequence: 'ASC' },
-          items: { itemTemplate: { sequence: 'ASC' } },
-        },
-      },
-    });
+    const inspection = await this.loadInspectionWithDetails(id);
     if (!inspection) throw new NotFoundException('Inspection not found');
+    const hydratedInspection =
+      await this.materializeInspectionStagesIfMissing(inspection);
     // Normalize photo arrays on all checklist items (fixes old absolute URLs)
-    for (const stage of inspection.stages ?? []) {
+    for (const stage of hydratedInspection.stages ?? []) {
       for (const item of stage.items ?? []) {
         item.photos = toRelativePaths(item.photos);
       }
     }
     const [withWorkflow] = await this.attachWorkflowSummary(
-      [inspection],
+      [hydratedInspection],
       viewerUserId,
       viewerIsAdmin,
     );
@@ -519,6 +515,14 @@ export class QualityInspectionService {
         'Drawing number is required while raising RFI.',
       );
     }
+    if (
+      (activity.requiresPourCard || activity.requiresPourClearanceCard) &&
+      !dto.elementName?.trim()
+    ) {
+      throw new BadRequestException(
+        'Elements is required while raising RFI for activities that require pour cards.',
+      );
+    }
 
     const applicability =
       activity.applicabilityLevel || QualityApplicabilityLevel.FLOOR;
@@ -557,6 +561,13 @@ export class QualityInspectionService {
       }
     }
 
+    const floorScope = await this.resolveFloorVisibilityScope(epsNode);
+    if (!this.isActivityVisibleForFloorScope(activity.floorVisibility, floorScope)) {
+      throw new BadRequestException(
+        'This activity is not configured to be visible for the selected floor.',
+      );
+    }
+
     // 2. Check if there is already a PENDING inspection for this activity at this location
     const existingWhere: any = {
       activityId: dto.activityId,
@@ -574,6 +585,13 @@ export class QualityInspectionService {
       where: existingWhere,
     });
 
+    const effectiveChecklistIds =
+      activity.assignedChecklistIds && activity.assignedChecklistIds.length > 0
+        ? activity.assignedChecklistIds
+        : activity.checklistTemplateId
+          ? [activity.checklistTemplateId]
+          : [];
+
     if (existingPending) {
       throw new BadRequestException(
         'A pending inspection request already exists for this activity at this location.',
@@ -581,10 +599,7 @@ export class QualityInspectionService {
     }
 
     // 3. CHECKLIST VERIFICATION (mandatory before RFI)
-    if (
-      !activity.assignedChecklistIds ||
-      activity.assignedChecklistIds.length === 0
-    ) {
+    if (effectiveChecklistIds.length === 0) {
       throw new BadRequestException(
         'At least one checklist must be assigned to the activity before raising an RFI.',
       );
@@ -595,6 +610,7 @@ export class QualityInspectionService {
       const allowed = await this.checkPredecessor(
         activity.previousActivityId,
         dto.epsNodeId,
+        floorScope,
       );
 
       if (!allowed.approved && !activity.allowBreak) {
@@ -662,6 +678,7 @@ export class QualityInspectionService {
       vendorId: finalVendorId,
       vendorName: finalVendorName,
       drawingNo: dto.drawingNo.trim(),
+      elementName: dto.elementName?.trim() || null,
       contractorName: dto.contractorName ?? finalVendorName,
       processCode,
       documentType,
@@ -673,12 +690,9 @@ export class QualityInspectionService {
     const savedInspection = await this.inspectionRepo.save(inspection);
 
     // 7. Initialize Stages from ALL assigned checklists
-    if (
-      activity.assignedChecklistIds &&
-      activity.assignedChecklistIds.length > 0
-    ) {
+    if (effectiveChecklistIds.length > 0) {
       const templates = await this.checklistTemplateRepo.find({
-        where: { id: In(activity.assignedChecklistIds) },
+        where: { id: In(effectiveChecklistIds) },
         relations: ['stages', 'stages.items'],
       });
 
@@ -1616,6 +1630,141 @@ export class QualityInspectionService {
     return this.approvalRuntimeService.getProjectRoleIds(projectId, userId);
   }
 
+  private async loadInspectionWithDetails(id: number) {
+    return this.inspectionRepo.findOne({
+      where: { id },
+      relations: [
+        'activity',
+        'stages',
+        'stages.stageTemplate',
+        'stages.items',
+        'stages.items.itemTemplate',
+        'stages.signatures',
+      ],
+      order: {
+        stages: {
+          stageTemplate: { sequence: 'ASC' },
+          items: { itemTemplate: { sequence: 'ASC' } },
+        },
+      },
+    });
+  }
+
+  private getEffectiveChecklistIdsForActivity(activity?: {
+    assignedChecklistIds?: number[];
+    checklistTemplateId?: number | null;
+  } | null): number[] {
+    if (activity?.assignedChecklistIds?.length) {
+      return activity.assignedChecklistIds;
+    }
+    if (activity?.checklistTemplateId) {
+      return [activity.checklistTemplateId];
+    }
+    return [];
+  }
+
+  private async resolveFloorVisibilityScope(epsNode: EpsNode) {
+    const scope: { blockId?: number; towerId?: number; floorId?: number } = {};
+    let current: EpsNode | null = epsNode;
+
+    while (current) {
+      if (current.type === EpsNodeType.FLOOR && !scope.floorId) {
+        scope.floorId = current.id;
+      }
+      if (current.type === EpsNodeType.TOWER && !scope.towerId) {
+        scope.towerId = current.id;
+      }
+      if (current.type === EpsNodeType.BLOCK && !scope.blockId) {
+        scope.blockId = current.id;
+      }
+
+      if (!current.parentId) break;
+      current = await this.epsNodeRepo.findOne({
+        where: { id: current.parentId },
+      });
+    }
+
+    return scope;
+  }
+
+  private isActivityVisibleForFloorScope(
+    floorVisibility:
+      | {
+          mode?: 'ALL' | 'RESTRICTED';
+          selectedNodeIds?: number[];
+        }
+      | null
+      | undefined,
+    scope: { blockId?: number; towerId?: number; floorId?: number } | null,
+  ) {
+    if (!floorVisibility || floorVisibility.mode !== 'RESTRICTED') {
+      return true;
+    }
+    if (!scope) {
+      return true;
+    }
+    const selectedIds = new Set(floorVisibility.selectedNodeIds || []);
+    return [scope.floorId, scope.towerId, scope.blockId].some(
+      (id) => typeof id === 'number' && selectedIds.has(id),
+    );
+  }
+
+  private async materializeInspectionStagesIfMissing(inspection: any) {
+    if ((inspection.stages || []).length > 0) {
+      return inspection;
+    }
+
+    const checklistIds = this.getEffectiveChecklistIdsForActivity(
+      inspection.activity,
+    );
+    if (checklistIds.length === 0) {
+      return inspection;
+    }
+
+    const existingStageCount = await this.stageRepo.count({
+      where: { inspectionId: inspection.id },
+    });
+    if (existingStageCount > 0) {
+      return (await this.loadInspectionWithDetails(inspection.id)) || inspection;
+    }
+
+    const templates = await this.checklistTemplateRepo.find({
+      where: { id: In(checklistIds) },
+      relations: ['stages', 'stages.items'],
+    });
+
+    for (const template of templates) {
+      const orderedStages = [...(template.stages || [])].sort(
+        (a, b) => (a.sequence || 0) - (b.sequence || 0),
+      );
+
+      for (const stageTemplate of orderedStages) {
+        const savedStage = await this.stageRepo.save(
+          this.stageRepo.create({
+            inspectionId: inspection.id,
+            stageTemplateId: stageTemplate.id,
+            status: StageStatus.PENDING,
+          }),
+        );
+
+        const orderedItems = [...(stageTemplate.items || [])].sort(
+          (a, b) => (a.sequence || 0) - (b.sequence || 0),
+        );
+        for (const itemTemplate of orderedItems) {
+          await this.executionItemRepo.save(
+            this.executionItemRepo.create({
+              stageId: savedStage.id,
+              itemTemplateId: itemTemplate.id,
+              isOk: false,
+            }),
+          );
+        }
+      }
+    }
+
+    return (await this.loadInspectionWithDetails(inspection.id)) || inspection;
+  }
+
   private matchesStepForUser(
     step: {
       assignedUserId?: number | null;
@@ -1731,6 +1880,81 @@ export class QualityInspectionService {
       currentUserFutureLevels: futureLevels,
       currentUserBlockedReason: blockedReason,
       currentUserActionHint: actionHint,
+    };
+  }
+
+  async expandGoSeries(dto: ExpandGoSeriesDto) {
+    if (!Number.isInteger(dto.newTotalParts) || dto.newTotalParts < 2) {
+      throw new BadRequestException(
+        'newTotalParts must be an integer greater than or equal to 2.',
+      );
+    }
+
+    const activity = await this.activityRepo.findOne({
+      where: { id: dto.activityId },
+    });
+    if (!activity) {
+      throw new NotFoundException('Activity not found');
+    }
+
+    const applicability =
+      activity.applicabilityLevel || QualityApplicabilityLevel.FLOOR;
+    if (applicability !== QualityApplicabilityLevel.FLOOR) {
+      throw new BadRequestException(
+        'Add GO is currently supported only for FLOOR-level activities.',
+      );
+    }
+
+    const where: any = {
+      projectId: dto.projectId,
+      epsNodeId: dto.epsNodeId,
+      activityId: dto.activityId,
+    };
+    if (typeof dto.qualityUnitId === 'number') {
+      where.qualityUnitId = dto.qualityUnitId;
+    }
+    if (typeof dto.qualityRoomId === 'number') {
+      where.qualityRoomId = dto.qualityRoomId;
+    }
+
+    const scopedInspections = await this.inspectionRepo.find({
+      where,
+      order: { partNo: 'ASC', createdAt: 'ASC' },
+    });
+
+    if (scopedInspections.length === 0) {
+      throw new BadRequestException(
+        'No existing GO inspections were found for this activity and location.',
+      );
+    }
+
+    const currentTotal = scopedInspections.reduce(
+      (max, inspection) => Math.max(max, inspection.totalParts || 1),
+      1,
+    );
+
+    if (dto.newTotalParts <= currentTotal) {
+      throw new BadRequestException(
+        `New GO count must be greater than the current total of ${currentTotal}.`,
+      );
+    }
+
+    for (const inspection of scopedInspections) {
+      inspection.totalParts = dto.newTotalParts;
+    }
+    await this.inspectionRepo.save(scopedInspections);
+
+    const existingPartNos = Array.from(
+      new Set(scopedInspections.map((inspection) => inspection.partNo || 1)),
+    ).sort((a, b) => a - b);
+
+    return {
+      success: true,
+      activityId: dto.activityId,
+      epsNodeId: dto.epsNodeId,
+      previousTotalParts: currentTotal,
+      totalParts: dto.newTotalParts,
+      existingPartNos,
     };
   }
 
@@ -2193,11 +2417,22 @@ export class QualityInspectionService {
   private async checkPredecessor(
     prevActivityId: number,
     epsNodeId: number,
+    floorScope?: { blockId?: number; towerId?: number; floorId?: number } | null,
   ): Promise<{ approved: boolean; activityName: string }> {
     const prevActivity = await this.activityRepo.findOne({
       where: { id: prevActivityId },
     });
     if (!prevActivity) return { approved: true, activityName: 'Unknown' };
+
+    if (
+      floorScope &&
+      !this.isActivityVisibleForFloorScope(
+        prevActivity.floorVisibility,
+        floorScope,
+      )
+    ) {
+      return { approved: true, activityName: prevActivity.activityName };
+    }
 
     // Find latest inspection for predecessor at this node
     const latestInspection = await this.inspectionRepo.findOne({

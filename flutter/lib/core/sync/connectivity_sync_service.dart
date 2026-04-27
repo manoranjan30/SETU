@@ -110,12 +110,21 @@ class ConnectivitySyncService extends ChangeNotifier {
     _syncService.onStatusChanged = (status) => _onSyncStatusChanged(status);
 
     // Periodic retry every 5 minutes — catches items that were queued while
-    // the app was already online between auto-sync cycles.
-    _retryTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (_isOnline && !_isSyncing && _pendingCount > 0) {
-        _logger.i('Periodic retry: syncing $_pendingCount pending items…');
-        syncNow();
+    // the app was already online between auto-sync cycles. Also handles the
+    // case where the server became reachable without a connectivity event
+    // (e.g. backend started while device already had a network interface).
+    _retryTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
+      if (_isSyncing || _pendingCount == 0) return;
+      if (!_isOnline) {
+        // Re-probe silently — server may have come back without interface change.
+        _networkInfo.invalidateProbe();
+        final reachable = await _networkInfo.isServerReachable;
+        if (!reachable) return;
+        _isOnline = true;
+        notifyListeners();
       }
+      _logger.i('Periodic retry: syncing $_pendingCount pending items…');
+      syncNow();
     });
 
     _logger.i(
@@ -205,10 +214,21 @@ class ConnectivitySyncService extends ChangeNotifier {
 
     // Two-level check: interface first (fast), then server probe (accurate).
     if (!_isOnline) {
-      _logger.w('Cannot sync: offline (interface)');
-      final result = SyncResult();
-      result.error = 'No internet connection';
-      return result;
+      // Don't give up immediately — the interface state can be stale. The
+      // server may have become reachable without a connectivity event firing
+      // (e.g. the backend was just started while the device already had 4G).
+      // Re-probe before aborting so the Sync Now button is always responsive.
+      _networkInfo.invalidateProbe();
+      final nowReachable = await _networkInfo.isServerReachable;
+      if (!nowReachable) {
+        _logger.w('Cannot sync: offline (interface + server probe)');
+        final result = SyncResult();
+        result.error = 'No internet connection';
+        return result;
+      }
+      // Server is reachable — silently correct the stale _isOnline flag.
+      _isOnline = true;
+      notifyListeners();
     }
 
     // Probe the server before starting a sync cycle to avoid the case where

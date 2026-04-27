@@ -67,6 +67,11 @@ export class CreateInspectionDto {
   drawingNo: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  elementName?: string;
+
+  @IsOptional()
   @IsInt()
   goNo?: number;
 

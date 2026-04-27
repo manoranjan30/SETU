@@ -49,6 +49,16 @@ export interface CreateActivityDto {
   responsibleParty?: string;
   allowBreak?: boolean;
   applicabilityLevel?: QualityApplicabilityLevel;
+  requiresPourCard?: boolean;
+  requiresPourClearanceCard?: boolean;
+  floorVisibility?: {
+    mode?: 'ALL' | 'RESTRICTED';
+    selectedNodeIds?: number[];
+    selectedBlockIds?: number[];
+    selectedTowerIds?: number[];
+    selectedFloorIds?: number[];
+    version?: number;
+  } | null;
 }
 
 export interface UpdateActivityDto extends Partial<CreateActivityDto> {
@@ -169,11 +179,30 @@ export class QualityActivityService {
   // ── Activities ─────────────────────────────────────────────────────────
 
   async getActivities(listId: number): Promise<QualityActivity[]> {
-    return this.activityRepo.find({
+    const directActivities = await this.activityRepo.find({
       where: { listId },
       relations: ['incomingEdges', 'incomingEdges.source'],
       order: { sequence: 'ASC' },
     });
+
+    if (directActivities.length > 0) {
+      return directActivities.map((activity) =>
+        this.withLegacyChecklistFallback(activity),
+      );
+    }
+
+    const list = await this.listRepo.findOne({
+      where: { id: listId },
+      relations: ['activities', 'activities.incomingEdges', 'activities.incomingEdges.source'],
+    });
+
+    const fallbackActivities = (list?.activities || []).sort(
+      (a, b) => (a.sequence || 0) - (b.sequence || 0),
+    );
+
+    return fallbackActivities.map((activity) =>
+      this.withLegacyChecklistFallback(activity),
+    );
   }
 
   async createActivity(
@@ -194,6 +223,7 @@ export class QualityActivityService {
 
     const activity = this.activityRepo.create({
       ...dto,
+      floorVisibility: this.normalizeFloorVisibility(dto.floorVisibility),
       listId,
       sequence: nextSeq,
     });
@@ -214,6 +244,11 @@ export class QualityActivityService {
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
 
     Object.assign(activity, dto);
+    if ('floorVisibility' in dto) {
+      activity.floorVisibility = this.normalizeFloorVisibility(
+        dto.floorVisibility,
+      );
+    }
     const saved = await this.activityRepo.save(activity);
 
     if (dto.predecessorIds) {
@@ -231,7 +266,11 @@ export class QualityActivityService {
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
 
     activity.assignedChecklistIds = checklistIds;
-    return this.activityRepo.save(activity);
+    if (checklistIds.length > 0 && !activity.checklistTemplateId) {
+      activity.checklistTemplateId = checklistIds[0];
+    }
+    const saved = await this.activityRepo.save(activity);
+    return this.withLegacyChecklistFallback(saved);
   }
 
   // ── Observations ───────────────────────────────────────────────────────
@@ -651,6 +690,9 @@ export class QualityActivityService {
         responsibleParty: act.responsibleParty,
         allowBreak: act.allowBreak,
         applicabilityLevel: act.applicabilityLevel,
+        requiresPourCard: act.requiresPourCard,
+        requiresPourClearanceCard: act.requiresPourClearanceCard,
+        floorVisibility: act.floorVisibility,
         position: act.position,
         status: QualityActivityStatus.NOT_STARTED,
         assignedChecklistIds: act.assignedChecklistIds,
@@ -756,5 +798,58 @@ export class QualityActivityService {
         });
       }
     }
+  }
+
+  private withLegacyChecklistFallback(
+    activity: QualityActivity,
+  ): QualityActivity {
+    if (
+      (!activity.assignedChecklistIds ||
+        activity.assignedChecklistIds.length === 0) &&
+      activity.checklistTemplateId
+    ) {
+      activity.assignedChecklistIds = [activity.checklistTemplateId];
+    }
+    return activity;
+  }
+
+  private normalizeFloorVisibility(
+    value?:
+      | {
+          mode?: 'ALL' | 'RESTRICTED';
+          selectedNodeIds?: number[];
+          selectedBlockIds?: number[];
+          selectedTowerIds?: number[];
+          selectedFloorIds?: number[];
+          version?: number;
+        }
+      | null,
+  ) {
+    if (!value || value.mode === 'ALL') {
+      return null;
+    }
+
+    const sanitize = (ids?: number[]) =>
+      Array.from(
+        new Set(
+          (Array.isArray(ids) ? ids : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0),
+        ),
+      );
+
+    const selectedNodeIds = sanitize(value.selectedNodeIds);
+    if (selectedNodeIds.length === 0) {
+      return null;
+    }
+
+    return {
+      mode: 'RESTRICTED' as const,
+      selectedNodeIds,
+      selectedBlockIds: sanitize(value.selectedBlockIds),
+      selectedTowerIds: sanitize(value.selectedTowerIds),
+      selectedFloorIds: sanitize(value.selectedFloorIds),
+      version: 1,
+    };
   }
 }

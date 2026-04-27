@@ -34,8 +34,20 @@ import {
   Network,
   ClipboardList,
   X,
+  Layers,
 } from "lucide-react";
 import api from "../../api/axios";
+import {
+  collectDescendantIds,
+  collectNodeIds,
+  filterFloorVisibilityTree,
+  getTreeNodeLabel,
+  getTreeNodeType,
+  normalizeFloorVisibilitySelection,
+  summarizeFloorVisibility,
+  type FloorVisibilityConfig,
+  type FloorVisibilityTreeNode,
+} from "./utils/floorVisibility";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +66,9 @@ interface Activity {
   applicabilityLevel: "FLOOR" | "UNIT" | "ROOM";
   status: string;
   assignedChecklistIds?: number[];
+  requiresPourCard?: boolean;
+  requiresPourClearanceCard?: boolean;
+  floorVisibility?: FloorVisibilityConfig;
 }
 
 interface ChecklistTemplate {
@@ -69,6 +84,8 @@ interface ActivityList {
   epsNode?: { nodeName: string };
 }
 
+interface EpsNode extends FloorVisibilityTreeNode {}
+
 // ─── Sortable Row ─────────────────────────────────────────────────────────────
 
 const SortableRow = ({
@@ -79,6 +96,8 @@ const SortableRow = ({
   onEdit,
   onDelete,
   onToggle,
+  onConfigureVisibility,
+  floorVisibilitySummary,
 }: {
   activity: Activity;
   index: number;
@@ -91,6 +110,8 @@ const SortableRow = ({
     field: "holdPoint" | "witnessPoint" | "allowBreak",
     val: boolean,
   ) => void;
+  onConfigureVisibility: (activity: Activity) => void;
+  floorVisibilitySummary: string;
 }) => {
   const {
     attributes,
@@ -188,6 +209,34 @@ const SortableRow = ({
                 Applicability: {activity.applicabilityLevel || "FLOOR"}
               </span>
             </div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onConfigureVisibility(activity)}
+                className="inline-flex items-center gap-1 rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+              >
+                <Layers className="w-3 h-3" />
+                Floor Visibility
+              </button>
+              <span className="text-xs text-text-muted">
+                {floorVisibilitySummary}
+              </span>
+            </div>
+            {(activity.requiresPourCard ||
+              activity.requiresPourClearanceCard) && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {activity.requiresPourCard ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded border border-violet-100 font-medium">
+                    Pour Card
+                  </span>
+                ) : null}
+                {activity.requiresPourClearanceCard ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100 font-medium">
+                    Pour Clearance
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
 
           {/* Responsible Party */}
@@ -280,6 +329,146 @@ const SortableRow = ({
   );
 };
 
+const FloorVisibilityModal = ({
+  activity,
+  treeRoots,
+  initialConfig,
+  onClose,
+  onSave,
+}: {
+  activity: Activity;
+  treeRoots: EpsNode[];
+  initialConfig?: FloorVisibilityConfig;
+  onClose: () => void;
+  onSave: (value: FloorVisibilityConfig) => Promise<void>;
+}) => {
+  const allIds = collectNodeIds(treeRoots);
+  const [selectedIds, setSelectedIds] = useState<number[]>(
+    initialConfig?.selectedNodeIds?.length
+      ? initialConfig.selectedNodeIds
+      : allIds,
+  );
+  const [saving, setSaving] = useState(false);
+
+  const selectedSet = new Set(selectedIds);
+
+  const toggleBranch = (node: EpsNode, checked: boolean) => {
+    const branchIds = collectDescendantIds(node);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      branchIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return Array.from(next);
+    });
+  };
+
+  const getBranchState = (node: EpsNode) => {
+    const branchIds = collectDescendantIds(node);
+    const checkedCount = branchIds.filter((id) => selectedSet.has(id)).length;
+    return {
+      checked: checkedCount === branchIds.length && branchIds.length > 0,
+      partial: checkedCount > 0 && checkedCount < branchIds.length,
+    };
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(normalizeFloorVisibilitySelection(selectedIds, treeRoots));
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderNodes = (nodes: EpsNode[], depth = 0) => (
+    <div className="space-y-1">
+      {nodes.map((node) => {
+        const state = getBranchState(node);
+        return (
+          <div key={node.id}>
+            <label
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-base"
+              style={{ paddingLeft: `${depth * 16 + 8}px` }}
+            >
+              <input
+                ref={(input) => {
+                  if (input) input.indeterminate = state.partial;
+                }}
+                type="checkbox"
+                checked={state.checked}
+                onChange={(e) => toggleBranch(node, e.target.checked)}
+              />
+              <span className="text-xs font-semibold text-text-muted uppercase">
+                {getTreeNodeType(node)}
+              </span>
+              <span className="text-sm text-text-primary">
+                {getTreeNodeLabel(node)}
+              </span>
+            </label>
+            {node.children?.length ? renderNodes(node.children as EpsNode[], depth + 1) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay p-4">
+      <div className="w-full max-w-3xl rounded-2xl bg-surface-card shadow-2xl">
+        <div className="border-b px-6 py-4">
+          <h3 className="text-lg font-bold text-text-primary">
+            Select Floors For Activity Visibility
+          </h3>
+          <p className="mt-1 text-sm text-text-muted">
+            Choose where "{activity.activityName}" should appear in Raise RFI.
+          </p>
+        </div>
+        <div className="space-y-4 px-6 py-5">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(allIds)}
+              className="rounded-lg border border-border-default bg-surface-base px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-raised"
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="rounded-lg border border-border-default bg-surface-base px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-raised"
+            >
+              Clear All
+            </button>
+          </div>
+          <div className="max-h-[420px] overflow-auto rounded-xl border border-border-default bg-surface-card p-3">
+            {renderNodes(treeRoots)}
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 border-t px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm text-text-secondary hover:bg-surface-raised"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white hover:bg-secondary-dark disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Visibility"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Activity Form (inline modal) ─────────────────────────────────────────────
 
 const ActivityForm = ({
@@ -308,6 +497,8 @@ const ActivityForm = ({
     allowBreak: initial?.allowBreak || false,
     applicabilityLevel: initial?.applicabilityLevel || "FLOOR",
     assignedChecklistIds: initial?.assignedChecklistIds || ([] as number[]),
+    requiresPourCard: initial?.requiresPourCard || false,
+    requiresPourClearanceCard: initial?.requiresPourClearanceCard || false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -520,7 +711,13 @@ const ActivityForm = ({
 
       {/* Toggles */}
       <div className="flex items-center gap-4 flex-wrap">
-        {(["holdPoint", "witnessPoint", "allowBreak"] as const).map((field) => (
+        {([
+          "holdPoint",
+          "witnessPoint",
+          "allowBreak",
+          "requiresPourCard",
+          "requiresPourClearanceCard",
+        ] as const).map((field) => (
           <label key={field} className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -530,10 +727,14 @@ const ActivityForm = ({
             />
             <span className="text-xs font-semibold text-text-secondary">
               {field === "holdPoint"
-                ? "🔴 Hold Point"
+                ? "Hold Point"
                 : field === "witnessPoint"
-                  ? "🟡 Witness Point"
-                  : "✂️ Allow Break"}
+                  ? "Witness Point"
+                  : field === "allowBreak"
+                    ? "Allow Break"
+                    : field === "requiresPourCard"
+                      ? "Attach Pour Card"
+                      : "Attach Pour Clearance Card"}
             </span>
           </label>
         ))}
@@ -570,6 +771,7 @@ const SequenceManagerPage = () => {
   const [list, setList] = useState<ActivityList | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [checklists, setChecklists] = useState<ChecklistTemplate[]>([]);
+  const [epsTree, setEpsTree] = useState<EpsNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -577,6 +779,8 @@ const SequenceManagerPage = () => {
   const [editTarget, setEditTarget] = useState<Activity | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [floorVisibilityTarget, setFloorVisibilityTarget] =
+    useState<Activity | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -589,19 +793,54 @@ const SequenceManagerPage = () => {
     fetchData();
   }, [listId]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    api
+      .get(`/eps/${projectId}/tree`)
+      .then((res) => setEpsTree(Array.isArray(res.data) ? res.data : [res.data]))
+      .catch(() => setEpsTree([]));
+  }, [projectId]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [listRes, activitiesRes, clRes] = await Promise.all([
+      const [listRes, activitiesRes, clRes] = await Promise.allSettled([
         api.get(`/quality/activity-lists/${listId}`),
         api.get(`/quality/activity-lists/${listId}/activities`),
         api.get(`/quality/checklist-templates/project/${projectId}`),
       ]);
-      setList(listRes.data);
-      setActivities(activitiesRes.data);
-      setChecklists(Array.isArray(clRes.data) ? clRes.data : []);
-    } catch {
-      console.error("Failed to load sequence data");
+
+      const listData =
+        listRes.status === "fulfilled" ? listRes.value.data : null;
+      const activitiesData =
+        activitiesRes.status === "fulfilled" ? activitiesRes.value.data : [];
+      const checklistData =
+        clRes.status === "fulfilled" ? clRes.value.data : [];
+
+      setList(listData);
+      const resolvedActivities =
+        Array.isArray(activitiesData) && activitiesData.length > 0
+          ? activitiesData
+          : Array.isArray(listData?.activities)
+            ? listData.activities
+            : [];
+      setActivities(resolvedActivities);
+      setChecklists(Array.isArray(checklistData) ? checklistData : []);
+
+      if (
+        listRes.status === "rejected" ||
+        activitiesRes.status === "rejected" ||
+        clRes.status === "rejected"
+      ) {
+        console.error("Partial sequence load failure", {
+          list: listRes.status === "rejected" ? listRes.reason : null,
+          activities:
+            activitiesRes.status === "rejected" ? activitiesRes.reason : null,
+          checklists: clRes.status === "rejected" ? clRes.reason : null,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load sequence data", error);
     } finally {
       setLoading(false);
     }
@@ -695,6 +934,20 @@ const SequenceManagerPage = () => {
     } catch {
       fetchData(); // revert
     }
+  };
+
+  const floorVisibilityRoots = filterFloorVisibilityTree(epsTree);
+
+  const handleSaveFloorVisibility = async (
+    activityId: number,
+    floorVisibility: FloorVisibilityConfig,
+  ) => {
+    await api.patch(`/quality/activities/${activityId}`, { floorVisibility });
+    setActivities((prev) =>
+      prev.map((activity) =>
+        activity.id === activityId ? { ...activity, floorVisibility } : activity,
+      ),
+    );
   };
 
   if (loading) {
@@ -854,6 +1107,11 @@ const SequenceManagerPage = () => {
                       onEdit={setEditTarget}
                       onDelete={setDeleteId}
                       onToggle={handleToggle}
+                      onConfigureVisibility={setFloorVisibilityTarget}
+                      floorVisibilitySummary={summarizeFloorVisibility(
+                        activity.floorVisibility || null,
+                        floorVisibilityRoots,
+                      )}
                     />
                   )}
                 </div>
@@ -908,6 +1166,18 @@ const SequenceManagerPage = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {floorVisibilityTarget && (
+        <FloorVisibilityModal
+          activity={floorVisibilityTarget}
+          treeRoots={floorVisibilityRoots}
+          initialConfig={floorVisibilityTarget.floorVisibility}
+          onClose={() => setFloorVisibilityTarget(null)}
+          onSave={(value) =>
+            handleSaveFloorVisibility(floorVisibilityTarget.id, value)
+          }
+        />
       )}
     </div>
   );

@@ -53,7 +53,43 @@ extension FloorStatusX on FloorStatus {
 class BlockSummary extends Equatable {
   final int epsNodeId;
   final String name;
-  final String? towerName;
+  final int total;
+  final int approved;
+  final int inReview;
+  final int pending;
+  final int withObservation;
+  /// Floors collected directly under this block (used when there is no tower
+  /// level, e.g. Block → Floor). When towers are present, floors is the union
+  /// of all tower floors (used for aggregate counts only).
+  final List<FloorSummary> floors;
+  /// Tower-level children. Non-empty when the EPS hierarchy has a tower level
+  /// (Block → Tower → Floor). When empty the dashboard navigates directly to
+  /// the floor grid, preserving backwards compatibility.
+  final List<TowerSummary> towers;
+
+  const BlockSummary({
+    required this.epsNodeId,
+    required this.name,
+    required this.total,
+    required this.approved,
+    required this.inReview,
+    required this.pending,
+    required this.withObservation,
+    this.floors = const [],
+    this.towers = const [],
+  });
+
+  double get pct => total == 0 ? 0.0 : approved / total;
+
+  @override
+  List<Object?> get props =>
+      [epsNodeId, name, total, approved, inReview, pending, withObservation];
+}
+
+/// Summary card data for one Tower within a Block.
+class TowerSummary extends Equatable {
+  final int epsNodeId;
+  final String name;
   final int total;
   final int approved;
   final int inReview;
@@ -61,10 +97,9 @@ class BlockSummary extends Equatable {
   final int withObservation;
   final List<FloorSummary> floors;
 
-  const BlockSummary({
+  const TowerSummary({
     required this.epsNodeId,
     required this.name,
-    this.towerName,
     required this.total,
     required this.approved,
     required this.inReview,
