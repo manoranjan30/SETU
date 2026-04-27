@@ -109,6 +109,9 @@ export class QualityInspection {
   @Column({ type: 'varchar', name: 'drawing_no', length: 100, nullable: true })
   drawingNo: string | null;
 
+  @Column({ type: 'varchar', name: 'element_name', length: 255, nullable: true })
+  elementName: string | null;
+
   @Column({
     type: 'varchar',
     name: 'contractor_name',

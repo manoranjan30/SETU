@@ -87,6 +87,9 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
   String? _category;
   int? _epsNodeId;
   String? _locationLabel;
+  /// True when the picker dialog found no locations (cache empty + offline).
+  /// Used to block submission and guide the user to go online first.
+  bool _locationUnavailableOffline = false;
   final List<String> _photoUrls = [];
   bool _uploading = false;
   bool _submitting = false;
@@ -236,18 +239,29 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
   Future<void> _pickLocation() async {
     final result = await showDialog<({int id, String label})>(
       context: context,
-      builder: (_) => _EpsPickerDialog(projectId: widget.projectId),
+      builder: (_) => _EpsPickerDialog(
+        projectId: widget.projectId,
+        onUnavailable: () {
+          if (mounted) setState(() => _locationUnavailableOffline = true);
+        },
+      ),
     );
     if (result != null) {
       setState(() {
         _epsNodeId = result.id;
         _locationLabel = result.label;
+        _locationUnavailableOffline = false;
       });
     }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_locationUnavailableOffline && _epsNodeId == null) {
+      setState(() => _errorMessage =
+          'Connect to the internet to load locations before saving.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _errorMessage = null;
@@ -392,8 +406,35 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                         style: theme.textTheme.labelLarge
                             ?.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
+                    if (_locationUnavailableOffline && _epsNodeId == null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.wifi_off_rounded,
+                                size: 14, color: Color(0xFFDC2626)),
+                            SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'No locations available offline. '
+                                'Go online to load EPS locations first.',
+                                style: TextStyle(
+                                    fontSize: 11, color: Color(0xFFDC2626)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     InkWell(
-                      onTap: _pickLocation,
+                      onTap: _locationUnavailableOffline ? null : _pickLocation,
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         width: double.infinity,
@@ -526,7 +567,15 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
 
 class _EpsPickerDialog extends StatefulWidget {
   final int projectId;
-  const _EpsPickerDialog({required this.projectId});
+  /// Called when the picker finds no cached locations (offline + empty cache).
+  /// The parent sheet uses this to set a flag that blocks submission and
+  /// guides the user to connect to the internet first.
+  final VoidCallback? onUnavailable;
+
+  const _EpsPickerDialog({
+    required this.projectId,
+    this.onUnavailable,
+  });
 
   @override
   State<_EpsPickerDialog> createState() => _EpsPickerDialogState();
@@ -545,6 +594,29 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
   Future<void> _load() async {
     try {
       final raw = await sl<SetuApiClient>().getEpsTreeForProject(widget.projectId);
+      // Flatten the tree into a list of maps (preserving parentId) and cache it
+      // to Drift so the offline picker has data the next time the user is offline.
+      final flatNodes = <Map<String, dynamic>>[];
+      void flatten(List<dynamic> nodes, int? parentId) {
+        for (final n in nodes) {
+          final m = n as Map<String, dynamic>;
+          flatNodes.add({
+            ...m,
+            // Inject parentId — the raw map may not contain it if the server
+            // only provides it via nesting rather than as an explicit field.
+            if (parentId != null) 'parentId': parentId,
+          });
+          final children = m['children'];
+          if (children is List && children.isNotEmpty) {
+            flatten(children, m['id'] as int?);
+          }
+        }
+      }
+      flatten(raw, null);
+      if (flatNodes.isNotEmpty) {
+        await sl<AppDatabase>().cacheEpsNodes(flatNodes, widget.projectId);
+      }
+
       var nodes = raw
           .map((e) => EpsTreeNode.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -564,7 +636,8 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
     try {
       final cached = await sl<AppDatabase>().getEpsNodesForProject(widget.projectId);
       if (cached.isEmpty) {
-        if (mounted) setState(() => _error = 'No cached locations. Connect to load.');
+        widget.onUnavailable?.call();
+        if (mounted) setState(() => _error = 'No cached locations. Go online first to load locations.');
         return;
       }
       // Build parent→children map from flat list.

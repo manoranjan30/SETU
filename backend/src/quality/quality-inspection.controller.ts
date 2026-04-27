@@ -16,6 +16,7 @@ import { QualityReportService } from './quality-report.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
 import type {
   UpdateInspectionStatusDto,
+  ExpandGoSeriesDto,
 } from './quality-inspection.service';
 import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { Auditable } from '../audit/auditable.decorator';
@@ -119,6 +120,13 @@ export class QualityInspectionController {
   @Auditable('QUALITY', 'RAISE_RFI')
   create(@Body() dto: CreateInspectionDto, @Request() req) {
     return this.service.create(dto, req.user?.id);
+  }
+
+  @Post('expand-go')
+  @Permissions('QUALITY.INSPECTION.RAISE')
+  @Auditable('QUALITY', 'EXPAND_GO_SERIES')
+  expandGoSeries(@Body() dto: ExpandGoSeriesDto) {
+    return this.service.expandGoSeries(dto);
   }
 
   @Patch(':id/status')

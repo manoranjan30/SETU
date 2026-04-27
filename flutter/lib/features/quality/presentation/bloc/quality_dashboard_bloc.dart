@@ -330,38 +330,50 @@ class QualityDashboardBloc
   ) {
     final type = node.type?.toUpperCase() ?? '';
 
-    if (type == 'BLOCK' || type == 'TOWER') {
-      // Only BLOCK (and standalone TOWER) nodes become top-level block entries.
-      // Do NOT recurse deeper for more blocks — any towers/floors inside are
-      // captured by _collectFloors, preventing double-entries like "H3 Tower".
+    if (type == 'BLOCK') {
+      // Check whether this block has explicit TOWER children.
+      final towerChildren = node.children
+          .where((c) => c.type?.toUpperCase() == 'TOWER')
+          .toList();
+
+      final towers = <TowerSummary>[];
+      final allFloors = <FloorSummary>[];
+
+      if (towerChildren.isNotEmpty) {
+        // Block → Tower → Floor hierarchy.
+        for (final towerNode in towerChildren) {
+          final towerFloors = <FloorSummary>[];
+          _collectFloors(
+              towerNode.children, inspByFloor, towerFloors, actCountByFloor);
+          if (towerFloors.isNotEmpty) {
+            towers.add(_buildTowerSummary(
+                towerNode.id, towerNode.label, towerFloors, inspByFloor));
+            allFloors.addAll(towerFloors);
+          }
+        }
+        // Also sweep any non-tower children (edge case: mixed hierarchy).
+        final nonTowerChildren =
+            node.children.where((c) => c.type?.toUpperCase() != 'TOWER');
+        for (final child in nonTowerChildren) {
+          _collectFloors([child], inspByFloor, allFloors, actCountByFloor);
+        }
+      } else {
+        // Block → Floor directly (no tower level).
+        _collectFloors(node.children, inspByFloor, allFloors, actCountByFloor);
+      }
+
+      if (allFloors.isNotEmpty || towers.isNotEmpty) {
+        blocks.add(_buildBlockSummary(
+            node.id, node.label, allFloors, towers, inspByFloor));
+      }
+    } else if (type == 'TOWER') {
+      // Standalone TOWER at the top level (no parent BLOCK in the tree).
+      // Treat it as a block entry with no tower drill-down.
       final floors = <FloorSummary>[];
       _collectFloors(node.children, inspByFloor, floors, actCountByFloor);
-
       if (floors.isNotEmpty) {
-        int total = 0, appCount = 0, inRev = 0, needsAct = 0, withObs = 0;
-        for (final f in floors) {
-          total += f.totalActivities;
-          appCount += f.approvedCount;
-          if (f.status == FloorStatus.awaitingApproval ||
-              f.status == FloorStatus.inProgress) {
-            inRev += f.pendingCount;
-          } else if (f.status == FloorStatus.needsAction) {
-            needsAct += f.pendingCount;
-          }
-          final floorInsps = inspByFloor[f.floorId] ?? [];
-          withObs +=
-              floorInsps.where((i) => i.pendingObservationCount > 0).length;
-        }
-        blocks.add(BlockSummary(
-          epsNodeId: node.id,
-          name: node.label,
-          total: total,
-          approved: appCount,
-          inReview: inRev,
-          pending: needsAct,
-          withObservation: withObs,
-          floors: floors,
-        ));
+        blocks.add(
+            _buildBlockSummary(node.id, node.label, floors, [], inspByFloor));
       }
     } else if (type == 'FLOOR' || type == 'UNIT' || type == 'ROOM') {
       // Floor-level leaf nodes — not block containers, skip.
@@ -371,6 +383,72 @@ class QualityDashboardBloc
         _collectBlocks(child, inspByFloor, actCountByFloor, blocks);
       }
     }
+  }
+
+  /// Builds aggregate counts and returns a [BlockSummary].
+  BlockSummary _buildBlockSummary(
+    int id,
+    String label,
+    List<FloorSummary> floors,
+    List<TowerSummary> towers,
+    Map<int, List<QualityInspection>> inspByFloor,
+  ) {
+    int total = 0, appCount = 0, inRev = 0, needsAct = 0, withObs = 0;
+    for (final f in floors) {
+      total += f.totalActivities;
+      appCount += f.approvedCount;
+      if (f.status == FloorStatus.awaitingApproval ||
+          f.status == FloorStatus.inProgress) {
+        inRev += f.pendingCount;
+      } else if (f.status == FloorStatus.needsAction) {
+        needsAct += f.pendingCount;
+      }
+      final floorInsps = inspByFloor[f.floorId] ?? [];
+      withObs += floorInsps.where((i) => i.pendingObservationCount > 0).length;
+    }
+    return BlockSummary(
+      epsNodeId: id,
+      name: label,
+      total: total,
+      approved: appCount,
+      inReview: inRev,
+      pending: needsAct,
+      withObservation: withObs,
+      floors: floors,
+      towers: towers,
+    );
+  }
+
+  /// Builds aggregate counts and returns a [TowerSummary].
+  TowerSummary _buildTowerSummary(
+    int id,
+    String label,
+    List<FloorSummary> floors,
+    Map<int, List<QualityInspection>> inspByFloor,
+  ) {
+    int total = 0, appCount = 0, inRev = 0, needsAct = 0, withObs = 0;
+    for (final f in floors) {
+      total += f.totalActivities;
+      appCount += f.approvedCount;
+      if (f.status == FloorStatus.awaitingApproval ||
+          f.status == FloorStatus.inProgress) {
+        inRev += f.pendingCount;
+      } else if (f.status == FloorStatus.needsAction) {
+        needsAct += f.pendingCount;
+      }
+      final floorInsps = inspByFloor[f.floorId] ?? [];
+      withObs += floorInsps.where((i) => i.pendingObservationCount > 0).length;
+    }
+    return TowerSummary(
+      epsNodeId: id,
+      name: label,
+      total: total,
+      approved: appCount,
+      inReview: inRev,
+      pending: needsAct,
+      withObservation: withObs,
+      floors: floors,
+    );
   }
 
   void _collectFloors(

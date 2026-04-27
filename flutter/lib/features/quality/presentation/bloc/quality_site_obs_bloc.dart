@@ -422,12 +422,19 @@ class QualitySiteObsBloc
 
       // Optimistic insert — visible immediately in the list.
       final localId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      // Normalize local file paths to file:// scheme in the cached rawData so
+      // that QualitySiteObservation.fromJson can distinguish them from server
+      // relative paths (e.g. /uploads/uuid.jpg) and skip resolveUrl for them.
+      final cachedPhotoUrls = event.photoUrls
+          .map((p) => p.startsWith('/') ? 'file://$p' : p)
+          .toList();
       await _db.cacheQualitySiteObs([
         {
           ...payload,
           'id': localId,
           'status': 'OPEN',
           'createdAt': DateTime.now().toIso8601String(),
+          if (cachedPhotoUrls.isNotEmpty) 'photoUrls': cachedPhotoUrls,
         }
       ], event.projectId);
 

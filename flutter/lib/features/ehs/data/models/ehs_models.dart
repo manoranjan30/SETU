@@ -196,11 +196,14 @@ class EhsSiteObservation extends Equatable {
 
   factory EhsSiteObservation.fromJson(Map<String, dynamic> json) {
     // Resolve relative photo paths to absolute URLs.
+    // Local file paths (file:// scheme) must pass through unchanged.
     List<String> resolvePhotos(dynamic raw) {
       if (raw == null) return const [];
-      return (raw as List<dynamic>)
-          .map((e) => ApiEndpoints.resolveUrl(e.toString()))
-          .toList();
+      return (raw as List<dynamic>).map((e) {
+        final url = e.toString();
+        if (url.startsWith('file://')) return url;
+        return ApiEndpoints.resolveUrl(url);
+      }).toList();
     }
 
     // Parse date from null, DateTime, or ISO string.

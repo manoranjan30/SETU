@@ -87,6 +87,22 @@ export class QualityActivity {
   @Column('int', { array: true, default: [] })
   assignedChecklistIds: number[];
 
+  @Column({ default: false })
+  requiresPourCard: boolean;
+
+  @Column({ default: false })
+  requiresPourClearanceCard: boolean;
+
+  @Column({ type: 'jsonb', name: 'floor_visibility', nullable: true })
+  floorVisibility: {
+    mode?: 'ALL' | 'RESTRICTED';
+    selectedNodeIds?: number[];
+    selectedBlockIds?: number[];
+    selectedTowerIds?: number[];
+    selectedFloorIds?: number[];
+    version?: number;
+  } | null;
+
   @ManyToOne(() => QualityActivity, { nullable: true })
   @JoinColumn({ name: 'previousActivityId' })
   previousActivity: QualityActivity;

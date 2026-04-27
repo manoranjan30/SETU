@@ -31,6 +31,7 @@ import { ReleaseStrategyService } from '../planning/release-strategy.service';
 import { StageStatus } from './entities/quality-inspection-stage.entity';
 import { RestartPolicy } from '../planning/entities/release-strategy.entity';
 import { ApprovalRuntimeService, ProjectApprovalActor } from '../common/approval-runtime.service';
+import { QualityPourCardService } from './quality-pour-card.service';
 
 @Injectable()
 export class InspectionWorkflowService {
@@ -50,6 +51,7 @@ export class InspectionWorkflowService {
     private readonly pushService: PushNotificationService,
     private readonly notificationComposer: NotificationComposerService,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
+    private readonly qualityPourCardService: QualityPourCardService,
   ) {}
 
   private generateSignatureHash(
@@ -697,6 +699,9 @@ export class InspectionWorkflowService {
       );
     } else {
       const refreshedInspection = await this.getInspectionOrThrow(inspectionId);
+      await this.qualityPourCardService.assertRequiredCardsSubmitted(
+        inspectionId,
+      );
       const pendingStages = refreshedInspection.stages.filter(
         (stage) => stage.status !== StageStatus.APPROVED,
       );
@@ -718,6 +723,7 @@ export class InspectionWorkflowService {
       refreshedInspection.lockedAt = now;
       refreshedInspection.lockedByUserId = userId;
       await this.inspectionRepo.save(refreshedInspection);
+      await this.qualityPourCardService.lockSubmittedCards(inspectionId);
 
       if (refreshedInspection.requestedById) {
         const notification =

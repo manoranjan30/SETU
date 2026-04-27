@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/dashboard_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/block_floors_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/block_towers_page.dart';
 
 /// Project-level checklist approval progress summary.
 /// Shows aggregate stats and a card per Block for drill-down navigation.
@@ -173,10 +174,9 @@ class _QualityDashboardPageState extends State<QualityDashboardPage> {
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
           value: context.read<QualityDashboardBloc>(),
-          child: BlockFloorsPage(
-            projectId: widget.projectId,
-            block: block,
-          ),
+          child: block.towers.isNotEmpty
+              ? BlockTowersPage(projectId: widget.projectId, block: block)
+              : BlockFloorsPage(projectId: widget.projectId, block: block),
         ),
       ),
     );
@@ -398,11 +398,12 @@ class _BlockCard extends StatelessWidget {
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
                                 color: Color(0xFF111827))),
-                        if (block.towerName != null &&
-                            block.towerName!.isNotEmpty)
-                          Text(block.towerName!,
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF6B7280))),
+                        if (block.towers.isNotEmpty)
+                          Text(
+                            '${block.towers.length} towers',
+                            style: const TextStyle(
+                                fontSize: 12, color: Color(0xFF6B7280)),
+                          ),
                       ],
                     ),
                   ),
@@ -446,7 +447,9 @@ class _BlockCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${block.floors.length} floors',
+                    block.towers.isNotEmpty
+                        ? '${block.towers.length} towers · ${block.floors.length} floors'
+                        : '${block.floors.length} floors',
                     style: const TextStyle(
                         fontSize: 11, color: Color(0xFF9CA3AF)),
                   ),

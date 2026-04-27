@@ -89,6 +89,10 @@ import { QualityMaterialTestResult } from './entities/quality-material-test-resu
 import { QualityMaterialEvidenceFile } from './entities/quality-material-evidence-file.entity';
 import { QualityMaterialApprovalRun } from './entities/quality-material-approval-run.entity';
 import { QualityMaterialApprovalStep } from './entities/quality-material-approval-step.entity';
+import { QualityPourCard } from './entities/quality-pour-card.entity';
+import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
+import { QualityPourCardService } from './quality-pour-card.service';
+import { QualityPourCardController } from './quality-pour-card.controller';
 
 @Module({
   imports: [
@@ -143,6 +147,8 @@ import { QualityMaterialApprovalStep } from './entities/quality-material-approva
       QualityMaterialEvidenceFile,
       QualityMaterialApprovalRun,
       QualityMaterialApprovalStep,
+      QualityPourCard,
+      QualityPrePourClearanceCard,
       TempUser,
       User,
       Vendor,
@@ -160,6 +166,7 @@ import { QualityMaterialApprovalStep } from './entities/quality-material-approva
     SiteObservationController,
     QualityRatingController,
     MaterialItpController,
+    QualityPourCardController,
   ],
   providers: [
     QualityService,
@@ -178,6 +185,7 @@ import { QualityMaterialApprovalStep } from './entities/quality-material-approva
     SiteObservationService,
     QualityRatingService,
     MaterialItpService,
+    QualityPourCardService,
   ],
   exports: [
     QualityService,
@@ -194,6 +202,7 @@ import { QualityMaterialApprovalStep } from './entities/quality-material-approva
     SiteObservationService,
     QualityRatingService,
     MaterialItpService,
+    QualityPourCardService,
   ],
 })
 export class QualityModule {}

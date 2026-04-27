@@ -413,12 +413,16 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
 
       // Optimistic insert — visible in the list immediately.
       final localId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+      final cachedPhotoUrls = event.photoUrls
+          .map((p) => p.startsWith('/') ? 'file://$p' : p)
+          .toList();
       await _db.cacheEhsSiteObs([
         {
           ...payload,
           'id': localId,
           'status': 'OPEN',
           'createdAt': DateTime.now().toIso8601String(),
+          if (cachedPhotoUrls.isNotEmpty) 'photoUrls': cachedPhotoUrls,
         }
       ], event.projectId);
 

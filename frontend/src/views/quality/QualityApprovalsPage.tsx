@@ -30,6 +30,7 @@ import {
 import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
 import SignatureModal from "../../components/quality/SignatureModal";
+import { qualityService } from "../../services/quality.service";
 
 interface QualityInspection {
   id: number;
@@ -50,6 +51,8 @@ interface QualityInspection {
   activity?: {
     id: number;
     activityName: string;
+    requiresPourCard?: boolean;
+    requiresPourClearanceCard?: boolean;
   };
   epsNode?: {
     label: string;
@@ -63,6 +66,7 @@ interface QualityInspection {
   goNo?: number;
   goLabel?: string;
   drawingNo?: string;
+  elementName?: string;
   partNo?: number;
   partLabel?: string;
   vendorName?: string;
@@ -609,6 +613,14 @@ export default function QualityApprovalsPage() {
   const [reportDateFrom, setReportDateFrom] = useState("");
   const [reportDateTo, setReportDateTo] = useState("");
   const [dashboardFullscreen, setDashboardFullscreen] = useState(false);
+  const [pourCard, setPourCard] = useState<any>(null);
+  const [prePourClearanceCard, setPrePourClearanceCard] = useState<any>(null);
+  const [loadingCards, setLoadingCards] = useState(false);
+  const [savingPourCard, setSavingPourCard] = useState(false);
+  const [savingPrePourClearance, setSavingPrePourClearance] = useState(false);
+  const [submittingPourCard, setSubmittingPourCard] = useState(false);
+  const [submittingPrePourClearance, setSubmittingPrePourClearance] =
+    useState(false);
 
   const applyFullscreenThemeVars = () => {
     const host = workspaceRef.current;
@@ -753,6 +765,42 @@ export default function QualityApprovalsPage() {
     }
   }, [selectedInspectionId, refreshKey]);
 
+  useEffect(() => {
+    const inspectionId = inspectionDetail?.id;
+    const requiresPourCard = inspectionDetail?.activity?.requiresPourCard;
+    const requiresPrePourClearance =
+      inspectionDetail?.activity?.requiresPourClearanceCard;
+
+    if (!inspectionId || (!requiresPourCard && !requiresPrePourClearance)) {
+      setPourCard(null);
+      setPrePourClearanceCard(null);
+      return;
+    }
+
+    setLoadingCards(true);
+    Promise.all([
+      requiresPourCard
+        ? qualityService.getPourCard(inspectionId)
+        : Promise.resolve(null),
+      requiresPrePourClearance
+        ? qualityService.getPrePourClearanceCard(inspectionId)
+        : Promise.resolve(null),
+    ])
+      .then(([pourCardRes, clearanceRes]) => {
+        setPourCard(pourCardRes);
+        setPrePourClearanceCard(clearanceRes);
+      })
+      .catch(() => {
+        setPourCard(null);
+        setPrePourClearanceCard(null);
+      })
+      .finally(() => setLoadingCards(false));
+  }, [
+    inspectionDetail?.id,
+    inspectionDetail?.activity?.requiresPourCard,
+    inspectionDetail?.activity?.requiresPourClearanceCard,
+  ]);
+
   const filterOptions = useMemo(() => {
     const unique = (values: string[]) =>
       Array.from(new Set(values.filter(Boolean))).sort((a, b) =>
@@ -770,6 +818,105 @@ export default function QualityApprovalsPage() {
       ),
     };
   }, [inspections]);
+
+  const savePourCardDetails = async () => {
+    if (!inspectionDetail?.id || !pourCard) return;
+    setSavingPourCard(true);
+    try {
+      const saved = await qualityService.savePourCard(inspectionDetail.id, pourCard);
+      setPourCard(saved);
+      alert("Pour card saved.");
+    } catch {
+      alert("Failed to save pour card.");
+    } finally {
+      setSavingPourCard(false);
+    }
+  };
+
+  const savePrePourClearanceDetails = async () => {
+    if (!inspectionDetail?.id || !prePourClearanceCard) return;
+    setSavingPrePourClearance(true);
+    try {
+      const saved = await qualityService.savePrePourClearanceCard(
+        inspectionDetail.id,
+        prePourClearanceCard,
+      );
+      setPrePourClearanceCard(saved);
+      alert("Pre-pour clearance card saved.");
+    } catch {
+      alert("Failed to save pre-pour clearance card.");
+    } finally {
+      setSavingPrePourClearance(false);
+    }
+  };
+
+  const submitPourCardDetails = async () => {
+    if (!inspectionDetail?.id) return;
+    setSubmittingPourCard(true);
+    try {
+      const saved = await qualityService.submitPourCard(inspectionDetail.id);
+      setPourCard(saved);
+      alert("Pour card submitted.");
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to submit pour card."));
+    } finally {
+      setSubmittingPourCard(false);
+    }
+  };
+
+  const submitPrePourClearanceDetails = async () => {
+    if (!inspectionDetail?.id) return;
+    setSubmittingPrePourClearance(true);
+    try {
+      const saved = await qualityService.submitPrePourClearanceCard(
+        inspectionDetail.id,
+      );
+      setPrePourClearanceCard(saved);
+      alert("Pre-pour clearance card submitted.");
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to submit pre-pour clearance card."));
+    } finally {
+      setSubmittingPrePourClearance(false);
+    }
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPourCardPdf = async () => {
+    if (!inspectionDetail?.id) return;
+    try {
+      const blob = await qualityService.downloadPourCardPdf(inspectionDetail.id);
+      downloadBlob(blob, `Pour_Card_${inspectionDetail.id}.pdf`);
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to download pour card PDF."));
+    }
+  };
+
+  const downloadPrePourClearancePdf = async () => {
+    if (!inspectionDetail?.id) return;
+    try {
+      const blob = await qualityService.downloadPrePourClearancePdf(
+        inspectionDetail.id,
+      );
+      downloadBlob(blob, `Pre_Pour_Clearance_${inspectionDetail.id}.pdf`);
+    } catch (err: any) {
+      alert(
+        getApiErrorMessage(
+          err,
+          "Failed to download pre-pour clearance PDF.",
+        ),
+      );
+    }
+  };
 
   const filteredInspections = useMemo(() => {
     if (filterStatus === "DASHBOARD") return inspections;
@@ -2200,6 +2347,32 @@ export default function QualityApprovalsPage() {
   const pendingObservationsCount = useMemo(() => {
     return observations.filter((o) => o.status !== "CLOSED").length;
   }, [observations]);
+
+  const cardReadiness = useMemo(() => {
+    const requiresPourCard = Boolean(inspectionDetail?.activity?.requiresPourCard);
+    const requiresPrePourClearance = Boolean(
+      inspectionDetail?.activity?.requiresPourClearanceCard,
+    );
+    const pourCardReady = !requiresPourCard
+      ? true
+      : ["SUBMITTED", "LOCKED"].includes(pourCard?.status || "");
+    const prePourClearanceReady = !requiresPrePourClearance
+      ? true
+      : ["SUBMITTED", "LOCKED"].includes(prePourClearanceCard?.status || "");
+
+    return {
+      requiresPourCard,
+      requiresPrePourClearance,
+      pourCardReady,
+      prePourClearanceReady,
+      allReady: pourCardReady && prePourClearanceReady,
+    };
+  }, [
+    inspectionDetail?.activity?.requiresPourCard,
+    inspectionDetail?.activity?.requiresPourClearanceCard,
+    pourCard?.status,
+    prePourClearanceCard?.status,
+  ]);
 
   const getStagePendingObservationCount = (stageId: number) =>
     observations.filter(
@@ -3683,6 +3856,11 @@ export default function QualityApprovalsPage() {
                           Drawing {inspectionDetail.drawingNo}
                         </span>
                       ) : null}
+                      {inspectionDetail.elementName ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-3 py-1 font-semibold text-violet-800">
+                          Element {inspectionDetail.elementName}
+                        </span>
+                      ) : null}
                       {inspectionDetail.workflowSummary?.strategyName ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-3 py-1 font-semibold text-text-secondary">
                           {inspectionDetail.workflowSummary.strategyName}
@@ -3964,6 +4142,879 @@ export default function QualityApprovalsPage() {
                       </div>
                     )}
 
+                    {(inspectionDetail.activity?.requiresPourCard ||
+                      inspectionDetail.activity?.requiresPourClearanceCard) && (
+                      <div className="rounded-xl border bg-surface-card p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-text-primary">
+                              Concrete Cards
+                            </div>
+                            <div className="text-xs text-text-muted">
+                              Inspection-linked pour card and pre-pour clearance details.
+                            </div>
+                          </div>
+                          {loadingCards ? (
+                            <span className="text-xs text-text-muted">
+                              Loading card details...
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                          {inspectionDetail.activity?.requiresPourCard && pourCard ? (
+                            <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-semibold text-text-primary">
+                                  Pour Card
+                                </div>
+                                <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
+                                  {pourCard.status || "DRAFT"}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid gap-3">
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <input
+                                    value={pourCard.projectNameSnapshot || ""}
+                                    onChange={(e) =>
+                                      setPourCard((prev: any) => ({
+                                        ...prev,
+                                        projectNameSnapshot: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Project name"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={pourCard.approvedByName || ""}
+                                    onChange={(e) =>
+                                      setPourCard((prev: any) => ({
+                                        ...prev,
+                                        approvedByName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Approved by"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <input
+                                    value={pourCard.clientName || ""}
+                                    onChange={(e) =>
+                                      setPourCard((prev: any) => ({
+                                        ...prev,
+                                        clientName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Client"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={pourCard.consultantName || ""}
+                                    onChange={(e) =>
+                                      setPourCard((prev: any) => ({
+                                        ...prev,
+                                        consultantName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Consultant"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <input
+                                  value={pourCard.contractorName || ""}
+                                  onChange={(e) =>
+                                    setPourCard((prev: any) => ({
+                                      ...prev,
+                                      contractorName: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Contractor"
+                                  className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                />
+                                <input
+                                  value={pourCard.locationText || ""}
+                                  onChange={(e) =>
+                                    setPourCard((prev: any) => ({
+                                      ...prev,
+                                      locationText: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Pour location"
+                                  className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                />
+                                <textarea
+                                  value={pourCard.remarks || ""}
+                                  onChange={(e) =>
+                                    setPourCard((prev: any) => ({
+                                      ...prev,
+                                      remarks: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="General remarks"
+                                  className="min-h-[84px] rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                />
+                                <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
+                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                                    Pour Entries
+                                  </div>
+                                  <div className="space-y-2">
+                                    {(pourCard.entries || []).map((entry: any, idx: number) => (
+                                      <div key={`pour-entry-${idx}`} className="rounded-lg border border-border-subtle bg-surface-base p-3">
+                                        <div className="mb-2 text-xs font-semibold text-text-muted">
+                                          Entry {idx + 1}
+                                        </div>
+                                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                                        <input
+                                          value={entry.pourDate || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, pourDate: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Pour date"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.truckNo || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, truckNo: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Truck no"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.deliveryChallanNo || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, deliveryChallanNo: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Delivery challan no"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.mixIdOrGrade || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, mixIdOrGrade: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Mix / Grade"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.quantityM3 ?? ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? {
+                                                      ...row,
+                                                      quantityM3: e.target.value ? Number(e.target.value) : null,
+                                                    }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Qty m3"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.cumulativeQtyM3 ?? ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? {
+                                                      ...row,
+                                                      cumulativeQtyM3: e.target.value ? Number(e.target.value) : null,
+                                                    }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Cumulative qty m3"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.arrivalTimeAtSite || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, arrivalTimeAtSite: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Arrival time"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.batchStartTime || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, batchStartTime: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Batch start time"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.finishingTime || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, finishingTime: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Finishing time"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.timeTakenMinutes ?? ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? {
+                                                      ...row,
+                                                      timeTakenMinutes: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : null,
+                                                    }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Time taken mins"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.slumpMm ?? ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? {
+                                                      ...row,
+                                                      slumpMm: e.target.value ? Number(e.target.value) : null,
+                                                    }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Slump mm"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.concreteTemperature ?? ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? {
+                                                      ...row,
+                                                      concreteTemperature: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : null,
+                                                    }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Concrete temp"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.noOfCubesTaken ?? ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? {
+                                                      ...row,
+                                                      noOfCubesTaken: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : null,
+                                                    }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="No. of cubes"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.supplierRepresentative || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, supplierRepresentative: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Supplier"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.contractorRepresentative || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, contractorRepresentative: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Contractor rep"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
+                                          value={entry.clientRepresentative || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, clientRepresentative: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Client rep"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        </div>
+                                        <textarea
+                                          value={entry.remarks || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, remarks: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Entry remarks"
+                                          className="mt-2 min-h-[70px] w-full rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPourCard((prev: any) => ({
+                                        ...prev,
+                                        entries: [
+                                          ...(prev.entries || []),
+                                          {
+                                            slNo: (prev.entries || []).length + 1,
+                                            pourDate: "",
+                                            truckNo: "",
+                                            deliveryChallanNo: "",
+                                            mixIdOrGrade: "",
+                                            quantityM3: null,
+                                            cumulativeQtyM3: null,
+                                            arrivalTimeAtSite: "",
+                                            batchStartTime: "",
+                                            finishingTime: "",
+                                            timeTakenMinutes: null,
+                                            slumpMm: null,
+                                            concreteTemperature: null,
+                                            noOfCubesTaken: null,
+                                            supplierRepresentative: "",
+                                            contractorRepresentative: "",
+                                            clientRepresentative: "",
+                                            remarks: "",
+                                          },
+                                        ],
+                                      }))
+                                    }
+                                    className="mt-3 rounded-lg border border-border-default bg-surface-base px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-surface-raised"
+                                  >
+                                    Add Entry
+                                  </button>
+                                </div>
+                                <div className="flex justify-end">
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={downloadPourCardPdf}
+                                      className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised"
+                                    >
+                                      Download PDF
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={savePourCardDetails}
+                                      disabled={savingPourCard || pourCard.status === "LOCKED"}
+                                      className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
+                                    >
+                                      {savingPourCard ? "Saving..." : "Save Pour Card"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={submitPourCardDetails}
+                                      disabled={
+                                        submittingPourCard || pourCard.status === "LOCKED"
+                                      }
+                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                    >
+                                      {submittingPourCard
+                                        ? "Submitting..."
+                                        : pourCard.status === "SUBMITTED"
+                                          ? "Submitted"
+                                          : pourCard.status === "LOCKED"
+                                            ? "Locked"
+                                            : "Submit"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {inspectionDetail.activity?.requiresPourClearanceCard &&
+                          prePourClearanceCard ? (
+                            <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-semibold text-text-primary">
+                                  Pre-Pour Clearance
+                                </div>
+                                <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
+                                  {prePourClearanceCard.status || "DRAFT"}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid gap-3">
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <input
+                                    value={prePourClearanceCard.projectNameSnapshot || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        projectNameSnapshot: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Project name"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.contractorName || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        contractorName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Contractor"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-3">
+                                  <input
+                                    value={prePourClearanceCard.cardDate || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        cardDate: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Date"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.pourStartTime || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        pourStartTime: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Pour start time"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.pourEndTime || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        pourEndTime: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Pour end time"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <input
+                                    value={prePourClearanceCard.locationText || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        locationText: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Checklist location"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.elementName || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        elementName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Element"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <input
+                                  value={prePourClearanceCard.pourLocation || ""}
+                                  onChange={(e) =>
+                                    setPrePourClearanceCard((prev: any) => ({
+                                      ...prev,
+                                      pourLocation: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Pour location"
+                                  className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                />
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <input
+                                    value={prePourClearanceCard.pourNo || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        pourNo: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Pour no"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.gradeOfConcrete || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        gradeOfConcrete: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Grade of concrete"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.placementMethod || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        placementMethod: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Placement method"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  <input
+                                    value={prePourClearanceCard.estimatedConcreteQty ?? ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        estimatedConcreteQty: e.target.value
+                                          ? Number(e.target.value)
+                                          : null,
+                                      }))
+                                    }
+                                    placeholder="Estimated qty"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.actualConcreteQty ?? ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        actualConcreteQty: e.target.value
+                                          ? Number(e.target.value)
+                                          : null,
+                                      }))
+                                    }
+                                    placeholder="Actual qty"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.concreteSupplier || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        concreteSupplier: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Concrete supplier"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.cubeMouldCount ?? ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        cubeMouldCount: e.target.value
+                                          ? Number(e.target.value)
+                                          : null,
+                                      }))
+                                    }
+                                    placeholder="Cube mould count"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.targetSlump || ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        targetSlump: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Target slump"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                  <input
+                                    value={prePourClearanceCard.vibratorCount ?? ""}
+                                    onChange={(e) =>
+                                      setPrePourClearanceCard((prev: any) => ({
+                                        ...prev,
+                                        vibratorCount: e.target.value
+                                          ? Number(e.target.value)
+                                          : null,
+                                      }))
+                                    }
+                                    placeholder="No. of vibrators"
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
+                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                                    Attachments
+                                  </div>
+                                  <div className="grid gap-2 md:grid-cols-2">
+                                    {[
+                                      ["checklistPccAttached", "PCC Checklist"],
+                                      ["checklistWaterproofingAttached", "Waterproofing Checklist"],
+                                      ["checklistFormworkAttached", "Formwork Checklist"],
+                                      ["checklistReinforcementAttached", "Reinforcement Checklist"],
+                                      ["checklistMepAttached", "MEP Checklist"],
+                                      ["checklistConcretingAttached", "Concreting Checklist"],
+                                      ["concretePourCardAttached", "Concrete Pour Card"],
+                                    ].map(([key, label]) => (
+                                      <div
+                                        key={key}
+                                        className="grid grid-cols-[1fr_140px] items-center gap-3 text-sm text-text-secondary"
+                                      >
+                                        <span>{label}</span>
+                                        <select
+                                          value={
+                                            prePourClearanceCard.attachments?.[key] === true
+                                              ? "YES"
+                                              : prePourClearanceCard.attachments?.[key] === false
+                                                ? "NO"
+                                                : prePourClearanceCard.attachments?.[key] || "NO"
+                                          }
+                                          onChange={(e) =>
+                                            setPrePourClearanceCard((prev: any) => ({
+                                              ...prev,
+                                              attachments: {
+                                                ...(prev.attachments || {}),
+                                                [key]: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                          className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                        >
+                                          <option value="NO">No</option>
+                                          <option value="YES">Yes</option>
+                                          <option value="NA">N/A</option>
+                                        </select>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
+                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                                    Signoff Parties
+                                  </div>
+                                  <div className="space-y-2">
+                                    {(prePourClearanceCard.signoffs || []).map(
+                                      (signoff: any, idx: number) => (
+                                        <div
+                                          key={`signoff-${idx}`}
+                                          className="grid gap-2 md:grid-cols-[1.1fr_1fr]"
+                                        >
+                                          <input
+                                            value={signoff.department || ""}
+                                            onChange={(e) =>
+                                              setPrePourClearanceCard((prev: any) => ({
+                                                ...prev,
+                                                signoffs: (prev.signoffs || []).map(
+                                                  (row: any, rowIdx: number) =>
+                                                    rowIdx === idx
+                                                      ? { ...row, department: e.target.value }
+                                                      : row,
+                                                ),
+                                              }))
+                                            }
+                                            placeholder="Department"
+                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                          />
+                                          <input
+                                            value={signoff.personName || ""}
+                                            onChange={(e) =>
+                                              setPrePourClearanceCard((prev: any) => ({
+                                                ...prev,
+                                                signoffs: (prev.signoffs || []).map(
+                                                  (row: any, rowIdx: number) =>
+                                                    rowIdx === idx
+                                                      ? { ...row, personName: e.target.value }
+                                                      : row,
+                                                ),
+                                              }))
+                                            }
+                                            placeholder="Name"
+                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                          />
+                                          <input
+                                            value={signoff.signedDate || ""}
+                                            onChange={(e) =>
+                                              setPrePourClearanceCard((prev: any) => ({
+                                                ...prev,
+                                                signoffs: (prev.signoffs || []).map(
+                                                  (row: any, rowIdx: number) =>
+                                                    rowIdx === idx
+                                                      ? { ...row, signedDate: e.target.value }
+                                                      : row,
+                                                ),
+                                              }))
+                                            }
+                                            placeholder="Signed date"
+                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                          />
+                                          <select
+                                            value={signoff.status || "PENDING"}
+                                            onChange={(e) =>
+                                              setPrePourClearanceCard((prev: any) => ({
+                                                ...prev,
+                                                signoffs: (prev.signoffs || []).map(
+                                                  (row: any, rowIdx: number) =>
+                                                    rowIdx === idx
+                                                      ? { ...row, status: e.target.value }
+                                                      : row,
+                                                ),
+                                              }))
+                                            }
+                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                          >
+                                            <option value="PENDING">Pending</option>
+                                            <option value="SIGNED">Signed</option>
+                                            <option value="WAIVED">Waived</option>
+                                          </select>
+                                        </div>
+                                      ),
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex justify-end">
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={downloadPrePourClearancePdf}
+                                      className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised"
+                                    >
+                                      Download PDF
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={savePrePourClearanceDetails}
+                                      disabled={
+                                        savingPrePourClearance ||
+                                        prePourClearanceCard.status === "LOCKED"
+                                      }
+                                      className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
+                                    >
+                                      {savingPrePourClearance
+                                        ? "Saving..."
+                                        : "Save Pre-Pour Clearance"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={submitPrePourClearanceDetails}
+                                      disabled={
+                                        submittingPrePourClearance ||
+                                        prePourClearanceCard.status === "LOCKED"
+                                      }
+                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                    >
+                                      {submittingPrePourClearance
+                                        ? "Submitting..."
+                                        : prePourClearanceCard.status === "SUBMITTED"
+                                          ? "Submitted"
+                                          : prePourClearanceCard.status === "LOCKED"
+                                            ? "Locked"
+                                            : "Submit"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+
                     {activeApproverSummary && (
                       <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
                         <div className="rounded-xl border bg-surface-card p-4">
@@ -4172,6 +5223,29 @@ export default function QualityApprovalsPage() {
                         </div>
                       </div>
                     )}
+
+                    {(cardReadiness.requiresPourCard ||
+                      cardReadiness.requiresPrePourClearance) &&
+                    !cardReadiness.allReady ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex gap-3 text-blue-800">
+                        <AlertCircle className="w-5 h-5 shrink-0" />
+                        <div>
+                          <h4 className="font-bold text-sm">
+                            Final Approval Waiting On Card Submission
+                          </h4>
+                          <p className="text-xs mt-1">
+                            {cardReadiness.requiresPourCard &&
+                            !cardReadiness.pourCardReady
+                              ? "Required pour card is still draft or missing. "
+                              : ""}
+                            {cardReadiness.requiresPrePourClearance &&
+                            !cardReadiness.prePourClearanceReady
+                              ? "Required pre-pour clearance card is still draft or missing."
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {!inspectionDetail.stages ||
                     inspectionDetail.stages.length === 0 ? (

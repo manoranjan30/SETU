@@ -15,6 +15,11 @@ import { getPublicFileUrl } from "../../api/baseUrl";
 import { useAuth } from "../../context/AuthContext";
 import { qualityService } from "../../services/quality.service";
 import type { QualityUnitNode } from "../../types/quality";
+import {
+  isActivityVisibleForFloorScope,
+  resolveFloorScope,
+  type FloorVisibilityConfig,
+} from "./utils/floorVisibility";
 
 // Reuse types or define local interfaces if shared types file not available
 interface Vendor {
@@ -31,6 +36,9 @@ interface QualityActivity {
   witnessPoint: boolean;
   allowBreak: boolean;
   applicabilityLevel?: "FLOOR" | "UNIT" | "ROOM";
+  requiresPourCard?: boolean;
+  requiresPourClearanceCard?: boolean;
+  floorVisibility?: FloorVisibilityConfig;
   status: string;
   previousActivityId?: number;
   incomingEdges?: { sourceId: number; source: Partial<QualityActivity> }[];
@@ -68,6 +76,7 @@ interface QualityInspection {
   unitName?: string | null;
   roomName?: string | null;
   drawingNo?: string;
+  elementName?: string | null;
   processCode?: string;
   documentType?: string;
   pendingObservationCount?: number | null;
@@ -137,9 +146,11 @@ export default function InspectionRequestPage() {
   const [rfiMode, setRfiMode] = useState<"SINGLE" | "MULTIPLE">("SINGLE");
   const [rfiParts, setRfiParts] = useState(2);
   const [drawingNo, setDrawingNo] = useState("");
+  const [elementName, setElementName] = useState("");
   const [qualityUnits, setQualityUnits] = useState<QualityUnitNode[]>([]);
   const [selectedUnitIds, setSelectedUnitIds] = useState<number[]>([]);
   const [raisingBatch, setRaisingBatch] = useState(false);
+  const [expandingGoActivityId, setExpandingGoActivityId] = useState<number | null>(null);
   const [quickRaiseConfig, setQuickRaiseConfig] = useState<{
     mode: "NONE" | "GO_SINGLE" | "UNIT_SINGLE" | "UNIT_BATCH";
     partNo?: number;
@@ -193,7 +204,8 @@ export default function InspectionRequestPage() {
   useEffect(() => {
     if (selectedListId && selectedNodeId) {
       setLoading(true);
-      Promise.all([
+      Promise.allSettled([
+        api.get(`/quality/activity-lists/${selectedListId}`),
         api.get(`/quality/activity-lists/${selectedListId}/activities`),
         api.get("/quality/inspections", {
           params: {
@@ -203,11 +215,37 @@ export default function InspectionRequestPage() {
           },
         }),
       ])
-        .then(async ([actRes, inspRes]) => {
-          const acts = actRes.data as QualityActivity[];
-          const inspectionRows = inspRes.data as QualityInspection[];
+        .then(async ([listRes, actRes, inspRes]) => {
+          const listData =
+            listRes.status === "fulfilled" ? listRes.value.data : null;
+          const actsData =
+            actRes.status === "fulfilled" ? actRes.value.data : [];
+          const inspectionsData =
+            inspRes.status === "fulfilled" ? inspRes.value.data : [];
+
+          const acts =
+            Array.isArray(actsData) && actsData.length > 0
+              ? (actsData as QualityActivity[])
+              : Array.isArray(listData?.activities)
+                ? (listData.activities as QualityActivity[])
+                : [];
+          const inspectionRows = Array.isArray(inspectionsData)
+            ? (inspectionsData as QualityInspection[])
+            : [];
           setActivities(acts);
           setInspections(inspectionRows);
+
+          if (
+            listRes.status === "rejected" ||
+            actRes.status === "rejected" ||
+            inspRes.status === "rejected"
+          ) {
+            console.error("Partial inspection request load failure", {
+              list: listRes.status === "rejected" ? listRes.reason : null,
+              activities: actRes.status === "rejected" ? actRes.reason : null,
+              inspections: inspRes.status === "rejected" ? inspRes.reason : null,
+            });
+          }
 
           // Fetch only the observations that belong to RFIs raised for the
           // currently selected scope. Shared activity templates must not leak
@@ -276,17 +314,40 @@ export default function InspectionRequestPage() {
     }
   }, [selectedListId, selectedNodeId, projectId, refreshKey]);
 
+  const selectedFloorScope = useMemo(
+    () => resolveFloorScope(epsNodes as any, selectedNodeId),
+    [epsNodes, selectedNodeId],
+  );
+
+  const visibleActivities = useMemo(
+    () =>
+      activities.filter((activity) =>
+        isActivityVisibleForFloorScope(
+          activity.floorVisibility || null,
+          selectedFloorScope,
+        ),
+      ),
+    [activities, selectedFloorScope],
+  );
+
+  const hiddenActivityCount = Math.max(
+    0,
+    activities.length - visibleActivities.length,
+  );
+
   // Logic to determine status of each activity
   const activityRows = useMemo(() => {
     // Map inspections by activityId (get latest)
     const inspMap = new Map<number, QualityInspection>();
+    const activityMap = new Map(activities.map((activity) => [activity.id, activity]));
+    const visibleActivityIds = new Set(visibleActivities.map((activity) => activity.id));
     // Inspections are ordered by date desc from backend, so first one is latest
     inspections.forEach((i) => {
       if (!inspMap.has(i.activityId)) inspMap.set(i.activityId, i);
     });
 
     // Compute status
-    return activities.map((act) => {
+    return visibleActivities.map((act) => {
       const insp = inspMap.get(act.id);
       const hasUnresolvedObservations =
         (observationsMap[act.id] || []).some((obs) => obs.status !== "CLOSED") ||
@@ -308,6 +369,9 @@ export default function InspectionRequestPage() {
       // Check edges if available
       if (act.incomingEdges && act.incomingEdges.length > 0) {
         for (const edge of act.incomingEdges) {
+          if (!visibleActivityIds.has(edge.sourceId)) {
+            continue;
+          }
           const prevInsp = inspMap.get(edge.sourceId);
           if (!prevInsp || prevInsp.status !== "APPROVED") {
             predecessorDone = false;
@@ -317,9 +381,18 @@ export default function InspectionRequestPage() {
       }
       // Fallback for legacy data/cache
       else if (act.previousActivityId) {
-        const prevInsp = inspMap.get(act.previousActivityId);
-        if (!prevInsp || prevInsp.status !== "APPROVED") {
-          predecessorDone = false;
+        const previousActivity = activityMap.get(act.previousActivityId);
+        const previousVisible =
+          previousActivity &&
+          isActivityVisibleForFloorScope(
+            previousActivity.floorVisibility || null,
+            selectedFloorScope,
+          );
+        if (previousVisible) {
+          const prevInsp = inspMap.get(act.previousActivityId);
+          if (!prevInsp || prevInsp.status !== "APPROVED") {
+            predecessorDone = false;
+          }
         }
       }
 
@@ -334,7 +407,7 @@ export default function InspectionRequestPage() {
 
       return { ...act, inspection: insp, statusState: state, predecessorDone };
     });
-  }, [activities, inspections, observationsMap]);
+  }, [activities, visibleActivities, inspections, observationsMap, selectedFloorScope]);
 
   const inspectionsById = useMemo(
     () => new Map(inspections.map((inspection) => [inspection.id, inspection])),
@@ -430,6 +503,7 @@ export default function InspectionRequestPage() {
     activityId: activity.id,
     processCode: "QA_QC_APPROVAL",
     drawingNo: drawingNo.trim(),
+    elementName: elementName.trim() || undefined,
     documentType:
       activity.applicabilityLevel === "ROOM"
         ? "ROOM_RFI"
@@ -636,14 +710,60 @@ export default function InspectionRequestPage() {
       setRfiParts(2);
     }
     setDrawingNo("");
+    setElementName("");
     setQuickRaiseConfig(quickConfig || { mode: "NONE" });
     setRfiModalActivity(activity);
+  };
+
+  const handleExpandGoCount = async (activity: QualityActivity) => {
+    if (!selectedNodeId || !projectId) return;
+    const progress = partProgressByActivity[activity.id];
+    if (!progress) {
+      alert("Raise the first GO before expanding the GO count.");
+      return;
+    }
+
+    const defaultValue = String(Math.max(progress.totalParts + 1, 2));
+    const input = window.prompt(
+      `Current GO count is ${progress.totalParts}. Enter the new total GO count:`,
+      defaultValue,
+    );
+    if (!input) return;
+
+    const newTotalParts = Number(input);
+    if (!Number.isInteger(newTotalParts) || newTotalParts <= progress.totalParts) {
+      alert(`Please enter a whole number greater than ${progress.totalParts}.`);
+      return;
+    }
+
+    setExpandingGoActivityId(activity.id);
+    try {
+      await api.post("/quality/inspections/expand-go", {
+        projectId: Number(projectId),
+        epsNodeId: selectedNodeId,
+        activityId: activity.id,
+        newTotalParts,
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to expand GO count");
+    } finally {
+      setExpandingGoActivityId(null);
+    }
   };
 
   const submitRfiFlow = async () => {
     if (!rfiModalActivity || !selectedNodeId) return;
     if (!drawingNo.trim()) {
       alert("Please enter the drawing number before raising the RFI.");
+      return;
+    }
+    if (
+      (rfiModalActivity.requiresPourCard ||
+        rfiModalActivity.requiresPourClearanceCard) &&
+      !elementName.trim()
+    ) {
+      alert("Please enter the element name before raising the RFI.");
       return;
     }
 
@@ -907,12 +1027,12 @@ export default function InspectionRequestPage() {
                   </div>
                   <div className="text-2xl font-bold text-secondary">
                     {Math.round(
-                      (activities.filter(
+                      (visibleActivities.filter(
                         (a) =>
                           activityRows.find((r) => r.id === a.id)
                             ?.statusState === "APPROVED",
                       ).length /
-                        (activities.length || 1)) *
+                        (visibleActivities.length || 1)) *
                         100,
                     )}
                     %
@@ -961,6 +1081,11 @@ export default function InspectionRequestPage() {
               </div>
 
               <div className="bg-surface-card shadow-sm border rounded-xl overflow-hidden divide-y divide-gray-100">
+                {hiddenActivityCount > 0 && (
+                  <div className="border-b border-indigo-100 bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
+                    {hiddenActivityCount} activit{hiddenActivityCount === 1 ? "y is" : "ies are"} hidden by floor visibility configuration for the selected location.
+                  </div>
+                )}
                 {activityRows.length === 0 && !loading && (
                   <div className="p-8 text-center text-text-muted">
                     No activities found in this list.
@@ -1060,15 +1185,26 @@ export default function InspectionRequestPage() {
                           </div>
                         )}
                         {item.applicabilityLevel === "FLOOR" &&
-                          partProgressByActivity[item.id]?.totalParts > 1 && (
+                          partProgressByActivity[item.id] && (
                             <div className="mt-3 text-xs bg-secondary-muted border border-indigo-100 rounded-lg p-3">
-                              <div className="font-semibold text-indigo-800 mb-2">
-                                Multi-Go Progress (
-                                {
-                                  partProgressByActivity[item.id]
-                                    .existingPartNos.length
-                                }
-                                /{partProgressByActivity[item.id].totalParts})
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <div className="font-semibold text-indigo-800">
+                                  GO Progress (
+                                  {
+                                    partProgressByActivity[item.id]
+                                      .existingPartNos.length
+                                  }
+                                  /{partProgressByActivity[item.id].totalParts})
+                                </div>
+                                <button
+                                  onClick={() => handleExpandGoCount(item)}
+                                  disabled={expandingGoActivityId === item.id}
+                                  className="rounded border border-indigo-200 bg-surface-card px-2 py-1 font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                                >
+                                  {expandingGoActivityId === item.id
+                                    ? "Updating..."
+                                    : "Add GO"}
+                                </button>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {Array.from(
@@ -1475,6 +1611,30 @@ export default function InspectionRequestPage() {
                   placeholder="Enter drawing number"
                   className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-text-secondary">
+                  Elements
+                  {(rfiModalActivity.requiresPourCard ||
+                    rfiModalActivity.requiresPourClearanceCard) && (
+                    <span className="ml-1 text-error">*</span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={elementName}
+                  onChange={(e) => setElementName(e.target.value)}
+                  placeholder="Enter element name"
+                  className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
+                />
+                {(rfiModalActivity.requiresPourCard ||
+                  rfiModalActivity.requiresPourClearanceCard) && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    This activity requires pour card details, so the element
+                    name will be used in the checklist header and card records.
+                  </p>
+                )}
               </div>
 
               {rfiModalActivity.applicabilityLevel === "UNIT" && (

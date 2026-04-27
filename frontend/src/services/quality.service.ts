@@ -154,11 +154,77 @@ export const qualityService = {
 
   createActivity: async (
     listId: number,
-    data: { activityName: string; description?: string },
+    data: {
+      activityName: string;
+      description?: string;
+      requiresPourCard?: boolean;
+      requiresPourClearanceCard?: boolean;
+    },
   ) => {
     const res = await api.post(
       `${BASE_URL}/activity-lists/${listId}/activities`,
       data,
+    );
+    return res.data;
+  },
+
+  getPourCard: async (inspectionId: number) => {
+    const res = await api.get(`${BASE_URL}/inspections/${inspectionId}/pour-card`);
+    return res.data;
+  },
+
+  savePourCard: async (inspectionId: number, data: Record<string, unknown>) => {
+    const res = await api.put(
+      `${BASE_URL}/inspections/${inspectionId}/pour-card`,
+      data,
+    );
+    return res.data;
+  },
+
+  submitPourCard: async (inspectionId: number) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pour-card/submit`,
+    );
+    return res.data;
+  },
+
+  downloadPourCardPdf: async (inspectionId: number) => {
+    const res = await api.get(
+      `${BASE_URL}/inspections/${inspectionId}/pour-card/pdf`,
+      { responseType: "blob" },
+    );
+    return res.data;
+  },
+
+  getPrePourClearanceCard: async (inspectionId: number) => {
+    const res = await api.get(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance`,
+    );
+    return res.data;
+  },
+
+  savePrePourClearanceCard: async (
+    inspectionId: number,
+    data: Record<string, unknown>,
+  ) => {
+    const res = await api.put(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance`,
+      data,
+    );
+    return res.data;
+  },
+
+  submitPrePourClearanceCard: async (inspectionId: number) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/submit`,
+    );
+    return res.data;
+  },
+
+  downloadPrePourClearancePdf: async (inspectionId: number) => {
+    const res = await api.get(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/pdf`,
+      { responseType: "blob" },
     );
     return res.data;
   },

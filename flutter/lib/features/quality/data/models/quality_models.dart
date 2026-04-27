@@ -1384,11 +1384,16 @@ class QualitySiteObservation extends Equatable {
 
   factory QualitySiteObservation.fromJson(Map<String, dynamic> json) {
     // Resolve photo paths to absolute URLs.
+    // Local file paths (captured offline, stored with file:// scheme) must NOT
+    // be passed through resolveUrl — that would corrupt them by prepending the
+    // server origin. They are handled as local files by PhotoThumbnailStrip.
     List<String> resolvePhotos(dynamic raw) {
       if (raw == null) return const [];
-      return (raw as List<dynamic>)
-          .map((e) => ApiEndpoints.resolveUrl(e.toString()))
-          .toList();
+      return (raw as List<dynamic>).map((e) {
+        final url = e.toString();
+        if (url.startsWith('file://')) return url;
+        return ApiEndpoints.resolveUrl(url);
+      }).toList();
     }
 
     // Parse date from multiple input types (null, DateTime, or ISO string).
