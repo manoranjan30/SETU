@@ -54,6 +54,11 @@ export class AuthService {
   async login(user: any) {
     // Flatten permissions from all roles
     const rawPermissions = new Set<string>();
+    if (user.permissions) {
+      user.permissions.forEach((permission) =>
+        rawPermissions.add(permission.permissionCode),
+      );
+    }
     if (user.roles) {
       user.roles.forEach((role) => {
         if (role.permissions) {

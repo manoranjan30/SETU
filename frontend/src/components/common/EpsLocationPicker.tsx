@@ -64,15 +64,6 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (value && treeData.length > 0 && !selectedLabel) {
-      const path = findPath(treeData, value);
-      if (path.length > 0) {
-        setSelectedLabel(path.map((n) => n.name).join(" > "));
-      }
-    }
-  }, [value, treeData, selectedLabel]);
-
   const findPath = (
     nodes: EpsNode[],
     targetId: number,
@@ -88,6 +79,17 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
     }
     return [];
   };
+
+  useEffect(() => {
+    if (!value || treeData.length === 0) return;
+    const path = findPath(treeData, value);
+    if (path.length > 0) {
+      const nextLabel = path.map((n) => n.label || n.name).join(" > ");
+      if (nextLabel !== selectedLabel) {
+        setSelectedLabel(nextLabel);
+      }
+    }
+  }, [value, treeData, selectedLabel]);
 
   const matchingPathIds = useMemo(() => {
     if (!searchTerm) return new Set<number>();
@@ -113,7 +115,9 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
   }, [searchTerm, treeData]);
 
   const handleSelect = (node: EpsNode, parents: EpsNode[]) => {
-    const fullPath = [...parents, node].map((n) => n.name).join(" > ");
+    const fullPath = [...parents, node]
+      .map((n) => n.label || n.name)
+      .join(" > ");
     setSelectedLabel(fullPath);
     onChange(node.id, fullPath);
     setIsOpen(false);
@@ -128,20 +132,12 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
       return null;
     }
 
-    // Row click behaviour:
-    //   • Parent node (has children): toggle expand/collapse only.
-    //     Clicking the row text must NOT select + close the dropdown — the user
-    //     is navigating the tree, not choosing a location yet.
-    //   • Leaf node (no children): select the node and close the dropdown.
-    const handleRowClick = () => {
-      if (isLeaf) {
-        handleSelect(node, parents);
-      } else {
-        const next = new Set(expandedNodes);
-        if (next.has(node.id)) next.delete(node.id);
-        else next.add(node.id);
-        setExpandedNodes(next);
-      }
+    const toggleExpanded = (event?: React.MouseEvent) => {
+      event?.stopPropagation();
+      const next = new Set(expandedNodes);
+      if (next.has(node.id)) next.delete(node.id);
+      else next.add(node.id);
+      setExpandedNodes(next);
     };
 
     return (
@@ -152,16 +148,20 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
               ? "bg-primary-muted text-primary font-semibold border-primary/30 shadow-sm"
               : "border-transparent hover:bg-surface-raised hover:border-border-default"
           }`}
-          onClick={handleRowClick}
+          onClick={() => handleSelect(node, parents)}
         >
           {!isLeaf ? (
-            <span className="p-0.5 rounded text-text-muted">
+            <button
+              type="button"
+              className="p-0.5 rounded text-text-muted"
+              onClick={toggleExpanded}
+            >
               {isExpanded ? (
                 <ChevronDown className="w-4 h-4" />
               ) : (
                 <ChevronRight className="w-4 h-4" />
               )}
-            </span>
+            </button>
           ) : (
             <div className="w-5" />
           )}

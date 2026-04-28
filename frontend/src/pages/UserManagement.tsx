@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
-import { Plus, Trash, Edit, X } from "lucide-react";
+import { Plus, Trash, Edit, X, Search } from "lucide-react";
 
 interface User {
   id: number;
   username: string;
   roles: { id: number; name: string }[];
+  permissions?: { id: number; permissionCode: string; permissionName: string }[];
   isActive: boolean;
 }
 
@@ -14,18 +15,31 @@ interface Role {
   name: string;
 }
 
+interface Permission {
+  id: number;
+  permissionCode: string;
+  permissionName: string;
+  moduleName: string;
+}
+
 const UserManagement = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>(
+    [],
+  );
+  const [permissionSearch, setPermissionSearch] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   useEffect(() => {
     fetchUsers();
     fetchRoles();
+    fetchPermissions();
   }, []);
 
   const fetchUsers = async () => {
@@ -46,6 +60,26 @@ const UserManagement = () => {
     }
   };
 
+  const fetchPermissions = async () => {
+    try {
+      const res = await api.get("/permissions");
+      setPermissions(res.data);
+    } catch (error) {
+      console.error("Failed to fetch permissions");
+    }
+  };
+
+  const filteredPermissions = useMemo(() => {
+    const query = permissionSearch.trim().toLowerCase();
+    if (!query) return permissions;
+    return permissions.filter(
+      (permission) =>
+        permission.permissionCode.toLowerCase().includes(query) ||
+        permission.permissionName.toLowerCase().includes(query) ||
+        permission.moduleName.toLowerCase().includes(query),
+    );
+  }, [permissionSearch, permissions]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -53,6 +87,7 @@ const UserManagement = () => {
         username,
         password: password || undefined, // Send undefined if empty during edit to avoid overwrite
         roles: selectedRoles,
+        permissionIds: selectedPermissionIds,
         isActive,
       };
 
@@ -78,6 +113,7 @@ const UserManagement = () => {
     setUsername(user.username);
     setPassword(""); // Don't populate password
     setSelectedRoles(user.roles.map((r) => r.id));
+    setSelectedPermissionIds(user.permissions?.map((permission) => permission.id) || []);
     setIsActive(user.isActive);
   };
 
@@ -86,6 +122,8 @@ const UserManagement = () => {
     setUsername("");
     setPassword("");
     setSelectedRoles([]);
+    setSelectedPermissionIds([]);
+    setPermissionSearch("");
     setIsActive(true);
   };
 
@@ -104,6 +142,14 @@ const UserManagement = () => {
       prev.includes(roleId)
         ? prev.filter((id) => id !== roleId)
         : [...prev, roleId],
+    );
+  };
+
+  const togglePermission = (permissionId: number) => {
+    setSelectedPermissionIds((prev) =>
+      prev.includes(permissionId)
+        ? prev.filter((id) => id !== permissionId)
+        : [...prev, permissionId],
     );
   };
 
@@ -170,6 +216,75 @@ const UserManagement = () => {
             </div>
           </div>
 
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label className="block text-sm font-medium text-text-secondary">
+                Special Permissions
+              </label>
+              <span className="text-xs text-text-muted">
+                Adds permissions directly to this user beyond assigned roles
+              </span>
+            </div>
+            <div className="rounded-xl border border-border-default bg-surface-base p-3">
+              <div className="relative mb-3">
+                <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-disabled" />
+                <input
+                  type="text"
+                  value={permissionSearch}
+                  onChange={(e) => setPermissionSearch(e.target.value)}
+                  placeholder="Search permissions by code, name, or module"
+                  className="block w-full rounded-md border border-border-strong bg-surface-card py-2 pl-9 pr-3 shadow-sm"
+                />
+              </div>
+              <div className="mb-3 flex flex-wrap gap-2">
+                {selectedPermissionIds.length === 0 ? (
+                  <span className="text-xs text-text-muted">
+                    No direct permissions selected.
+                  </span>
+                ) : (
+                  permissions
+                    .filter((permission) =>
+                      selectedPermissionIds.includes(permission.id),
+                    )
+                    .map((permission) => (
+                      <span
+                        key={permission.id}
+                        className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                      >
+                        {permission.permissionCode}
+                      </span>
+                    ))
+                )}
+              </div>
+              <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                {filteredPermissions.map((permission) => (
+                  <label
+                    key={permission.id}
+                    className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-subtle bg-surface-card px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPermissionIds.includes(permission.id)}
+                      onChange={() => togglePermission(permission.id)}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-text-primary">
+                        {permission.permissionName}
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        {permission.permissionCode}
+                      </div>
+                      <div className="text-[11px] uppercase tracking-wide text-text-disabled">
+                        {permission.moduleName}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center">
             <label className="flex items-center cursor-pointer">
               <input
@@ -213,6 +328,9 @@ const UserManagement = () => {
                 Roles
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                Special Permissions
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
                 Status
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-text-muted uppercase tracking-wider">
@@ -239,6 +357,27 @@ const UserManagement = () => {
                         {r.name}
                       </span>
                     ))}
+                </td>
+                <td className="px-6 py-4 text-sm text-text-muted">
+                  {user.permissions?.length ? (
+                    <>
+                      {user.permissions.slice(0, 3).map((permission) => (
+                        <span
+                          key={permission.id}
+                          className="mr-1 inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+                        >
+                          {permission.permissionCode}
+                        </span>
+                      ))}
+                      {user.permissions.length > 3 && (
+                        <span className="text-xs text-text-disabled">
+                          +{user.permissions.length - 3} more
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xs text-text-disabled">None</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">
                   <span

@@ -25,6 +25,7 @@ import type {
   CsvActivityRow,
   CreateObservationDto,
   ResolveObservationDto,
+  RejectObservationRectificationDto,
   ApproveActivityDto,
 } from './quality-activity.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -166,6 +167,22 @@ export class QualityActivityController {
     @Request() req: RequestWithUser,
   ) {
     return this.service.resolveObservation(
+      id,
+      obsId,
+      req.user?.id?.toString() || 'system',
+      dto,
+    );
+  }
+
+  @Patch('activities/:id/observation/:obsId/reject-rectification')
+  @Permissions('QUALITY.OBSERVATION.CLOSE')
+  rejectObservationRectification(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('obsId') obsId: string,
+    @Body() dto: RejectObservationRectificationDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.service.rejectObservationRectification(
       id,
       obsId,
       req.user?.id?.toString() || 'system',

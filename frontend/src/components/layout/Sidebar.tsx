@@ -15,7 +15,6 @@ import {
   Layout,
   Grid,
   Box,
-  Users,
   ShieldAlert,
   ChevronLeft,
   CheckCircle,
@@ -337,15 +336,6 @@ const Sidebar = () => {
                   path: `/dashboard/projects/${activeProjectId}/progress`,
                   icon: Box,
                   permission: "PROGRESS.DASHBOARD.READ",
-                }}
-              />
-              <SidebarItem
-                isCollapsed={isCollapsed}
-                item={{
-                  label: "Manpower",
-                  path: `/dashboard/projects/${activeProjectId}/manpower`,
-                  icon: Users,
-                  permission: "LABOR.ENTRY.READ",
                 }}
               />
               <SidebarItem

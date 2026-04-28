@@ -17,6 +17,8 @@ import {
   CreateSiteObservationDto,
   RectifySiteObservationDto,
   CloseSiteObservationDto,
+  RejectSiteObservationRectificationDto,
+  HoldSiteObservationDto,
 } from './dto/site-observation.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -86,6 +88,35 @@ export class SiteObservationController {
     @Request() req,
   ) {
     return this.service.close(id, dto, req.user?.id || req.user?.userId);
+  }
+
+  @Patch(':id/reject-rectification')
+  @Permissions('QUALITY.SITE_OBS.CLOSE')
+  @Auditable('QUALITY', 'REJECT_SITE_OBS_RECTIFICATION', 'id')
+  rejectRectification(
+    @Param('id') id: string,
+    @Body() dto: RejectSiteObservationRectificationDto,
+    @Request() req,
+  ) {
+    return this.service.rejectRectification(
+      id,
+      dto,
+      req.user?.id || req.user?.userId,
+    );
+  }
+
+  @Patch(':id/hold')
+  @Permissions('QUALITY.SITE_OBS.CLOSE')
+  @Auditable('QUALITY', 'HOLD_SITE_OBS', 'id')
+  hold(@Param('id') id: string, @Body() dto: HoldSiteObservationDto, @Request() req) {
+    return this.service.hold(id, dto, req.user?.id || req.user?.userId);
+  }
+
+  @Patch(':id/unhold')
+  @Permissions('QUALITY.SITE_OBS.CLOSE')
+  @Auditable('QUALITY', 'UNHOLD_SITE_OBS', 'id')
+  unhold(@Param('id') id: string) {
+    return this.service.unhold(id);
   }
 
   @Delete(':id')

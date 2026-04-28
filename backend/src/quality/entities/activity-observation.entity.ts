@@ -17,6 +17,15 @@ export enum ActivityObservationStatus {
   RESOLVED = 'RESOLVED', // Keeping for backward compatibility temporarily
 }
 
+export interface ActivityObservationRectificationHistoryEntry {
+  type: 'RECTIFIED' | 'REJECTED';
+  text?: string | null;
+  photos?: string[];
+  rejectionRemarks?: string | null;
+  actorId?: string | null;
+  at: string;
+}
+
 @Entity('activity_observations')
 export class ActivityObservation {
   @PrimaryGeneratedColumn('uuid')
@@ -29,27 +38,30 @@ export class ActivityObservation {
   @JoinColumn({ name: 'activityId' })
   activity: QualityActivity;
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   checklistId: number; // Optional context pointer
 
-  @Column({ nullable: true })
-  inspectionId: number; // FK → quality_inspections.id
+  @Column({ type: 'int', nullable: true })
+  inspectionId: number; // FK -> quality_inspections.id
 
   @ManyToOne(() => QualityInspection, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'inspectionId' })
   inspection: QualityInspection;
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   stageId: number | null;
 
-  @ManyToOne(() => QualityInspectionStage, { onDelete: 'CASCADE', nullable: true })
+  @ManyToOne(() => QualityInspectionStage, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
   @JoinColumn({ name: 'stageId' })
   stage: QualityInspectionStage | null;
 
-  @Column({ nullable: true })
-  inspectorId: string; // Foreign Key to User (String based on current app pattern)
+  @Column({ type: 'text', nullable: true })
+  inspectorId: string; // Foreign Key to User (string based on current app pattern)
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   type: string; // e.g. Major, Minor, Critical
 
   @Column({ type: 'text' })
@@ -74,11 +86,23 @@ export class ActivityObservation {
   })
   status: ActivityObservationStatus;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   resolvedBy: string;
 
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date;
+
+  @Column({ type: 'text', nullable: true })
+  rectificationRejectedRemarks: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  rectificationRejectedBy: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rectificationRejectedAt: Date | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  rectificationHistory: ActivityObservationRectificationHistoryEntry[];
 
   @CreateDateColumn()
   createdAt: Date;

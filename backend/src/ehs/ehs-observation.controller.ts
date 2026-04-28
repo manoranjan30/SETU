@@ -17,6 +17,8 @@ import {
   CreateEhsObservationDto,
   RectifyEhsObservationDto,
   CloseEhsObservationDto,
+  RejectEhsObservationRectificationDto,
+  HoldEhsObservationDto,
 } from './dto/ehs-observation.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -86,6 +88,35 @@ export class EhsObservationController {
     @Request() req,
   ) {
     return this.service.close(id, dto, req.user?.id || req.user?.userId);
+  }
+
+  @Patch(':id/reject-rectification')
+  @Permissions('EHS.SITE_OBS.CLOSE')
+  @Auditable('EHS', 'REJECT_SITE_OBS_RECTIFICATION', 'id')
+  rejectRectification(
+    @Param('id') id: string,
+    @Body() dto: RejectEhsObservationRectificationDto,
+    @Request() req,
+  ) {
+    return this.service.rejectRectification(
+      id,
+      dto,
+      req.user?.id || req.user?.userId,
+    );
+  }
+
+  @Patch(':id/hold')
+  @Permissions('EHS.SITE_OBS.CLOSE')
+  @Auditable('EHS', 'HOLD_SITE_OBS', 'id')
+  hold(@Param('id') id: string, @Body() dto: HoldEhsObservationDto, @Request() req) {
+    return this.service.hold(id, dto, req.user?.id || req.user?.userId);
+  }
+
+  @Patch(':id/unhold')
+  @Permissions('EHS.SITE_OBS.CLOSE')
+  @Auditable('EHS', 'UNHOLD_SITE_OBS', 'id')
+  unhold(@Param('id') id: string) {
+    return this.service.unhold(id);
   }
 
   @Delete(':id')

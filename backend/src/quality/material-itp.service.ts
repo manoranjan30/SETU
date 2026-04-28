@@ -25,6 +25,7 @@ import { QualityMaterialTestResult } from './entities/quality-material-test-resu
 import { QualityMaterialEvidenceFile } from './entities/quality-material-evidence-file.entity';
 import { QualityMaterialApprovalRun } from './entities/quality-material-approval-run.entity';
 import { QualityMaterialApprovalStep } from './entities/quality-material-approval-step.entity';
+import { User } from '../users/user.entity';
 
 const ITP_DOCUMENT_TYPE = 'MATERIAL_ITP_TEMPLATE';
 const RESULT_DOCUMENT_TYPE = 'MATERIAL_TEST_RESULT';
@@ -50,6 +51,8 @@ export class MaterialItpService {
     private readonly runRepo: Repository<QualityMaterialApprovalRun>,
     @InjectRepository(QualityMaterialApprovalStep)
     private readonly stepRepo: Repository<QualityMaterialApprovalStep>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
   ) {}
@@ -612,6 +615,9 @@ export class MaterialItpService {
   }
 
   private async assertUserCanApprove(projectId: number, step: QualityMaterialApprovalStep, userId: number) {
+    if (await this.isAdminUser(userId)) {
+      return;
+    }
     if (step.approverMode === 'USER') {
       const allowed = new Set(step.assignedUserIds?.length ? step.assignedUserIds : step.assignedUserId ? [step.assignedUserId] : []);
       if (!allowed.has(userId)) throw new ForbiddenException('You are not assigned to this approval step');
@@ -623,6 +629,14 @@ export class MaterialItpService {
         throw new ForbiddenException('Your project role is not assigned to this approval step');
       }
     }
+  }
+
+  private async isAdminUser(userId: number) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['roles'],
+    });
+    return Boolean(user?.roles?.some((role) => role.name === 'Admin'));
   }
 
   private async assertResultEvidenceComplete(result: QualityMaterialTestResult) {

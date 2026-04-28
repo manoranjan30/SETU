@@ -12,6 +12,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcryptjs';
 import { Role } from '../roles/role.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
+import { Permission } from '../permissions/permission.entity';
 
 @Injectable()
 export class UsersService {
@@ -41,12 +42,16 @@ export class UsersService {
     const roles = createUserDto.roles
       ? createUserDto.roles.map((id) => ({ id }) as Role)
       : [];
+    const permissions = createUserDto.permissionIds
+      ? createUserDto.permissionIds.map((id) => ({ id }) as Permission)
+      : [];
 
     const user = this.usersRepository.create({
       username: createUserDto.username,
       passwordHash,
       isActive: createUserDto.isActive ?? true,
       roles,
+      permissions,
     });
 
     return this.usersRepository.save(user);
@@ -55,14 +60,14 @@ export class UsersService {
   async findOne(username: string): Promise<User | null> {
     return this.usersRepository.findOne({
       where: { username },
-      relations: ['roles', 'roles.permissions'],
+      relations: ['roles', 'roles.permissions', 'permissions'],
     });
   }
 
   async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOne({
       where: { id },
-      relations: ['roles'],
+      relations: ['roles', 'roles.permissions', 'permissions'],
     });
   }
 
@@ -70,6 +75,7 @@ export class UsersService {
     return this.usersRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'roles')
+      .leftJoinAndSelect('user.permissions', 'permissions')
       .where('user.isTempUser = :isTemp OR user.isTempUser IS NULL', {
         isTemp: false,
       })
@@ -79,7 +85,7 @@ export class UsersService {
   async update(id: number, updateUserDto: any): Promise<User | null> {
     const user = await this.usersRepository.findOne({
       where: { id },
-      relations: ['roles'],
+      relations: ['roles', 'permissions'],
     });
     if (!user) return null;
 
@@ -102,6 +108,12 @@ export class UsersService {
       user.roles = updateUserDto.roles.map((rId) => ({ id: rId }) as Role);
     }
 
+    if (updateUserDto.permissionIds) {
+      user.permissions = updateUserDto.permissionIds.map(
+        (permissionId) => ({ id: permissionId }) as Permission,
+      );
+    }
+
     // We explicitly delete properties we don't want to overwrite or that are handled
     // But since we are modifying the 'user' entity directly, we are safe.
 
@@ -113,7 +125,7 @@ export class UsersService {
   async getProfile(id: number): Promise<any> {
     const user = await this.usersRepository.findOne({
       where: { id },
-      relations: ['roles'],
+      relations: ['roles', 'permissions'],
     });
     if (!user) throw new ForbiddenException('User not found');
 

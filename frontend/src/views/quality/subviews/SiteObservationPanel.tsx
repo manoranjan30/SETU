@@ -2,14 +2,10 @@ import React, { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Plus,
-  Trash2,
   X,
   Search,
   AlertCircle,
   Eye,
-  Calendar,
-  User,
-  MapPin,
   CheckCircle2,
   Clock,
   Upload,
@@ -41,6 +37,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const [activeTab, setActiveTab] = useState<
     "OPEN" | "RECTIFIED" | "CLOSED" | "ALL"
   >("OPEN");
+  const [page, setPage] = useState(1);
 
   // Modals state
   const [showRaiseModal, setShowRaiseModal] = useState(false);
@@ -66,6 +63,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const [uploading, setUploading] = useState(false);
   const [rectificationText, setRectificationText] = useState("");
   const [closureRemarks, setClosureRemarks] = useState("");
+  const [rejectionRemarks, setRejectionRemarks] = useState("");
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -120,9 +118,15 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
     }
   }, [categories, formData.category]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery, records.length]);
+
   const filteredRecords = useMemo(() => {
     let filtered = records;
-    if (activeTab !== "ALL") {
+    if (activeTab === "OPEN") {
+      filtered = records.filter((r) => r.status === "OPEN" || r.status === "HELD");
+    } else if (activeTab !== "ALL") {
       filtered = records.filter((r) => r.status === activeTab);
     }
     if (searchQuery) {
@@ -138,11 +142,17 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   }, [records, activeTab, searchQuery]);
 
   const tabCounts = {
-    OPEN: records.filter((r) => r.status === "OPEN").length,
+    OPEN: records.filter((r) => r.status === "OPEN" || r.status === "HELD").length,
     RECTIFIED: records.filter((r) => r.status === "RECTIFIED").length,
     CLOSED: records.filter((r) => r.status === "CLOSED").length,
     ALL: records.length,
   };
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
+  const pagedRecords = filteredRecords.slice(
+    (page - 1) * pageSize,
+    page * pageSize,
+  );
 
   // Helpers
   const getSeverityStyle = (severity: string) => {
@@ -274,6 +284,62 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
     }
   };
 
+  const handleRejectRectification = async () => {
+    if (!confirm("Reject this rectification and reopen the observation?")) return;
+    setUploading(true);
+    try {
+      await api.patch(
+        `/quality/site-observations/${selectedRecord.id}/reject-rectification`,
+        { rejectionRemarks },
+      );
+      setShowCloseModal(false);
+      setClosureRemarks("");
+      setRejectionRemarks("");
+      fetchRecords();
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message || "Failed to reject rectification",
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleHoldObservation = async () => {
+    if (!selectedRecord) return;
+    const holdReason = prompt(
+      "Enter the reason for holding/freezing this observation:",
+      selectedRecord.holdReason || "",
+    );
+    if (holdReason === null) return;
+    setUploading(true);
+    try {
+      await api.patch(`/quality/site-observations/${selectedRecord.id}/hold`, {
+        holdReason,
+      });
+      fetchRecords();
+      setShowCloseModal(false);
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to hold observation");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUnholdObservation = async () => {
+    if (!selectedRecord) return;
+    setUploading(true);
+    try {
+      await api.patch(`/quality/site-observations/${selectedRecord.id}/unhold`);
+      fetchRecords();
+      setShowCloseModal(false);
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to unfreeze observation");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (
       !confirm(
@@ -389,132 +455,149 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredRecords.map((item) => {
-            const style = getSeverityStyle(item.severity);
-            const age = getDaysOpen(item.createdAt);
-
-            return (
-              <div
-                key={item.id}
-                className="bg-surface-card rounded-2xl border border-border-subtle shadow-sm p-5 hover:shadow-md transition-all flex flex-col md:flex-row gap-5 relative group"
-              >
-                <div
-                  className={`w-1.5 absolute left-0 top-0 bottom-0 rounded-l-2xl ${style.border}`}
-                />
-
-                <div className="flex-1 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${style.badge}`}
-                      >
-                        {item.severity}
-                      </span>
-                      <span className="text-xs font-bold text-text-disabled uppercase tracking-wider">
-                        {item.category}
-                      </span>
-                      {item.status === "RECTIFIED" && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> Rectified
-                        </span>
-                      )}
-                      {item.status === "CLOSED" && (
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Closed
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-text-disabled" />
-                      <span className={`text-xs ${age.color}`}>{age.text}</span>
-                    </div>
-                  </div>
-
-                  <h3 className="text-base font-bold text-text-primary leading-snug">
-                    {item.description}
-                  </h3>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-y-2 gap-x-4">
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <MapPin className="w-4 h-4 text-success shrink-0" />
-                      <span
-                        className="truncate"
-                        title={item.locationLabel || item.epsNode?.name || "General Site"}
-                      >
-                        {item.locationLabel || item.epsNode?.name || "General Site (No Location)"}
-                      </span>
-                    </div>
-                    {item.targetDate && (
-                      <div className="flex items-center gap-2 text-sm text-text-muted">
-                        <Calendar className="w-4 h-4 shrink-0" /> Target:{" "}
-                        {new Date(item.targetDate).toLocaleDateString()}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 text-sm text-text-muted">
-                      <User className="w-4 h-4 shrink-0" /> ID:{" "}
-                      {item.id.split("-")[0]}...
-                    </div>
-                  </div>
-
-                  {item.photos && item.photos.length > 0 && (
-                    <div className="pt-2">{renderPhotos(item.photos)}</div>
-                  )}
-                </div>
-
-                <div className="flex md:flex-col justify-end gap-2 border-t md:border-t-0 md:border-l border-gray-50 pt-4 md:pt-0 md:pl-5 md:w-40 shrink-0">
-                  <button
-                    onClick={() => {
-                      setSelectedRecord(item);
-                      setShowCloseModal(true);
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-text-secondary bg-surface-base hover:bg-surface-raised rounded-lg transition-all"
-                  >
-                    <Eye className="w-4 h-4" /> View Details
-                  </button>
-
-                  {item.status === "OPEN" &&
-                    canRectify &&
-                    item.severity !== "INFO" && (
-                      <button
-                        onClick={() => {
-                          setSelectedRecord(item);
-                          setShowRectifyModal(true);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-amber-700 bg-warning-muted hover:bg-amber-100 rounded-lg transition-all"
-                      >
-                        Submit Fix
-                      </button>
-                    )}
-
-                  {/* INFO implies it can be closed instantly without rectification by QC */}
-                  {((item.status === "RECTIFIED" && canClose) ||
-                    (item.status === "OPEN" &&
-                      item.severity === "INFO" &&
-                      canClose)) && (
-                    <button
+        <div className="space-y-4">
+          <div className="overflow-x-auto rounded-2xl border border-border-subtle bg-surface-card shadow-sm">
+            <table className="min-w-full text-sm">
+              <thead className="bg-surface-base text-xs uppercase tracking-wide text-text-muted">
+                <tr>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Severity</th>
+                  <th className="px-4 py-3 text-left">Category</th>
+                  <th className="px-4 py-3 text-left">Location</th>
+                  <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-left">Aging</th>
+                  <th className="px-4 py-3 text-left">Target</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedRecords.map((item) => {
+                  const style = getSeverityStyle(item.severity);
+                  const age = getDaysOpen(item.createdAt);
+                  const isHeld = item.status === "HELD";
+                  return (
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer border-t border-border-subtle hover:bg-surface-base"
                       onClick={() => {
                         setSelectedRecord(item);
                         setShowCloseModal(true);
                       }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-success-muted hover:bg-emerald-100 rounded-lg transition-all"
                     >
-                      <CheckCircle2 className="w-4 h-4" /> Verify & Close
-                    </button>
-                  )}
-
-                  {canDelete && (
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-error hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Trash2 className="w-4 h-4" /> Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full bg-surface-raised px-2 py-1 text-[10px] font-bold uppercase text-text-secondary">
+                            {item.status}
+                          </span>
+                          {item.rectificationRejectedAt && item.status === "OPEN" && (
+                            <span className="rounded-full bg-rose-100 px-2 py-1 text-[10px] font-bold uppercase text-rose-700">
+                              Reopened
+                            </span>
+                          )}
+                          {isHeld && (
+                            <span className="rounded-full bg-slate-200 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">
+                              Frozen
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded px-2 py-1 text-[10px] font-black uppercase ${style.badge}`}>
+                          {item.severity}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-text-secondary">
+                        {item.category}
+                      </td>
+                      <td
+                        className="max-w-[220px] truncate px-4 py-3 text-text-secondary"
+                        title={item.locationLabel || item.epsNode?.name || "General Site"}
+                      >
+                        {item.locationLabel || item.epsNode?.name || "General Site"}
+                      </td>
+                      <td className="max-w-[320px] truncate px-4 py-3 font-medium text-text-primary">
+                        {item.description}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className={`text-xs ${age.color}`}>{age.text}</div>
+                        {typeof item.ageingDays === "number" && (
+                          <div className="text-[11px] text-text-muted">
+                            {item.ageingDays.toFixed(1)} days
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {item.targetDate
+                          ? new Date(item.targetDate).toLocaleDateString()
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div
+                          className="flex justify-end gap-2"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => {
+                              setSelectedRecord(item);
+                              setShowCloseModal(true);
+                            }}
+                            className="rounded-lg bg-surface-base px-3 py-2 text-xs font-bold text-text-secondary hover:bg-surface-raised"
+                          >
+                            View
+                          </button>
+                          {item.status === "OPEN" &&
+                            canRectify &&
+                            item.severity !== "INFO" && (
+                              <button
+                                onClick={() => {
+                                  setSelectedRecord(item);
+                                  setShowRectifyModal(true);
+                                }}
+                                className="rounded-lg bg-warning-muted px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100"
+                              >
+                                Rectify
+                              </button>
+                            )}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              className="rounded-lg px-3 py-2 text-xs font-bold text-error hover:bg-rose-50"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between text-sm text-text-muted">
+            <span>
+              Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, filteredRecords.length)} of {filteredRecords.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page === 1}
+                className="rounded-lg border border-border-default px-3 py-1.5 disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span>
+                Page {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={page === totalPages}
+                className="rounded-lg border border-border-default px-3 py-1.5 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -913,7 +996,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
 
             <div className="p-6 overflow-y-auto flex-1 space-y-6">
               {/* Original Details */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-surface-base rounded-xl p-4 border border-border-subtle">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-surface-base rounded-xl p-4 border border-border-subtle">
                 <div>
                   <p className="text-[10px] font-bold text-text-disabled uppercase">
                     Status
@@ -946,7 +1029,44 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     {new Date(selectedRecord.createdAt).toLocaleDateString()}
                   </p>
                 </div>
+                <div>
+                  <p className="text-[10px] font-bold text-text-disabled uppercase">
+                    Aging
+                  </p>
+                  <p className="text-sm font-bold text-text-primary">
+                    {typeof selectedRecord.ageingDays === "number"
+                      ? `${selectedRecord.ageingDays.toFixed(1)} days`
+                      : "-"}
+                  </p>
+                </div>
               </div>
+
+              {canClose && (
+                <div className="flex flex-wrap gap-3">
+                  {selectedRecord.status === "HELD" ? (
+                    <button
+                      onClick={handleUnholdObservation}
+                      disabled={uploading}
+                      className="rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Unfreeze For Rectification
+                    </button>
+                  ) : selectedRecord.status !== "CLOSED" ? (
+                    <button
+                      onClick={handleHoldObservation}
+                      disabled={uploading}
+                      className="rounded-xl bg-slate-600 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"
+                    >
+                      Hold / Freeze Aging
+                    </button>
+                  ) : null}
+                  {selectedRecord.holdReason && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+                      Hold Reason: {selectedRecord.holdReason}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <h3 className="text-sm font-bold text-text-primary mb-2 border-b border-border-subtle pb-2">
@@ -963,7 +1083,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               </div>
 
               {/* Rectification Details */}
-              {selectedRecord.status !== "OPEN" &&
+              {(selectedRecord.status !== "OPEN" ||
+                selectedRecord.rectificationText ||
+                selectedRecord.rectificationRejectedAt) &&
                 selectedRecord.severity !== "INFO" && (
                   <div className="bg-primary-muted/50 rounded-xl p-5 border border-blue-100">
                     <h3 className="text-sm font-bold text-blue-900 mb-2 border-b border-blue-100 pb-2 flex items-center gap-2">
@@ -984,6 +1106,17 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                         {renderPhotos(selectedRecord.rectificationPhotos)}
                       </div>
                     )}
+                    {selectedRecord.rectificationRejectedAt && (
+                      <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3">
+                        <p className="text-xs font-bold uppercase text-rose-800">
+                          Rectification Rejected
+                        </p>
+                        <p className="mt-1 text-sm text-rose-700">
+                          {selectedRecord.rectificationRejectedRemarks ||
+                            "Rectification did not meet the required standard."}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -997,6 +1130,49 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                   </p>
                 </div>
               )}
+
+              {Array.isArray(selectedRecord.rectificationHistory) &&
+                selectedRecord.rectificationHistory.length > 0 && (
+                  <div className="rounded-xl border border-border-subtle bg-surface-card p-5">
+                    <h3 className="text-sm font-bold text-text-primary mb-3">
+                      Rectification History
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedRecord.rectificationHistory.map(
+                        (entry: any, index: number) => (
+                          <div
+                            key={`${entry.at}-${index}`}
+                            className="rounded-lg border border-border-subtle bg-surface-base p-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs font-bold uppercase text-text-secondary">
+                                {entry.type}
+                              </span>
+                              <span className="text-xs text-text-muted">
+                                {entry.at
+                                  ? new Date(entry.at).toLocaleString()
+                                  : ""}
+                              </span>
+                            </div>
+                            {entry.text && (
+                              <p className="mt-2 text-sm text-text-secondary">
+                                {entry.text}
+                              </p>
+                            )}
+                            {entry.rejectionRemarks && (
+                              <p className="mt-2 text-sm text-rose-700">
+                                Reason: {entry.rejectionRemarks}
+                              </p>
+                            )}
+                            {entry.photos?.length > 0 && (
+                              <div className="mt-2">{renderPhotos(entry.photos)}</div>
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
 
               {/* Close Action Area */}
               {((selectedRecord.status === "RECTIFIED" && canClose) ||
@@ -1014,14 +1190,34 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     value={closureRemarks}
                     onChange={(e) => setClosureRemarks(e.target.value)}
                   />
-                  <button
-                    onClick={handleCloseSubmit}
-                    disabled={uploading}
-                    className="w-full py-3 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 className="w-5 h-5" /> Formally Close
-                    Observation
-                  </button>
+                  {selectedRecord.status === "RECTIFIED" && (
+                    <textarea
+                      rows={2}
+                      placeholder="Reason for rejecting this rectification..."
+                      className="w-full bg-surface-base border border-rose-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-rose-500 outline-none mb-3"
+                      value={rejectionRemarks}
+                      onChange={(e) => setRejectionRemarks(e.target.value)}
+                    />
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                      onClick={handleCloseSubmit}
+                      disabled={uploading}
+                      className="flex-1 py-3 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> Formally Close
+                      Observation
+                    </button>
+                    {selectedRecord.status === "RECTIFIED" && (
+                      <button
+                        onClick={handleRejectRectification}
+                        disabled={uploading}
+                        className="flex-1 py-3 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        <X className="w-5 h-5" /> Reject Rectification
+                      </button>
+                    )}
+                  </div>
                   {selectedRecord.severity === "INFO" && (
                     <p className="text-[10px] text-text-disabled mt-2 text-center text-balance">
                       Note: INFO items skip rectification and can be closed

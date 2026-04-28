@@ -14,6 +14,7 @@ import {
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import {
   ActivityObservation,
+  ActivityObservationRectificationHistoryEntry,
   ActivityObservationStatus,
 } from './entities/activity-observation.entity';
 import { InspectionApproval } from './entities/inspection-approval.entity';
@@ -94,6 +95,10 @@ export interface CreateObservationDto {
 export interface ResolveObservationDto {
   closureText: string;
   closureEvidence?: string[];
+}
+
+export interface RejectObservationRectificationDto {
+  rejectionRemarks?: string;
 }
 
 export interface ApproveActivityDto {
@@ -292,7 +297,8 @@ export class QualityActivityService {
       query.andWhere('observation.inspectionId IS NULL');
     }
 
-    return query.orderBy('observation.createdAt', 'DESC').getMany();
+    const rows = await query.orderBy('observation.createdAt', 'DESC').getMany();
+    return rows.map((observation) => this.decorateObservation(observation)) as ActivityObservation[];
   }
 
   async createObservation(
@@ -347,6 +353,7 @@ export class QualityActivityService {
       remarks: dto.remarks,
       photos: (dto.photos || []).map(u => this.toRelativePath(u)),
       status: ActivityObservationStatus.PENDING,
+      rectificationHistory: [],
     });
 
     const saved = await this.obsRepo.save(obs);
@@ -425,6 +432,16 @@ export class QualityActivityService {
     obs.closureEvidence = (dto.closureEvidence || []).map(u => this.toRelativePath(u));
     obs.resolvedBy = userId;
     obs.resolvedAt = new Date();
+    obs.rectificationHistory = [
+      ...(obs.rectificationHistory || []),
+      {
+        type: 'RECTIFIED',
+        text: obs.closureText,
+        photos: obs.closureEvidence || [],
+        actorId: userId,
+        at: obs.resolvedAt.toISOString(),
+      } satisfies ActivityObservationRectificationHistoryEntry,
+    ];
     const saved = await this.obsRepo.save(obs);
 
     const pendingCount =
@@ -435,6 +452,46 @@ export class QualityActivityService {
         status: QualityActivityStatus.UNDER_INSPECTION,
       });
     }
+
+    return saved;
+  }
+
+  async rejectObservationRectification(
+    id: number,
+    obsId: string,
+    userId: string,
+    dto: RejectObservationRectificationDto,
+  ): Promise<ActivityObservation> {
+    const obs = await this.obsRepo.findOne({
+      where: { id: obsId, activityId: id },
+    });
+    if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
+
+    if (
+      obs.status !== ActivityObservationStatus.RECTIFIED &&
+      obs.status !== ActivityObservationStatus.RESOLVED
+    ) {
+      throw new BadRequestException(
+        'Only rectified observations can be rejected back for rectification.',
+      );
+    }
+
+    obs.status = ActivityObservationStatus.PENDING;
+    obs.rectificationRejectedRemarks = dto.rejectionRemarks?.trim() || null;
+    obs.rectificationRejectedBy = userId;
+    obs.rectificationRejectedAt = new Date();
+    obs.rectificationHistory = [
+      ...(obs.rectificationHistory || []),
+      {
+        type: 'REJECTED',
+        text: obs.closureText,
+        photos: obs.closureEvidence || [],
+        rejectionRemarks: obs.rectificationRejectedRemarks,
+        actorId: userId,
+        at: obs.rectificationRejectedAt.toISOString(),
+      } satisfies ActivityObservationRectificationHistoryEntry,
+    ];
+    const saved = await this.obsRepo.save(obs);
 
     return saved;
   }
@@ -798,6 +855,25 @@ export class QualityActivityService {
         });
       }
     }
+  }
+
+  private decorateObservation(observation: ActivityObservation) {
+    const endTime = observation.resolvedAt
+      ? new Date(observation.resolvedAt).getTime()
+      : Date.now();
+    const ageingMinutes = Math.max(
+      0,
+      Math.floor(
+        (endTime - new Date(observation.createdAt).getTime()) / 60000,
+      ),
+    );
+
+    return {
+      ...observation,
+      ageingMinutes,
+      ageingHours: Number((ageingMinutes / 60).toFixed(1)),
+      ageingDays: Number((ageingMinutes / 1440).toFixed(1)),
+    };
   }
 
   private withLegacyChecklistFallback(

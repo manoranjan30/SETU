@@ -17,6 +17,7 @@ import IssueTrackerPage from "./planning/IssueTrackerPage";
 import CustomerMilestonesPage from "./planning/CustomerMilestonesPage";
 import CostPage from "./planning/CostPage";
 import BudgetPage from "./planning/BudgetPage";
+import LaborCountView from "../views/labor/LaborCountView";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -51,6 +52,8 @@ const PlanningPage = () => {
         return <MicroSchedulePage />;
       case "temp_users":
         return <VendorUserManagementPage />;
+      case "manpower":
+        return <LaborCountView />;
       case "release_strategy":
         return <ReleaseStrategyPage />;
       case "building_lines":
