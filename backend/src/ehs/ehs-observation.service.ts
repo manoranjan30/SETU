@@ -8,19 +8,23 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   EhsObservation,
-  EhsObservationStatus,
+  EhsObservationRectificationHistoryEntry,
   EhsObservationSeverity,
+  EhsObservationStatus,
 } from './entities/ehs-observation.entity';
 import { EhsProjectConfig } from './entities/ehs-project-config.entity';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { NotificationComposerService } from '../notifications/notification-composer.service';
 import {
-  CreateEhsObservationDto,
-  RectifyEhsObservationDto,
   CloseEhsObservationDto,
+  CreateEhsObservationDto,
+  HoldEhsObservationDto,
+  RectifyEhsObservationDto,
+  RejectEhsObservationRectificationDto,
 } from './dto/ehs-observation.dto';
 import { toRelativePaths } from '../common/path.utils';
+import { EpsNode } from '../eps/eps.entity';
 
 @Injectable()
 export class EhsObservationService {
@@ -31,6 +35,8 @@ export class EhsObservationService {
     private readonly observationRepo: Repository<EhsObservation>,
     @InjectRepository(EhsProjectConfig)
     private readonly configRepo: Repository<EhsProjectConfig>,
+    @InjectRepository(EpsNode)
+    private readonly epsRepo: Repository<EpsNode>,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
     private readonly notificationComposer: NotificationComposerService,
@@ -97,7 +103,7 @@ export class EhsObservationService {
     if (severity) query.andWhere('obs.severity = :severity', { severity });
 
     const rows = await query.orderBy('obs.createdAt', 'DESC').getMany();
-    return rows.map((obs) => this.normalizePhotos(obs));
+    return rows.map((obs) => this.decorateObservation(this.normalizePhotos(obs)));
   }
 
   async getById(id: string) {
@@ -106,16 +112,83 @@ export class EhsObservationService {
       relations: ['epsNode'],
     });
     if (!obs) throw new NotFoundException('EHS observation not found');
-    return this.normalizePhotos(obs);
+    return this.decorateObservation(this.normalizePhotos(obs));
   }
 
-  /** Normalize photo arrays so old absolute URLs stored in the DB are
-   *  converted to relative paths at read time. This retroactively fixes
-   *  records saved before the write-time normalization was introduced. */
   private normalizePhotos(obs: EhsObservation): EhsObservation {
     obs.photos = toRelativePaths(obs.photos);
     obs.rectificationPhotos = toRelativePaths(obs.rectificationPhotos);
+    obs.rectificationHistory = Array.isArray(obs.rectificationHistory)
+      ? obs.rectificationHistory.map((entry) => ({
+          ...entry,
+          photos: toRelativePaths(entry.photos),
+        }))
+      : [];
     return obs;
+  }
+
+  private decorateObservation(obs: EhsObservation) {
+    const ageingMinutes = this.calculateAgeingMinutes(obs);
+    return {
+      ...obs,
+      ageingMinutes,
+      ageingHours: Number((ageingMinutes / 60).toFixed(1)),
+      ageingDays: Number((ageingMinutes / 1440).toFixed(1)),
+      isHeld: obs.status === EhsObservationStatus.HELD,
+    };
+  }
+
+  private calculateAgeingMinutes(obs: EhsObservation) {
+    const endTime =
+      obs.rectifiedAt
+        ? obs.rectifiedAt.getTime()
+        : obs.status === EhsObservationStatus.CLOSED && obs.closedAt
+          ? obs.closedAt.getTime()
+        : Date.now();
+    const holdInProgressMinutes =
+      obs.status === EhsObservationStatus.HELD && obs.holdStartedAt
+        ? Math.max(
+            0,
+            Math.floor((Date.now() - obs.holdStartedAt.getTime()) / 60000),
+          )
+        : 0;
+    const totalHoldMinutes =
+      (obs.holdAccumulatedMinutes || 0) + holdInProgressMinutes;
+    return Math.max(
+      0,
+      Math.floor((endTime - new Date(obs.createdAt).getTime()) / 60000) -
+        totalHoldMinutes,
+    );
+  }
+
+  private appendRectificationHistory(
+    obs: EhsObservation,
+    entry: EhsObservationRectificationHistoryEntry,
+  ) {
+    obs.rectificationHistory = [...(obs.rectificationHistory || []), entry];
+  }
+
+  private async resolveLocationLabel(
+    epsNodeId?: number,
+    locationLabel?: string,
+  ): Promise<string | null> {
+    if (locationLabel?.trim()) {
+      return locationLabel.trim();
+    }
+    if (!epsNodeId) {
+      return null;
+    }
+
+    const path: string[] = [];
+    let currentId: number | null = epsNodeId;
+    while (currentId) {
+      const node = await this.epsRepo.findOne({ where: { id: currentId } });
+      if (!node) break;
+      path.unshift(node.name);
+      currentId = node.parentId ?? null;
+    }
+
+    return path.length > 0 ? path.join(' > ') : null;
   }
 
   async create(dto: CreateEhsObservationDto, userId?: string) {
@@ -126,16 +199,19 @@ export class EhsObservationService {
 
     const obs = this.observationRepo.create({
       ...cleanedDto,
+      locationLabel:
+        (await this.resolveLocationLabel(
+          cleanedDto.epsNodeId,
+          cleanedDto.locationLabel,
+        )) ?? undefined,
       photos: toRelativePaths(cleanedDto.photos),
       status: EhsObservationStatus.OPEN,
       raisedById: userId,
+      rectificationHistory: [],
     });
 
     const saved = await this.observationRepo.save(obs);
 
-    // Notify all project team members with EHS.OBSERVATION.CLOSE permission
-    // for CRITICAL and MAJOR observations — minor/info EHS observations do
-    // not warrant immediate push notifications.
     if (
       dto.severity === EhsObservationSeverity.CRITICAL ||
       dto.severity === EhsObservationSeverity.MAJOR
@@ -177,11 +253,12 @@ export class EhsObservationService {
       );
     }
 
-    return saved;
+    return this.decorateObservation(this.normalizePhotos(saved));
   }
 
   async rectify(id: string, dto: RectifyEhsObservationDto, userId?: string) {
-    const obs = await this.getById(id);
+    const obs = await this.observationRepo.findOne({ where: { id } });
+    if (!obs) throw new NotFoundException('EHS observation not found');
 
     if (obs.status !== EhsObservationStatus.OPEN) {
       throw new BadRequestException('Observation is not OPEN');
@@ -189,15 +266,20 @@ export class EhsObservationService {
 
     obs.status = EhsObservationStatus.RECTIFIED;
     obs.rectificationText = dto.rectificationText;
-    if (dto.rectificationPhotos) {
-      obs.rectificationPhotos = toRelativePaths(dto.rectificationPhotos);
-    }
+    obs.rectificationPhotos = toRelativePaths(dto.rectificationPhotos);
     if (userId) {
       obs.rectifiedById = userId;
     }
     obs.rectifiedAt = new Date();
+    this.appendRectificationHistory(obs, {
+      type: 'RECTIFIED',
+      text: obs.rectificationText,
+      photos: obs.rectificationPhotos || [],
+      actorId: userId || null,
+      at: obs.rectifiedAt.toISOString(),
+    });
 
-    const saved = await this.observationRepo.save(obs);
+    const saved = this.normalizePhotos(await this.observationRepo.save(obs));
 
     if (obs.raisedById) {
       const notification =
@@ -238,11 +320,134 @@ export class EhsObservationService {
       );
     }
 
-    return saved;
+    return this.decorateObservation(saved);
+  }
+
+  async rejectRectification(
+    id: string,
+    dto: RejectEhsObservationRectificationDto,
+    userId?: string,
+  ) {
+    const obs = await this.observationRepo.findOne({ where: { id } });
+    if (!obs) throw new NotFoundException('EHS observation not found');
+
+    if (obs.status !== EhsObservationStatus.RECTIFIED) {
+      throw new BadRequestException(
+        'Only rectified observations can be rejected back to open.',
+      );
+    }
+
+    obs.status = EhsObservationStatus.OPEN;
+    obs.rectificationRejectedRemarks = dto.rejectionRemarks?.trim() || null;
+    obs.rectificationRejectedById = userId || null;
+    obs.rectificationRejectedAt = new Date();
+    this.appendRectificationHistory(obs, {
+      type: 'REJECTED',
+      text: obs.rectificationText,
+      photos: obs.rectificationPhotos || [],
+      rejectionRemarks: obs.rectificationRejectedRemarks,
+      actorId: userId || null,
+      at: obs.rectificationRejectedAt.toISOString(),
+    });
+
+    const saved = this.normalizePhotos(await this.observationRepo.save(obs));
+
+    if (obs.raisedById) {
+      const notification =
+        await this.notificationComposer.composeObservationUpdate({
+          moduleLabel: 'EHS',
+          projectId: obs.projectId,
+          epsNodeId: obs.epsNodeId,
+          severity: obs.severity,
+          category: obs.category,
+          subjectLabel: obs.category || 'EHS observation',
+          statusLabel: 'EHS Rectification Rejected',
+          notificationType: 'EHS_OBS_RECTIFICATION_REJECTED',
+        });
+
+      this.pushService
+        .sendToUsers(
+          [parseInt(obs.raisedById, 10)],
+          notification.title,
+          [
+            notification.body,
+            obs.rectificationRejectedRemarks
+              ? `Reason: ${obs.rectificationRejectedRemarks}`
+              : 'Please rectify and submit again.',
+          ].join(' | '),
+          {
+            observationId: String(saved.id),
+            ...notification.data,
+          },
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
+
+    if (userId) {
+      await this.auditService.log(
+        parseInt(userId, 10),
+        'EHS',
+        'SITE_OBS_REJECT_RECTIFICATION',
+        saved.id.toString(),
+        obs.epsNodeId,
+        {
+          rejectedAt: obs.rectificationRejectedAt,
+          rejectionRemarks: obs.rectificationRejectedRemarks,
+        },
+      );
+    }
+
+    return this.decorateObservation(saved);
+  }
+
+  async hold(id: string, dto: HoldEhsObservationDto, userId?: string) {
+    const obs = await this.observationRepo.findOne({ where: { id } });
+    if (!obs) throw new NotFoundException('EHS observation not found');
+
+    if (obs.status === EhsObservationStatus.CLOSED) {
+      throw new BadRequestException('Closed observations cannot be held.');
+    }
+    if (obs.status === EhsObservationStatus.HELD) {
+      throw new BadRequestException('Observation is already held.');
+    }
+
+    obs.status = EhsObservationStatus.HELD;
+    obs.holdReason = dto.holdReason?.trim() || null;
+    obs.holdStartedAt = new Date();
+    obs.heldById = userId || null;
+
+    const saved = this.normalizePhotos(await this.observationRepo.save(obs));
+    return this.decorateObservation(saved);
+  }
+
+  async unhold(id: string) {
+    const obs = await this.observationRepo.findOne({ where: { id } });
+    if (!obs) throw new NotFoundException('EHS observation not found');
+
+    if (obs.status !== EhsObservationStatus.HELD || !obs.holdStartedAt) {
+      throw new BadRequestException('Observation is not currently held.');
+    }
+
+    obs.holdAccumulatedMinutes =
+      (obs.holdAccumulatedMinutes || 0) +
+      Math.max(
+        0,
+        Math.floor((Date.now() - obs.holdStartedAt.getTime()) / 60000),
+      );
+    obs.holdStartedAt = null;
+    obs.holdReason = null;
+    obs.heldById = null;
+    obs.status = EhsObservationStatus.OPEN;
+
+    const saved = this.normalizePhotos(await this.observationRepo.save(obs));
+    return this.decorateObservation(saved);
   }
 
   async close(id: string, dto: CloseEhsObservationDto, userId?: string) {
-    const obs = await this.getById(id);
+    const obs = await this.observationRepo.findOne({ where: { id } });
+    if (!obs) throw new NotFoundException('EHS observation not found');
 
     if (obs.status === EhsObservationStatus.CLOSED) {
       throw new BadRequestException('Observation is already CLOSED');
@@ -250,7 +455,7 @@ export class EhsObservationService {
 
     if (
       obs.severity !== EhsObservationSeverity.INFO &&
-      obs.status === EhsObservationStatus.OPEN
+      obs.status !== EhsObservationStatus.RECTIFIED
     ) {
       throw new BadRequestException(
         'Observation must be RECTIFIED before closing (unless INFO severity)',
@@ -266,7 +471,7 @@ export class EhsObservationService {
     }
     obs.closedAt = new Date();
 
-    const saved = await this.observationRepo.save(obs);
+    const saved = this.normalizePhotos(await this.observationRepo.save(obs));
 
     if (obs.raisedById) {
       const notification =
@@ -307,11 +512,12 @@ export class EhsObservationService {
       );
     }
 
-    return saved;
+    return this.decorateObservation(saved);
   }
 
   async delete(id: string, userId?: string) {
-    const obs = await this.getById(id);
+    const obs = await this.observationRepo.findOne({ where: { id } });
+    if (!obs) throw new NotFoundException('EHS observation not found');
 
     await this.observationRepo.remove(obs);
 

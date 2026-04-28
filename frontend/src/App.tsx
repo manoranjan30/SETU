@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -22,7 +23,6 @@ const PlanningPage = lazy(() => import("./pages/PlanningPage"));
 const ScheduleComparisonGrid = lazy(
   () => import("./components/planning/versions/ScheduleComparisonGrid"),
 );
-const LaborCountView = lazy(() => import("./views/labor/LaborCountView"));
 const EhsProjectDashboard = lazy(() => import("./views/ehs/EhsProjectDashboard"));
 const QualityProjectDashboard = lazy(
   () => import("./views/quality/QualityProjectDashboard"),
@@ -94,8 +94,16 @@ const ProtectedRoute = ({ children, permission }: ProtectedRouteProps) => {
 };
 
 const RouteFallback = () => (
-  <div className="flex h-screen items-center justify-center bg-surface-base text-sm font-semibold text-text-muted">
-    Loading module...
+  <div className="flex h-screen items-center justify-center bg-surface-base/90 px-6">
+    <div className="flex min-w-[220px] items-center gap-3 rounded-2xl border border-border-default bg-surface-card px-5 py-4 shadow-xl">
+      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      <div>
+        <p className="text-sm font-semibold text-text-primary">Loading page...</p>
+        <p className="text-xs text-text-muted">
+          Please wait while the module is opening.
+        </p>
+      </div>
+    </div>
   </div>
 );
 
@@ -341,7 +349,7 @@ const AppRoutes = () => {
           path="projects/:projectId/manpower"
           element={
             <ProtectedRoute permission="LABOR.ENTRY.READ">
-              <LaborCountView />
+              <Navigate to="../planning?view=manpower" replace />
             </ProtectedRoute>
           }
         />

@@ -148,7 +148,13 @@ interface ActivityObservation {
   photos?: string[];
   closureText?: string;
   closureEvidence?: string[];
+  rectificationRejectedRemarks?: string;
+  rectificationRejectedAt?: string;
   createdAt: string;
+  resolvedAt?: string;
+  ageingMinutes?: number;
+  ageingHours?: number;
+  ageingDays?: number;
   status: "OPEN" | "PENDING" | "RECTIFIED" | "RESOLVED" | "CLOSED";
 }
 
@@ -552,6 +558,9 @@ export default function QualityApprovalsPage() {
   const [resolutionPhotos, setResolutionPhotos] = useState<
     Record<string, string[]>
   >({});
+  const [rejectionTexts, setRejectionTexts] = useState<Record<string, string>>(
+    {},
+  );
 
   useEffect(() => {
     if (selectedInspectionId) {
@@ -1850,6 +1859,18 @@ export default function QualityApprovalsPage() {
     return { text: `${days} days ago`, color: "text-error font-bold" };
   };
 
+  const getObservationAgeInfo = (obs: ActivityObservation) => {
+    if (typeof obs.ageingDays === "number") {
+      const days = Math.floor(obs.ageingDays);
+      if (days === 0) return { text: "Today", color: "text-success" };
+      if (days === 1) return { text: "1 day", color: "text-success" };
+      if (days <= 3) return { text: `${days} days`, color: "text-success" };
+      if (days <= 7) return { text: `${days} days`, color: "text-warning" };
+      return { text: `${days} days`, color: "text-error font-bold" };
+    }
+    return getDaysOpen(obs.createdAt);
+  };
+
   const handleItemValueChange = (itemId: number, val: string) => {
     setInspectionDetail((prev: any) => {
       if (!prev) return prev;
@@ -2268,6 +2289,31 @@ export default function QualityApprovalsPage() {
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to close observation.");
+    }
+  };
+
+  const handleRejectObservationRectification = async (obsId: string) => {
+    if (!confirm("Reject this rectification and reopen the observation?")) {
+      return;
+    }
+    try {
+      await api.patch(
+        `/quality/activities/${inspectionDetail.activityId}/observation/${obsId}/reject-rectification`,
+        {
+          rejectionRemarks: rejectionTexts[obsId]?.trim() || undefined,
+        },
+      );
+      setRejectionTexts((prev) => {
+        const next = { ...prev };
+        delete next[obsId];
+        return next;
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (err: any) {
+      alert(
+        err.response?.data?.message ||
+          "Failed to reject observation rectification.",
+      );
     }
   };
 
@@ -5814,7 +5860,7 @@ export default function QualityApprovalsPage() {
                     </div>
                   ) : (
                     filteredObservations.map((obs, idx) => {
-                      const ageInfo = getDaysOpen(obs.createdAt);
+                      const ageInfo = getObservationAgeInfo(obs);
                       return (
                         <div
                           key={obs.id}
@@ -5862,6 +5908,11 @@ export default function QualityApprovalsPage() {
                                 >
                                   {ageInfo.text}
                                 </span>
+                                {typeof obs.ageingDays === "number" && (
+                                  <span className="text-[10px] text-text-muted">
+                                    Rectification aging: {obs.ageingDays.toFixed(1)} days
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -5924,12 +5975,35 @@ export default function QualityApprovalsPage() {
 
                               <div className="mt-3">
                                 {canCloseChecklistObservation ? (
-                                  <button
-                                    onClick={() => handleCloseObservation(obs.id)}
-                                    className="px-4 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-dark shadow-sm transition-all"
-                                  >
-                                    Verify & Close Observation
-                                  </button>
+                                  <div className="space-y-3">
+                                    <textarea
+                                      className="w-full rounded-md border border-rose-200 bg-white p-3 text-xs focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                                      placeholder="Reason for rejecting this rectification..."
+                                      value={rejectionTexts[obs.id] || ""}
+                                      onChange={(e) =>
+                                        setRejectionTexts((prev) => ({
+                                          ...prev,
+                                          [obs.id]: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        onClick={() => handleCloseObservation(obs.id)}
+                                        className="px-4 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-dark shadow-sm transition-all"
+                                      >
+                                        Verify & Close Observation
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          handleRejectObservationRectification(obs.id)
+                                        }
+                                        className="px-4 py-1.5 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 shadow-sm transition-all"
+                                      >
+                                        Reject Rectification
+                                      </button>
+                                    </div>
+                                  </div>
                                 ) : (
                                   <div className="text-xs font-medium text-blue-900">
                                     Awaiting QC closure authority.
@@ -5947,6 +6021,17 @@ export default function QualityApprovalsPage() {
                               <p className="mt-1 text-sm text-rose-800">
                                 Submit contractor/site-team rectification here. QC will verify and close it from this same approval workflow.
                               </p>
+                              {obs.rectificationRejectedAt && (
+                                <div className="mt-3 rounded-lg border border-rose-200 bg-white p-3">
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-rose-900">
+                                    Previous Rectification Rejected
+                                  </div>
+                                  <p className="mt-1 text-sm text-rose-700">
+                                    {obs.rectificationRejectedRemarks ||
+                                      "The previous rectification did not meet the required standard."}
+                                  </p>
+                                </div>
+                              )}
 
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {(resolutionPhotos[obs.id] || []).map(

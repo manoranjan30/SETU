@@ -18,8 +18,18 @@ export enum EhsObservationSeverity {
 
 export enum EhsObservationStatus {
   OPEN = 'OPEN',
+  HELD = 'HELD',
   RECTIFIED = 'RECTIFIED',
   CLOSED = 'CLOSED',
+}
+
+export interface EhsObservationRectificationHistoryEntry {
+  type: 'RECTIFIED' | 'REJECTED';
+  text?: string | null;
+  photos?: string[];
+  rejectionRemarks?: string | null;
+  actorId?: string | null;
+  at: string;
 }
 
 @Entity('ehs_observations')
@@ -30,7 +40,7 @@ export class EhsObservation {
   @Column()
   projectId: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   epsNodeId: number;
 
   @ManyToOne(() => EpsNode, { nullable: true, onDelete: 'SET NULL' })
@@ -40,7 +50,7 @@ export class EhsObservation {
   /** Denormalised breadcrumb captured at creation time, e.g. "Block A › Tower 1 › Floor 3".
    *  Allows display of the location even when the EPS node has been renamed or deleted. */
   @Column({ type: 'text', nullable: true })
-  locationLabel: string;
+  locationLabel: string | null;
 
   @Column({
     type: 'enum',
@@ -61,7 +71,7 @@ export class EhsObservation {
   @Column('text', { array: true, default: [] })
   photos: string[];
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   raisedById: string;
 
   @Column({ type: 'text', nullable: true })
@@ -70,13 +80,37 @@ export class EhsObservation {
   @Column('text', { array: true, default: [] })
   rectificationPhotos: string[];
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   rectifiedById: string;
 
   @Column({ type: 'timestamp', nullable: true })
   rectifiedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
+  rectificationRejectedRemarks: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  rectificationRejectedById: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rectificationRejectedAt: Date | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  rectificationHistory: EhsObservationRectificationHistoryEntry[];
+
+  @Column({ type: 'text', nullable: true })
+  holdReason: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  holdStartedAt: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  holdAccumulatedMinutes: number;
+
+  @Column({ type: 'text', nullable: true })
+  heldById: string | null;
+
+  @Column({ type: 'text', nullable: true })
   closedById: string;
 
   @Column({ type: 'timestamp', nullable: true })

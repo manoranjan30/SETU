@@ -88,6 +88,12 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       permission: PermissionCode.TEMP_USER_VIEW,
     },
     {
+      key: "manpower",
+      icon: <Users size={18} />,
+      label: "Manpower Entry",
+      permission: PermissionCode.LABOR_READ,
+    },
+    {
       key: "release_strategy",
       icon: <ShieldCheck size={18} />,
       label: "Release Strategy",
@@ -136,7 +142,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
   }, [currentView, onViewChange, visibleMenuItems]);
 
   return (
-    <div className="ui-shell flex h-screen overflow-hidden ui-animate-page">
+    <div className="ui-shell flex min-h-full overflow-hidden ui-animate-page">
       {/* Sidebar */}
       <div className="w-64 bg-surface-card border-r border-border-default flex flex-col h-full shadow-lg z-10 ui-animate-card">
         <div className="p-4 border-b border-border-subtle flex-shrink-0">
@@ -168,7 +174,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {[
           "schedule",
           "micro_schedule",
@@ -177,13 +183,14 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "schedules",
           "gantt_version",
           "lookahead",
+          "manpower",
           "release_strategy",
           "cost",
           "budget",
         ].includes(currentView) ? (
           children
         ) : (
-          <div className="flex-1 overflow-auto p-6 ui-stagger">
+          <div className="flex-1 min-h-0 overflow-auto p-6 ui-stagger">
             <div className="ui-card min-h-[400px] p-6">{children}</div>
           </div>
         )}

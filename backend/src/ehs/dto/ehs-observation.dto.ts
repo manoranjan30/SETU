@@ -21,3 +21,11 @@ export class RectifyEhsObservationDto {
 export class CloseEhsObservationDto {
   closureRemarks?: string;
 }
+
+export class RejectEhsObservationRectificationDto {
+  rejectionRemarks?: string;
+}
+
+export class HoldEhsObservationDto {
+  holdReason?: string;
+}

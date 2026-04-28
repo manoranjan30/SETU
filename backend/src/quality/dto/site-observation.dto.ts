@@ -21,3 +21,11 @@ export class RectifySiteObservationDto {
 export class CloseSiteObservationDto {
   closureRemarks?: string;
 }
+
+export class RejectSiteObservationRectificationDto {
+  rejectionRemarks?: string;
+}
+
+export class HoldSiteObservationDto {
+  holdReason?: string;
+}
