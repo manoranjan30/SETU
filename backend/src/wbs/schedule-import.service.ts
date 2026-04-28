@@ -237,8 +237,23 @@ export class ScheduleImportService {
           existingWbs.map((node) => [node.wbsCode, node]),
         );
 
+        // Pre-fetch all existing activities for this project once.
+        // Build two lookup Maps so we avoid one findOne-per-task DB round-trip.
+        const existingActivities = await manager.find(Activity, {
+          where: { projectId },
+        });
+        const activityByMspUid = new Map<string, Activity>(
+          existingActivities
+            .filter((a) => a.mspUid != null)
+            .map((a) => [a.mspUid!, a]),
+        );
+        const activityByCode = new Map<string, Activity>(
+          existingActivities.map((a) => [a.activityCode, a]),
+        );
+
         const wbsMap = new Map<string, WbsNode>(); // OutlineNumber -> WbsNode
         const uidToActivityId = new Map<string, number>(); // UID -> Activity ID
+        const activitiesToSave: Activity[] = [];
         let count = 0;
 
         // 1. Create Root "Imported" Node if needed, or identify existing roots?
@@ -249,11 +264,6 @@ export class ScheduleImportService {
         for (const t of tasks) {
           const outlineNumber = t.OutlineNumber?.toString();
           if (!outlineNumber) continue;
-
-          // DEBUG LOGGING
-          if (count < 5) {
-            console.log('DEBUG: XML Task Preview:', JSON.stringify(t, null, 2));
-          }
 
           const uid = t.UID ? t.UID.toString() : null;
           const name = t.Name;
@@ -372,13 +382,23 @@ export class ScheduleImportService {
               }
 
               if (!uid) continue;
-              const existingActivity = await manager.findOne(Activity, {
-                where: { projectId, mspUid: uid },
-              });
+              // Use pre-fetched Maps — no DB query per task.
+              // Fallback to activityCode covers activities created before the
+              // mspUid column existed (migration backfilled mspUid = id::text,
+              // not = activityCode).
+              const existingActivity =
+                activityByMspUid.get(uid) ?? activityByCode.get(uid) ?? null;
+
+              const computedStatus = actualFinish
+                ? ActivityStatus.COMPLETED
+                : actualStart
+                  ? ActivityStatus.IN_PROGRESS
+                  : ActivityStatus.NOT_STARTED;
 
               if (existingActivity) {
                 existingActivity.wbsNode = parentNode;
                 existingActivity.activityName = name;
+                existingActivity.mspUid = uid; // Normalise for future fast-path lookup
                 existingActivity.startDatePlanned = start;
                 existingActivity.finishDatePlanned = finish;
                 existingActivity.startDateActual = actualStart;
@@ -389,14 +409,12 @@ export class ScheduleImportService {
                 existingActivity.finishDateMSP = finish;
                 existingActivity.durationPlanned = duration;
                 existingActivity.isMilestone = t.Milestone === '1';
-                existingActivity.status = actualFinish
-                  ? ActivityStatus.COMPLETED
-                  : actualStart
-                    ? ActivityStatus.IN_PROGRESS
-                    : ActivityStatus.NOT_STARTED;
-
-                const savedActivity = await manager.save(existingActivity);
-                uidToActivityId.set(uid, savedActivity.id);
+                existingActivity.status = computedStatus;
+                activitiesToSave.push(existingActivity);
+                // Optimistically register the id — will be confirmed after batch save
+                if (existingActivity.id) {
+                  uidToActivityId.set(uid, existingActivity.id);
+                }
               } else {
                 const activity = manager.create(Activity, {
                   projectId,
@@ -405,13 +423,7 @@ export class ScheduleImportService {
                   activityName: name,
                   mspUid: uid,
                   activityType: ActivityType.TASK,
-                  status: actualFinish
-                    ? ActivityStatus.COMPLETED
-                    : actualStart
-                      ? ActivityStatus.IN_PROGRESS
-                      : ActivityStatus.NOT_STARTED,
-
-                  // Date Mapping
+                  status: computedStatus,
                   startDatePlanned: start,
                   finishDatePlanned: finish,
                   startDateActual: actualStart,
@@ -420,14 +432,11 @@ export class ScheduleImportService {
                   finishDateBaseline: baselineFinish,
                   startDateMSP: start,
                   finishDateMSP: finish,
-
                   durationPlanned: duration,
                   isMilestone: t.Milestone === '1',
                   createdBy: 'Import',
                 } as any);
-
-                const savedActivity = await manager.save(activity);
-                uidToActivityId.set(uid, savedActivity.id);
+                activitiesToSave.push(activity);
                 count++;
               }
             } catch (err) {
@@ -435,6 +444,15 @@ export class ScheduleImportService {
                 `Failed to import Task UID: ${uid}, Name: "${name}". Error: ${err.message}`,
               );
             }
+          }
+        }
+
+        // Batch-save all activities in one round-trip, then build the UID→ID map
+        // for the relationship pass below (new activities only get IDs after save).
+        const savedActivities = await manager.save(activitiesToSave);
+        for (const saved of savedActivities) {
+          if (saved.mspUid) {
+            uidToActivityId.set(saved.mspUid, saved.id);
           }
         }
 
@@ -503,8 +521,10 @@ export class ScheduleImportService {
           preview: [],
         };
       } catch (e) {
-        console.error(e);
-        throw new BadRequestException(`Failed to parse XML: ${e.message}`);
+        console.error('[MSP Import] Fatal error:', e);
+        throw new BadRequestException(
+          `Failed to parse XML: ${e.message}`,
+        );
       }
     });
   }

@@ -51,12 +51,18 @@ const ScheduleImportWizard: React.FC<ScheduleImportWizardProps> = ({
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
+          timeout: 300000, // 5 min — large schedules take time to process
         },
       );
       setResult(res.data);
     } catch (err: any) {
-      console.error(err);
-      setError(err.response?.data?.message || "Upload failed");
+      console.error("MSP import error:", err);
+      const msg =
+        err.response?.data?.message ||
+        (err.code === "ECONNABORTED"
+          ? "Import timed out. The schedule file may be very large — try again or split into smaller files."
+          : err.message || "Upload failed");
+      setError(msg);
     } finally {
       setUploading(false);
     }
