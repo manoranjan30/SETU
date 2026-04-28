@@ -60,6 +60,7 @@ Desktop.ini
 # Temporary
 tmp/
 temp/
+backend/uploads
 
 flutter/nul
 

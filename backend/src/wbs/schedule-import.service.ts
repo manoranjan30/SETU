@@ -447,12 +447,16 @@ export class ScheduleImportService {
           }
         }
 
-        // Batch-save all activities in one round-trip, then build the UID→ID map
-        // for the relationship pass below (new activities only get IDs after save).
-        const savedActivities = await manager.save(activitiesToSave);
-        for (const saved of savedActivities) {
-          if (saved.mspUid) {
-            uidToActivityId.set(saved.mspUid, saved.id);
+        // Save in chunks of 50 to avoid the PostgreSQL "bind message has N
+        // parameter formats" error that fires when a single INSERT has too many
+        // $N placeholders (Activity has ~27 columns → 50 rows = ~1350 params).
+        const CHUNK = 50;
+        for (let i = 0; i < activitiesToSave.length; i += CHUNK) {
+          const saved = await manager.save(
+            activitiesToSave.slice(i, i + CHUNK),
+          );
+          for (const s of saved) {
+            if (s.mspUid) uidToActivityId.set(s.mspUid, s.id);
           }
         }
 
