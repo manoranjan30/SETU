@@ -92,6 +92,9 @@ export class MeasurementElement {
   @Column({ nullable: true })
   uom: string; // m, m2, m3
 
+  @Column('decimal', { precision: 12, scale: 2, default: 0 })
+  rate: number;
+
   // Dimensions
   @Column('decimal', { precision: 10, scale: 3, default: 0 })
   length: number;

@@ -748,8 +748,12 @@ export class WorkDocService {
       }
 
       for (const measurementRow of measurementRows) {
+        const measurementRate =
+          subItem?.rateSource === 'MEASUREMENT'
+            ? Number(measurementRow.measurement.rate || 0)
+            : Number(subItem?.rate || 0);
         const rate =
-          Number(sel.rate || 0) || Number(subItem?.rate || 0);
+          Number(sel.rate || 0) || measurementRate;
         const amount = Number(measurementRow.allocatedQty) * rate;
         const measurementNode = await this.ensureWoNode(
           manager,
@@ -797,13 +801,14 @@ export class WorkDocService {
               0,
             ),
             rate: Number(sel.rate || 0) || Number(subItem.rate || 0),
-            deltaAmount: measurementRows.reduce(
-              (sum, row) =>
-                sum +
-                Number(row.allocatedQty || 0) *
-                  (Number(sel.rate || 0) || Number(subItem.rate || 0)),
-              0,
-            ),
+            deltaAmount: measurementRows.reduce((sum, row) => {
+              const rowRate =
+                Number(sel.rate || 0) ||
+                (subItem.rateSource === 'MEASUREMENT'
+                  ? Number(row.measurement.rate || 0)
+                  : Number(subItem.rate || 0));
+              return sum + Number(row.allocatedQty || 0) * rowRate;
+            }, 0),
             woRefText: sel.woRefText || null,
           },
         );

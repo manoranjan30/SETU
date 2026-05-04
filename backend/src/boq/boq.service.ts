@@ -4,7 +4,10 @@ import { Repository, In } from 'typeorm';
 import { BoqElement } from './entities/boq-element.entity';
 import { CreateBoqElementDto } from './dto/create-boq-element.dto';
 import { BoqItem, BoqQtyMode } from './entities/boq-item.entity';
-import { BoqSubItem } from './entities/boq-sub-item.entity';
+import {
+  BoqSubItem,
+  BoqSubItemRateSource,
+} from './entities/boq-sub-item.entity';
 import { MeasurementElement } from './entities/measurement-element.entity';
 import { MeasurementProgress } from './entities/measurement-progress.entity';
 import { DataSource } from 'typeorm';
@@ -88,9 +91,15 @@ export class BoqService {
 
   // === Layer 2: Sub Item / Breakup ===
   async createSubItem(data: Partial<BoqSubItem>): Promise<BoqSubItem> {
-    const subItem = this.boqSubItemRepo.create(data);
+    const rateSource = this.normalizeRateSource(data.rateSource);
+    const subItem = this.boqSubItemRepo.create({
+      ...data,
+      rateSource,
+      rate:
+        rateSource === BoqSubItemRateSource.SUB_ITEM ? Number(data.rate || 0) : 0,
+    });
     const saved = await this.boqSubItemRepo.save(subItem);
-    await this.aggregateToBoqItem(saved.boqItemId);
+    await this.recalculateSubItem(saved.id);
     return saved;
   }
 
@@ -98,16 +107,28 @@ export class BoqService {
     id: number,
     data: Partial<BoqSubItem>,
   ): Promise<BoqSubItem> {
-    await this.boqSubItemRepo.update(id, data);
-    const updated = await this.boqSubItemRepo.findOneBy({ id });
-    if (updated) {
-      if (data.qty !== undefined || data.rate !== undefined) {
-        updated.amount = Number(updated.qty) * Number(updated.rate);
-        await this.boqSubItemRepo.save(updated);
-      }
-      await this.aggregateToBoqItem(updated.boqItemId);
+    const existing = await this.boqSubItemRepo.findOneBy({ id });
+    if (!existing) throw new NotFoundException('BOQ sub-item not found');
+
+    const rateSource = this.normalizeRateSource(
+      data.rateSource ?? existing.rateSource,
+    );
+    const patch: Partial<BoqSubItem> = {
+      ...data,
+      rateSource,
+    };
+    if (rateSource === BoqSubItemRateSource.MEASUREMENT) {
+      delete patch.rate;
+    } else if (data.rate !== undefined) {
+      patch.rate = Number(data.rate || 0);
     }
-    return updated!;
+
+    Object.assign(existing, patch);
+    await this.boqSubItemRepo.save(existing);
+    await this.recalculateSubItem(existing.id);
+
+    const refreshed = await this.boqSubItemRepo.findOneBy({ id });
+    return refreshed || existing;
   }
 
   async addMeasurement(
@@ -116,7 +137,10 @@ export class BoqService {
     if (!data.elementId) {
       data.elementId = `MAN-${Date.now()}`;
     }
-    const measurement = this.measurementRepo.create(data);
+    const measurement = this.measurementRepo.create({
+      ...data,
+      rate: Number(data.rate || 0),
+    });
     const saved = await this.measurementRepo.save(measurement);
 
     if (saved.boqSubItemId) {
@@ -215,14 +239,23 @@ export class BoqService {
     });
     if (!subItem) return;
 
-    const { sum } = await this.measurementRepo
+    const { sum, totalAmount } = await this.measurementRepo
       .createQueryBuilder('m')
       .select('SUM(m.qty)', 'sum')
+      .addSelect('SUM(m.qty * COALESCE(m.rate, 0))', 'totalAmount')
       .where('m.boqSubItemId = :id', { id: subItemId })
       .getRawOne();
 
     subItem.qty = Number(sum || 0);
-    subItem.amount = subItem.qty * subItem.rate;
+    if (
+      this.normalizeRateSource(subItem.rateSource) ===
+      BoqSubItemRateSource.MEASUREMENT
+    ) {
+      subItem.amount = Number(totalAmount || 0);
+      subItem.rate = subItem.qty > 0 ? subItem.amount / subItem.qty : 0;
+    } else {
+      subItem.amount = subItem.qty * Number(subItem.rate || 0);
+    }
     await this.boqSubItemRepo.save(subItem);
 
     if (subItem.boqItemId) {
@@ -494,12 +527,57 @@ export class BoqService {
     const measurement = await this.measurementRepo.findOneBy({ id });
     if (!measurement) throw new NotFoundException('Measurement not found');
 
-    Object.assign(measurement, data);
-    return await this.measurementRepo.save(measurement);
+    Object.assign(measurement, {
+      ...data,
+      rate: data.rate !== undefined ? Number(data.rate || 0) : measurement.rate,
+    });
+    const saved = await this.measurementRepo.save(measurement);
+    if (saved.boqSubItemId) {
+      await this.recalculateSubItem(saved.boqSubItemId);
+    } else if (saved.boqItemId) {
+      await this.rollupQuantity(saved.boqItemId);
+    }
+    return saved;
   }
 
   async bulkUpdateMeasurements(ids: number[], data: any): Promise<void> {
     if (!ids || ids.length === 0) return;
-    await this.measurementRepo.update({ id: In(ids) }, data);
+    const measurements = await this.measurementRepo.find({
+      where: { id: In(ids) },
+      select: ['id', 'boqSubItemId', 'boqItemId'],
+    });
+    const payload = {
+      ...data,
+      ...(data.rate !== undefined ? { rate: Number(data.rate || 0) } : {}),
+    };
+    await this.measurementRepo.update({ id: In(ids) }, payload);
+
+    const subItemsToUpdate = new Set<number>();
+    const mainItemsToUpdate = new Set<number>();
+    measurements.forEach((measurement) => {
+      if (measurement.boqSubItemId) subItemsToUpdate.add(measurement.boqSubItemId);
+      if (measurement.boqItemId) mainItemsToUpdate.add(measurement.boqItemId);
+    });
+
+    for (const subItemId of subItemsToUpdate) {
+      await this.recalculateSubItem(subItemId);
+    }
+    for (const boqItemId of mainItemsToUpdate) {
+      const hasUpdatedSubItems = measurements.some(
+        (measurement) =>
+          measurement.boqItemId === boqItemId && !!measurement.boqSubItemId,
+      );
+      if (!hasUpdatedSubItems) {
+        await this.rollupQuantity(boqItemId);
+      }
+    }
+  }
+
+  private normalizeRateSource(
+    rateSource?: string | BoqSubItemRateSource | null,
+  ): BoqSubItemRateSource {
+    return String(rateSource || '').toUpperCase() === BoqSubItemRateSource.MEASUREMENT
+      ? BoqSubItemRateSource.MEASUREMENT
+      : BoqSubItemRateSource.SUB_ITEM;
   }
 }

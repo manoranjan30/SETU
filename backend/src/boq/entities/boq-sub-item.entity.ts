@@ -11,6 +11,11 @@ import {
 import { BoqItem } from './boq-item.entity';
 import { MeasurementElement } from './measurement-element.entity';
 
+export enum BoqSubItemRateSource {
+  SUB_ITEM = 'SUB_ITEM',
+  MEASUREMENT = 'MEASUREMENT',
+}
+
 @Entity()
 export class BoqSubItem {
   @PrimaryGeneratedColumn()
@@ -27,6 +32,13 @@ export class BoqSubItem {
 
   @Column({ nullable: true })
   uom: string; // Specific UOM or inherited
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: BoqSubItemRateSource.SUB_ITEM,
+  })
+  rateSource: BoqSubItemRateSource;
 
   // Rate can be overridden at Sub Item level
   @Column('decimal', { precision: 12, scale: 2, default: 0 })

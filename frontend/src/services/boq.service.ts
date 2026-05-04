@@ -1,12 +1,20 @@
 import api from "../api/axios";
 import { downloadBlob, withFileExtension } from "../utils/file-download.utils";
 
+export interface BoqEpsNodeRef {
+  id: number;
+  name: string;
+  parentId?: number;
+  type?: string;
+}
+
 export interface BoqSubItem {
   id: number;
   boqItemId: number;
   description: string;
   uom: string;
   qty: number;
+  rateSource: "SUB_ITEM" | "MEASUREMENT";
   rate: number; // Sub-item specific rate override
   amount: number;
   measurements?: MeasurementElement[];
@@ -25,12 +33,12 @@ export interface BoqItem {
   qtyMode: "MANUAL" | "DERIVED";
   subItems?: BoqSubItem[]; // Layer 1.5
   measurements?: MeasurementElement[]; // Layer 2 (Deprecated/Legacy)
-  customAttributes?: any;
+  customAttributes?: Record<string, unknown>;
   // Legacy mapping helpers (optional, or we update UI)
   boqName?: string;
   totalQuantity?: number;
   consumedQuantity: number; // Layer 4 Rollup
-  epsNode?: any;
+  epsNode?: BoqEpsNodeRef;
   analysisTemplateId?: number; // Linked Analysis Template
 }
 
@@ -48,6 +56,7 @@ export interface MeasurementElement {
   grid?: string;
   linkingElement?: string;
   uom?: string;
+  rate: number;
 
   length: number;
   breadth: number;
@@ -62,9 +71,9 @@ export interface MeasurementElement {
   executedQty: number;
   analysisTemplateId?: number;
 
-  baseCoordinates?: any;
-  plineAllLengths?: any;
-  customAttributes?: any;
+  baseCoordinates?: unknown;
+  plineAllLengths?: unknown;
+  customAttributes?: Record<string, unknown>;
   epsNode?: { id: number; name: string };
 }
 
@@ -133,13 +142,15 @@ export const boqService = {
   getProjectEpsList: async (projectId: number) => {
     const response = await api.get(`/eps/${projectId}/tree`);
     const flatten = (
-      nodes: any[],
-      acc: Array<{ id: number; name: string; parentId?: number; type?: string }> = [],
+      nodes: Array<Record<string, unknown>>,
+      acc: BoqEpsNodeRef[] = [],
     ) => {
       nodes.forEach((node) => {
-        const rawNode = node?.data ?? node;
+        const rawNode = (node.data as Record<string, unknown> | undefined) ?? node;
         const nodeId = Number(rawNode?.id ?? node?.id);
-        const nodeName = rawNode?.name ?? node?.label ?? node?.name ?? "";
+        const nodeName = String(
+          rawNode?.name ?? node?.label ?? node?.name ?? "",
+        );
         const rawParentId = rawNode?.parentId ?? node?.parentId;
         const parentId =
           rawParentId === null || rawParentId === undefined || rawParentId === ""
@@ -150,7 +161,12 @@ export const boqService = {
           id: nodeId,
           name: nodeName,
           parentId,
-          type: rawNode?.type ?? node?.type,
+          type:
+            typeof rawNode?.type === "string"
+              ? rawNode.type
+              : typeof node?.type === "string"
+                ? node.type
+                : undefined,
         });
         if (Array.isArray(node.children) && node.children.length > 0) {
           flatten(node.children, acc);
@@ -171,13 +187,17 @@ export const boqService = {
     boqItemId: number;
     description: string;
     uom?: string;
+    rateSource?: "SUB_ITEM" | "MEASUREMENT";
     rate?: number;
   }) => {
     return await api.post("/boq/sub-item", data);
   },
 
   // Update Sub Item
-  updateSubItem: async (id: number, data: any) => {
+  updateSubItem: async (
+    id: number,
+    data: Partial<Pick<BoqSubItem, "description" | "uom" | "rate" | "rateSource">>,
+  ) => {
     // data: { description, rate, uom }
     return await api.patch(`/boq/sub-item/${id}`, data);
   },
@@ -207,7 +227,7 @@ export const boqService = {
     );
   },
 
-  addMeasurement: async (data: any) => {
+  addMeasurement: async (data: Record<string, unknown>) => {
     return await api.post("/boq/measurement", data);
   },
 
@@ -239,11 +259,14 @@ export const boqService = {
     return await api.post("/boq/progress", data);
   },
 
-  updateMeasurement: async (id: number, data: any) => {
+  updateMeasurement: async (id: number, data: Record<string, unknown>) => {
     return await api.patch(`/boq/measurement/${id}`, data);
   },
 
-  bulkUpdateMeasurements: async (ids: number[], data: any) => {
+  bulkUpdateMeasurements: async (
+    ids: number[],
+    data: Record<string, unknown>,
+  ) => {
     return await api.patch("/boq/measurements/bulk", { ids, data });
   },
 
