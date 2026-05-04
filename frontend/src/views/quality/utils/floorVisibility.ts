@@ -126,29 +126,40 @@ export function summarizeFloorVisibility(
   }
 
   const selectedSet = new Set(config.selectedNodeIds || []);
-  let blocks = 0;
-  let towers = 0;
-  let floors = 0;
+  const selectedLabels: string[] = [];
 
   const visit = (node: FloorVisibilityTreeNode) => {
+    visitWithPath(node, []);
+  };
+
+  const visitWithPath = (
+    node: FloorVisibilityTreeNode,
+    path: FloorVisibilityTreeNode[],
+  ) => {
+    const nextPath = [...path, node];
     const type = getTreeNodeType(node);
     if (selectedSet.has(node.id)) {
-      if (type === "BLOCK") blocks += 1;
-      if (type === "TOWER") towers += 1;
-      if (type === "FLOOR") floors += 1;
+      const labels = nextPath.map((entry) => getTreeNodeLabel(entry));
+      if (type === "BLOCK") {
+        selectedLabels.push(`${labels[labels.length - 1]} (all towers/floors)`);
+      } else if (type === "TOWER") {
+        selectedLabels.push(labels.join(" / ") + " (all floors)");
+      } else if (type === "FLOOR") {
+        selectedLabels.push(labels.join(" / "));
+      }
     }
-    (node.children || []).forEach(visit);
+    (node.children || []).forEach((child) => visitWithPath(child, nextPath));
   };
   roots.forEach(visit);
 
-  const parts = [];
-  if (blocks) parts.push(`${blocks} Block${blocks > 1 ? "s" : ""}`);
-  if (towers) parts.push(`${towers} Tower${towers > 1 ? "s" : ""}`);
-  if (floors) parts.push(`${floors} Floor${floors > 1 ? "s" : ""}`);
+  const uniqueLabels = Array.from(new Set(selectedLabels));
+  if (uniqueLabels.length === 0) {
+    return "Visible On Floors: All";
+  }
 
-  return parts.length > 0
-    ? `Visible On Floors: ${parts.join(", ")}`
-    : "Visible On Floors: All";
+  const preview = uniqueLabels.slice(0, 3).join(", ");
+  const remaining = uniqueLabels.length - 3;
+  return `Visible On Floors: ${preview}${remaining > 0 ? ` +${remaining} more` : ""}`;
 }
 
 export function resolveFloorScope(

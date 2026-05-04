@@ -553,19 +553,21 @@ export class SmartDistributeService {
     );
   }
 
-  // Splits text into alphanumeric tokens that contain at least one digit,
-  // plus the pure-numeric portion of each such token.
-  // Example: "Tower Equinox 3F" → {"3f", "3"}
-  //          "T3 Tower"         → {"t3", "3"}
-  // Common digit "3" enables tower-level disambiguation.
+  // Splits text into tokens that contain at least one digit.
+  // Alphanumeric combos like "3f", "3a", "t3" are kept as-is and the bare
+  // number is NOT extracted.  "3a" and "3f" are DIFFERENT towers that share
+  // the same base digit — stripping the letter would create a false "3"↔"3"
+  // intersection.  Pure-numeric tokens ("1", "2", "10") are already their own
+  // bare number and are added directly.
+  // Examples: "Wing 1"          → {"1"}
+  //           "Tower Equinox 3F"→ {"3f"}
+  //           "3A"              → {"3a"}
   private extractDigitTokens(text: string): Set<string> {
     const tokens = text.toLowerCase().split(/[^a-z0-9]+/);
     const result = new Set<string>();
     for (const token of tokens) {
       if (/\d/.test(token)) {
         result.add(token);
-        const numOnly = token.replace(/[^0-9]/g, '');
-        if (numOnly) result.add(numOnly);
       }
     }
     return result;
