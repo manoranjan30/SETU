@@ -40,8 +40,9 @@ interface MapperBoqItem {
 
 import DistributedSchedulePanel from "./distributor/DistributedSchedulePanel";
 import ScheduleDistributionMatrix from "./distributor/ScheduleDistributionMatrix"; // Import Added
+import SmartMapTab from "./distributor/SmartMapTab";
 import { GapAnalysisGrid } from "./GapAnalysisGrid"; // Added
-import { LayoutDashboard, Grid3X3, SplitSquareHorizontal } from "lucide-react";
+import { LayoutDashboard, Grid3X3, SplitSquareHorizontal, Zap } from "lucide-react";
 
 const PlanningMatrix: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -49,7 +50,7 @@ const PlanningMatrix: React.FC = () => {
 
   // View State
   const [activeTab, setActiveTab] = useState<
-    "DASHBOARD" | "MATRIX" | "DISTRIBUTION" | "DISTRIBUTED_VIEW"
+    "DASHBOARD" | "MATRIX" | "DISTRIBUTION" | "DISTRIBUTED_VIEW" | "SMART_MAP"
   >("DASHBOARD");
   const [dashboardSubTab, setDashboardSubTab] = useState<
     "MATRIX" | "UNLINKED_ACT" | "UNMAPPED_BOQ" | "GAP_ANALYSIS"
@@ -136,11 +137,27 @@ const PlanningMatrix: React.FC = () => {
           >
             <SplitSquareHorizontal size={16} /> Distributed View
           </button>
+          <button
+            onClick={() => setActiveTab("SMART_MAP")}
+            className={`px-4 py-2 text-sm font-medium rounded flex items-center gap-2 transition-colors ${
+              activeTab === "SMART_MAP"
+                ? "bg-primary-muted text-primary"
+                : "text-text-secondary hover:bg-surface-base"
+            }`}
+          >
+            <Zap size={16} /> Smart Map
+          </button>
         </div>
       </div>
 
       {/* Content Area */}
       <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
+        {activeTab === "SMART_MAP" && (
+          <div className="flex-1 h-full min-h-0 w-full overflow-hidden">
+            <SmartMapTab />
+          </div>
+        )}
+
         {activeTab === "DISTRIBUTION" && (
           <div className="flex-1 p-4 h-full min-h-0 w-full">
             <ScheduleDistributionMatrix />
