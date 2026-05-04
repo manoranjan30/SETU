@@ -34,6 +34,7 @@ import { ApprovalContextDto, ReleaseStrategyDto } from './dto/release-strategy.d
 import { TowerProgressService } from './tower-progress.service';
 import { BuildingLineCoordinateService } from './building-line-coordinate.service';
 import { IssueTrackerService } from './issue-tracker.service';
+import { SmartDistributeService } from './smart-distribute.service';
 import {
   AddDeptToFlowDto,
   CloseIssueTrackerIssueDto,
@@ -66,6 +67,7 @@ export class PlanningController {
     private readonly towerProgressService: TowerProgressService,
     private readonly buildingLineCoordinateService: BuildingLineCoordinateService,
     private readonly issueTrackerService: IssueTrackerService,
+    private readonly smartDistributeService: SmartDistributeService,
   ) {}
 
   // ── Tower Lens — 3D progress visualization ────────────────────────────────
@@ -900,6 +902,42 @@ export class PlanningController {
       body.projectId,
       body.startDate,
       body.endDate,
+    );
+  }
+
+  // ── Smart Distribution ────────────────────────────────────────────────────
+
+  // Auto-detects the project's EPS floor tree and returns activities matched
+  // to each floor — no manual target selection needed.
+  @Get(':projectId/smart-distribute/preview')
+  @Permissions('PLANNING.MATRIX.READ')
+  async smartDistributePreview(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.smartDistributeService.preview(projectId);
+  }
+
+  @Post(':projectId/smart-distribute/suggest')
+  @Permissions('PLANNING.MATRIX.READ')
+  async smartDistributeSuggest(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: { targetEpsIds: number[] },
+  ) {
+    return this.smartDistributeService.suggest(projectId, body.targetEpsIds);
+  }
+
+  @Post(':projectId/smart-distribute/commit')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  @Auditable('SCHEDULE', 'SMART_DISTRIBUTE')
+  async smartDistributeCommit(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: { mappings: { activityId: number; epsNodeIds: number[] }[] },
+    @Request() req,
+  ) {
+    return this.smartDistributeService.commit(
+      projectId,
+      body.mappings,
+      req.user,
     );
   }
 }

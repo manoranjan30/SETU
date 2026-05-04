@@ -47,6 +47,7 @@ import { QualityFloorStructure } from '../quality/entities/quality-floor-structu
 import { QualityUnit } from '../quality/entities/quality-unit.entity';
 import { QualityRoom } from '../quality/entities/quality-room.entity';
 import { IssueTrackerService } from './issue-tracker.service';
+import { SmartDistributeService } from './smart-distribute.service';
 import { MilestoneModule } from '../milestone/milestone.module';
 import { CostService } from './cost.service';
 import { CostController } from './cost.controller';
@@ -121,6 +122,7 @@ import { BudgetLineActivityMap } from './entities/budget-line-activity-map.entit
     TowerProgressService,
     BuildingLineCoordinateService,
     IssueTrackerService,
+    SmartDistributeService,
   ],
   exports: [
     PlanningService,
