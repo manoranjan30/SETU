@@ -106,7 +106,8 @@ export class SmartDistributeService {
       }
     }
 
-    // 2. Load master activities WITH their full WBS ancestor chain
+    // 2. Load ALL activities for this project (masters + distributed clones)
+    //    so we can exclude masters that have already been distributed.
     const activities = await this.activityRepo.find({
       where: { projectId },
       relations: [
@@ -117,7 +118,19 @@ export class SmartDistributeService {
         'wbsNode.parent.parent.parent.parent',
       ],
     });
-    const masterActivities = activities.filter((a) => !a.masterActivityId);
+
+    // Build a set of master IDs that already have at least one distributed clone.
+    // A clone is any activity whose masterActivityId is non-null.
+    const distributedMasterIds = new Set<number>(
+      activities
+        .filter((a) => a.masterActivityId != null)
+        .map((a) => a.masterActivityId as number),
+    );
+
+    // Only surface masters that haven't been distributed yet.
+    const masterActivities = activities.filter(
+      (a) => !a.masterActivityId && !distributedMasterIds.has(a.id),
+    );
 
     // 3. Collect leaf EPS nodes in this project's subtree
     const leafNodes: EpsNode[] = [];

@@ -1,5 +1,10 @@
-import React, { useState, useMemo } from "react";
-import type { BoqItem } from "../../services/boq.service"; // Adjust path
+import React, { useCallback, useState, useMemo } from "react";
+import type {
+  BoqEpsNodeRef,
+  BoqItem,
+  BoqSubItem,
+  MeasurementElement,
+} from "../../services/boq.service";
 import {
   Download,
   Upload,
@@ -22,11 +27,15 @@ import { formatIndianNumber } from "../../utils/format";
 interface MeasurementManagerProps {
   projectId: number;
   boqItem: BoqItem; // Parent Context
-  subItem?: any; // Target SubItem (Optional if we support direct item measures later, but for now mandatory for layer 2)
+  subItem?: BoqSubItem; // Target SubItem (Optional if we support direct item measures later, but for now mandatory for layer 2)
   onClose: () => void;
   onUpdate: () => void; // Trigger refresh of parent list
-  epsNodes?: any[];
+  epsNodes?: BoqEpsNodeRef[];
 }
+
+type MeasurementTableRow = MeasurementElement & {
+  importedOn?: string;
+};
 
 interface ColumnConfig {
   id: string;
@@ -49,6 +58,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "d", label: "D", visible: true, align: "right", width: 60 },
   { id: "levels", label: "Levels", visible: true, align: "right", width: 100 },
   { id: "qty", label: "Qty", visible: true, align: "right", width: 90 }, // Slightly wider
+  { id: "rate", label: "Rate", visible: true, align: "right", width: 90 },
   { id: "executed", label: "Exec", visible: true, align: "right", width: 90 },
   { id: "bal", label: "Bal", visible: true, align: "right", width: 90 },
   { id: "uom", label: "UOM", visible: true, align: "center", width: 60 },
@@ -94,6 +104,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
 }) => {
   // Measurements come from subItem now
   const measurements = subItem?.measurements || [];
+  const measurementRateEnabled = subItem?.rateSource === "MEASUREMENT";
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
@@ -105,18 +116,18 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
   const [newViewName, setNewViewName] = useState("");
   const [showSaveView, setShowSaveView] = useState(false);
 
-  React.useEffect(() => {
-    loadViews();
-  }, []);
-
-  const loadViews = async () => {
+  const loadViews = useCallback(async () => {
     try {
       const saved = await tableViewService.getViews("MEASUREMENT_TABLE");
       setViews(saved);
-    } catch (e) {
-      console.error("Failed to load views", e);
+    } catch (error) {
+      console.error("Failed to load views", error);
     }
-  };
+  }, []);
+
+  React.useEffect(() => {
+    void loadViews();
+  }, [loadViews]);
 
   const handleColumnToggle = (id: string) => {
     setColumns((cols) =>
@@ -134,7 +145,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
       setShowSaveView(false);
       loadViews();
       setCurrentViewName(newViewName);
-    } catch (e) {
+    } catch {
       alert("Failed to save view");
     }
   };
@@ -153,7 +164,6 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
     resizingRef.current = { id: colId, startX: e.clientX, startWidth: width };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-    document.body.style.cursor = "col-resize";
   };
 
   const onMouseMove = (e: MouseEvent) => {
@@ -171,7 +181,6 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
     resizingRef.current = null;
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
-    document.body.style.cursor = "default";
   };
 
   // --- Drag & Drop Reordering ---
@@ -207,9 +216,12 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
 
   const handleApplyView = (view: TableViewConfig) => {
     // Ensure width is numeric (migration safety if old views exist)
-    const safeCols = view.config.columns.map((c: any) => ({
+    const safeCols = view.config.columns.map((c) => ({
       ...c,
-      width: typeof c.width === "number" ? c.width : 100,
+      width:
+        typeof c.width === "number"
+          ? c.width
+          : Number.parseInt(String(c.width ?? 100), 10) || 100,
     }));
     setColumns(safeCols as ColumnConfig[]);
     setCurrentViewName(view.viewName);
@@ -225,19 +237,19 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
   const epsNodeMap = useMemo(() => {
     const map = new Map();
     if (epsNodes) {
-      epsNodes.forEach((n: any) => map.set(n.id, n));
+      epsNodes.forEach((node) => map.set(node.id, node));
     }
     return map;
   }, [epsNodes]);
 
   const resolveEpsPath = (nodeId: number | string) => {
     if (!nodeId) return "-";
-    let current = epsNodeMap.get(Number(nodeId));
+    const current = epsNodeMap.get(Number(nodeId));
     if (!current) return "Unknown Node (" + nodeId + ")"; // Better debugging info
 
     const path = [current.name];
     let parentId = current.parentId;
-    let visited = new Set([current.id]);
+    const visited = new Set([current.id]);
 
     while (parentId && !visited.has(parentId)) {
       const parent = epsNodeMap.get(parentId);
@@ -272,6 +284,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
     baseCoordinates: string;
     plineAllLengths: string;
     qty: number;
+    rate: number;
   }>({
     epsNodeId: "",
     elementName: "",
@@ -291,6 +304,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
     baseCoordinates: "",
     plineAllLengths: "",
     qty: 0,
+    rate: 0,
   });
 
   const handleCalculate = () => {
@@ -340,6 +354,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
           ? JSON.parse(newM.plineAllLengths)
           : undefined,
         qty: newM.qty,
+        rate: measurementRateEnabled ? newM.rate : 0,
       });
       alert("Measurement added!");
       setNewM({
@@ -361,6 +376,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
         baseCoordinates: "",
         plineAllLengths: "",
         qty: 0,
+        rate: 0,
       });
       onUpdate(); // Ideally we should re-fetch to see it, or add to local list if we return it
     } catch (error) {
@@ -372,7 +388,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
   const handleDownloadTemplate = async () => {
     try {
       await boqService.getMeasurementTemplate(projectId, boqItem.id, subItem?.id);
-    } catch (error) {
+    } catch {
       alert("Failed to download template");
     }
   };
@@ -380,9 +396,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
   // --- Bulk Delete Logic ---
   const toggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = new Set<number>(
-        measurements.map((m: any) => Number(m.id)),
-      );
+      const allIds = new Set<number>(measurements.map((m) => Number(m.id)));
       setSelectedIds(allIds);
     } else {
       setSelectedIds(new Set<number>());
@@ -412,6 +426,16 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
     } catch (error) {
       console.error(error);
       alert("Failed to delete measurements");
+    }
+  };
+
+  const handleMeasurementRateChange = async (id: number, rate: number) => {
+    try {
+      await boqService.updateMeasurement(id, { rate });
+      onUpdate();
+    } catch (error) {
+      console.error(error);
+      alert("Failed to update measurement rate");
     }
   };
 
@@ -589,6 +613,12 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                   {subItem?.uom}
                 </span>
               </div>
+              <div className="mt-1 text-xs text-text-muted">
+                Rate Source:{" "}
+                <span className="font-semibold text-text-secondary">
+                  {measurementRateEnabled ? "Measurement Rate" : "Sub-Item Rate"}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -626,7 +656,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                   }
                 >
                   <option value="">-- Select --</option>
-                  {epsNodes?.map((node: any) => (
+                  {epsNodes?.map((node) => (
                     <option key={node.id} value={node.id}>
                       {resolveEpsPath(node.id)}
                     </option>
@@ -711,6 +741,21 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                   placeholder="m3"
                   value={newM.uom}
                   onChange={(e) => setNewM({ ...newM, uom: e.target.value })}
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="text-[10px] font-bold text-text-muted uppercase">
+                  Rate
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-border-strong rounded text-sm disabled:bg-surface-base disabled:text-text-disabled"
+                  placeholder="0"
+                  value={newM.rate}
+                  disabled={!measurementRateEnabled}
+                  onChange={(e) =>
+                    setNewM({ ...newM, rate: Number(e.target.value) })
+                  }
                 />
               </div>
 
@@ -946,7 +991,7 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    measurements.map((m: any) => (
+                    measurements.map((m: MeasurementTableRow) => (
                       <tr
                         key={m.id}
                         className="hover:bg-primary-muted/30 transition-colors"
@@ -1070,6 +1115,31 @@ export const MeasurementManager: React.FC<MeasurementManagerProps> = ({
                                     className="p-3 border-b text-right font-bold text-blue-700 bg-primary-muted/10 font-mono"
                                   >
                                     {formatIndianNumber(m.qty, 3)}
+                                  </td>
+                                );
+                              case "rate":
+                                return (
+                                  <td
+                                    key={col.id}
+                                    className="p-3 border-b text-right text-text-secondary font-mono"
+                                  >
+                                    {measurementRateEnabled ? (
+                                      <input
+                                        type="number"
+                                        defaultValue={m.rate || 0}
+                                        className="w-24 rounded border border-border-strong bg-surface-card px-2 py-1 text-right text-sm"
+                                        onBlur={(e) =>
+                                          handleMeasurementRateChange(
+                                            m.id,
+                                            Number(e.target.value || 0),
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="text-text-disabled">
+                                        -
+                                      </span>
+                                    )}
                                   </td>
                                 );
                               case "executed":

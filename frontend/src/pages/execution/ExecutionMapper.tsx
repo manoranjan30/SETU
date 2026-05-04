@@ -123,7 +123,7 @@ const ExecutionMapper = () => {
 
     // Find BOQ to get Default Quantity (optional, or manual input)
     const boq = boqItems.find((b) => b.id === Number(selectedBoqId));
-    if (!boq) return;
+    if (!boq?.epsNode?.id) return;
 
     try {
       await executionService.create({

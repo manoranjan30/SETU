@@ -39,10 +39,25 @@ interface EpsNode {
   type?: string;
 }
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message === "string"
+  ) {
+    return (error as { response?: { data?: { message?: string } } }).response!
+      .data!.message!;
+  }
+  return fallback;
+};
+
 const BOQ_FIELDS: ImportFieldDefinition[] = [
   { key: "rowType", label: "Row Type (Main/Sub/Meas)", required: false },
   { key: "parentBoqCode", label: "Parent BOQ Code", required: false },
   { key: "boqCode", label: "Item Code", required: true },
+  { key: "rateSource", label: "Rate Source", required: false },
   { key: "description", label: "Description/Title", required: true },
   { key: "longDescription", label: "Detailed Description", required: false },
   { key: "uom", label: "UOM", required: false },
@@ -79,6 +94,7 @@ const MEASUREMENT_FIELDS: ImportFieldDefinition[] = [
   { key: "baseArea", label: "Base Area", required: false },
   { key: "uom", label: "UOM", required: false },
   { key: "qty", label: "Quantity", required: true },
+  { key: "rate", label: "Rate", required: false },
   { key: "epsId", label: "Location ID (Optional)", required: false },
   { key: "baseCoordinates", label: "Base Coordinates (JSON)", required: false },
   { key: "plineAllLengths", label: "Pline All Lengths", required: false },
@@ -167,21 +183,7 @@ export const ImportWizard: React.FC<Props> = ({
         : MEASUREMENT_FIELDS;
 
   // --- Step 1: File Drop ---
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const selectedFile = acceptedFiles[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      parseFile(selectedFile);
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "text/csv": [".csv", ".xlsx", ".xls"] },
-    multiple: false,
-  });
-
-  const parseFile = async (selectedFile: File) => {
+  const parseFile = useCallback(async (selectedFile: File) => {
     try {
       const parsed = await readSpreadsheetPreview(selectedFile, 10);
       setHeaders(parsed.headers);
@@ -193,7 +195,21 @@ export const ImportWizard: React.FC<Props> = ({
       console.error("Failed to parse import file", error);
       toast.error("Failed to read the selected file.");
     }
-  };
+  }, [targetFields]);
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const selectedFile = acceptedFiles[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      void parseFile(selectedFile);
+    }
+  }, [parseFile]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "text/csv": [".csv", ".xlsx", ".xls"] },
+    multiple: false,
+  });
 
   // --- Step 2: Mapping Logic ---
   const handleMapChange = (fieldKey: string, header: string) => {
@@ -262,10 +278,9 @@ export const ImportWizard: React.FC<Props> = ({
       const res = await boqService.importBoq(formData);
       setValidationReport(res.data);
       setStep(3);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      const msg = error.response?.data?.message || "Validation failed";
-      toast.error(msg);
+      toast.error(getErrorMessage(error, "Validation failed"));
     } finally {
       setValidating(false);
     }
@@ -314,9 +329,9 @@ export const ImportWizard: React.FC<Props> = ({
       toast.success("Import completed successfully!");
       onSuccess();
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.response?.data?.message || "Import failed.");
+      toast.error(getErrorMessage(error, "Import failed."));
     } finally {
       setUploading(false);
     }

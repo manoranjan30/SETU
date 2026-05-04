@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { boqService } from "../../services/boq.service";
 import type {
   BoqItem,
   CreateBoqDto,
   BoqSubItem,
+  BoqEpsNodeRef,
 } from "../../services/boq.service";
 import {
   Download,
@@ -30,6 +31,20 @@ import ResourcesView from "../../components/boq/resources/ResourcesView";
 import { exportUtils } from "../../utils/export.utils";
 import { resolveRegisteredExportFileName } from "../../utils/export.registry";
 
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message === "string"
+  ) {
+    return (error as { response?: { data?: { message?: string } } }).response!
+      .data!.message!;
+  }
+  return fallback;
+};
+
 const BoqPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -37,7 +52,7 @@ const BoqPage = () => {
 
   // BOQ State
   const [items, setItems] = useState<BoqItem[]>([]);
-  const [epsNodes, setEpsNodes] = useState<any[]>([]);
+  const [epsNodes, setEpsNodes] = useState<BoqEpsNodeRef[]>([]);
   const [loading, setLoading] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,6 +77,7 @@ const BoqPage = () => {
   const [newSubItem, setNewSubItem] = useState({
     description: "",
     uom: "Nos",
+    rateSource: "SUB_ITEM" as "SUB_ITEM" | "MEASUREMENT",
     rate: 0,
   });
 
@@ -80,7 +96,7 @@ const BoqPage = () => {
   } | null>(null);
 
   // Initial Fetch
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     try {
@@ -95,11 +111,11 @@ const BoqPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
-    fetchItems();
-  }, [projectId]);
+    void fetchItems();
+  }, [fetchItems]);
 
   // Computed
   const filteredItems = useMemo(() => {
@@ -124,6 +140,7 @@ const BoqPage = () => {
             boqCode: item.boqCode,
             boqDescription: item.description,
             subItemDescription: subItem.description,
+            rateSource: subItem.rateSource || "SUB_ITEM",
             uom: subItem.uom || item.uom,
             qty: Number(subItem.qty || 0),
             rate: Number(subItem.rate || 0),
@@ -137,6 +154,7 @@ const BoqPage = () => {
             boqCode: item.boqCode,
             boqDescription: item.description,
             subItemDescription: "",
+            rateSource: "",
             uom: item.uom,
             qty: Number(item.qty || 0),
             rate: Number(item.rate || 0),
@@ -159,6 +177,7 @@ const BoqPage = () => {
           { key: "boqCode", label: "BOQ Code" },
           { key: "boqDescription", label: "BOQ Description" },
           { key: "subItemDescription", label: "Sub Item Description" },
+          { key: "rateSource", label: "Rate Source" },
           { key: "uom", label: "UOM" },
           { key: "qty", label: "Quantity" },
           { key: "rate", label: "Rate" },
@@ -213,7 +232,7 @@ const BoqPage = () => {
         totalQuantity: 1,
       });
       fetchItems();
-    } catch (error) {
+    } catch {
       alert("Failed to create item");
     }
   };
@@ -225,13 +244,19 @@ const BoqPage = () => {
         boqItemId: createSubItemModal,
         description: newSubItem.description,
         uom: newSubItem.uom,
+        rateSource: newSubItem.rateSource,
         rate: newSubItem.rate,
       });
       setCreateSubItemModal(null);
-      setNewSubItem({ description: "", uom: "Nos", rate: 0 });
+      setNewSubItem({
+        description: "",
+        uom: "Nos",
+        rateSource: "SUB_ITEM",
+        rate: 0,
+      });
       fetchItems();
     } catch (error) {
-      alert("Failed to create sub-item");
+      alert(getApiErrorMessage(error, "Failed to create sub-item"));
     }
   };
 
@@ -246,7 +271,7 @@ const BoqPage = () => {
       await boqService.update(editingId, editForm);
       setEditingId(null);
       fetchItems();
-    } catch (error) {
+    } catch {
       alert("Update failed");
     }
   };
@@ -262,12 +287,14 @@ const BoqPage = () => {
       await boqService.updateSubItem(editingSubItemId, {
         description: editSubItemForm.description,
         uom: editSubItemForm.uom,
+        rateSource: editSubItemForm.rateSource,
         rate: Number(editSubItemForm.rate),
       });
       setEditingSubItemId(null);
-      fetchItems();
+      await fetchItems();
     } catch (error) {
-      alert("Failed to update sub-item");
+      console.error("Failed to update sub-item", error);
+      alert(getApiErrorMessage(error, "Failed to update sub-item"));
     }
   };
 
@@ -282,7 +309,7 @@ const BoqPage = () => {
       }
       setDeleteItem(null);
       fetchItems();
-    } catch (error) {
+    } catch {
       alert("Delete failed");
     }
   };
@@ -608,26 +635,58 @@ const BoqPage = () => {
                                               />
                                             </td>
                                             <td className="px-4 py-3 text-right">
-                                              <input
-                                                type="number"
-                                                className="w-full border rounded p-1 text-right text-sm"
-                                                value={editSubItemForm.rate}
-                                                onChange={(e) =>
-                                                  setEditSubItemForm({
-                                                    ...editSubItemForm,
-                                                    rate: Number(
-                                                      e.target.value,
-                                                    ),
-                                                  })
-                                                }
-                                              />
+                                              <div className="space-y-2">
+                                                <select
+                                                  className="w-full border rounded p-1 text-xs"
+                                                  value={
+                                                    editSubItemForm.rateSource ||
+                                                    "SUB_ITEM"
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditSubItemForm({
+                                                      ...editSubItemForm,
+                                                      rateSource: e.target
+                                                        .value as
+                                                        | "SUB_ITEM"
+                                                        | "MEASUREMENT",
+                                                    })
+                                                  }
+                                                >
+                                                  <option value="SUB_ITEM">
+                                                    Sub-Item Rate
+                                                  </option>
+                                                  <option value="MEASUREMENT">
+                                                    Measurement Rate
+                                                  </option>
+                                                </select>
+                                                <input
+                                                  type="number"
+                                                  className="w-full border rounded p-1 text-right text-sm disabled:bg-surface-base disabled:text-text-disabled"
+                                                  value={editSubItemForm.rate}
+                                                  disabled={
+                                                    editSubItemForm.rateSource ===
+                                                    "MEASUREMENT"
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditSubItemForm({
+                                                      ...editSubItemForm,
+                                                      rate: Number(
+                                                        e.target.value,
+                                                      ),
+                                                    })
+                                                  }
+                                                />
+                                              </div>
                                             </td>
                                             <td className="px-4 py-3 text-right font-bold text-text-primary">
                                               {formatIndianNumber(
-                                                (si.qty || 0) *
-                                                  (Number(
-                                                    editSubItemForm.rate,
-                                                  ) || 0),
+                                                editSubItemForm.rateSource ===
+                                                  "MEASUREMENT"
+                                                  ? si.amount || 0
+                                                  : (si.qty || 0) *
+                                                      (Number(
+                                                        editSubItemForm.rate,
+                                                      ) || 0),
                                               )}
                                             </td>
                                             <td className="px-4 py-3 text-center flex justify-center gap-3">
@@ -650,7 +709,15 @@ const BoqPage = () => {
                                         ) : (
                                           <>
                                             <td className="px-4 py-3 text-text-secondary">
-                                              {si.description}
+                                              <div className="flex items-center gap-2">
+                                                <span>{si.description}</span>
+                                                {si.rateSource ===
+                                                "MEASUREMENT" ? (
+                                                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                                                    Rate From Measurements
+                                                  </span>
+                                                ) : null}
+                                              </div>
                                             </td>
                                             <td className="px-4 py-3 text-right font-mono">
                                               {formatIndianNumber(si.qty, 3)}
@@ -777,7 +844,7 @@ const BoqPage = () => {
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-text-muted uppercase">
-                  Description
+                                          Description
                 </label>
                 <input
                   className="w-full border rounded p-2 focus:ring-2 focus:ring-secondary outline-none"
@@ -806,12 +873,33 @@ const BoqPage = () => {
                 </div>
                 <div className="w-1/2">
                   <label className="text-xs font-bold text-text-muted uppercase">
+                    Rate Source
+                  </label>
+                  <select
+                    className="w-full border rounded p-2"
+                    value={newSubItem.rateSource}
+                    onChange={(e) =>
+                      setNewSubItem({
+                        ...newSubItem,
+                        rateSource: e.target.value as
+                          | "SUB_ITEM"
+                          | "MEASUREMENT",
+                      })
+                    }
+                  >
+                    <option value="SUB_ITEM">Sub-Item Rate</option>
+                    <option value="MEASUREMENT">Measurement Rate</option>
+                  </select>
+                </div>
+                <div className="w-1/2">
+                  <label className="text-xs font-bold text-text-muted uppercase">
                     Base Rate
                   </label>
                   <input
                     type="number"
-                    className="w-full border rounded p-2 font-mono"
+                    className="w-full border rounded p-2 font-mono disabled:bg-surface-base disabled:text-text-disabled"
                     value={newSubItem.rate}
+                    disabled={newSubItem.rateSource === "MEASUREMENT"}
                     onChange={(e) =>
                       setNewSubItem({
                         ...newSubItem,
@@ -819,6 +907,11 @@ const BoqPage = () => {
                       })
                     }
                   />
+                  {newSubItem.rateSource === "MEASUREMENT" ? (
+                    <p className="mt-1 text-[11px] text-text-muted">
+                      Measurement rows will carry the rate for this sub-item.
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">

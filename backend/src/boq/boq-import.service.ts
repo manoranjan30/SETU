@@ -6,7 +6,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { BoqItem, BoqQtyMode } from './entities/boq-item.entity';
-import { BoqSubItem } from './entities/boq-sub-item.entity';
+import {
+  BoqSubItem,
+  BoqSubItemRateSource,
+} from './entities/boq-sub-item.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import * as csv from 'csv-parser';
 import * as XLSX from 'xlsx';
@@ -26,6 +29,13 @@ export class BoqImportService {
     @InjectRepository(BoqSubItem)
     private readonly boqSubItemRepo: Repository<BoqSubItem>, // Injected
   ) {}
+
+  private normalizeRateSource(value: unknown): BoqSubItemRateSource {
+    return String(value || '').trim().toUpperCase() ===
+      BoqSubItemRateSource.MEASUREMENT
+      ? BoqSubItemRateSource.MEASUREMENT
+      : BoqSubItemRateSource.SUB_ITEM;
+  }
 
   private async getProjectScopedEpsNodes(projectId: number) {
     const allNodes = await this.epsRepo.find({
@@ -97,6 +107,7 @@ export class BoqImportService {
     const headers = [
       'Parent BOQ Code',
       'Parent Sub-Item',
+      'Rate',
       'EPS Path',
       'EPS Node ID',
       'EPS Name (Ref)',
@@ -160,6 +171,7 @@ export class BoqImportService {
     const starterRow = [
       boqItem?.boqCode || '',
       scopedSubItem?.description || '',
+      scopedSubItem?.rateSource === BoqSubItemRateSource.MEASUREMENT ? '' : '',
       '',
       '',
       '',
@@ -186,6 +198,7 @@ export class BoqImportService {
     const measurementRows = existingMeasurements.map((measurement) => [
       boqItem?.boqCode || '',
       scopedSubItem?.description || '',
+      measurement.rate ?? '',
       scope?.pathById.get(Number(measurement.epsNodeId)) || '',
       measurement.epsNodeId || '',
       (measurement.epsNodeId
@@ -217,6 +230,7 @@ export class BoqImportService {
     ws['!cols'] = [
       { wch: 18 },
       { wch: 28 },
+      { wch: 12 },
       { wch: 48 },
       { wch: 15 },
       { wch: 48 },
@@ -282,6 +296,7 @@ export class BoqImportService {
       ['Field', 'How to use'],
       ['Parent BOQ Code', 'Use the opened BOQ item code shown in the BOQ Reference sheet.'],
       ['Parent Sub-Item', 'Use the exact sub-item description from the BOQ Reference sheet.'],
+      ['Rate', 'Required when the target sub-item is set to MEASUREMENT rate source. Ignored for SUB_ITEM mode.'],
       ['EPS Path', 'Preferred location field. Use the project-scoped floor path from EPS Floor Reference.'],
       ['EPS Node ID', 'Optional fallback if you want to use ids directly.'],
       ['Element Name', 'Required measurement description.'],
@@ -357,25 +372,26 @@ export class BoqImportService {
       'parentSubItem',
       findHeaderIndex('Parent Sub-Item'),
     );
+    const idxRate = getIndex('rate', 2);
     const idxElName = getIndex('elementName', 6);
-    const idxL = getIndex('length', 11);
-    const idxB = getIndex('breadth', 12);
-    const idxD = getIndex('depth', 13);
-    const idxQty = getIndex('qty', 19);
+    const idxL = getIndex('length', 12);
+    const idxB = getIndex('breadth', 13);
+    const idxD = getIndex('depth', 14);
+    const idxQty = getIndex('qty', 20);
 
     // Advanced Fields
-    const idxGrid = getIndex('grid', 9);
-    const idxLink = getIndex('linkingElement', 10);
-    const idxCat = getIndex('elementCategory', 7);
-    const idxType = getIndex('elementType', 8);
-    const idxUom = getIndex('uom', 20);
-    const idxHeight = getIndex('height', 14);
-    const idxBottom = getIndex('bottomLevel', 15);
-    const idxTop = getIndex('topLevel', 16);
-    const idxPerim = getIndex('perimeter', 17);
-    const idxBaseArea = getIndex('baseArea', 18);
-    const idxPline = getIndex('plineAllLengths', 22);
-    const idxCoords = getIndex('baseCoordinates', 21);
+    const idxGrid = getIndex('grid', 10);
+    const idxLink = getIndex('linkingElement', 11);
+    const idxCat = getIndex('elementCategory', 8);
+    const idxType = getIndex('elementType', 9);
+    const idxUom = getIndex('uom', 21);
+    const idxHeight = getIndex('height', 15);
+    const idxBottom = getIndex('bottomLevel', 16);
+    const idxTop = getIndex('topLevel', 17);
+    const idxPerim = getIndex('perimeter', 18);
+    const idxBaseArea = getIndex('baseArea', 19);
+    const idxPline = getIndex('plineAllLengths', 23);
+    const idxCoords = getIndex('baseCoordinates', 22);
 
     const currentBoqItem = await this.boqItemRepo.findOne({
       where: { id: boqItemId, projectId },
@@ -607,6 +623,10 @@ export class BoqImportService {
         baseArea: idxBaseArea >= 0 ? safeNum(row[idxBaseArea], 'baseArea') : 0,
 
         qty: safeNum(row[idxQty], 'qty'),
+        rate:
+          selectedSubItem?.rateSource === BoqSubItemRateSource.MEASUREMENT
+            ? safeNum(row[idxRate], 'rate')
+            : 0,
 
         baseCoordinates:
           idxCoords >= 0 ? this.tryParseJson(row[idxCoords]) : undefined,
@@ -626,9 +646,10 @@ export class BoqImportService {
         console.log(
           `[ImportMeasurements] Triggering Manual Rollup for SubItem ${boqSubItemId}`,
         );
-        const { sum } = await this.measurementRepo
+        const { sum, totalAmount } = await this.measurementRepo
           .createQueryBuilder('m')
           .select('SUM(m.qty)', 'sum')
+          .addSelect('SUM(m.qty * COALESCE(m.rate, 0))', 'totalAmount')
           .where('m.boqSubItemId = :id', { id: boqSubItemId })
           .getRawOne();
 
@@ -640,7 +661,15 @@ export class BoqImportService {
         });
         if (subItem) {
           subItem.qty = totalQty;
-          subItem.amount = Number(subItem.qty) * Number(subItem.rate);
+          if (
+            this.normalizeRateSource(subItem.rateSource) ===
+            BoqSubItemRateSource.MEASUREMENT
+          ) {
+            subItem.amount = Number(totalAmount || 0);
+            subItem.rate = subItem.qty > 0 ? subItem.amount / subItem.qty : 0;
+          } else {
+            subItem.amount = Number(subItem.qty) * Number(subItem.rate);
+          }
           await this.boqSubItemRepo.save(subItem);
 
           if (subItem.boqItem) {
@@ -676,6 +705,7 @@ export class BoqImportService {
       'BOQ Code',
       'Parent BOQ Code',
       'Parent Sub-Item',
+      'Rate Source',
       'Description',
       'Detailed Description',
       'UOM',
@@ -733,6 +763,7 @@ export class BoqImportService {
         item.boqCode || '',
         '',
         '',
+        '',
         item.description || '',
         item.longDescription || '',
         item.uom || '',
@@ -752,6 +783,7 @@ export class BoqImportService {
           '',
           item.boqCode || '',
           '',
+          subItem.rateSource || BoqSubItemRateSource.SUB_ITEM,
           subItem.description || '',
           '',
           subItem.uom || item.uom || '',
@@ -771,11 +803,12 @@ export class BoqImportService {
             '',
             item.boqCode || '',
             subItem.description || '',
+            '',
             measurement.elementName || '',
             '',
             measurement.uom || subItem.uom || item.uom || '',
             normalizeNumberCell(measurement.qty),
-            '',
+            normalizeNumberCell(measurement.rate),
             measurement.epsNodeId
               ? pathById.get(Number(measurement.epsNodeId)) || ''
               : '',
@@ -794,11 +827,12 @@ export class BoqImportService {
           '',
           item.boqCode || '',
           '',
+          '',
           measurement.elementName || '',
           '',
           measurement.uom || item.uom || '',
           normalizeNumberCell(measurement.qty),
-          '',
+          normalizeNumberCell(measurement.rate),
           measurement.epsNodeId
             ? pathById.get(Number(measurement.epsNodeId)) || ''
             : '',
@@ -828,6 +862,7 @@ export class BoqImportService {
         '',
         '',
         '',
+        '',
       ],
       [
         'SUB_ITEM',
@@ -845,9 +880,11 @@ export class BoqImportService {
         '',
         '',
         '',
+        '',
       ],
       [
         'MEASUREMENT',
+        '',
         '',
         '',
         '',
@@ -873,6 +910,7 @@ export class BoqImportService {
       { wch: 15 }, // BOQ Code
       { wch: 15 }, // Parent Code
       { wch: 20 }, // Parent Sub-Item (New)
+      { wch: 18 }, // Rate Source
       { wch: 40 }, // Description
       { wch: 30 }, // Detailed Desc
       { wch: 10 }, // UOM
@@ -895,6 +933,7 @@ export class BoqImportService {
         'CIV-001',
         '',
         '',
+        '',
         'Earth Work Excavation',
         'Excavation for foundation',
         'cum',
@@ -912,6 +951,7 @@ export class BoqImportService {
         '',
         'CIV-001',
         '',
+        'SUB_ITEM',
         'Manual Excavation',
         'Labor work',
         'cum',
@@ -929,11 +969,12 @@ export class BoqImportService {
         '',
         'CIV-001',
         'Manual Excavation',
+        '',
         'Grid 1-A Pit',
         '',
         'cum',
         '0',
-        '0',
+        '',
         'Tower A > Basement',
         'Pit 1',
         '2',
@@ -946,11 +987,12 @@ export class BoqImportService {
         '',
         'CIV-001',
         'Manual Excavation',
+        '',
         'Grid 1-B Pit',
         '',
         'cum',
         '0',
-        '0',
+        '',
         'Tower A > Basement',
         'Pit 2',
         '2',
@@ -961,6 +1003,7 @@ export class BoqImportService {
       [
         'MAIN_ITEM',
         'CIV-002',
+        '',
         '',
         '',
         'PCC Work',
@@ -986,13 +1029,14 @@ export class BoqImportService {
         'BOQ Code',
         'Parent BOQ Code',
         'Parent Sub-Item',
+        'Rate Source',
         'Description',
         'UOM',
         'Quantity',
         'Rate',
         'EPS Path',
       ],
-      ...exportRows.map((row) => row.slice(0, 10)),
+      ...exportRows.map((row) => row.slice(0, 11)),
     ];
     const wsBoqRef = XLSX.utils.aoa_to_sheet(boqReference);
     wsBoqRef['!cols'] = [
@@ -1000,6 +1044,7 @@ export class BoqImportService {
       { wch: 15 },
       { wch: 18 },
       { wch: 24 },
+      { wch: 18 },
       { wch: 40 },
       { wch: 10 },
       { wch: 12 },
@@ -1039,10 +1084,15 @@ export class BoqImportService {
         'Exact Name of the Sub-item to link Measurement to',
         'MEASUREMENT (if child of sub-item)',
       ],
+      [
+        'Rate Source',
+        'SUB_ITEM keeps rate on sub-item. MEASUREMENT takes commercial rate from measurement rows.',
+        'SUB_ITEM',
+      ],
       ['Description', 'Name or Title of the item', 'All'],
       ['UOM', 'Unit of Measurement', 'MAIN_ITEM, SUB_ITEM, MEASUREMENT'],
       ['Quantity', 'Total Quantity Override (Manual)', 'MAIN_ITEM, SUB_ITEM'],
-      ['Rate', 'Unit Price', 'MAIN_ITEM, SUB_ITEM'],
+      ['Rate', 'Unit Price for main/sub-item or measurement rate for MEASUREMENT rows', 'MAIN_ITEM, SUB_ITEM, MEASUREMENT'],
       [
         'EPS Path',
         'Location Hierarchy (e.g. Tower A > Floor 1)',
@@ -1112,6 +1162,7 @@ export class BoqImportService {
     const idxCode = getIndex('boqCode', 'BOQ Code');
     const idxParentCode = getIndex('parentBoqCode', 'Parent BOQ Code');
     const idxParentSub = getIndex('parentSubItem', 'Parent Sub-Item'); // New Column Index
+    const idxRateSource = getIndex('rateSource', 'Rate Source');
     const idxDesc = getIndex('description', 'Description');
     const idxLongDesc = getIndex('longDescription', 'Detailed Description');
     const idxUom = getIndex('uom', 'UOM');
@@ -1389,10 +1440,23 @@ export class BoqImportService {
         subItem.boqItemId = mainItem.id;
         subItem.description = desc;
         subItem.uom = String(row[idxUom] || mainItem.uom);
+        subItem.rateSource = this.normalizeRateSource(
+          idxRateSource !== -1 ? row[idxRateSource] : undefined,
+        );
         subItem.qty = Number(row[idxQty] || 0);
-        subItem.rate = Number(row[idxRate] || mainItem.rate);
-        subItem.amount =
-          Number(row[idxQty] || 0) * Number(row[idxRate] || mainItem.rate);
+        if (subItem.rateSource === BoqSubItemRateSource.MEASUREMENT) {
+          subItem.rate = 0;
+          subItem.amount = 0;
+          if (Number(row[idxRate] || 0) > 0) {
+            result.warnings.push(
+              `Sub-Item "${desc}": Rate ignored because Rate Source is MEASUREMENT.`,
+            );
+          }
+        } else {
+          subItem.rate = Number(row[idxRate] || mainItem.rate);
+          subItem.amount =
+            Number(row[idxQty] || 0) * Number(row[idxRate] || mainItem.rate);
+        }
 
         await this.boqSubItemRepo.save(subItem);
         existingSubItemMap.set(subItemLookupKey, subItem);
@@ -1482,6 +1546,10 @@ export class BoqImportService {
           breadth: measBreadth,
           depth: measDepth,
           qty: 0, // Will settle below
+          rate:
+            targetSubItem?.rateSource === BoqSubItemRateSource.MEASUREMENT
+              ? Number(row[idxRate] || 0)
+              : 0,
           uom: String(row[idxUom] || 'set'),
         });
 
@@ -1598,8 +1666,18 @@ export class BoqImportService {
         measurementToSave.breadth = meas.breadth;
         measurementToSave.depth = meas.depth;
         measurementToSave.qty = meas.qty;
+        measurementToSave.rate = meas.rate;
         measurementToSave.uom = meas.uom;
         measurementToSave.epsNodeId = meas.epsNodeId;
+
+        if (
+          targetSubItem?.rateSource !== BoqSubItemRateSource.MEASUREMENT &&
+          Number(row[idxRate] || 0) > 0
+        ) {
+          result.warnings.push(
+            `Measurement "${meas.elementName}": Rate ignored because parent sub-item uses SUB_ITEM rate source.`,
+          );
+        }
 
         await this.measurementRepo.save(measurementToSave);
         existingMeasurementMap.set(measurementKey, measurementToSave);
@@ -1623,16 +1701,27 @@ export class BoqImportService {
       });
       if (!freshSub) continue;
 
-      const { sum } = await this.measurementRepo
+      const { sum, weightedAmount } = await this.measurementRepo
         .createQueryBuilder('m')
         .select('SUM(m.qty)', 'sum')
+        .addSelect('SUM(m.qty * COALESCE(m.rate, 0))', 'weightedAmount')
         .where('m.boqSubItemId = :id', { id: subItemId })
         .getRawOne();
 
       const measuredQty = Number(sum || 0);
       if (measuredQty > 0 || freshSub.qty > 0) {
         freshSub.qty = measuredQty;
-        freshSub.amount = Number(freshSub.qty || 0) * Number(freshSub.rate || 0);
+        if (
+          this.normalizeRateSource(freshSub.rateSource) ===
+          BoqSubItemRateSource.MEASUREMENT
+        ) {
+          freshSub.amount = Number(weightedAmount || 0);
+          freshSub.rate =
+            freshSub.qty > 0 ? Number(freshSub.amount || 0) / freshSub.qty : 0;
+        } else {
+          freshSub.amount =
+            Number(freshSub.qty || 0) * Number(freshSub.rate || 0);
+        }
         await this.boqSubItemRepo.save(freshSub);
         if (freshSub.boqItemId) {
           touchedBoqItemIds.add(freshSub.boqItemId);
@@ -1833,7 +1922,9 @@ export class BoqImportService {
       'ID',
       'BOQ Code',
       'Parent BOQ Code',
+      'Parent Sub-Item',
       'Row Type',
+      'Rate Source',
       'Description',
       'Detailed Description',
       'UOM',
@@ -1856,7 +1947,9 @@ export class BoqImportService {
         item.id,
         item.boqCode,
         '', // No parent for main item
+        '',
         'MAIN_ITEM',
+        '',
         item.description,
         item.longDescription || '',
         item.uom,
@@ -1878,7 +1971,9 @@ export class BoqImportService {
             sub.id,
             '', // SubItems don't have their own code usually
             item.boqCode, // Link to parent
+            '',
             'SUB_ITEM',
+            sub.rateSource || BoqSubItemRateSource.SUB_ITEM,
             sub.description,
             '',
             sub.uom,
@@ -1900,12 +1995,14 @@ export class BoqImportService {
                 m.id,
                 '',
                 item.boqCode, // Link back to main item (or we could use sub.id if we wanted to be more specific)
+                sub.description || '',
                 'MEASUREMENT',
+                '',
                 m.elementName || '', // Description for measurement
                 '',
                 m.uom || sub.uom,
                 '',
-                '',
+                m.rate,
                 '',
                 m.epsNode
                   ? getEpsPath(m.epsNode.id)
