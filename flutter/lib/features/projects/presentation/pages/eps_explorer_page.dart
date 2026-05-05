@@ -482,13 +482,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            activity.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
+                          child: _buildActivityHierarchy(activity),
                         ),
                         // Status chip (Completed / In Progress / Not Started)
                         _buildStatusChip(activity.status),
@@ -545,6 +539,52 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Builds the activity name with its WBS ancestor breadcrumb.
+  ///
+  /// Layout:
+  ///   [grey]  Equinox 5 > Tower Equinox 3A          ← ancestors beyond last 2
+  ///   [bold]  Internal Finishing > Internal Finishing Civil > 1st floor
+  ///
+  /// The last 2 WBS ancestor names + the activity name are all shown in bold
+  /// so the context is immediately clear. No truncation — text wraps freely.
+  Widget _buildActivityHierarchy(Activity activity) {
+    // Assemble the full ordered path: wbsPath parts + leaf activity name.
+    final List<String> parts = [];
+    if (activity.wbsPath != null && activity.wbsPath!.isNotEmpty) {
+      parts.addAll(activity.wbsPath!.split(' > '));
+    }
+    parts.add(activity.name);
+
+    // Split point: last 3 entries (2 parents + activity) are bold.
+    final int boldStart = parts.length > 3 ? parts.length - 3 : 0;
+    final String greyText = parts.sublist(0, boldStart).join(' > ');
+    final String boldText = parts.sublist(boldStart).join(' > ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (greyText.isNotEmpty)
+          Text(
+            greyText,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w400,
+              height: 1.4,
+            ),
+          ),
+        Text(
+          boldText,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
-import { Plus, Trash, Edit, X, Search } from "lucide-react";
+import { Plus, Trash, Edit, X, Search, Lock } from "lucide-react";
+import Modal from "../components/common/Modal";
 
 interface User {
   id: number;
@@ -22,6 +23,23 @@ interface Permission {
   moduleName: string;
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: { data?: { message?: unknown } } }).response
+      ?.data?.message === "string"
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 const UserManagement = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -35,6 +53,12 @@ const UserManagement = () => {
   const [permissionSearch, setPermissionSearch] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [passwordUser, setPasswordUser] = useState<User | null>(null);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [forceChangeOnNextLogin, setForceChangeOnNextLogin] = useState(false);
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -46,7 +70,7 @@ const UserManagement = () => {
     try {
       const res = await api.get("/users");
       setUsers(res.data);
-    } catch (error) {
+    } catch {
       console.error("Failed to fetch users");
     }
   };
@@ -55,7 +79,7 @@ const UserManagement = () => {
     try {
       const res = await api.get("/roles");
       setRoles(res.data);
-    } catch (error) {
+    } catch {
       console.error("Failed to fetch roles");
     }
   };
@@ -64,7 +88,7 @@ const UserManagement = () => {
     try {
       const res = await api.get("/permissions");
       setPermissions(res.data);
-    } catch (error) {
+    } catch {
       console.error("Failed to fetch permissions");
     }
   };
@@ -104,7 +128,7 @@ const UserManagement = () => {
       resetForm();
       fetchUsers();
     } catch (error) {
-      alert("Failed to save user");
+      alert(getApiErrorMessage(error, "Failed to save user"));
     }
   };
 
@@ -113,7 +137,9 @@ const UserManagement = () => {
     setUsername(user.username);
     setPassword(""); // Don't populate password
     setSelectedRoles(user.roles.map((r) => r.id));
-    setSelectedPermissionIds(user.permissions?.map((permission) => permission.id) || []);
+    setSelectedPermissionIds(
+      user.permissions?.map((permission) => permission.id) || [],
+    );
     setIsActive(user.isActive);
   };
 
@@ -133,7 +159,53 @@ const UserManagement = () => {
       await api.delete(`/users/${id}`);
       fetchUsers();
     } catch (error) {
-      alert("Failed to delete user");
+      alert(getApiErrorMessage(error, "Failed to delete user"));
+    }
+  };
+
+  const openPasswordModal = (user: User) => {
+    setPasswordUser(user);
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setForceChangeOnNextLogin(false);
+    setPasswordModalOpen(true);
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModalOpen(false);
+    setPasswordUser(null);
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setForceChangeOnNextLogin(false);
+  };
+
+  const handleAdminPasswordUpdate = async () => {
+    if (!passwordUser) return;
+    if (newPassword.length < 8) {
+      alert("New password must be at least 8 characters long.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      alert("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      setPasswordUpdating(true);
+      await api.put(`/users/${passwordUser.id}/password`, {
+        newPassword,
+        forceChangeOnNextLogin,
+      });
+      alert(
+        forceChangeOnNextLogin
+          ? `Password reset for ${passwordUser.username}. They must change it on next login.`
+          : `Password updated for ${passwordUser.username}.`,
+      );
+      closePasswordModal();
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to update user password"));
+    } finally {
+      setPasswordUpdating(false);
     }
   };
 
@@ -387,6 +459,13 @@ const UserManagement = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button
+                    onClick={() => openPasswordModal(user)}
+                    className="text-amber-600 hover:text-amber-800 mr-4"
+                    title="Change password"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
                   {user.username !== "admin" && (
                     <>
                       <button
@@ -414,6 +493,80 @@ const UserManagement = () => {
           </tbody>
         </table>
       </div>
+
+      <Modal
+        isOpen={passwordModalOpen}
+        onClose={closePasswordModal}
+        title={`Update Password${passwordUser ? `: ${passwordUser.username}` : ""}`}
+        size="medium"
+      >
+        <div className="space-y-5">
+          <p className="text-sm text-text-muted">
+            Set a new password for this user. If you enable the reset option,
+            the user will be required to change it after their next login.
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary">
+              New Password
+            </label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="mt-1 block w-full border border-border-strong rounded-md shadow-sm p-2"
+              placeholder="Minimum 8 characters"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              className="mt-1 block w-full border border-border-strong rounded-md shadow-sm p-2"
+              placeholder="Re-enter password"
+            />
+          </div>
+
+          <label className="flex items-center gap-3 rounded-lg border border-border-default bg-surface-base px-4 py-3">
+            <input
+              type="checkbox"
+              checked={forceChangeOnNextLogin}
+              onChange={(e) => setForceChangeOnNextLogin(e.target.checked)}
+            />
+            <div>
+              <div className="text-sm font-medium text-text-primary">
+                Force password change on next login
+              </div>
+              <div className="text-xs text-text-muted">
+                Use this when you are resetting the password temporarily.
+              </div>
+            </div>
+          </label>
+
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={closePasswordModal}
+              className="rounded-lg border border-border-default px-4 py-2 text-sm font-medium text-text-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleAdminPasswordUpdate}
+              disabled={passwordUpdating}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              {passwordUpdating ? "Updating..." : "Save Password"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

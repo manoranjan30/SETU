@@ -47,6 +47,19 @@ export class UsersController {
     );
   }
 
+  @Put(':id/password')
+  @Roles('Admin')
+  adminSetPassword(
+    @Param('id') id: string,
+    @Body() body: { newPassword: string; forceChangeOnNextLogin?: boolean },
+  ) {
+    return this.usersService.adminSetPassword(
+      +id,
+      body.newPassword,
+      body.forceChangeOnNextLogin,
+    );
+  }
+
   @Get('me/signature')
   getSignature(@Request() req) {
     return this.usersService.getSignature(+req.user.id);

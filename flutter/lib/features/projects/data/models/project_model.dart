@@ -211,6 +211,9 @@ class Activity extends Equatable {
   final double? actualQuantity;
   final String? unit;
   final bool hasMicroSchedule;
+  /// WBS ancestor chain returned by the execution-ready endpoint,
+  /// e.g. "Structure Works > Super structure works > 1st floor".
+  final String? wbsPath;
   /// BOQ plans attached to this activity (from execution-ready endpoint).
   final List<ActivityPlan> plans;
 
@@ -229,6 +232,7 @@ class Activity extends Equatable {
     this.actualQuantity,
     this.unit,
     this.hasMicroSchedule = false,
+    this.wbsPath,
     this.plans = const [],
   });
 
@@ -308,6 +312,7 @@ class Activity extends Equatable {
       hasMicroSchedule: json['hasMicroSchedule'] as bool? ??
           json['has_micro_schedule'] as bool? ??
           false,
+      wbsPath: json['wbsPath'] as String? ?? json['wbs_path'] as String?,
       plans: (json['plans'] as List<dynamic>?)
               ?.map((e) => ActivityPlan.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -331,6 +336,7 @@ class Activity extends Equatable {
       'actualQuantity': actualQuantity,
       'unit': unit,
       'hasMicroSchedule': hasMicroSchedule,
+      'wbsPath': wbsPath,
       'plans': plans.map((e) => e.toJson()).toList(),
     };
   }
@@ -353,6 +359,7 @@ class Activity extends Equatable {
         actualQuantity,
         unit,
         hasMicroSchedule,
+        wbsPath,
         plans,
       ];
 }

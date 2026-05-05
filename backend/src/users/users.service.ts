@@ -163,7 +163,16 @@ export class UsersService {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw new NotFoundException('User not found');
 
-    if (!user.isFirstLogin && oldPassword) {
+    if (!newPassword || newPassword.trim().length < 8) {
+      throw new BadRequestException(
+        'New password must be at least 8 characters long',
+      );
+    }
+
+    if (!user.isFirstLogin) {
+      if (!oldPassword) {
+        throw new BadRequestException('Current password is required');
+      }
       const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
       if (!isMatch) throw new BadRequestException('Incorrect current password');
     }
@@ -171,6 +180,33 @@ export class UsersService {
     user.passwordHash = await bcrypt.hash(newPassword, 10);
     user.isFirstLogin = false;
     return this.usersRepository.save(user);
+  }
+
+  async adminSetPassword(
+    id: number,
+    newPassword: string,
+    forceChangeOnNextLogin = false,
+  ): Promise<{ success: true }> {
+    const user = await this.usersRepository.findOneBy({ id });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (user.isTempUser) {
+      throw new BadRequestException(
+        'Temporary vendor users should be managed from vendor user management.',
+      );
+    }
+
+    if (!newPassword || newPassword.trim().length < 8) {
+      throw new BadRequestException(
+        'New password must be at least 8 characters long',
+      );
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.isFirstLogin = forceChangeOnNextLogin;
+    await this.usersRepository.save(user);
+
+    return { success: true };
   }
 
   async getSignature(id: number): Promise<any> {
