@@ -8,12 +8,39 @@ import {
   Save,
   Fingerprint,
   RefreshCw,
+  Lock,
 } from "lucide-react";
 import api from "../api/axios";
 import SignatureCanvas from "react-signature-canvas";
 import { ThemePicker } from "../components/common/ThemePicker";
 import { useTheme } from "../context/ThemeContext";
 import { themeLabels } from "../theme/tokens";
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: { data?: { message?: unknown } } }).response
+      ?.data?.message === "string"
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
+interface UserProfile {
+  username?: string;
+  displayName?: string;
+  email?: string;
+  designation?: string;
+  phone?: string;
+  role?: string;
+}
 
 /** Manual trim: extracts just the drawn area from a canvas, bypassing broken trim-canvas dep */
 function trimCanvasToDataUrl(canvas: HTMLCanvasElement): string {
@@ -54,16 +81,22 @@ function trimCanvasToDataUrl(canvas: HTMLCanvasElement): string {
 
 export default function UserProfilePage() {
   const { theme } = useTheme();
-  const [profile, setProfile] = useState<any>({});
+  const [profile, setProfile] = useState<UserProfile>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
 
   // Signature state
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signatureUpdatedAt, setSignatureUpdatedAt] = useState<string | null>(
     null,
   );
-  const sigCanvas = useRef<any>(null);
+  const sigCanvas = useRef<SignatureCanvas | null>(null);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -100,10 +133,47 @@ export default function UserProfilePage() {
         phone: profile.phone,
       });
       alert("Profile updated successfully.");
-    } catch (error: any) {
-      alert(error.response?.data?.message || "Failed to update profile.");
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to update profile."));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePasswordInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPasswordForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword) {
+      alert("Please enter your current password.");
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      alert("New password must be at least 8 characters long.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      await api.put("/users/me/password", {
+        oldPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      alert("Password updated successfully.");
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to update password."));
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -119,15 +189,17 @@ export default function UserProfilePage() {
       setSignatureUpdatedAt(new Date().toISOString());
       sigCanvas.current.clear();
       alert("Digital signature stored securely.");
-    } catch (error: any) {
+    } catch (error) {
       console.error("Signature save error:", error);
-      const msg =
-        error.response?.data?.message ||
-        error.message ||
-        "Failed to update signature.";
-      const status = error.response?.status
-        ? ` (Status: ${error.response.status})`
-        : "";
+      const msg = getApiErrorMessage(error, "Failed to update signature.");
+      const status =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error &&
+        typeof (error as { response?: { status?: unknown } }).response
+          ?.status === "number"
+          ? ` (Status: ${(error as { response: { status: number } }).response.status})`
+          : "";
       alert(`${msg}${status}`);
     } finally {
       setSaving(false);
@@ -226,6 +298,68 @@ export default function UserProfilePage() {
           </div>
 
           <ThemePicker />
+        </div>
+
+        <div className="bg-surface-card rounded-2xl shadow-sm border p-6">
+          <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
+            <Lock className="w-5 h-5 text-rose-500" />
+            Change Password
+          </h2>
+          <p className="text-sm text-text-muted mb-6">
+            Update your password here. Use at least 8 characters for a secure
+            login.
+          </p>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                Current Password
+              </label>
+              <input
+                name="currentPassword"
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={handlePasswordInputChange}
+                className="w-full bg-surface-base border-border-default rounded-lg p-3 text-sm focus:ring-2 focus:ring-secondary font-medium"
+                placeholder="Enter your current password"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                New Password
+              </label>
+              <input
+                name="newPassword"
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={handlePasswordInputChange}
+                className="w-full bg-surface-base border-border-default rounded-lg p-3 text-sm focus:ring-2 focus:ring-secondary font-medium"
+                placeholder="Enter a new password"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                Confirm New Password
+              </label>
+              <input
+                name="confirmPassword"
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={handlePasswordInputChange}
+                className="w-full bg-surface-base border-border-default rounded-lg p-3 text-sm focus:ring-2 focus:ring-secondary font-medium"
+                placeholder="Re-enter the new password"
+              />
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={handleChangePassword}
+              disabled={passwordSaving}
+              className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-xl font-bold text-sm shadow-md transition-all"
+            >
+              <Lock className="w-4 h-4" />
+              {passwordSaving ? "Updating..." : "Update Password"}
+            </button>
+          </div>
         </div>
 
         <div className="bg-surface-card rounded-2xl shadow-sm border p-6">
