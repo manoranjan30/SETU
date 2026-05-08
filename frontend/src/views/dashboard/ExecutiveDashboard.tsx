@@ -1146,7 +1146,7 @@ export default function ExecutiveDashboard() {
   ], []);
 
   return (
-    <div className="h-[calc(100vh-64px)] overflow-y-auto p-4"
+    <div className="min-h-full p-4"
       style={{ background: "var(--page-gradient, var(--color-surface-base))" }}>
       <div className="mx-auto max-w-[1860px] space-y-4">
 

@@ -7,26 +7,43 @@ interface ThemePickerProps {
 }
 
 export function ThemePicker({ compact = false }: ThemePickerProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, zoomLevel, setZoomLevel } = useTheme();
 
   if (compact) {
     return (
-      <div className="w-full">
-        <label className="sr-only" htmlFor="theme-picker-compact">
-          Theme
-        </label>
-        <select
-          id="theme-picker-compact"
-          value={theme}
-          onChange={(event) => setTheme(event.target.value as ThemeName)}
-          className="w-full rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-medium text-text-secondary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-        >
-          {themeNames.map((name) => (
-            <option key={name} value={name}>
-              {themeLabels[name]}
-            </option>
-          ))}
-        </select>
+      <div className="w-full space-y-3">
+        <div>
+          <label className="sr-only" htmlFor="theme-picker-compact">
+            Theme
+          </label>
+          <select
+            id="theme-picker-compact"
+            value={theme}
+            onChange={(event) => setTheme(event.target.value as ThemeName)}
+            className="w-full rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-medium text-text-secondary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {themeNames.map((name) => (
+              <option key={name} value={name}>
+                {themeLabels[name]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="sr-only" htmlFor="zoom-picker-compact">
+            Zoom
+          </label>
+          <select
+            id="zoom-picker-compact"
+            value={zoomLevel}
+            onChange={(event) => setZoomLevel(Number(event.target.value))}
+            className="w-full rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-medium text-text-secondary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value={0.8}>80%</option>
+            <option value={0.9}>90%</option>
+            <option value={1}>100%</option>
+          </select>
+        </div>
       </div>
     );
   }
@@ -77,6 +94,24 @@ export function ThemePicker({ compact = false }: ThemePickerProps) {
             </button>
           );
         })}
+      </div>
+      <div className="mt-4 border-t border-border-default pt-4">
+        <label
+          htmlFor="zoom-picker"
+          className="mb-2 block text-sm font-semibold text-text-primary"
+        >
+          Interface Zoom
+        </label>
+        <select
+          id="zoom-picker"
+          value={zoomLevel}
+          onChange={(event) => setZoomLevel(Number(event.target.value))}
+          className="w-full rounded-xl border border-border-default bg-surface-card px-3 py-2.5 text-sm font-medium text-text-secondary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value={0.8}>80% - Compact</option>
+          <option value={0.9}>90% - Balanced</option>
+          <option value={1}>100% - Standard</option>
+        </select>
       </div>
     </div>
   );

@@ -24,6 +24,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
   late final SignatureController _sigCtrl;
   bool _hasSignatureDrawn = false;
 
+  // Password change controllers
+  final _pwFormKey = GlobalKey<FormState>();
+  final _currentPwCtrl = TextEditingController();
+  final _newPwCtrl = TextEditingController();
+  final _confirmPwCtrl = TextEditingController();
+  bool _showCurrentPw = false;
+  bool _showNewPw = false;
+  bool _showConfirmPw = false;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +58,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _designationCtrl.dispose();
+    _currentPwCtrl.dispose();
+    _newPwCtrl.dispose();
+    _confirmPwCtrl.dispose();
     _sigCtrl.removeListener(_onSignatureChanged);
     _sigCtrl.dispose();
     super.dispose();
@@ -77,6 +89,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final bytes = await _sigCtrl.toPngBytes();
     if (bytes == null || !mounted) return;
     context.read<ProfileBloc>().add(SaveSignature(bytes));
+  }
+
+  void _changePassword() {
+    if (_pwFormKey.currentState?.validate() == false) return;
+    context.read<ProfileBloc>().add(
+      ChangePassword(
+        currentPassword: _currentPwCtrl.text,
+        newPassword: _newPwCtrl.text,
+      ),
+    );
+    _currentPwCtrl.clear();
+    _newPwCtrl.clear();
+    _confirmPwCtrl.clear();
   }
 
   @override
@@ -160,6 +185,17 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _sigCtrl.clear();
                     setState(() => _hasSignatureDrawn = false);
                   },
+                  pwFormKey: _pwFormKey,
+                  currentPwCtrl: _currentPwCtrl,
+                  newPwCtrl: _newPwCtrl,
+                  confirmPwCtrl: _confirmPwCtrl,
+                  showCurrentPw: _showCurrentPw,
+                  showNewPw: _showNewPw,
+                  showConfirmPw: _showConfirmPw,
+                  onToggleCurrentPw: () => setState(() => _showCurrentPw = !_showCurrentPw),
+                  onToggleNewPw: () => setState(() => _showNewPw = !_showNewPw),
+                  onToggleConfirmPw: () => setState(() => _showConfirmPw = !_showConfirmPw),
+                  onChangePassword: _changePassword,
                 ),
         );
       },
@@ -185,6 +221,18 @@ class _ProfileBody extends StatelessWidget {
   final VoidCallback onSaveProfile;
   final Future<void> Function() onSaveSignature;
   final VoidCallback onClearSignature;
+  // Password change
+  final GlobalKey<FormState> pwFormKey;
+  final TextEditingController currentPwCtrl;
+  final TextEditingController newPwCtrl;
+  final TextEditingController confirmPwCtrl;
+  final bool showCurrentPw;
+  final bool showNewPw;
+  final bool showConfirmPw;
+  final VoidCallback onToggleCurrentPw;
+  final VoidCallback onToggleNewPw;
+  final VoidCallback onToggleConfirmPw;
+  final VoidCallback onChangePassword;
 
   const _ProfileBody({
     required this.user,
@@ -200,6 +248,17 @@ class _ProfileBody extends StatelessWidget {
     required this.onSaveProfile,
     required this.onSaveSignature,
     required this.onClearSignature,
+    required this.pwFormKey,
+    required this.currentPwCtrl,
+    required this.newPwCtrl,
+    required this.confirmPwCtrl,
+    required this.showCurrentPw,
+    required this.showNewPw,
+    required this.showConfirmPw,
+    required this.onToggleCurrentPw,
+    required this.onToggleNewPw,
+    required this.onToggleConfirmPw,
+    required this.onChangePassword,
   });
 
   @override
@@ -380,6 +439,66 @@ class _ProfileBody extends StatelessWidget {
             ],
           ),
 
+          const SizedBox(height: 32),
+
+          // ── Change Password ────────────────────────────────────────
+          const _SectionHeader(
+            icon: Icons.lock_outline,
+            title: 'Change Password',
+          ),
+          const SizedBox(height: 14),
+          Form(
+            key: pwFormKey,
+            child: Column(
+              children: [
+                _PasswordField(
+                  controller: currentPwCtrl,
+                  label: 'Current Password',
+                  obscure: !showCurrentPw,
+                  enabled: !isSaving,
+                  onToggle: onToggleCurrentPw,
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'Required' : null,
+                ),
+                const SizedBox(height: 12),
+                _PasswordField(
+                  controller: newPwCtrl,
+                  label: 'New Password',
+                  obscure: !showNewPw,
+                  enabled: !isSaving,
+                  onToggle: onToggleNewPw,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    if (v.length < 8) return 'Minimum 8 characters';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                _PasswordField(
+                  controller: confirmPwCtrl,
+                  label: 'Confirm New Password',
+                  obscure: !showConfirmPw,
+                  enabled: !isSaving,
+                  onToggle: onToggleConfirmPw,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    if (v != newPwCtrl.text) return 'Passwords do not match';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: isSaving ? null : onChangePassword,
+              icon: const Icon(Icons.lock_reset_outlined, size: 18),
+              label: const Text('Change Password'),
+            ),
+          ),
+
           const SizedBox(height: 40),
         ],
       ),
@@ -514,6 +633,55 @@ class _ProfileField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, size: 20),
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        isDense: true,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Password field
+// ---------------------------------------------------------------------------
+
+class _PasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final bool obscure;
+  final bool enabled;
+  final VoidCallback onToggle;
+  final String? Function(String?)? validator;
+
+  const _PasswordField({
+    required this.controller,
+    required this.label,
+    required this.obscure,
+    required this.enabled,
+    required this.onToggle,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      enabled: enabled,
+      obscureText: obscure,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.lock_outline, size: 20),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            size: 20,
+          ),
+          onPressed: onToggle,
+        ),
         border: const OutlineInputBorder(),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,

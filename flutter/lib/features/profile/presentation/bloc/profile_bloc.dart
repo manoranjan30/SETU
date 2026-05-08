@@ -57,6 +57,20 @@ class SaveSignature extends ProfileEvent {
   List<Object?> get props => [pngBytes.length];
 }
 
+/// Change the authenticated user's password.
+class ChangePassword extends ProfileEvent {
+  final String currentPassword;
+  final String newPassword;
+
+  const ChangePassword({
+    required this.currentPassword,
+    required this.newPassword,
+  });
+
+  @override
+  List<Object?> get props => [currentPassword, newPassword];
+}
+
 // ==================== STATES ====================
 
 /// Base class for all profile states.
@@ -148,6 +162,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     on<LoadProfile>(_onLoadProfile);
     on<UpdateProfile>(_onUpdateProfile);
     on<SaveSignature>(_onSaveSignature);
+    on<ChangePassword>(_onChangePassword);
   }
 
   /// Fetches the user profile and signature in parallel, then merges results.
@@ -250,6 +265,22 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     }
   }
 
+  /// Verifies the current password and replaces it with the new one.
+  Future<void> _onChangePassword(
+      ChangePassword event, Emitter<ProfileState> emit) async {
+    if (_cachedUser == null) return;
+    emit(ProfileSaving(user: _cachedUser!, signatureBase64: _cachedSignature));
+    try {
+      await _apiClient.changePassword(
+        currentPassword: event.currentPassword,
+        newPassword: event.newPassword,
+      );
+      emit(const ProfileSaveSuccess('Password changed successfully'));
+    } catch (e) {
+      emit(ProfileError(_friendlyPassword(e)));
+    }
+  }
+
   /// Maps raw exceptions to user-friendly error messages.
   ///
   /// Connectivity-related errors (connection refused, network unreachable,
@@ -267,5 +298,15 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       return 'You do not have permission for this action.';
     }
     return 'Something went wrong. Please try again.';
+  }
+
+  String _friendlyPassword(dynamic e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('401') || s.contains('unauthorized') ||
+        s.contains('incorrect') || s.contains('wrong') ||
+        s.contains('invalid')) {
+      return 'Current password is incorrect. Please try again.';
+    }
+    return _friendly(e);
   }
 }

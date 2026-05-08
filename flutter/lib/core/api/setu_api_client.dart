@@ -1109,6 +1109,19 @@ class SetuApiClient {
     });
   }
 
+  /// Changes the authenticated user's password.
+  ///
+  /// Throws a [DioException] with status 401 if [currentPassword] is wrong.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _dio.put(ApiEndpoints.userPassword, data: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+  }
+
   // ==================== TOWER LENS / 3D PROGRESS ====================
 
   /// Fetches per-floor aggregated progress for all towers in a project.
