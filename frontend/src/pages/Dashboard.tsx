@@ -18,6 +18,20 @@ const Dashboard = () => {
   ].includes(location.pathname.toLowerCase());
 
   useEffect(() => {
+    const handleRouteLoadingStart = () => {
+      setShowRouteLoader(true);
+    };
+
+    window.addEventListener("setu-route-loading-start", handleRouteLoadingStart);
+    return () => {
+      window.removeEventListener(
+        "setu-route-loading-start",
+        handleRouteLoadingStart,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     const routeKey = `${location.pathname}${location.search}${location.hash}`;
 
     if (previousRouteKeyRef.current === null) {
@@ -30,7 +44,6 @@ const Dashboard = () => {
     }
 
     previousRouteKeyRef.current = routeKey;
-    setShowRouteLoader(true);
 
     // Keep a short visible loading state so users get feedback
     // instead of seeing the previous page linger during route/data setup.

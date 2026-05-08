@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { MENU_CONFIG, type MenuItem } from "../../config/menu";
+import type { Permission } from "../../config/permissions";
 import {
   Bell,
   Clock,
@@ -28,6 +29,18 @@ import {
 import { useEffect } from "react";
 import { ThemePicker } from "../common/ThemePicker";
 import { usePluginRuntime } from "../../context/PluginRuntimeContext";
+
+function announceRouteLoading() {
+  window.dispatchEvent(new CustomEvent("setu-route-loading-start"));
+}
+
+type PluginSidebarMenu = {
+  label: string;
+  path: string;
+  location?: string;
+  requiresProject?: boolean;
+  permissionCode?: Permission;
+};
 
 const SidebarItem = ({
   item,
@@ -142,6 +155,11 @@ const SidebarItem = ({
   return (
     <Link
       to={item.path}
+      onClick={() => {
+        if (!isActive) {
+          announceRouteLoading();
+        }
+      }}
       className={`relative mx-2 my-0.5 flex w-[calc(100%-16px)] items-center rounded-lg py-1.5 text-sm transition-colors hover:bg-surface-raised hover:text-primary ${isActive ? "bg-primary-muted text-primary font-semibold shadow-sm ring-1 ring-primary/25" : "text-text-secondary"}`}
       style={{
         paddingLeft: `${paddingLeft}px`,
@@ -196,9 +214,9 @@ const Sidebar = () => {
 
   const globalPluginMenus = installs
     .flatMap((install) =>
-      (install.menus ?? [])
-        .filter((menu: any) => menu.location === "SIDEBAR" && !menu.requiresProject)
-        .map((menu: any) => ({
+      ((install.menus ?? []) as PluginSidebarMenu[])
+        .filter((menu) => menu.location === "SIDEBAR" && !menu.requiresProject)
+        .map((menu) => ({
           label: menu.label,
           path: menu.path,
           permission: menu.permissionCode || "PLUGIN.RUNTIME.READ",
@@ -208,13 +226,13 @@ const Sidebar = () => {
 
   const projectPluginMenus = installs
     .flatMap((install) =>
-      (install.menus ?? [])
+      ((install.menus ?? []) as PluginSidebarMenu[])
         .filter(
-          (menu: any) =>
+          (menu) =>
             menu.location === "PROJECT" ||
             (menu.location === "SIDEBAR" && menu.requiresProject),
         )
-        .map((menu: any) => ({
+        .map((menu) => ({
           label: menu.label,
           path: menu.path,
           permission: menu.permissionCode || "PLUGIN.RUNTIME.READ",
@@ -400,6 +418,11 @@ const Sidebar = () => {
         </button>
         <Link
           to="/dashboard/profile"
+          onClick={() => {
+            if (location.pathname !== "/dashboard/profile") {
+              announceRouteLoading();
+            }
+          }}
           className={`flex items-center rounded-md text-sm text-text-secondary transition-colors hover:bg-surface-raised ${isCollapsed ? "p-2" : "w-full px-3 py-2"}`}
           title={isCollapsed ? "My Profile" : ""}
         >
@@ -456,6 +479,7 @@ const Sidebar = () => {
                     key={`${item.type}-${item.id}`}
                     onClick={() => {
                       setShowNotifications(false);
+                      announceRouteLoading();
                       if (item.type.startsWith("RFI")) {
                         navigate(
                           `/dashboard/projects/${activeProjectId}/quality`,

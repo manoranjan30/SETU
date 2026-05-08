@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, {
   createContext,
   useContext,
@@ -10,6 +11,8 @@ import { themeNames, type ThemeName } from "../theme/tokens";
 interface ThemeContextType {
   theme: ThemeName;
   setTheme: (theme: ThemeName) => void;
+  zoomLevel: number;
+  setZoomLevel: (zoomLevel: number) => void;
   isDarkTheme: boolean;
 }
 
@@ -17,31 +20,43 @@ const ThemeContext = createContext<ThemeContextType | null>(null);
 
 const THEME_CLASS_PREFIX = "theme-";
 const FALLBACK_THEME: ThemeName = "shadcn-admin";
+const ZOOM_LEVELS = [0.8, 0.9, 1] as const;
+const FALLBACK_ZOOM_LEVEL = 0.8;
 
-function getUserScopedStorageKey(): string {
+function getUserScopedStorageKey(setting: "theme" | "zoom"): string {
   try {
     const rawUser = localStorage.getItem("user");
-    if (!rawUser) return "setu.theme";
+    if (!rawUser) return `setu.${setting}`;
     const user = JSON.parse(rawUser) as {
       id?: number | string;
       username?: string;
     };
     if (user?.id !== undefined && user?.id !== null)
-      return `setu.theme.user.${user.id}`;
-    if (user?.username) return `setu.theme.user.${user.username}`;
-    return "setu.theme";
+      return `setu.${setting}.user.${user.id}`;
+    if (user?.username) return `setu.${setting}.user.${user.username}`;
+    return `setu.${setting}`;
   } catch {
-    return "setu.theme";
+    return `setu.${setting}`;
   }
 }
 
 function resolveInitialTheme(): ThemeName {
-  const key = getUserScopedStorageKey();
+  const key = getUserScopedStorageKey("theme");
   const stored = localStorage.getItem(key);
   if (stored && themeNames.includes(stored as ThemeName)) {
     return stored as ThemeName;
   }
   return FALLBACK_THEME;
+}
+
+function resolveInitialZoomLevel(): number {
+  const key = getUserScopedStorageKey("zoom");
+  const stored = localStorage.getItem(key);
+  if (!stored) return FALLBACK_ZOOM_LEVEL;
+  const parsed = Number(stored);
+  return ZOOM_LEVELS.includes(parsed as (typeof ZOOM_LEVELS)[number])
+    ? parsed
+    : FALLBACK_ZOOM_LEVEL;
 }
 
 function applyThemeClass(theme: ThemeName) {
@@ -53,30 +68,48 @@ function applyThemeClass(theme: ThemeName) {
   root.classList.add(`${THEME_CLASS_PREFIX}${theme}`);
 }
 
+function applyZoomLevel(zoomLevel: number) {
+  document.documentElement.style.zoom = "";
+  document.documentElement.style.fontSize = `${zoomLevel * 100}%`;
+}
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [theme, setThemeState] = useState<ThemeName>(() =>
     resolveInitialTheme(),
   );
+  const [zoomLevel, setZoomLevelState] = useState<number>(() =>
+    resolveInitialZoomLevel(),
+  );
 
   useEffect(() => {
     applyThemeClass(theme);
-    const key = getUserScopedStorageKey();
+    const key = getUserScopedStorageKey("theme");
     localStorage.setItem(key, theme);
   }, [theme]);
+
+  useEffect(() => {
+    applyZoomLevel(zoomLevel);
+    const key = getUserScopedStorageKey("zoom");
+    localStorage.setItem(key, String(zoomLevel));
+  }, [zoomLevel]);
 
   // Handle account switch/login/logout in the same browser tab.
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       if (event.key === "user" || event.key === "token") {
         const nextTheme = resolveInitialTheme();
+        const nextZoomLevel = resolveInitialZoomLevel();
         setThemeState(nextTheme);
+        setZoomLevelState(nextZoomLevel);
       }
     };
     const handleAuthChange = () => {
       const nextTheme = resolveInitialTheme();
+      const nextZoomLevel = resolveInitialZoomLevel();
       setThemeState(nextTheme);
+      setZoomLevelState(nextZoomLevel);
     };
     window.addEventListener("storage", handleStorage);
     window.addEventListener("setu-auth-changed", handleAuthChange);
@@ -90,9 +123,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     () => ({
       theme,
       setTheme: setThemeState,
+      zoomLevel,
+      setZoomLevel: setZoomLevelState,
       isDarkTheme: theme === "horizon-ui" || theme === "setu-modern-pro",
     }),
-    [theme],
+    [theme, zoomLevel],
   );
 
   return (

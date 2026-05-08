@@ -490,6 +490,10 @@ class ApiEndpoints {
   /// PUT accepts {signatureData} as a base64-encoded PNG data URI.
   static const String userSignature = '/users/me/signature';
 
+  /// PUT /users/me/password
+  /// Accepts {currentPassword, newPassword}. Returns 200 on success, 401 if current password is wrong.
+  static const String userPassword = '/users/me/password';
+
   // ==================== FCM / PUSH NOTIFICATION ENDPOINTS ====================
 
   /// POST /users/fcm-token — Register/update device FCM token
