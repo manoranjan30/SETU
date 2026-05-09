@@ -16,7 +16,10 @@ import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { WorkDocTemplate } from './entities/work-doc-template.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
-import { WorkOrderItemNodeType } from './entities/work-order-item.entity';
+import {
+  WorkOrderItemNodeType,
+  WorkOrderItemScopeMode,
+} from './entities/work-order-item.entity';
 
 interface BoqSelectionItem {
   boqItemId: number;
@@ -26,6 +29,14 @@ interface BoqSelectionItem {
   qty?: number;
   rate: number;
   woRefText?: string;
+  issueScopeMode?: WorkOrderItemScopeMode | string;
+  issuedScopeSummary?: string;
+  pendingScopeSummary?: string;
+  creepScopeSummary?: string;
+  scopeCreepReason?: string;
+  issuedScopeComponents?: string[];
+  pendingScopeComponents?: string[];
+  creepScopeComponents?: string[];
 }
 
 interface CreateWoFromBoqDto {
@@ -42,6 +53,18 @@ interface CreateWoFromBoqDto {
 }
 
 type WorkOrderNodeCache = Map<string, WorkOrderItem>;
+
+interface NormalizedScopePayload {
+  issueScopeMode: WorkOrderItemScopeMode;
+  issuedScopeSummary: string | null;
+  pendingScopeSummary: string | null;
+  creepScopeSummary: string | null;
+  scopeCreepReason: string | null;
+  issuedScopeComponents: string[] | null;
+  pendingScopeComponents: string[] | null;
+  creepScopeComponents: string[] | null;
+  hasPendingScope: boolean;
+}
 
 @Injectable()
 export class WorkDocService {
@@ -67,6 +90,99 @@ export class WorkDocService {
     private readonly httpService: HttpService,
     private dataSource: DataSource,
   ) {}
+
+  private normalizeScopePayload(
+    input?: Partial<BoqSelectionItem>,
+  ): NormalizedScopePayload {
+    const rawMode = String(
+      input?.issueScopeMode || WorkOrderItemScopeMode.FULL_SCOPE,
+    ).toUpperCase();
+    const issueScopeMode =
+      rawMode === WorkOrderItemScopeMode.SPLIT_SCOPE ||
+      rawMode === WorkOrderItemScopeMode.CREEP_SCOPE
+        ? (rawMode as WorkOrderItemScopeMode)
+        : WorkOrderItemScopeMode.FULL_SCOPE;
+
+    const normalizeSummary = (value?: string) => {
+      const trimmed = value?.trim();
+      return trimmed ? trimmed : null;
+    };
+    const normalizeComponents = (value?: string[]) => {
+      const list = (value || [])
+        .map((entry) => String(entry || '').trim())
+        .filter(Boolean);
+      return list.length ? list : null;
+    };
+
+    const issuedScopeSummary =
+      normalizeSummary(input?.issuedScopeSummary) ||
+      (issueScopeMode === WorkOrderItemScopeMode.FULL_SCOPE
+        ? 'Full BOQ scope'
+        : null);
+    const pendingScopeSummary = normalizeSummary(input?.pendingScopeSummary);
+    const creepScopeSummary = normalizeSummary(input?.creepScopeSummary);
+    const scopeCreepReason = normalizeSummary(input?.scopeCreepReason);
+
+    const issuedScopeComponents = normalizeComponents(
+      input?.issuedScopeComponents,
+    );
+    const pendingScopeComponents = normalizeComponents(
+      input?.pendingScopeComponents,
+    );
+    const creepScopeComponents = normalizeComponents(
+      input?.creepScopeComponents,
+    );
+
+    if (
+      issueScopeMode === WorkOrderItemScopeMode.SPLIT_SCOPE &&
+      !pendingScopeSummary &&
+      !pendingScopeComponents?.length
+    ) {
+      throw new BadRequestException(
+        'Split scope items must include the balance scope pending for other vendors.',
+      );
+    }
+
+    if (
+      issueScopeMode === WorkOrderItemScopeMode.CREEP_SCOPE &&
+      !scopeCreepReason &&
+      !creepScopeSummary &&
+      !creepScopeComponents?.length
+    ) {
+      throw new BadRequestException(
+        'Scope creep items must include a creep reason or creep scope description.',
+      );
+    }
+
+    return {
+      issueScopeMode,
+      issuedScopeSummary,
+      pendingScopeSummary,
+      creepScopeSummary,
+      scopeCreepReason,
+      issuedScopeComponents,
+      pendingScopeComponents,
+      creepScopeComponents,
+      hasPendingScope:
+        issueScopeMode === WorkOrderItemScopeMode.SPLIT_SCOPE ||
+        issueScopeMode === WorkOrderItemScopeMode.CREEP_SCOPE,
+    };
+  }
+
+  private getDefaultRateForSelection(
+    boqItem: BoqItem,
+    subItem: BoqSubItem | null,
+    measurement: MeasurementElement,
+    overrideRate?: number,
+  ): number {
+    if (Number(overrideRate || 0) > 0) {
+      return Number(overrideRate);
+    }
+    if (subItem?.rateSource === 'MEASUREMENT') {
+      return Number(measurement.rate || 0);
+    }
+    return Number(subItem?.rate || boqItem.rate || 0);
+  }
 
   // ===========================
   // Vendors CRUD
@@ -340,14 +456,51 @@ export class WorkDocService {
     await queryRunner.startTransaction();
 
     try {
+      const workOrder = await queryRunner.manager.findOne(WorkOrder, {
+        where: { id: woId },
+      });
+      if (!workOrder) throw new NotFoundException('Work Order not found');
+
       for (const itemData of items) {
         const item = await queryRunner.manager.findOne(WorkOrderItem, {
           where: { id: itemData.id },
         });
         if (item) {
-          item.allocatedQty = Number(itemData.allocatedQty);
+          const nextQty = Number(itemData.allocatedQty);
+          if (
+            item.nodeType === WorkOrderItemNodeType.MEASUREMENT &&
+            nextQty > 0 &&
+            item.measurementElementId
+          ) {
+            const remainingAllowed = await this.getSelectionRemainingQtyForUpdate(
+              workOrder.projectId,
+              item,
+            );
+            if (nextQty > remainingAllowed + 0.0001) {
+              throw new BadRequestException(
+                `Allocated qty for "${item.description}" exceeds BOQ balance. Allowed: ${remainingAllowed}, Requested: ${nextQty}`,
+              );
+            }
+          }
+
+          const scopePayload = this.normalizeScopePayload(itemData);
+
           item.rate = Number(itemData.rate);
+          item.allocatedQty = nextQty;
           item.amount = item.allocatedQty * item.rate;
+          item.issueScopeMode = scopePayload.issueScopeMode;
+          item.issuedScopeSummary = scopePayload.issuedScopeSummary;
+          item.pendingScopeSummary = scopePayload.pendingScopeSummary;
+          item.creepScopeSummary = scopePayload.creepScopeSummary;
+          item.scopeCreepReason = scopePayload.scopeCreepReason;
+          item.issuedScopeComponents = scopePayload.issuedScopeComponents;
+          item.pendingScopeComponents = scopePayload.pendingScopeComponents;
+          item.creepScopeComponents = scopePayload.creepScopeComponents;
+          item.hasPendingScope = scopePayload.hasPendingScope;
+          item.originalBoqQty =
+            item.originalBoqQty ?? Number(item.boqQty || item.allocatedQty || 0);
+          item.originalBoqRate =
+            item.originalBoqRate ?? Number(item.rate || itemData.rate || 0);
           await queryRunner.manager.save(item);
         }
       }
@@ -417,15 +570,29 @@ export class WorkDocService {
       };
     };
 
+    const getScopePending = (
+      boqId: number,
+      subId?: number,
+      measureId?: number,
+    ) =>
+      allWoItems.some((wi) => {
+        if (!wi.hasPendingScope) return false;
+        if (measureId) return wi.measurementElementId === measureId;
+        if (subId) return wi.boqSubItemId === subId;
+        return wi.boqItemId === boqId;
+      });
+
     const tree = boqItems.map((item) => {
       const { allocatedToWo, availableQty } = calculateAvailable(
         item.qty,
         item.id,
       );
+      const hasPendingScope = getScopePending(item.id);
 
       const subItems = (item.subItems || []).map((sub) => {
         const { allocatedToWo: subAlloc, availableQty: subAvail } =
           calculateAvailable(sub.qty, item.id, sub.id);
+        const subPendingScope = getScopePending(item.id, sub.id);
 
         const measurements = (sub.measurements || []).map((m) => {
           const { allocatedToWo: mAlloc, availableQty: mAvail } =
@@ -434,6 +601,9 @@ export class WorkDocService {
             ...m,
             allocatedToWo: mAlloc,
             availableQty: mAvail,
+            hasPendingScope: getScopePending(item.id, sub.id, m.id),
+            eligibleForAdd:
+              mAvail > 0 || getScopePending(item.id, sub.id, m.id),
           };
         });
 
@@ -442,6 +612,8 @@ export class WorkDocService {
           measurements,
           allocatedToWo: subAlloc,
           availableQty: subAvail,
+          hasPendingScope: subPendingScope,
+          eligibleForAdd: subAvail > 0 || subPendingScope,
         };
       });
 
@@ -450,6 +622,8 @@ export class WorkDocService {
         subItems,
         allocatedToWo,
         availableQty,
+        hasPendingScope,
+        eligibleForAdd: availableQty > 0 || hasPendingScope,
       };
     });
 
@@ -510,6 +684,55 @@ export class WorkDocService {
       .getRawOne();
 
     return Number(result?.total || 0);
+  }
+
+  private async getSelectionRemainingQtyForUpdate(
+    projectId: number,
+    item: WorkOrderItem,
+  ): Promise<number> {
+    if (item.measurementElementId) {
+      const measurement = await this.measurementRepo.findOne({
+        where: { id: item.measurementElementId },
+      });
+      if (!measurement) return Number(item.allocatedQty || 0);
+      const allocated = await this.getMeasurementAllocatedQty(
+        item.measurementElementId,
+        projectId,
+      );
+      return Math.max(
+        0,
+        Number(measurement.qty || 0) - allocated + Number(item.allocatedQty || 0),
+      );
+    }
+
+    if (item.boqSubItemId) {
+      const subItem = await this.boqSubItemRepo.findOne({
+        where: { id: item.boqSubItemId },
+      });
+      if (!subItem) return Number(item.allocatedQty || 0);
+      const allocated = await this.getBoqSubItemAllocatedQty(
+        item.boqSubItemId,
+        projectId,
+      );
+      return Math.max(
+        0,
+        Number(subItem.qty || 0) - allocated + Number(item.allocatedQty || 0),
+      );
+    }
+
+    if (item.boqItemId) {
+      const boqItem = await this.boqItemRepo.findOne({
+        where: { id: item.boqItemId },
+      });
+      if (!boqItem) return Number(item.allocatedQty || 0);
+      const allocated = await this.getBoqAllocatedQty(item.boqItemId, projectId);
+      return Math.max(
+        0,
+        Number(boqItem.qty || 0) - allocated + Number(item.allocatedQty || 0),
+      );
+    }
+
+    return Number(item.allocatedQty || 0);
   }
 
   async createWoFromBoq(projectId: number, body: any) {
@@ -651,6 +874,103 @@ export class WorkDocService {
     return this.getBoqTreeForWoCreation(projectId);
   }
 
+  async getPendingVendorBoard(projectId: number) {
+    const boqTree = await this.getBoqTreeForWoCreation(projectId);
+    const activeLeafItems = await this.woItemRepo.find({
+      where: {
+        workOrder: {
+          projectId,
+          status: In(['ACTIVE', 'IN_PROGRESS']),
+        },
+        nodeType: WorkOrderItemNodeType.MEASUREMENT,
+      },
+      relations: ['workOrder', 'workOrder.vendor'],
+      order: { updatedAt: 'DESC' },
+    });
+
+    const pendingRows: any[] = [];
+
+    for (const item of boqTree) {
+      for (const sub of item.subItems || []) {
+        const measurements = (sub.measurements || []).length
+          ? sub.measurements
+          : [];
+        if (measurements.length > 0) {
+          for (const measurement of measurements) {
+            if (Number(measurement.availableQty || 0) > 0) {
+              pendingRows.push({
+                id: `qty-${measurement.id}`,
+                workOrderId: null,
+                workOrderRef: 'BOQ Balance',
+                vendorName: 'Unassigned',
+                materialCode: item.boqCode,
+                description: `${item.description} / ${sub.description} / ${measurement.elementName}`,
+                quantity: Number(measurement.availableQty || 0),
+                rate: Number(measurement.rate || sub.rate || item.rate || 0),
+                amount:
+                  Number(measurement.availableQty || 0) *
+                  Number(measurement.rate || sub.rate || item.rate || 0),
+                mappingStatus: 'PENDING',
+                pendingType: 'QTY_PENDING',
+                issuedScopeSummary: null,
+                pendingScopeSummary: 'Quantity not yet issued to any work order',
+                creepScopeSummary: null,
+                sourceWoNumber: null,
+              });
+            }
+          }
+        } else if (Number(sub.availableQty || 0) > 0) {
+          pendingRows.push({
+            id: `qty-sub-${sub.id}`,
+            workOrderId: null,
+            workOrderRef: 'BOQ Balance',
+            vendorName: 'Unassigned',
+            materialCode: item.boqCode,
+            description: `${item.description} / ${sub.description}`,
+            quantity: Number(sub.availableQty || 0),
+            rate: Number(sub.rate || item.rate || 0),
+            amount:
+              Number(sub.availableQty || 0) * Number(sub.rate || item.rate || 0),
+            mappingStatus: 'PENDING',
+            pendingType: 'QTY_PENDING',
+            issuedScopeSummary: null,
+            pendingScopeSummary: 'Quantity not yet issued to any work order',
+            creepScopeSummary: null,
+            sourceWoNumber: null,
+          });
+        }
+      }
+    }
+
+    for (const leaf of activeLeafItems) {
+      if (leaf.hasPendingScope) {
+        pendingRows.push({
+          id: `scope-${leaf.id}`,
+          workOrderId: leaf.workOrder?.id || null,
+          workOrderRef: leaf.workOrder?.woNumber || 'Work Order',
+          vendorName: leaf.workOrder?.vendor?.name || 'Assigned Vendor',
+          materialCode: leaf.materialCode,
+          description: leaf.description,
+          quantity: Number(leaf.allocatedQty || 0),
+          rate: Number(leaf.rate || 0),
+          amount: Number(leaf.amount || 0),
+          mappingStatus: leaf.vendorOnboardStatus || 'PENDING',
+          pendingType:
+            leaf.issueScopeMode === WorkOrderItemScopeMode.CREEP_SCOPE
+              ? 'CREEP_PENDING'
+              : 'SCOPE_PENDING',
+          issuedScopeSummary: leaf.issuedScopeSummary,
+          pendingScopeSummary: leaf.pendingScopeSummary,
+          creepScopeSummary: leaf.creepScopeSummary,
+          scopeCreepReason: leaf.scopeCreepReason,
+          sourceWoNumber: leaf.workOrder?.woNumber || null,
+        });
+      }
+    }
+
+    return pendingRows;
+  }
+
   private async materializeWoSelection(
     manager: DataSource['manager'],
     workOrder: WorkOrder,
@@ -684,6 +1004,7 @@ export class WorkDocService {
       );
     }
 
+    const scopePayload = this.normalizeScopePayload(sel);
     const createdItems: WorkOrderItem[] = [];
     let leafAmount = 0;
 
@@ -702,10 +1023,13 @@ export class WorkDocService {
         materialCode: boqItem.boqCode,
         uom: boqItem.uom || 'NOS',
         boqQty: Number(boqItem.qty || 0),
+        originalBoqQty: Number(boqItem.qty || 0),
+        originalBoqRate: Number(boqItem.rate || 0),
         deltaAllocatedQty: 0,
         rate: 0,
         deltaAmount: 0,
         woRefText: sel.woRefText || null,
+        scope: scopePayload,
       },
     );
     createdItems.push(itemNode);
@@ -738,10 +1062,13 @@ export class WorkDocService {
             materialCode: boqItem.boqCode,
             uom: subItem.uom || boqItem.uom || 'NOS',
             boqQty: Number(subItem.qty || 0),
+            originalBoqQty: Number(subItem.qty || 0),
+            originalBoqRate: Number(subItem.rate || boqItem.rate || 0),
             deltaAllocatedQty: 0,
             rate: Number(subItem.rate || 0),
             deltaAmount: 0,
             woRefText: sel.woRefText || null,
+            scope: scopePayload,
           },
         );
         createdItems.push(parentNode);
@@ -749,11 +1076,13 @@ export class WorkDocService {
 
       for (const measurementRow of measurementRows) {
         const measurementRate =
-          subItem?.rateSource === 'MEASUREMENT'
-            ? Number(measurementRow.measurement.rate || 0)
-            : Number(subItem?.rate || 0);
-        const rate =
-          Number(sel.rate || 0) || measurementRate;
+          this.getDefaultRateForSelection(
+            boqItem,
+            subItem,
+            measurementRow.measurement,
+            sel.rate,
+          );
+        const rate = measurementRate;
         const amount = Number(measurementRow.allocatedQty) * rate;
         const measurementNode = await this.ensureWoNode(
           manager,
@@ -770,10 +1099,17 @@ export class WorkDocService {
             materialCode: boqItem.boqCode,
             uom: measurementRow.measurement.uom || subItem?.uom || boqItem.uom || 'NOS',
             boqQty: Number(measurementRow.measurement.qty || 0),
+            originalBoqQty: Number(measurementRow.measurement.qty || 0),
+            originalBoqRate: this.getDefaultRateForSelection(
+              boqItem,
+              subItem,
+              measurementRow.measurement,
+            ),
             deltaAllocatedQty: Number(measurementRow.allocatedQty),
             rate,
             deltaAmount: amount,
             woRefText: sel.woRefText || null,
+            scope: scopePayload,
           },
         );
         createdItems.push(measurementNode);
@@ -796,6 +1132,8 @@ export class WorkDocService {
             materialCode: boqItem.boqCode,
             uom: subItem.uom || boqItem.uom || 'NOS',
             boqQty: Number(subItem.qty || 0),
+            originalBoqQty: Number(subItem.qty || 0),
+            originalBoqRate: Number(subItem.rate || boqItem.rate || 0),
             deltaAllocatedQty: measurementRows.reduce(
               (sum, row) => sum + Number(row.allocatedQty || 0),
               0,
@@ -810,6 +1148,7 @@ export class WorkDocService {
               return sum + Number(row.allocatedQty || 0) * rowRate;
             }, 0),
             woRefText: sel.woRefText || null,
+            scope: scopePayload,
           },
         );
       }
@@ -830,6 +1169,8 @@ export class WorkDocService {
         materialCode: boqItem.boqCode,
         uom: boqItem.uom || 'NOS',
         boqQty: Number(boqItem.qty || 0),
+        originalBoqQty: Number(boqItem.qty || 0),
+        originalBoqRate: Number(boqItem.rate || 0),
         deltaAllocatedQty: selectionMeasurements.reduce(
           (sum, row) => sum + Number(row.allocatedQty || 0),
           0,
@@ -837,6 +1178,7 @@ export class WorkDocService {
         rate: 0,
         deltaAmount: leafAmount,
         woRefText: sel.woRefText || null,
+        scope: scopePayload,
       },
     );
 
@@ -969,10 +1311,13 @@ export class WorkDocService {
       materialCode: string | null;
       uom: string;
       boqQty: number;
+      originalBoqQty: number;
+      originalBoqRate: number;
       deltaAllocatedQty: number;
       rate: number;
       deltaAmount: number;
       woRefText: string | null;
+      scope: NormalizedScopePayload;
     },
   ): Promise<WorkOrderItem> {
     const cacheKey = [
@@ -1013,9 +1358,21 @@ export class WorkDocService {
         uom: data.uom || 'NOS',
         isParent: data.nodeType !== WorkOrderItemNodeType.MEASUREMENT,
         boqQty: data.boqQty,
+        originalBoqQty: data.originalBoqQty,
+        originalBoqRate: data.originalBoqRate,
         allocatedQty: 0,
         rate: data.rate || 0,
         amount: 0,
+        issueScopeMode: data.scope.issueScopeMode,
+        issuedScopeSummary: data.scope.issuedScopeSummary,
+        pendingScopeSummary: data.scope.pendingScopeSummary,
+        creepScopeSummary: data.scope.creepScopeSummary,
+        scopeCreepReason: data.scope.scopeCreepReason,
+        issuedScopeComponents: data.scope.issuedScopeComponents,
+        pendingScopeComponents: data.scope.pendingScopeComponents,
+        creepScopeComponents: data.scope.creepScopeComponents,
+        hasPendingScope: data.scope.hasPendingScope,
+        vendorOnboardStatus: 'PENDING',
         woRefText: data.woRefText || null,
         status: 'ACTIVE',
       } as Partial<WorkOrderItem>);
@@ -1026,6 +1383,17 @@ export class WorkDocService {
     if (data.rate > 0 && data.nodeType !== WorkOrderItemNodeType.ITEM) {
       existing.rate = data.rate;
     }
+    existing.issueScopeMode = data.scope.issueScopeMode;
+    existing.issuedScopeSummary = data.scope.issuedScopeSummary;
+    existing.pendingScopeSummary = data.scope.pendingScopeSummary;
+    existing.creepScopeSummary = data.scope.creepScopeSummary;
+    existing.scopeCreepReason = data.scope.scopeCreepReason;
+    existing.issuedScopeComponents = data.scope.issuedScopeComponents;
+    existing.pendingScopeComponents = data.scope.pendingScopeComponents;
+    existing.creepScopeComponents = data.scope.creepScopeComponents;
+    existing.hasPendingScope = data.scope.hasPendingScope;
+    existing.originalBoqQty = data.originalBoqQty;
+    existing.originalBoqRate = data.originalBoqRate;
     existing.amount =
       Number(existing.amount || 0) + Number(data.deltaAmount || 0);
 

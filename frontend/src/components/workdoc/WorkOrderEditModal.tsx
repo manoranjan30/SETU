@@ -4,6 +4,10 @@ import api from "../../api/axios";
 import { toast } from "react-hot-toast";
 import { Loader2, Save } from "lucide-react";
 import type { WorkOrder } from "../../types/workdoc";
+import BoqSelectModal from "./BoqSelectModal";
+import BoqAllocationReviewModal, {
+  type BoqSelectionReviewItem,
+} from "./BoqAllocationReviewModal";
 
 interface Props {
   isOpen: boolean;
@@ -21,8 +25,11 @@ const WorkOrderEditModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [header, setHeader] = useState<any>({});
   const [items, setItems] = useState<any[]>([]);
-  const [boqTree, setBoqTree] = useState<any[]>([]);
   const [showBoqSelector, setShowBoqSelector] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [pendingSelections, setPendingSelections] = useState<
+    BoqSelectionReviewItem[]
+  >([]);
 
   useEffect(() => {
     if (workOrder) {
@@ -35,21 +42,8 @@ const WorkOrderEditModal: React.FC<Props> = ({
         scopeOfWork: workOrder.scopeOfWork || "",
       });
       setItems(workOrder.items || []);
-      loadBoqTree();
     }
   }, [workOrder]);
-
-  const loadBoqTree = async () => {
-    if (!workOrder) return;
-    try {
-      const res = await api.get(
-        `/workdoc/${workOrder.projectId}/boq-tree-for-wo`,
-      );
-      setBoqTree(res.data);
-    } catch (e) {
-      console.error("Failed to load BOQ tree", e);
-    }
-  };
 
   const handleItemChange = (itemId: number, field: string, value: number) => {
     setItems((prev) =>
@@ -70,19 +64,56 @@ const WorkOrderEditModal: React.FC<Props> = ({
     );
   };
 
-  const handleAddBoqItem = (boqItem: any, subItem?: any) => {
-    const newItem = {
+  const handleSelectBoqItems = (selectedItems: any[]) => {
+    const reviewedSelections: BoqSelectionReviewItem[] = selectedItems.map(
+      (item) => ({
+        boqItemId: item.boqItemId,
+        boqSubItemId: item.boqSubItemId,
+        measurementElementId: item.measurementElementId,
+        boqCode: item.boqCode,
+        description: item.description || item.elementName,
+        fullDescription:
+          item.level === 2 && item.parentInfo && item.grandParentInfo
+            ? `${item.grandParentInfo.boqCode} > ${item.parentInfo.description} > ${item.elementName}`
+            : item.level === 1 && item.parentInfo
+              ? `${item.parentInfo.boqCode} > ${item.description}`
+              : item.description,
+        uom: item.uom || "NOS",
+        availableQty: Number(item.availableQty || 0),
+        boqRate: Number(item.boqRate || 0),
+      }),
+    );
+    setPendingSelections(reviewedSelections);
+    setShowReviewModal(true);
+  };
+
+  const handleAddReviewedItems = (reviewedItems: BoqSelectionReviewItem[]) => {
+    const newItems = reviewedItems.map((item, index) => ({
       id: 0,
-      description: subItem ? subItem.description : boqItem.description,
-      materialCode: boqItem.boqCode,
-      uom: subItem ? subItem.uom : boqItem.uom,
-      allocatedQty: 0,
-      rate: boqItem.rate || 0,
-      boqItemId: boqItem.id,
-      boqSubItemId: subItem?.id || null,
+      description: item.fullDescription || item.description,
+      materialCode: item.boqCode || "",
+      uom: item.uom,
+      allocatedQty: Number(item.availableQty || 0),
+      rate: Number(item.boqRate || 0),
+      amount: Number(item.availableQty || 0) * Number(item.boqRate || 0),
+      boqItemId: item.boqItemId,
+      boqSubItemId: item.boqSubItemId || null,
+      measurementElementId: item.measurementElementId || null,
+      issueScopeMode: item.issueScopeMode || "FULL_SCOPE",
+      issuedScopeSummary: item.issuedScopeSummary || "Full BOQ scope",
+      pendingScopeSummary: item.pendingScopeSummary || null,
+      creepScopeSummary: item.creepScopeSummary || null,
+      scopeCreepReason: item.scopeCreepReason || null,
+      issuedScopeComponents: item.issuedScopeComponents || [],
+      pendingScopeComponents: item.pendingScopeComponents || [],
+      creepScopeComponents: item.creepScopeComponents || [],
+      hasPendingScope: item.issueScopeMode !== "FULL_SCOPE",
       isNew: true,
-    };
-    setItems([...items, newItem]);
+      clientTempId: `${item.boqItemId}-${item.boqSubItemId || "sub"}-${item.measurementElementId || "meas"}-${index}`,
+    }));
+
+    setItems((prev) => [...prev, ...newItems]);
+    setShowReviewModal(false);
     setShowBoqSelector(false);
   };
 
@@ -109,6 +140,14 @@ const WorkOrderEditModal: React.FC<Props> = ({
             rate: i.rate,
             description: i.description,
             uom: i.uom,
+            issueScopeMode: i.issueScopeMode || "FULL_SCOPE",
+            issuedScopeSummary: i.issuedScopeSummary || "Full BOQ scope",
+            pendingScopeSummary: i.pendingScopeSummary || null,
+            creepScopeSummary: i.creepScopeSummary || null,
+            scopeCreepReason: i.scopeCreepReason || null,
+            issuedScopeComponents: i.issuedScopeComponents || [],
+            pendingScopeComponents: i.pendingScopeComponents || [],
+            creepScopeComponents: i.creepScopeComponents || [],
           })),
       };
 
@@ -222,57 +261,12 @@ const WorkOrderEditModal: React.FC<Props> = ({
                 Line Item Details
               </h3>
               <button
-                onClick={() => setShowBoqSelector(!showBoqSelector)}
+                onClick={() => setShowBoqSelector(true)}
                 className="px-4 py-2 bg-primary text-white text-[10px] font-black rounded-lg hover:bg-primary-dark shadow-lg shadow-blue-100"
               >
                 ADD FROM BOQ
               </button>
             </div>
-
-            {showBoqSelector && (
-              <div className="p-3 md:p-4 bg-primary-muted border-b border-blue-100 max-h-60 overflow-auto">
-                <div className="flex justify-between items-center mb-3">
-                  <p className="text-[10px] font-black text-blue-800 uppercase">
-                    Select BOQ Item to Add
-                  </p>
-                  <button
-                    onClick={() => setShowBoqSelector(false)}
-                    className="text-[10px] text-text-disabled hover:text-error"
-                  >
-                    CLOSE
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {boqTree.map((bi) => (
-                    <div key={bi.id} className="space-y-1">
-                      <div
-                        onClick={() => handleAddBoqItem(bi)}
-                        className="p-2 bg-surface-card rounded-lg border border-blue-200 hover:bg-info-muted cursor-pointer text-xs font-bold flex justify-between"
-                      >
-                        <span>
-                          {bi.boqCode} - {bi.description}
-                        </span>
-                        <span className="text-[10px] text-primary">
-                          Add Main Item
-                        </span>
-                      </div>
-                      {(bi.subItems || []).map((si: any) => (
-                        <div
-                          key={si.id}
-                          onClick={() => handleAddBoqItem(bi, si)}
-                          className="ml-6 p-2 bg-surface-card/50 rounded-lg border border-border-default hover:bg-info-muted cursor-pointer text-xs flex justify-between"
-                        >
-                          <span>{si.description}</span>
-                          <span className="text-[10px] text-text-disabled">
-                            Add Sub-Item
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="flex-1 overflow-auto">
               <table className="w-full text-left border-collapse">
@@ -282,6 +276,7 @@ const WorkOrderEditModal: React.FC<Props> = ({
                   <th className="px-4 py-3 border-b">Description</th>
                   <th className="px-4 py-3 border-b text-right">Qty</th>
                   <th className="px-4 py-3 border-b">UOM</th>
+                  <th className="px-4 py-3 border-b">Scope</th>
                   <th className="px-4 py-3 border-b text-right">Rate</th>
                   <th className="px-4 py-3 border-b text-right">Amount</th>
                 </tr>
@@ -314,6 +309,91 @@ const WorkOrderEditModal: React.FC<Props> = ({
                     </td>
                     <td className="px-4 py-3 text-[10px] font-bold text-text-disabled uppercase">
                       {item.uom}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-1">
+                        <select
+                          className="w-full rounded border border-border-default bg-surface-base px-2 py-1 text-[11px] font-bold"
+                          value={item.issueScopeMode || "FULL_SCOPE"}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((row, rowIndex) =>
+                                rowIndex === idx
+                                  ? {
+                                      ...row,
+                                      issueScopeMode: e.target.value,
+                                      hasPendingScope:
+                                        e.target.value !== "FULL_SCOPE",
+                                      issuedScopeSummary:
+                                        e.target.value === "FULL_SCOPE"
+                                          ? "Full BOQ scope"
+                                          : row.issuedScopeSummary,
+                                    }
+                                  : row,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="FULL_SCOPE">Full Scope</option>
+                          <option value="SPLIT_SCOPE">Split Scope</option>
+                          <option value="CREEP_SCOPE">Scope Creep</option>
+                        </select>
+                        {item.issueScopeMode && item.issueScopeMode !== "FULL_SCOPE" && (
+                          <>
+                            <input
+                              type="text"
+                              value={
+                                item.issueScopeMode === "SPLIT_SCOPE"
+                                  ? item.pendingScopeSummary || ""
+                                  : item.creepScopeSummary || ""
+                              }
+                              onChange={(e) =>
+                                setItems((prev) =>
+                                  prev.map((row, rowIndex) =>
+                                    rowIndex === idx
+                                      ? item.issueScopeMode === "SPLIT_SCOPE"
+                                        ? {
+                                            ...row,
+                                            pendingScopeSummary: e.target.value,
+                                          }
+                                        : {
+                                            ...row,
+                                            creepScopeSummary: e.target.value,
+                                          }
+                                      : row,
+                                  ),
+                                )
+                              }
+                              placeholder={
+                                item.issueScopeMode === "SPLIT_SCOPE"
+                                  ? "Pending scope summary"
+                                  : "Creep scope summary"
+                              }
+                              className="w-full rounded border border-border-default bg-surface-base px-2 py-1 text-[11px]"
+                            />
+                            {item.issueScopeMode === "CREEP_SCOPE" && (
+                              <input
+                                type="text"
+                                value={item.scopeCreepReason || ""}
+                                onChange={(e) =>
+                                  setItems((prev) =>
+                                    prev.map((row, rowIndex) =>
+                                      rowIndex === idx
+                                        ? {
+                                            ...row,
+                                            scopeCreepReason: e.target.value,
+                                          }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                                placeholder="Reason for creep"
+                                className="w-full rounded border border-border-default bg-surface-base px-2 py-1 text-[11px]"
+                              />
+                            )}
+                          </>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <input
@@ -378,6 +458,23 @@ const WorkOrderEditModal: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {workOrder && (
+        <>
+          <BoqSelectModal
+            isOpen={showBoqSelector}
+            onClose={() => setShowBoqSelector(false)}
+            projectId={workOrder.projectId}
+            onSelectItems={handleSelectBoqItems}
+          />
+          <BoqAllocationReviewModal
+            isOpen={showReviewModal}
+            onClose={() => setShowReviewModal(false)}
+            selections={pendingSelections}
+            onConfirm={handleAddReviewedItems}
+          />
+        </>
+      )}
     </Modal>
   );
 };
