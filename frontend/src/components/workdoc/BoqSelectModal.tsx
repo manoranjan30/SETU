@@ -30,6 +30,7 @@ const BoqSelectModal: React.FC<Props> = ({
   const [selectedItems, setSelectedItems] = useState<Map<string, any>>(
     new Map(),
   );
+  const [showFullyCovered, setShowFullyCovered] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -44,6 +45,7 @@ const BoqSelectModal: React.FC<Props> = ({
 
       setSelectedItems(new Map());
       setExpandedIds(new Set());
+      setShowFullyCovered(false);
     }
   }, [isOpen, projectId]);
 
@@ -171,7 +173,9 @@ const BoqSelectModal: React.FC<Props> = ({
     parent?: any,
     grandParent?: any,
   ) => {
-    return items.map((item) => {
+    return items
+      .filter((item) => showFullyCovered || item.eligibleForAdd !== false)
+      .map((item) => {
       const id = `${level}-${item.id}`;
       const isExpanded = expandedIds.has(id);
       const isSelected = selectedItems.has(id);
@@ -181,6 +185,7 @@ const BoqSelectModal: React.FC<Props> = ({
 
       const qty = item.availableQty || 0;
       const rate = item.rate || item.totalRate || item.boqRate || 0;
+      const scopePending = !!item.hasPendingScope;
 
       return (
         <div key={id} className="select-none">
@@ -231,6 +236,11 @@ const BoqSelectModal: React.FC<Props> = ({
                 <span className="text-[10px] text-text-disabled truncate">
                   {item.description || item.elementName}
                 </span>
+                {scopePending && (
+                  <span className="mt-1 w-fit rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-orange-700">
+                    Scope Pending
+                  </span>
+                )}
               </div>
             </div>
 
@@ -266,7 +276,7 @@ const BoqSelectModal: React.FC<Props> = ({
           )}
         </div>
       );
-    });
+      });
   };
 
   return (
@@ -274,18 +284,28 @@ const BoqSelectModal: React.FC<Props> = ({
       <div className="p-4 space-y-4 flex flex-col h-[75vh]">
         <div className="flex justify-between items-center text-xs">
           <p className="text-text-muted">
-            Pick specific items or sub-activities covering the work scope.
+            Pick specific items or sub-activities with quantity balance or pending scope.
           </p>
-          <div className="flex gap-3 font-bold uppercase tracking-widest text-[9px]">
-            <span className="flex items-center gap-1">
-              <Layers size={10} className="text-primary" /> Main
-            </span>
-            <span className="flex items-center gap-1">
-              <Box size={10} className="text-orange-500" /> Sub
-            </span>
-            <span className="flex items-center gap-1">
-              <Ruler size={10} className="text-emerald-500" /> Measure
-            </span>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
+              <input
+                type="checkbox"
+                checked={showFullyCovered}
+                onChange={(e) => setShowFullyCovered(e.target.checked)}
+              />
+              Show fully covered
+            </label>
+            <div className="flex gap-3 font-bold uppercase tracking-widest text-[9px]">
+              <span className="flex items-center gap-1">
+                <Layers size={10} className="text-primary" /> Main
+              </span>
+              <span className="flex items-center gap-1">
+                <Box size={10} className="text-orange-500" /> Sub
+              </span>
+              <span className="flex items-center gap-1">
+                <Ruler size={10} className="text-emerald-500" /> Measure
+              </span>
+            </div>
           </div>
         </div>
 

@@ -18,6 +18,12 @@ export enum WorkOrderItemNodeType {
   MEASUREMENT = 'MEASUREMENT',
 }
 
+export enum WorkOrderItemScopeMode {
+  FULL_SCOPE = 'FULL_SCOPE',
+  SPLIT_SCOPE = 'SPLIT_SCOPE',
+  CREEP_SCOPE = 'CREEP_SCOPE',
+}
+
 @Entity('work_order_items')
 export class WorkOrderItem {
   @PrimaryGeneratedColumn()
@@ -102,6 +108,46 @@ export class WorkOrderItem {
   // allocatedQty × rate
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   amount: number;
+
+  @Column({
+    type: 'enum',
+    enum: WorkOrderItemScopeMode,
+    default: WorkOrderItemScopeMode.FULL_SCOPE,
+  })
+  issueScopeMode: WorkOrderItemScopeMode;
+
+  @Column({ type: 'decimal', precision: 15, scale: 3, nullable: true })
+  originalBoqQty: number | null;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  originalBoqRate: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  issuedScopeSummary: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  pendingScopeSummary: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  creepScopeSummary: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  scopeCreepReason: string | null;
+
+  @Column({ type: 'json', nullable: true })
+  issuedScopeComponents: string[] | null;
+
+  @Column({ type: 'json', nullable: true })
+  pendingScopeComponents: string[] | null;
+
+  @Column({ type: 'json', nullable: true })
+  creepScopeComponents: string[] | null;
+
+  @Column({ default: false })
+  hasPendingScope: boolean;
+
+  @Column({ default: 'PENDING' })
+  vendorOnboardStatus: string;
 
   // Cumulative executed quantity from progress
   @Column({ type: 'decimal', precision: 15, scale: 3, default: 0 })

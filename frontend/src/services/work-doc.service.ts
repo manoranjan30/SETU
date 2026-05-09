@@ -24,11 +24,22 @@ export interface WorkOrderItem {
   executedQuantity?: number;
   boqItemId?: number;
   mappingStatus?: "PENDING" | "AUTO_CODE" | "AUTO_DESC" | "MANUAL";
+  boqSubItemId?: number | null;
+  measurementElementId?: number | null;
+  issueScopeMode?: "FULL_SCOPE" | "SPLIT_SCOPE" | "CREEP_SCOPE";
+  issuedScopeSummary?: string | null;
+  pendingScopeSummary?: string | null;
+  creepScopeSummary?: string | null;
+  scopeCreepReason?: string | null;
+  issuedScopeComponents?: string[] | null;
+  pendingScopeComponents?: string[] | null;
+  creepScopeComponents?: string[] | null;
+  hasPendingScope?: boolean;
 }
 
 export interface PendingBoardItem {
-  id: number;
-  workOrderId: number;
+  id: number | string;
+  workOrderId: number | null;
   workOrderRef: string;
   vendorName: string;
   materialCode: string;
@@ -37,7 +48,13 @@ export interface PendingBoardItem {
   rate: number;
   amount: number;
   mappingStatus: string;
-  suggestedBoqId: number | null;
+  suggestedBoqId?: number | null;
+  pendingType: "QTY_PENDING" | "SCOPE_PENDING" | "CREEP_PENDING";
+  issuedScopeSummary?: string | null;
+  pendingScopeSummary?: string | null;
+  creepScopeSummary?: string | null;
+  scopeCreepReason?: string | null;
+  sourceWoNumber?: string | null;
 }
 
 export interface ColumnMapping {

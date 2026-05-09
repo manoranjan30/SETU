@@ -180,6 +180,14 @@ export class WorkDocController {
     return this.workService.getAvailableBoqQty(projectId);
   }
 
+  @Get(':projectId/pending-vendor-board')
+  @Permissions('WORKORDER.ORDER.READ')
+  async getPendingVendorBoard(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.workService.getPendingVendorBoard(projectId);
+  }
+
   @Post([':projectId/confirm', ':projectId/create-from-boq'])
   @Permissions('WORKORDER.ORDER.CREATE')
   async createWorkOrder(

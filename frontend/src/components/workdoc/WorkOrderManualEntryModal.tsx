@@ -20,6 +20,9 @@ import {
 import { useParams } from "react-router-dom";
 import AddVendorModal from "./AddVendorModal";
 import BoqSelectModal from "./BoqSelectModal";
+import BoqAllocationReviewModal, {
+  type BoqSelectionReviewItem,
+} from "./BoqAllocationReviewModal";
 
 interface Props {
   isOpen: boolean;
@@ -58,9 +61,17 @@ interface LineItem {
   qty: number;
   rate: number;
   amount: number;
-  boqItemId?: number;
-  boqSubItemId?: number;
-  measurementElementId?: number;
+  boqItemId?: number | null;
+  boqSubItemId?: number | null;
+  measurementElementId?: number | null;
+  issueScopeMode?: "FULL_SCOPE" | "SPLIT_SCOPE" | "CREEP_SCOPE";
+  issuedScopeSummary?: string | null;
+  pendingScopeSummary?: string | null;
+  creepScopeSummary?: string | null;
+  scopeCreepReason?: string | null;
+  issuedScopeComponents?: string[];
+  pendingScopeComponents?: string[];
+  creepScopeComponents?: string[];
 }
 
 const ORDER_TYPES = [
@@ -142,6 +153,10 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({
 
   // BOQ Import State
   const [showBoqSelect, setShowBoqSelect] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [pendingSelections, setPendingSelections] = useState<
+    BoqSelectionReviewItem[]
+  >([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -187,30 +202,50 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({
 
   const handleImportFromBoq = (selectedBoqItems: any[]) => {
     if (selectedBoqItems.length === 0) return;
-
-    const newItems: LineItem[] = selectedBoqItems.map((b) => {
-      let fullDescription = b.description || b.elementName || "";
-      if (b.level === 2 && b.parentInfo && b.grandParentInfo) {
-        fullDescription = `${b.grandParentInfo.boqCode} > ${b.parentInfo.description} > ${b.elementName}`;
-      } else if (b.level === 1 && b.parentInfo) {
-        fullDescription = `${b.parentInfo.boqCode} > ${b.description}`;
-      }
-
-      return {
-        id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        serialNumber: "",
-        code: b.boqCode || b.elementCode || "",
-        description: fullDescription,
-        longText: b.description || "",
-        uom: b.uom || "Nos",
-        qty: b.availableQty || 0,
-        rate: b.boqRate || 0,
-        amount: (b.availableQty || 0) * (b.boqRate || 0),
+    setPendingSelections(
+      selectedBoqItems.map((b) => ({
         boqItemId: b.boqItemId,
         boqSubItemId: b.boqSubItemId,
         measurementElementId: b.measurementElementId,
-      };
-    });
+        boqCode: b.boqCode || b.elementCode || "",
+        description: b.description || b.elementName || "",
+        fullDescription:
+          b.level === 2 && b.parentInfo && b.grandParentInfo
+            ? `${b.grandParentInfo.boqCode} > ${b.parentInfo.description} > ${b.elementName}`
+            : b.level === 1 && b.parentInfo
+              ? `${b.parentInfo.boqCode} > ${b.description}`
+              : b.description || b.elementName || "",
+        uom: b.uom || "Nos",
+        availableQty: Number(b.availableQty || 0),
+        boqRate: Number(b.boqRate || 0),
+      })),
+    );
+    setShowReviewModal(true);
+  };
+
+  const handleAddReviewedBoqItems = (reviewedItems: BoqSelectionReviewItem[]) => {
+    const newItems: LineItem[] = reviewedItems.map((b) => ({
+      id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      serialNumber: "",
+      code: b.boqCode || "",
+      description: b.fullDescription || b.description,
+      longText: b.description || "",
+      uom: b.uom || "Nos",
+      qty: b.availableQty || 0,
+      rate: b.boqRate || 0,
+      amount: (b.availableQty || 0) * (b.boqRate || 0),
+      boqItemId: b.boqItemId,
+      boqSubItemId: b.boqSubItemId,
+      measurementElementId: b.measurementElementId,
+      issueScopeMode: b.issueScopeMode || "FULL_SCOPE",
+      issuedScopeSummary: b.issuedScopeSummary || "Full BOQ scope",
+      pendingScopeSummary: b.pendingScopeSummary || null,
+      creepScopeSummary: b.creepScopeSummary || null,
+      scopeCreepReason: b.scopeCreepReason || null,
+      issuedScopeComponents: b.issuedScopeComponents || [],
+      pendingScopeComponents: b.pendingScopeComponents || [],
+      creepScopeComponents: b.creepScopeComponents || [],
+    }));
 
     setItems((prev) => {
       // Remove the empty default item if not used
@@ -219,6 +254,7 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({
       }
       return [...prev, ...newItems];
     });
+    setShowReviewModal(false);
   };
 
   const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -309,6 +345,14 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({
           boqItemId: item.boqItemId,
           boqSubItemId: item.boqSubItemId,
           measurementElementId: item.measurementElementId,
+          issueScopeMode: item.issueScopeMode || "FULL_SCOPE",
+          issuedScopeSummary: item.issuedScopeSummary || "Full BOQ scope",
+          pendingScopeSummary: item.pendingScopeSummary || undefined,
+          creepScopeSummary: item.creepScopeSummary || undefined,
+          scopeCreepReason: item.scopeCreepReason || undefined,
+          issuedScopeComponents: item.issuedScopeComponents || [],
+          pendingScopeComponents: item.pendingScopeComponents || [],
+          creepScopeComponents: item.creepScopeComponents || [],
         })),
         pdfPath: null,
         originalFileName: null,
@@ -906,6 +950,12 @@ const WorkOrderManualEntryModal: React.FC<Props> = ({
         onClose={() => setShowBoqSelect(false)}
         projectId={projectId || 0}
         onSelectItems={handleImportFromBoq}
+      />
+      <BoqAllocationReviewModal
+        isOpen={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        selections={pendingSelections}
+        onConfirm={handleAddReviewedBoqItems}
       />
     </Modal>
   );
