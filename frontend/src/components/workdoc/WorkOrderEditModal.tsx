@@ -16,6 +16,8 @@ interface Props {
   onSuccess: () => void;
 }
 
+const isEditableWoLine = (item: any) => !item.isParent;
+
 const WorkOrderEditModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -41,7 +43,7 @@ const WorkOrderEditModal: React.FC<Props> = ({
         projectCode: workOrder.projectCode || "",
         scopeOfWork: workOrder.scopeOfWork || "",
       });
-      setItems(workOrder.items || []);
+      setItems((workOrder.items || []).filter(isEditableWoLine));
     }
   }, [workOrder]);
 
@@ -116,6 +118,11 @@ const WorkOrderEditModal: React.FC<Props> = ({
     setShowReviewModal(false);
     setShowBoqSelector(false);
   };
+
+  const totalLeafAmount = items.reduce(
+    (acc, item) => acc + Number(item.allocatedQty || 0) * Number(item.rate || 0),
+    0,
+  );
 
   const handleSave = async () => {
     if (!workOrder) return;
@@ -431,9 +438,9 @@ const WorkOrderEditModal: React.FC<Props> = ({
             </p>
             <p className="text-xl font-black text-slate-900">
               ₹
-              {items
-                .reduce((acc, i) => acc + i.allocatedQty * i.rate, 0)
-                .toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {totalLeafAmount.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+              })}
             </p>
           </div>
           <div className="flex gap-3">

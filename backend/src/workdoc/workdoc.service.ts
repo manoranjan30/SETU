@@ -14,6 +14,7 @@ import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { MeasurementElement } from '../boq/entities/measurement-element.entity';
 import { WorkDocTemplate } from './entities/work-doc-template.entity';
+import { WorkOrderBoqMap } from './entities/work-order-boq-map.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { WoActivityPlan } from '../planning/entities/wo-activity-plan.entity';
 import {
@@ -405,9 +406,7 @@ export class WorkDocService {
     const boqTree = await this.getBoqTreeForWoCreation(projectId);
 
     // 2. Get existing mappings for this specific Work Order
-    const mappings = await this.dataSource
-      .getRepository('WorkOrderBoqMap')
-      .find({
+    const mappings = await this.dataSource.getRepository(WorkOrderBoqMap).find({
         where: { workOrderItem: { workOrder: { id: woId } } },
         relations: ['workOrderItem', 'boqItem', 'boqSubItem'],
       });
@@ -424,7 +423,7 @@ export class WorkDocService {
     await queryRunner.startTransaction();
 
     try {
-      const repo = queryRunner.manager.getRepository('WorkOrderBoqMap');
+      const repo = queryRunner.manager.getRepository(WorkOrderBoqMap);
 
       // Clear existing
       await repo.delete({ workOrderItem: { id: woItemId } });
@@ -432,11 +431,13 @@ export class WorkDocService {
       // Add new
       for (const m of mappings) {
         const mapEntry = repo.create({
-          workOrderItem: { id: woItemId },
-          boqItem: m.boqItemId ? { id: m.boqItemId } : null,
-          boqSubItem: m.boqSubItemId ? { id: m.boqSubItemId } : null,
+          workOrderItem: { id: woItemId } as WorkOrderItem,
+          boqItem: m.boqItemId ? ({ id: m.boqItemId } as BoqItem) : null,
+          boqSubItem: m.boqSubItemId
+            ? ({ id: m.boqSubItemId } as BoqSubItem)
+            : null,
           conversionFactor: m.factor || 1,
-        });
+        } as Partial<WorkOrderBoqMap>);
         await repo.save(mapEntry);
       }
 
@@ -540,6 +541,9 @@ export class WorkDocService {
         },
       },
     });
+    const allocationRows = allWoItems.filter(
+      (wi) => wi.nodeType === WorkOrderItemNodeType.MEASUREMENT,
+    );
 
     const calculateAvailable = (
       total: number,
@@ -550,17 +554,17 @@ export class WorkDocService {
       let allocated = 0;
       if (measureId) {
         // Measurement level allocation
-        allocated = allWoItems
+        allocated = allocationRows
           .filter((wi) => wi.measurementElementId === measureId)
           .reduce((sum, wi) => sum + Number(wi.allocatedQty || 0), 0);
       } else if (subId) {
-        // Sub-Item level allocation (direct + any measurements under it)
-        allocated = allWoItems
+        // Sub-Item level allocation from measurement leaves only
+        allocated = allocationRows
           .filter((wi) => wi.boqSubItemId === subId)
           .reduce((sum, wi) => sum + Number(wi.allocatedQty || 0), 0);
       } else {
-        // Item level allocation (direct + any sub-items/measurements under it)
-        allocated = allWoItems
+        // Item level allocation from measurement leaves only
+        allocated = allocationRows
           .filter((wi) => wi.boqItemId === boqId)
           .reduce((sum, wi) => sum + Number(wi.allocatedQty || 0), 0);
       }
@@ -613,7 +617,10 @@ export class WorkDocService {
           allocatedToWo: subAlloc,
           availableQty: subAvail,
           hasPendingScope: subPendingScope,
-          eligibleForAdd: subAvail > 0 || subPendingScope,
+          eligibleForAdd:
+            subAvail > 0 ||
+            subPendingScope ||
+            measurements.some((measurement) => measurement.eligibleForAdd),
         };
       });
 
@@ -623,7 +630,10 @@ export class WorkDocService {
         allocatedToWo,
         availableQty,
         hasPendingScope,
-        eligibleForAdd: availableQty > 0 || hasPendingScope,
+        eligibleForAdd:
+          availableQty > 0 ||
+          hasPendingScope ||
+          subItems.some((sub) => sub.eligibleForAdd),
       };
     });
 
@@ -638,6 +648,9 @@ export class WorkDocService {
       .createQueryBuilder('woItem')
       .innerJoin('woItem.workOrder', 'wo')
       .where('woItem.boqItemId = :boqItemId', { boqItemId })
+      .andWhere('woItem.nodeType = :nodeType', {
+        nodeType: WorkOrderItemNodeType.MEASUREMENT,
+      })
       .andWhere('wo.projectId = :projectId', { projectId })
       .andWhere('wo.status IN (:...statuses)', {
         statuses: ['ACTIVE', 'IN_PROGRESS'],
@@ -656,6 +669,9 @@ export class WorkDocService {
       .createQueryBuilder('woItem')
       .innerJoin('woItem.workOrder', 'wo')
       .where('woItem.boqSubItemId = :boqSubItemId', { boqSubItemId })
+      .andWhere('woItem.nodeType = :nodeType', {
+        nodeType: WorkOrderItemNodeType.MEASUREMENT,
+      })
       .andWhere('wo.projectId = :projectId', { projectId })
       .andWhere('wo.status IN (:...statuses)', {
         statuses: ['ACTIVE', 'IN_PROGRESS'],
@@ -675,6 +691,9 @@ export class WorkDocService {
       .innerJoin('woItem.workOrder', 'wo')
       .where('woItem.measurementElementId = :measurementElementId', {
         measurementElementId,
+      })
+      .andWhere('woItem.nodeType = :nodeType', {
+        nodeType: WorkOrderItemNodeType.MEASUREMENT,
       })
       .andWhere('wo.projectId = :projectId', { projectId })
       .andWhere('wo.status IN (:...statuses)', {
