@@ -143,7 +143,7 @@ import { WorkDocModule } from './workdoc/workdoc.module';
 import { Vendor } from './workdoc/entities/vendor.entity';
 import { WorkOrder } from './workdoc/entities/work-order.entity';
 import { WorkOrderItem } from './workdoc/entities/work-order-item.entity';
-// WorkOrderBoqMap removed — WO Items now link directly to BOQ via FKs
+import { WorkOrderBoqMap } from './workdoc/entities/work-order-boq-map.entity';
 import { WorkDocTemplate } from './workdoc/entities/work-doc-template.entity';
 import { TemplateBuilderModule } from './template-builder/template-builder.module';
 import { PdfTemplate } from './template-builder/entities/pdf-template.entity';
@@ -338,7 +338,7 @@ import { NotificationLog } from './notifications/notification-log.entity';
         WorkOrderItem,
         ExecutionProgressEntry,
         ExecutionProgressAdjustment,
-        // WorkOrderBoqMap removed
+        WorkOrderBoqMap,
         WorkDocTemplate,
         // Template Builder
         PdfTemplate,
