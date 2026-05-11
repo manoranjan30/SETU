@@ -160,7 +160,7 @@ const BoqAllocationReviewModal: React.FC<Props> = ({
                 Review Total
               </p>
               <p className="text-lg font-black text-slate-900">
-                Rs. {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                Rs. {totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </p>
             </div>
           </div>
@@ -197,7 +197,7 @@ const BoqAllocationReviewModal: React.FC<Props> = ({
                       {item.fullDescription || item.description}
                     </p>
                     <p className="text-xs text-text-muted">
-                      Available BOQ Qty: {Number(item.availableQty).toFixed(3)} {item.uom} | Default Rate: Rs. {Number(item.boqRate).toLocaleString()}
+                      Available BOQ Qty: {Number(item.availableQty).toFixed(3)} {item.uom} | Default Rate: Rs. {Number(item.boqRate).toLocaleString("en-IN")}
                     </p>
                   </div>
                 </div>

@@ -362,7 +362,7 @@ const LookAheadView: React.FC = () => {
                       (sum: number, r: any) => sum + (r.totalAmount || 0),
                       0,
                     )
-                    .toLocaleString()}
+                    .toLocaleString("en-IN")}
                 </p>
                 <p className="text-indigo-200 text-xs mt-2">
                   Active: {resData.activitiesCount} activities
@@ -380,7 +380,7 @@ const LookAheadView: React.FC = () => {
                       (sum: number, r: any) => sum + (r.totalAmount || 0),
                       0,
                     )
-                    .toLocaleString()}
+                    .toLocaleString("en-IN")}
                 </p>
                 <p className="text-text-disabled text-xs mt-2 font-medium">
                   Infrastructure & Procurement
@@ -398,7 +398,7 @@ const LookAheadView: React.FC = () => {
                       (sum: number, r: any) => sum + (r.totalAmount || 0),
                       0,
                     )
-                    .toLocaleString()}
+                    .toLocaleString("en-IN")}
                 </p>
                 <p className="text-text-disabled text-xs mt-2 font-medium">
                   Direct Execution Cost
@@ -454,7 +454,7 @@ const LookAheadView: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right font-black text-gray-800">
-                            ₹{item.totalAmount.toLocaleString()}
+                            ₹{item.totalAmount.toLocaleString("en-IN")}
                           </td>
                         </tr>
                         {expandedBoqs.has(item.id) &&
@@ -474,9 +474,9 @@ const LookAheadView: React.FC = () => {
                                   <span className="font-bold text-text-secondary">
                                     {res.totalQty.toFixed(2)} {res.uom}
                                   </span>{" "}
-                                  @ ₹{(res.rate || 0).toLocaleString()}{" "}
+                                  @ ₹{(res.rate || 0).toLocaleString("en-IN")}{" "}
                                   <span className="text-secondary font-bold ml-2">
-                                    ₹{(res.totalAmount || 0).toLocaleString()}
+                                    ₹{(res.totalAmount || 0).toLocaleString("en-IN")}
                                   </span>
                                 </td>
                               </tr>

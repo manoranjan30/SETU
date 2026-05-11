@@ -77,8 +77,8 @@ const GlobalMappingBoard: React.FC<Props> = ({ projectId }) => {
 
   const filteredData = data.filter((item) => {
     const matchesSearch =
-      item.description.toLowerCase().includes(search.toLowerCase()) ||
-      item.boqCode.toLowerCase().includes(search.toLowerCase());
+      (item.description || "").toLowerCase().includes(search.toLowerCase()) ||
+      (item.boqCode || "").toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === "ALL" || item.status === filter;
     return matchesSearch && matchesFilter;
   });
@@ -175,14 +175,14 @@ const GlobalMappingBoard: React.FC<Props> = ({ projectId }) => {
                     {item.qty} {item.uom}
                   </span>
                   <span>Rate: ₹{item.rate}</span>
-                  <span>Amount: ₹{Number(item.amount).toLocaleString()}</span>
+                  <span>Amount: ₹{Number(item.amount).toLocaleString("en-IN")}</span>
                 </div>
               </div>
 
               <div className="flex items-center gap-4">
                 {/* Assignment Indicators */}
                 <div className="flex -space-x-2">
-                  {item.assignments.map((a, idx) => (
+                  {(item.assignments || []).map((a, idx) => (
                     <div
                       key={idx}
                       title={`${a.vendorName} (${a.woNumber})`}
@@ -222,13 +222,13 @@ const GlobalMappingBoard: React.FC<Props> = ({ projectId }) => {
             {expandedItems.has(item.id) && (
               <div className="bg-surface-base border-t border-slate-100 px-12 py-6 space-y-6">
                 {/* Global Item Assignments */}
-                {item.assignments.length > 0 && (
+                {(item.assignments || []).length > 0 && (
                   <div>
                     <h5 className="text-[10px] font-black text-text-disabled uppercase tracking-widest mb-3 flex items-center gap-2">
                       <LinkIcon size={12} /> Direct Item Assignments
                     </h5>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {item.assignments.map((a, idx) => (
+                      {(item.assignments || []).map((a, idx) => (
                         <div
                           key={idx}
                           className="bg-surface-card p-4 rounded-2xl border border-border-default flex items-center justify-between group"
@@ -256,14 +256,14 @@ const GlobalMappingBoard: React.FC<Props> = ({ projectId }) => {
                 )}
 
                 {/* Sub-Items Grid */}
-                {item.subItems.length > 0 && (
+                {(item.subItems || []).length > 0 && (
                   <div>
                     <h5 className="text-[10px] font-black text-text-disabled uppercase tracking-widest mb-3 flex items-center gap-2">
                       <ShoppingCart size={12} /> Granular Breakdown (Floor-wise
                       Mapping)
                     </h5>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {item.subItems.map((sub: any) => (
+                      {(item.subItems || []).map((sub: any) => (
                         <div
                           key={sub.id}
                           className={clsx(
@@ -287,9 +287,9 @@ const GlobalMappingBoard: React.FC<Props> = ({ projectId }) => {
                             />
                           </div>
 
-                          {sub.assignments.length > 0 ? (
+                          {(sub.assignments || []).length > 0 ? (
                             <div className="space-y-2">
-                              {sub.assignments.map((a: any, idx: number) => (
+                              {(sub.assignments || []).map((a: any, idx: number) => (
                                 <div
                                   key={idx}
                                   className="flex items-center justify-between text-[10px]"
@@ -319,8 +319,8 @@ const GlobalMappingBoard: React.FC<Props> = ({ projectId }) => {
                   </div>
                 )}
 
-                {item.assignments.length === 0 &&
-                  item.subItems.length === 0 && (
+                {(item.assignments || []).length === 0 &&
+                  (item.subItems || []).length === 0 && (
                     <div className="py-10 bg-surface-card rounded-2xl border-2 border-dashed border-border-default text-center">
                       <Users
                         className="mx-auto text-slate-300 mb-2"

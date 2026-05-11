@@ -58,6 +58,9 @@ export default function DonutChartWidget({ data, widget }: Props) {
     .filter((d) => d.value > 0);
 
   const total = chartData.reduce((sum, d) => sum + d.value, 0);
+  const formattedTotal = new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 1,
+  }).format(total);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -89,9 +92,7 @@ export default function DonutChartWidget({ data, widget }: Props) {
         }}
       >
         <div style={{ fontSize: 20, fontWeight: 800, color: "#1e293b" }}>
-          {total >= 1000
-            ? `${(total / 1000).toFixed(1)}K`
-            : total.toLocaleString()}
+          {formattedTotal}
         </div>
         <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}>
           TOTAL

@@ -196,7 +196,7 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
             <p className="text-sm text-text-muted mb-2">{kpi.label}</p>
             <p className="text-2xl font-black text-text-primary">
               {typeof kpi.value === "number"
-                ? kpi.value.toLocaleString()
+                ? kpi.value.toLocaleString("en-IN")
                 : kpi.value}
             </p>
           </div>
@@ -242,14 +242,14 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
                     {row.staffMale} / {row.staffFemale}
                   </td>
                   <td className="px-6 py-4">
-                    {Number(row.totalWorkers).toLocaleString()}
+                    {Number(row.totalWorkers).toLocaleString("en-IN")}
                   </td>
                   <td className="px-6 py-4">{row.workingDays}</td>
                   <td className="px-6 py-4">
-                    {Number(row.totalManhours).toLocaleString()}
+                    {Number(row.totalManhours).toLocaleString("en-IN")}
                   </td>
                   <td className="px-6 py-4 text-success font-bold">
-                    {Number(row.safeManhours).toLocaleString()}
+                    {Number(row.safeManhours).toLocaleString("en-IN")}
                   </td>
                 </tr>
               ))}

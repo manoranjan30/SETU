@@ -146,7 +146,7 @@ const EhsOverview: React.FC<Props> = ({ projectId }) => {
   const kpiCards = [
     {
       label: "Safe Man-Hours",
-      value: summary.cumulativeSafeManhours?.toLocaleString() || "0",
+      value: summary.cumulativeSafeManhours?.toLocaleString("en-IN") || "0",
       icon: Clock,
       color: "text-success",
       bg: "bg-success-muted",

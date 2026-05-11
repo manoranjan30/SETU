@@ -116,7 +116,7 @@ const ExecutionLogTable = ({ projectId }: ExecutionLogTableProps) => {
           }
           return (
             <div className="text-right font-bold">
-              {Number(params.value).toLocaleString(undefined, {
+              {Number(params.value).toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
               })}
             </div>

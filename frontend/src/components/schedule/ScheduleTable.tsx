@@ -93,6 +93,15 @@ interface ScheduleTableProps {
   projectCode?: string;
   onUpdateActivity?: (id: number, field: string, value: any) => Promise<void>;
   forceExpandAll?: boolean;
+  enableManualInsert?: boolean;
+  onRequestAddActivity?: (context: {
+    targetWbsNodeId: number;
+    selectedActivityId?: number;
+    suggestedName?: string;
+    suggestedCode?: string;
+    startDate?: string | null;
+    finishDate?: string | null;
+  }) => void;
 }
 
 interface TreeRow {
@@ -145,6 +154,8 @@ interface RowProps {
   formatDate: (d: string | null) => string;
   scrollToActivity: (id: number) => void;
   fontSize: string;
+  enableManualInsert?: boolean;
+  onRequestAddActivity?: ScheduleTableProps["onRequestAddActivity"];
 }
 
 // --- 3. HELPER COMPONENTS ---
@@ -505,6 +516,20 @@ const TableRow = (props: RowProps) => {
         "relative flex border-b border-border-default text-sm group isolate",
         bgClass,
       )}
+      onContextMenu={(event) => {
+        if (!props.onRequestAddActivity || !props.enableManualInsert) return;
+        event.preventDefault();
+        window.dispatchEvent(
+          new CustomEvent("setu-schedule-context-menu", {
+            detail: {
+              x: event.clientX,
+              y: event.clientY,
+              isWbs,
+              rowData,
+            },
+          }),
+        );
+      }}
     >
       {columnDefinitions.map((col) => {
         const isSticky = col.sticky === "left";
@@ -583,6 +608,8 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
   zoom = 1,
   projectCode,
   onUpdateActivity,
+  enableManualInsert,
+  onRequestAddActivity,
   ...props
 }) => {
   // DEBUG STATE
@@ -618,6 +645,12 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
     },
   );
   const [showColMenu, setShowColMenu] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    isWbs: boolean;
+    rowData: any;
+  } | null>(null);
 
   // Column Width State
   const [colWidthsState, setColWidthsState] = useState({
@@ -636,6 +669,30 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
 
   const formatDate = (dateStr: string | null) =>
     dateStr ? new Date(dateStr).toLocaleDateString() : "-";
+
+  useEffect(() => {
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+      setContextMenu(detail);
+    };
+    const handleClose = () => setContextMenu(null);
+
+    window.addEventListener(
+      "setu-schedule-context-menu",
+      handleOpen as EventListener,
+    );
+    window.addEventListener("click", handleClose);
+    window.addEventListener("scroll", handleClose, true);
+    return () => {
+      window.removeEventListener(
+        "setu-schedule-context-menu",
+        handleOpen as EventListener,
+      );
+      window.removeEventListener("click", handleClose);
+      window.removeEventListener("scroll", handleClose, true);
+    };
+  }, []);
 
   // --- REFS & SIZING ---
   const headerRef = useRef<HTMLDivElement>(null);
@@ -1040,7 +1097,7 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
             "justify-end pr-4 text-[11px] tabular-nums text-text-muted",
           render: ({ rowData }: CellProps) => {
             const val = Number(rowData.budgetedValue || 0);
-            return val > 0 ? `₹${val.toLocaleString()}` : "-";
+            return val > 0 ? `₹${val.toLocaleString("en-IN")}` : "-";
           },
         },
         {
@@ -1051,7 +1108,7 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
             "justify-end pr-4 text-[11px] tabular-nums text-green-700 font-medium",
           render: ({ rowData }: CellProps) => {
             const val = Number(rowData.actualValue || 0);
-            return val > 0 ? `₹${val.toLocaleString()}` : "-";
+            return val > 0 ? `₹${val.toLocaleString("en-IN")}` : "-";
           },
         },
         {
@@ -1185,6 +1242,8 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
       formatDate,
       scrollToActivity,
       fontSize: `${0.875 * zoom}rem`,
+      enableManualInsert,
+      onRequestAddActivity,
     }),
     [
       flattenedRows,
@@ -1200,6 +1259,8 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
       formatDate,
       scrollToActivity,
       zoom,
+      enableManualInsert,
+      onRequestAddActivity,
     ],
   );
 
@@ -1317,6 +1378,38 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
           )}
         </div>
       </div>
+      {contextMenu && enableManualInsert && onRequestAddActivity && (
+        <div
+          className="fixed z-[70] min-w-[220px] rounded-xl border border-border-default bg-surface-card p-2 shadow-2xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              const rowData = contextMenu.rowData;
+              if (contextMenu.isWbs) {
+                onRequestAddActivity({
+                  targetWbsNodeId: rowData.id,
+                  suggestedCode: `${rowData.wbsCode}-ACT`,
+                });
+              } else {
+                onRequestAddActivity({
+                  targetWbsNodeId: rowData.wbsNode?.id,
+                  selectedActivityId: rowData.id,
+                  suggestedCode: `${rowData.activityCode}-REV`,
+                  suggestedName: `${rowData.activityName} - New`,
+                  startDate: rowData.startDatePlanned,
+                  finishDate: rowData.finishDatePlanned,
+                });
+              }
+              setContextMenu(null);
+            }}
+            className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-surface-base"
+          >
+            Add Activity Here
+          </button>
+        </div>
+      )}
     </div>
   );
 };

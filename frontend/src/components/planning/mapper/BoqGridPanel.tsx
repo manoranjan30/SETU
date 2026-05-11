@@ -616,7 +616,7 @@ const BoqGridPanel: React.FC<Props> = ({
               {/* Qty */}
               <div className="w-20 text-right text-xs tabular-nums text-text-secondary">
                 {row.qty !== undefined
-                  ? row.qty.toLocaleString(undefined, {
+                  ? row.qty.toLocaleString("en-IN", {
                       maximumFractionDigits: 3,
                     })
                   : ""}
@@ -630,7 +630,7 @@ const BoqGridPanel: React.FC<Props> = ({
               {/* Rate */}
               <div className="w-20 text-right text-xs tabular-nums text-text-secondary">
                 {row.rate !== undefined
-                  ? row.rate.toLocaleString(undefined, {
+                  ? row.rate.toLocaleString("en-IN", {
                       maximumFractionDigits: 2,
                     })
                   : ""}
@@ -639,7 +639,7 @@ const BoqGridPanel: React.FC<Props> = ({
               {/* Amount */}
               <div className="w-24 text-right text-xs tabular-nums font-medium text-gray-800">
                 {row.amount !== undefined
-                  ? row.amount.toLocaleString(undefined, {
+                  ? row.amount.toLocaleString("en-IN", {
                       maximumFractionDigits: 2,
                     })
                   : ""}

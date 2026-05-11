@@ -50,11 +50,9 @@ export default function CounterWidget({ data, widget }: Props) {
   }, [target]);
 
   const formatted =
-    displayed >= 1000000
-      ? `${(displayed / 1000000).toFixed(1)}M`
-      : displayed >= 1000
-        ? `${(displayed / 1000).toFixed(1)}K`
-        : displayed.toLocaleString();
+    new Intl.NumberFormat("en-IN", {
+      maximumFractionDigits: Number.isInteger(displayed) ? 0 : 1,
+    }).format(displayed);
 
   return (
     <div
