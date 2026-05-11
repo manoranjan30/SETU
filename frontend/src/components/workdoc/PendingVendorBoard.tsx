@@ -79,9 +79,9 @@ const PendingVendorBoard: React.FC<Props> = ({ projectId }) => {
 
   const filteredItems = items.filter((item) => {
     const matchesSearch =
-      item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.workOrderRef.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.workOrderRef || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.vendorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.pendingScopeSummary || "")
         .toLowerCase()
         .includes(searchTerm.toLowerCase()) ||
@@ -237,7 +237,7 @@ const PendingVendorBoard: React.FC<Props> = ({ projectId }) => {
                     {item.quantity}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-slate-800">
-                    Rs. {item.amount.toLocaleString()}
+                    Rs. {item.amount.toLocaleString("en-IN")}
                   </td>
                   <td className="max-w-sm px-4 py-3">
                     <div className="space-y-1 text-xs">

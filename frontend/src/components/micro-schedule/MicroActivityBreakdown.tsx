@@ -316,7 +316,7 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
               Total Allocated
             </div>
             <div className="text-xl font-bold text-text-primary">
-              {schedule?.totalAllocatedQty.toLocaleString()}
+              {schedule?.totalAllocatedQty.toLocaleString("en-IN")}
             </div>
           </div>
           <div className="bg-surface-card p-3 border rounded shadow-sm text-center min-w-[100px]">
@@ -324,7 +324,7 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
               Actual Done
             </div>
             <div className="text-xl font-bold text-primary">
-              {schedule?.totalActualQty.toLocaleString()}
+              {schedule?.totalActualQty.toLocaleString("en-IN")}
             </div>
           </div>
         </div>
@@ -516,7 +516,7 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
                       <option key={ledger.id} value={ledger.id}>
                         {ledger.vendor?.name || "DIRECT"} | [
                         {ledger.boqItem?.boqCode}] {ledger.boqItem?.description}{" "}
-                        - {ledger.balanceQty.toLocaleString()} {ledger.uom} left
+                        - {ledger.balanceQty.toLocaleString("en-IN")} {ledger.uom} left
                       </option>
                     ))}
                   </select>
@@ -671,7 +671,7 @@ const MicroActivityBreakdown: React.FC<MicroActivityBreakdownProps> = ({
                     </td>
                     <td className="px-4 py-4 text-center">
                       <div className="font-bold text-text-primary">
-                        {activity.allocatedQty.toLocaleString()}
+                        {activity.allocatedQty.toLocaleString("en-IN")}
                       </div>
                       <div className="text-[10px] text-text-disabled uppercase font-bold">
                         {activity.uom}

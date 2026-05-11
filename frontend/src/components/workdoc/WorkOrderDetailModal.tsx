@@ -163,7 +163,7 @@ const ALL_COLUMNS: ColumnDef[] = [
       ) : (
         <span className="font-medium text-blue-700">
           ₹
-          {calcAmt.toLocaleString(undefined, {
+          {calcAmt.toLocaleString("en-IN", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}
@@ -180,7 +180,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     render: (item) => (
       <span className="font-black text-slate-800">
         ₹
-        {Number(item.amount).toLocaleString(undefined, {
+        {Number(item.amount).toLocaleString("en-IN", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })}
@@ -733,7 +733,7 @@ const WorkOrderDetailModal: React.FC<Props> = ({
               <span className="text-sm text-text-disabled font-medium mr-1">
                 ₹
               </span>
-              {Number(workOrder.totalAmount).toLocaleString()}
+              {Number(workOrder.totalAmount).toLocaleString("en-IN")}
             </p>
           </div>
         </div>

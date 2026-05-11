@@ -321,8 +321,8 @@ const MicroScheduleList: React.FC<MicroScheduleListProps> = ({
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="text-sm font-medium text-text-primary">
-                      {schedule.totalActualQty.toLocaleString()} /{" "}
-                      {schedule.totalAllocatedQty.toLocaleString()}
+                      {schedule.totalActualQty.toLocaleString("en-IN")} /{" "}
+                      {schedule.totalAllocatedQty.toLocaleString("en-IN")}
                     </div>
                     <div className="text-xs text-text-muted">
                       Total Quantity

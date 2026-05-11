@@ -18,6 +18,7 @@ import CustomerMilestonesPage from "./planning/CustomerMilestonesPage";
 import CostPage from "./planning/CostPage";
 import BudgetPage from "./planning/BudgetPage";
 import LaborCountView from "../views/labor/LaborCountView";
+import PlanningReportsPage from "./planning/PlanningReportsPage";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -66,6 +67,8 @@ const PlanningPage = () => {
         return <CostPage />;
       case "budget":
         return <BudgetPage />;
+      case "reports":
+        return <PlanningReportsPage />;
       case "recovery":
         return (
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">

@@ -35,6 +35,9 @@ const WorkingScheduleList: React.FC = () => {
   const [versions, setVersions] = useState<ScheduleVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showXmlExport, setShowXmlExport] = useState(false);
+  const [selectedVersionIds, setSelectedVersionIds] = useState<number[]>([]);
+  const [includeMasterXml, setIncludeMasterXml] = useState(false);
 
   // Import Modal State
   const [importSource, setImportSource] = useState<ScheduleVersion | null>(
@@ -132,6 +135,50 @@ const WorkingScheduleList: React.FC = () => {
     }
   };
 
+  const downloadBlobResponse = (blob: BlobPart, fileName: string) => {
+    const url = window.URL.createObjectURL(new Blob([blob]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 500);
+  };
+
+  const handleExportSelectedXml = async () => {
+    if (!projectId) return;
+    if (!includeMasterXml && selectedVersionIds.length === 0) {
+      alert("Please select at least one schedule revision to export.");
+      return;
+    }
+
+    try {
+      if (includeMasterXml) {
+        const masterRes = await api.get(`/projects/${projectId}/schedule/export-msp`, {
+          responseType: "blob",
+        });
+        downloadBlobResponse(masterRes.data, "WorkingSchedule_Master.xml");
+      }
+
+      for (const versionId of selectedVersionIds) {
+        const version = versions.find((entry) => entry.id === versionId);
+        const res = await api.get(`/planning/versions/${versionId}/export-msp`, {
+          responseType: "blob",
+        });
+        downloadBlobResponse(
+          res.data,
+          `WorkingSchedule_${version?.versionCode || versionId}.xml`,
+        );
+      }
+
+      setShowXmlExport(false);
+    } catch (err) {
+      console.error("MSP export failed", err);
+      alert("Failed to export one or more MSP XML files");
+    }
+  };
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* ... Existing header ... */}
@@ -147,24 +194,7 @@ const WorkingScheduleList: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={async () => {
-              try {
-                const res = await api.get(
-                  `/projects/${projectId}/schedule/export-msp`,
-                  { responseType: "blob" },
-                );
-                const url = window.URL.createObjectURL(new Blob([res.data]));
-                const link = document.createElement("a");
-                link.href = url;
-                link.setAttribute("download", "WorkingSchedule_MSP.xml");
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-              } catch (err) {
-                console.error("MSP export failed", err);
-                alert("Failed to export MSP XML");
-              }
-            }}
+            onClick={() => setShowXmlExport(true)}
             className="flex items-center gap-2 border border-border-default text-text-secondary px-4 py-2 rounded-lg hover:bg-surface-base shadow-sm transition-colors"
           >
             <FileCode2 size={18} />
@@ -221,6 +251,77 @@ const WorkingScheduleList: React.FC = () => {
                 className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark disabled:opacity-50"
               >
                 Compare
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showXmlExport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-border-default bg-surface-card p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-900">
+              Export Working Schedule XML
+            </h3>
+            <p className="mt-1 text-sm text-text-muted">
+              Select the master schedule and/or the revisions you want to download as MSP-compatible XML files.
+            </p>
+
+            <div className="mt-5 rounded-xl border border-border-default">
+              <label className="flex items-center gap-3 border-b border-border-default px-4 py-3 text-sm font-medium text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={includeMasterXml}
+                  onChange={(e) => setIncludeMasterXml(e.target.checked)}
+                />
+                Master Schedule
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-slate-600">
+                  Original
+                </span>
+              </label>
+              <div className="max-h-80 overflow-auto">
+                {versions.map((version) => (
+                  <label
+                    key={version.id}
+                    className="flex items-center gap-3 border-b border-border-subtle px-4 py-3 text-sm text-slate-800 last:border-b-0"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedVersionIds.includes(version.id)}
+                      onChange={(e) =>
+                        setSelectedVersionIds((prev) =>
+                          e.target.checked
+                            ? [...prev, version.id]
+                            : prev.filter((id) => id !== version.id),
+                        )
+                      }
+                    />
+                    <span className="font-semibold">{version.versionCode}</span>
+                    <span className="text-text-muted">
+                      {version.versionType}
+                    </span>
+                    {version.isActive && (
+                      <span className="rounded-full bg-success-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-green-700">
+                        Active
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowXmlExport(false)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary hover:bg-surface-base"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportSelectedXml}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+              >
+                Download Selected XML
               </button>
             </div>
           </div>

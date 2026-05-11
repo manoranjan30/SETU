@@ -999,7 +999,7 @@ const WorkOrderUploadModal: React.FC<Props> = ({
                       (s, i) => s + (i.calculatedAmount || i.amount || 0),
                       0,
                     )
-                    .toLocaleString()}
+                    .toLocaleString("en-IN")}
                 </div>
               </div>
             </div>
@@ -1154,7 +1154,7 @@ const WorkOrderUploadModal: React.FC<Props> = ({
                               item.calculatedAmount ||
                               item.amount ||
                               0
-                            ).toLocaleString()}
+                            ).toLocaleString("en-IN")}
                           </span>
                         </td>
 

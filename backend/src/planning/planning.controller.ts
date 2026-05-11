@@ -829,6 +829,26 @@ export class PlanningController {
     );
   }
 
+  @Post('versions/:versionId/activities')
+  @Permissions('SCHEDULE.VERSION.UPDATE')
+  addManualVersionActivity(
+    @Param('versionId', ParseIntPipe) versionId: number,
+    @Body()
+    body: {
+      targetWbsNodeId: number;
+      selectedActivityId?: number;
+      activityCode?: string;
+      activityName: string;
+      startDate?: string | Date | null;
+      finishDate?: string | Date | null;
+      duration?: number;
+      remarks?: string;
+      createdBy?: string;
+    },
+  ) {
+    return this.versionService.addManualActivity(versionId, body);
+  }
+
   // ---------------------------------------------------------
   // REVISION IMPORT / EXPORT
   // ---------------------------------------------------------
@@ -876,6 +896,21 @@ export class PlanningController {
       'Content-Length': buffer.length,
     });
     res.end(buffer);
+  }
+
+  @Get('versions/:versionId/export-msp')
+  @Permissions('SCHEDULE.VERSION.READ')
+  async exportVersionMsp(
+    @Param('versionId', ParseIntPipe) versionId: number,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const xml = await this.versionService.exportVersionAsMsProjectXml(versionId);
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="WorkingSchedule_${versionId}.xml"`,
+    );
+    return xml;
   }
 
   @Post(':projectId/versions/import-revision')

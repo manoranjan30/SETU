@@ -1,9 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import api from "../api/axios";
-import { Play, Upload } from "lucide-react";
+import { Play, Upload, Plus } from "lucide-react";
 import ScheduleTable from "../components/schedule/ScheduleTable";
 import ScheduleImportWizard from "../components/schedule/ScheduleImportWizard";
+
+interface ManualActivityDraft {
+  targetWbsNodeId: number;
+  selectedActivityId?: number;
+  activityCode: string;
+  activityName: string;
+  startDate: string;
+  finishDate: string;
+  duration: number;
+  remarks: string;
+}
 
 const SchedulePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -19,6 +30,10 @@ const SchedulePage: React.FC = () => {
   const [wbsNodes, setWbsNodes] = useState<any[]>([]); // New State for WBS
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1); // 1 = 100%
+  const [showAddActivityModal, setShowAddActivityModal] = useState(false);
+  const [activityDraft, setActivityDraft] = useState<ManualActivityDraft | null>(
+    null,
+  );
 
   const [projectCode, setProjectCode] = useState<string>("");
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -93,6 +108,64 @@ const SchedulePage: React.FC = () => {
       console.error(err);
       setError(err.message || "Failed to fetch schedule");
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const openManualActivityModal = (context: {
+    targetWbsNodeId: number;
+    selectedActivityId?: number;
+    suggestedName?: string;
+    suggestedCode?: string;
+    startDate?: string | null;
+    finishDate?: string | null;
+  }) => {
+    if (!versionId) {
+      alert(
+        "Manual activity insertion is allowed only inside a working schedule revision. Please open a working schedule version first.",
+      );
+      return;
+    }
+
+    const startDate =
+      context.startDate?.split("T")[0] ||
+      new Date().toISOString().split("T")[0];
+    const finishDate =
+      context.finishDate?.split("T")[0] ||
+      context.startDate?.split("T")[0] ||
+      new Date().toISOString().split("T")[0];
+
+    setActivityDraft({
+      targetWbsNodeId: context.targetWbsNodeId,
+      selectedActivityId: context.selectedActivityId,
+      activityCode: context.suggestedCode || "MANUAL-ACTIVITY",
+      activityName: context.suggestedName || "",
+      startDate,
+      finishDate,
+      duration: 1,
+      remarks: "Manual activity inserted from working schedule",
+    });
+    setShowAddActivityModal(true);
+  };
+
+  const submitManualActivity = async () => {
+    if (!versionId || !activityDraft) return;
+    if (!activityDraft.activityName.trim()) {
+      alert("Please enter an activity name.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api.post(`/planning/versions/${versionId}/activities`, activityDraft);
+      setShowAddActivityModal(false);
+      setActivityDraft(null);
+      setLastRefresh(new Date());
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        "Failed to add activity to the working schedule.";
+      alert(Array.isArray(message) ? message.join("\n") : String(message));
       setLoading(false);
     }
   };
@@ -311,6 +384,19 @@ const SchedulePage: React.FC = () => {
             <Upload className="w-4 h-4 mr-2" />
             Import (MSP/P6)
           </button>
+          {versionId && (
+            <button
+              onClick={() =>
+                openManualActivityModal({
+                  targetWbsNodeId: wbsNodes[0]?.id,
+                })
+              }
+              className="flex items-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark font-medium shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Activity
+            </button>
+          )}
         </div>
       </div>
 
@@ -337,6 +423,8 @@ const SchedulePage: React.FC = () => {
               zoom={zoomLevel}
               projectCode={projectCode}
               onUpdateActivity={handleUpdateActivity}
+              enableManualInsert={Boolean(versionId)}
+              onRequestAddActivity={openManualActivityModal}
             />
           </div>
         )}
@@ -351,6 +439,149 @@ const SchedulePage: React.FC = () => {
           fetchData();
         }}
       />
+
+      {showAddActivityModal && activityDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-border-default bg-surface-card p-6 shadow-2xl">
+            <div className="mb-5">
+              <h3 className="text-xl font-bold text-slate-900">
+                Add Activity to Working Schedule
+              </h3>
+              <p className="mt-1 text-sm text-text-muted">
+                This will be allowed only if the revision finish date stays unchanged. If it extends the completion date, the request will be rejected with the reason.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="text-sm font-medium text-slate-700">
+                Activity Code
+                <input
+                  value={activityDraft.activityCode}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? { ...prev, activityCode: e.target.value }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Target WBS
+                <select
+                  value={activityDraft.targetWbsNodeId}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            targetWbsNodeId: Number(e.target.value),
+                          }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                >
+                  {wbsNodes.map((node) => (
+                    <option key={node.id} value={node.id}>
+                      {projectCode ? `${projectCode}-` : ""}
+                      {node.wbsCode} - {node.wbsName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="md:col-span-2 text-sm font-medium text-slate-700">
+                Activity Name
+                <input
+                  value={activityDraft.activityName}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? { ...prev, activityName: e.target.value }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Planned Start
+                <input
+                  type="date"
+                  value={activityDraft.startDate}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev ? { ...prev, startDate: e.target.value } : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Planned Finish
+                <input
+                  type="date"
+                  value={activityDraft.finishDate}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev ? { ...prev, finishDate: e.target.value } : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Duration (days)
+                <input
+                  type="number"
+                  min="1"
+                  value={activityDraft.duration}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? { ...prev, duration: Number(e.target.value || 1) }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
+              <label className="md:col-span-2 text-sm font-medium text-slate-700">
+                Remarks
+                <textarea
+                  value={activityDraft.remarks}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev ? { ...prev, remarks: e.target.value } : prev,
+                    )
+                  }
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowAddActivityModal(false);
+                  setActivityDraft(null);
+                }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary hover:bg-surface-base"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitManualActivity}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+              >
+                Save Activity
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -310,7 +310,7 @@ export class DashboardService {
     const rawSafeManhours = Number(totalManhoursRes?.totalSafe || 0);
     const safeManHoursStr =
       rawSafeManhours > 1000
-        ? rawSafeManhours.toLocaleString('en-US')
+        ? rawSafeManhours.toLocaleString('en-IN')
         : String(rawSafeManhours);
 
     const quarterStart = new Date();

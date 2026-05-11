@@ -700,7 +700,7 @@ const ExcelImportModal: React.FC<Props> = ({
               {items
                 .filter((i) => i.level === 0)
                 .reduce((s, i) => s + i.calculatedAmount, 0)
-                .toLocaleString()}
+                .toLocaleString("en-IN")}
             </span>
             <span className="text-text-muted ml-1">Total</span>
           </div>
@@ -847,7 +847,7 @@ const ExcelImportModal: React.FC<Props> = ({
                           item.isParent ? "text-primary" : "text-slate-800"
                         }
                       >
-                        ₹{item.calculatedAmount.toLocaleString()}
+                        ₹{item.calculatedAmount.toLocaleString("en-IN")}
                       </span>
                     </td>
 

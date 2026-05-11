@@ -261,7 +261,7 @@ const ApprovalsPage = ({ onActionComplete }: ApprovalsPageProps) => {
                     </td>
                     <td className="p-4 text-right">
                       <span className="font-bold text-primary">
-                        {Number(log.executedQty).toLocaleString(undefined, {
+                        {Number(log.executedQty).toLocaleString("en-IN", {
                           minimumFractionDigits: 2,
                         })}
                       </span>

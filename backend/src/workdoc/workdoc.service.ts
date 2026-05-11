@@ -990,6 +990,113 @@ export class WorkDocService {
     return pendingRows;
   }
 
+  async getGlobalRegistry(projectId: number) {
+    const boqTree = await this.getBoqTreeForWoCreation(projectId);
+    const activeLeafItems = await this.woItemRepo.find({
+      where: {
+        workOrder: {
+          projectId,
+          status: In(['ACTIVE', 'IN_PROGRESS']),
+        },
+        nodeType: WorkOrderItemNodeType.MEASUREMENT,
+      },
+      relations: ['workOrder', 'workOrder.vendor'],
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    const leavesByBoqItem = new Map<number, WorkOrderItem[]>();
+    const leavesByBoqSubItem = new Map<number, WorkOrderItem[]>();
+
+    for (const leaf of activeLeafItems) {
+      if (leaf.boqItemId) {
+        const itemBucket = leavesByBoqItem.get(leaf.boqItemId) || [];
+        itemBucket.push(leaf);
+        leavesByBoqItem.set(leaf.boqItemId, itemBucket);
+      }
+      if (leaf.boqSubItemId) {
+        const subBucket = leavesByBoqSubItem.get(leaf.boqSubItemId) || [];
+        subBucket.push(leaf);
+        leavesByBoqSubItem.set(leaf.boqSubItemId, subBucket);
+      }
+    }
+
+    const mapAssignments = (rows: WorkOrderItem[]) =>
+      rows.map((leaf) => ({
+        woId: leaf.workOrder?.id,
+        woNumber: leaf.workOrder?.woNumber || 'WO',
+        vendorName: leaf.workOrder?.vendor?.name || 'Vendor',
+        vendorCode: leaf.workOrder?.vendor?.vendorCode || '',
+        woItemId: leaf.id,
+        woShortText: leaf.description,
+        factor: 1,
+      }));
+
+    const summarizeStatus = (
+      availableQty: number,
+      hasPendingScope: boolean,
+      assignmentCount: number,
+    ) => {
+      if (availableQty <= 0.0001 && !hasPendingScope) return 'ASSIGNED';
+      if (assignmentCount > 0 || hasPendingScope) return 'PARTIAL';
+      return 'PENDING';
+    };
+
+    return boqTree.map((item: any) => {
+      const itemLeaves = leavesByBoqItem.get(item.id) || [];
+      const itemAssignments = mapAssignments(itemLeaves);
+      const itemHasPendingScope =
+        Boolean(item.hasPendingScope) ||
+        (item.subItems || []).some(
+          (sub: any) =>
+            Boolean(sub.hasPendingScope) ||
+            (sub.measurements || []).some((measurement: any) =>
+              Boolean(measurement.hasPendingScope),
+            ),
+        );
+
+      const subItems = (item.subItems || []).map((sub: any) => {
+        const subLeaves = leavesByBoqSubItem.get(sub.id) || [];
+        const subAssignments = mapAssignments(subLeaves);
+        const subHasPendingScope =
+          Boolean(sub.hasPendingScope) ||
+          (sub.measurements || []).some((measurement: any) =>
+            Boolean(measurement.hasPendingScope),
+          );
+
+        return {
+          id: sub.id,
+          boqSubItemId: sub.id,
+          description: sub.description,
+          qty: Number(sub.qty || 0),
+          availableQty: Number(sub.availableQty || 0),
+          assignments: subAssignments,
+          status: summarizeStatus(
+            Number(sub.availableQty || 0),
+            subHasPendingScope,
+            subAssignments.length,
+          ),
+        };
+      });
+
+      return {
+        id: item.id,
+        boqCode: item.boqCode,
+        description: item.description,
+        uom: item.uom || 'NOS',
+        qty: Number(item.qty || 0),
+        rate: Number(item.rate || 0),
+        amount: Number(item.amount || 0),
+        status: summarizeStatus(
+          Number(item.availableQty || 0),
+          itemHasPendingScope,
+          itemAssignments.length,
+        ),
+        assignments: itemAssignments,
+        subItems,
+      };
+    });
+  }
+
   private async materializeWoSelection(
     manager: DataSource['manager'],
     workOrder: WorkOrder,

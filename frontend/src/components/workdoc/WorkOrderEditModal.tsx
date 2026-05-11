@@ -420,7 +420,7 @@ const WorkOrderEditModal: React.FC<Props> = ({
                       ₹
                       {Number(
                         item.amount || item.allocatedQty * item.rate,
-                      ).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))}
@@ -438,7 +438,7 @@ const WorkOrderEditModal: React.FC<Props> = ({
             </p>
             <p className="text-xl font-black text-slate-900">
               ₹
-              {totalLeafAmount.toLocaleString(undefined, {
+              {totalLeafAmount.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
               })}
             </p>

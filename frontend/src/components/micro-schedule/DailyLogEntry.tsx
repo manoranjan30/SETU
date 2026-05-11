@@ -95,7 +95,7 @@ const DailyLogEntry: React.FC<DailyLogEntryProps> = ({
               Allocated Quantity
             </div>
             <div className="text-lg font-bold text-blue-900">
-              {activity.allocatedQty.toLocaleString()} {activity.uom}
+              {activity.allocatedQty.toLocaleString("en-IN")} {activity.uom}
             </div>
           </div>
           <div className="text-right">
@@ -103,7 +103,7 @@ const DailyLogEntry: React.FC<DailyLogEntryProps> = ({
               Est. Remaining
             </div>
             <div className="text-lg font-bold text-text-secondary">
-              {Math.max(0, remainingQty).toLocaleString()} {activity.uom}
+              {Math.max(0, remainingQty).toLocaleString("en-IN")} {activity.uom}
             </div>
           </div>
         </div>

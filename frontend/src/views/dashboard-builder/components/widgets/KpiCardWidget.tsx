@@ -42,12 +42,9 @@ export default function KpiCardWidget({ data, widget }: Props) {
         : data.reduce((sum, row) => sum + Number(row[firstNumericKey] || 0), 0)
     : data.length;
   const label = widget.displayConfig?.label || firstNumericKey || "Total";
-  const formatted =
-    value >= 1000000
-      ? `${(value / 1000000).toFixed(1)}M`
-      : value >= 1000
-        ? `${(value / 1000).toFixed(1)}K`
-        : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const formatted = new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 1,
+  }).format(value);
 
   return (
     <div

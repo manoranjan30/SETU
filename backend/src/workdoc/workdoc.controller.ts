@@ -188,6 +188,14 @@ export class WorkDocController {
     return this.workService.getPendingVendorBoard(projectId);
   }
 
+  @Get(':projectId/global-registry')
+  @Permissions('WORKORDER.ORDER.READ')
+  async getGlobalRegistry(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.workService.getGlobalRegistry(projectId);
+  }
+
   @Post([':projectId/confirm', ':projectId/create-from-boq'])
   @Permissions('WORKORDER.ORDER.CREATE')
   async createWorkOrder(

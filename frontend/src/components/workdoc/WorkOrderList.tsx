@@ -258,7 +258,7 @@ const WorkOrderList: React.FC = () => {
                       Total Amount
                     </p>
                     <p className="text-lg font-black text-slate-900">
-                      ₹{Number(wo.totalAmount).toLocaleString()}
+                      ₹{Number(wo.totalAmount).toLocaleString("en-IN")}
                     </p>
                   </div>
                 </div>

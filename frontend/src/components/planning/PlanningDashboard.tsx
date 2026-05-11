@@ -14,6 +14,7 @@ import {
   Landmark,
   TrendingUp,
   Wallet,
+  ScrollText,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -129,6 +130,12 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       label: "Budget",
       permission: PermissionCode.PLANNING_BUDGET_READ,
     },
+    {
+      key: "reports",
+      icon: <ScrollText size={18} />,
+      label: "Reports",
+      permission: PermissionCode.SCHEDULE_READ,
+    },
   ];
 
   const visibleMenuItems = menuItems.filter(
@@ -187,6 +194,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "release_strategy",
           "cost",
           "budget",
+          "reports",
         ].includes(currentView) ? (
           children
         ) : (
