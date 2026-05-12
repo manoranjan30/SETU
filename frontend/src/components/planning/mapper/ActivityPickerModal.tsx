@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Maximize2, Minimize2 } from "lucide-react";
 import api from "../../../api/axios";
 import ScheduleTreePanel from "./ScheduleTreePanel";
 
@@ -7,8 +7,6 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (activityId: number) => void;
-
-  // Pass-through props for ScheduleTreePanel
   activities: any[];
   projectId: number;
   selectedWoItems?: Array<{
@@ -17,8 +15,94 @@ interface Props {
     materialCode?: string;
     linkedActivities?: string;
     treeContext?: string;
+    boqPath?: string;
+    fullContext?: string;
   }>;
 }
+
+const normalizeMapperText = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+
+const splitHierarchySegments = (value: string) =>
+  value
+    .split(">")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter(Boolean);
+
+const extractLocationPhrases = (value: string) => {
+  const text = value.toLowerCase();
+  const matches = new Set<string>();
+  const patterns = [
+    /\bblock[\s-]*[a-z0-9]+\b/g,
+    /\btower[\s-]*[a-z0-9]+\b/g,
+    /\bwing[\s-]*[a-z0-9]+\b/g,
+    /\bfloor[\s-]*[a-z0-9]+\b/g,
+    /\b\d+(st|nd|rd|th)\s+floor\b/g,
+    /\bground floor\b/g,
+    /\bgf\b/g,
+    /\bff\b/g,
+    /\bsf\b/g,
+    /\btf\b/g,
+    /\bbasement[\s-]*\d*\b/g,
+    /\bstilt\b/g,
+    /\bpodium\b/g,
+  ];
+
+  patterns.forEach((pattern) => {
+    const found = text.match(pattern) || [];
+    found.forEach((match) => matches.add(match.trim()));
+  });
+
+  return Array.from(matches);
+};
+
+const buildMapperContext = (parts: Array<string | undefined>) => {
+  const fullText = parts.filter(Boolean).join(" > ");
+  return {
+    tokens: Array.from(new Set(normalizeMapperText(fullText))),
+    segments: Array.from(new Set(splitHierarchySegments(fullText))),
+    locationPhrases: Array.from(new Set(extractLocationPhrases(fullText))),
+  };
+};
+
+const scoreMapperContexts = (
+  source: ReturnType<typeof buildMapperContext>,
+  target: ReturnType<typeof buildMapperContext>,
+) => {
+  const tokenMatches = source.tokens.filter((token) =>
+    target.tokens.includes(token),
+  );
+  const segmentMatches = source.segments.filter((segment) =>
+    target.segments.some(
+      (targetSegment) =>
+        targetSegment.includes(segment) || segment.includes(targetSegment),
+    ),
+  );
+  const locationMatches = source.locationPhrases.filter((phrase) =>
+    target.locationPhrases.some(
+      (targetPhrase) =>
+        targetPhrase.includes(phrase) || phrase.includes(targetPhrase),
+    ),
+  );
+
+  let score =
+    tokenMatches.length +
+    segmentMatches.length * 4 +
+    locationMatches.length * 8;
+
+  if (source.locationPhrases.length > 0 && locationMatches.length === 0) {
+    score -= 6;
+  }
+
+  return {
+    score,
+    locationMatches,
+  };
+};
 
 const ActivityPickerModal: React.FC<Props> = ({
   isOpen,
@@ -32,6 +116,7 @@ const ActivityPickerModal: React.FC<Props> = ({
     number | null
   >(null);
   const [wbsNodes, setWbsNodes] = React.useState<any[]>([]);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
 
   React.useEffect(() => {
     if (!isOpen || !projectId) return;
@@ -66,45 +151,41 @@ const ActivityPickerModal: React.FC<Props> = ({
       return path;
     };
 
-    return {
-      get: buildPath,
-    };
+    return { get: buildPath };
   }, [wbsNodes]);
 
   const suggestions = React.useMemo(() => {
-    const normalize = (value: string) =>
-      value
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((token) => token.length > 2);
-
-    const sourceTokens = Array.from(
-      new Set(
-        selectedWoItems.flatMap((item) =>
-          normalize(
-            `${item.materialCode || ""} ${item.description || ""} ${item.linkedActivities || ""} ${item.treeContext || ""}`,
-          ),
-        ),
-      ),
+    const sourceContext = buildMapperContext(
+      selectedWoItems.flatMap((item) => [
+        item.materialCode,
+        item.description,
+        item.linkedActivities,
+        item.treeContext,
+        item.boqPath,
+        item.fullContext,
+      ]),
     );
 
-    if (sourceTokens.length === 0) return [];
+    if (sourceContext.tokens.length === 0) return [];
 
     return activities
       .map((activity) => {
-        const treePath = wbsPathById.get(activity.wbsNode?.id || activity.wbsNodeId);
-        const haystack = normalize(
-          `${activity.activityCode || ""} ${activity.activityName || ""} ${activity.wbsNode?.wbsCode || ""} ${activity.wbsNode?.wbsName || ""} ${treePath}`,
+        const treePath = wbsPathById.get(
+          activity.wbsNode?.id || activity.wbsNodeId,
         );
-        const score = sourceTokens.reduce(
-          (sum, token) => sum + (haystack.includes(token) ? 1 : 0),
-          0,
-        );
+        const targetContext = buildMapperContext([
+          activity.activityCode,
+          activity.activityName,
+          activity.wbsNode?.wbsCode,
+          activity.wbsNode?.wbsName,
+          treePath,
+        ]);
+        const scored = scoreMapperContexts(sourceContext, targetContext);
         return {
           activity,
-          score,
+          score: scored.score,
           treePath,
+          locationMatches: scored.locationMatches,
         };
       })
       .filter((entry) => entry.score > 0)
@@ -112,12 +193,24 @@ const ActivityPickerModal: React.FC<Props> = ({
       .slice(0, 8);
   }, [activities, selectedWoItems, wbsPathById]);
 
+  React.useEffect(() => {
+    if (!isOpen) {
+      setIsFullscreen(false);
+      setSelectedActivityId(null);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-surface-card rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col">
-        {/* Header */}
+      <div
+        className={`bg-surface-card rounded-lg shadow-xl flex flex-col ${
+          isFullscreen
+            ? "w-[96vw] h-[94vh] max-w-none"
+            : "w-full max-w-4xl h-[80vh]"
+        }`}
+      >
         <div className="p-4 border-b flex justify-between items-center bg-surface-base rounded-t-lg">
           <div>
             <h2 className="text-lg font-bold text-gray-800">
@@ -128,27 +221,37 @@ const ActivityPickerModal: React.FC<Props> = ({
             </p>
             {selectedWoItems.length > 0 && (
               <p className="mt-1 text-xs text-text-disabled">
-                Matching {selectedWoItems.length} selected WO leaf item(s).
+                Matching {selectedWoItems.length} selected WO leaf item(s) using
+                the full BOQ hierarchy and full schedule tree.
               </p>
             )}
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-200 rounded-full text-text-muted"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFullscreen((prev) => !prev)}
+              className="p-2 hover:bg-gray-200 rounded-full text-text-muted"
+            >
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-200 rounded-full text-text-muted"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
-        {/* Body: Schedule Tree */}
         <div className="flex flex-1 overflow-hidden min-h-0">
           <div className="w-80 min-h-0 border-r bg-surface-base p-4 flex flex-col">
             <h3 className="text-xs font-black uppercase tracking-widest text-text-muted">
               Smart Suggestions
             </h3>
             <p className="mt-1 text-xs text-text-disabled">
-              Likely activity matches based on selected WO descriptions, item codes, and already linked terms.
+              Suggestions are scored from BOQ path plus activity tree path, with
+              extra weight for block, tower, and floor matches.
             </p>
 
             <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
@@ -159,18 +262,21 @@ const ActivityPickerModal: React.FC<Props> = ({
                   </div>
                   <div className="max-h-64 space-y-2 overflow-y-auto pr-1 text-xs">
                     {selectedWoItems.map((item) => (
-                      <div key={item.workOrderItemId} className="rounded-lg bg-surface-base px-2 py-2">
+                      <div
+                        key={item.workOrderItemId}
+                        className="rounded-lg bg-surface-base px-2 py-2"
+                      >
                         <div className="font-semibold text-slate-800">
                           {item.description}
                         </div>
-                        {item.materialCode && (
-                          <div className="font-mono text-text-muted">
-                            {item.materialCode}
+                        {item.boqPath && (
+                          <div className="mt-1 text-text-muted">
+                            BOQ: {item.boqPath}
                           </div>
                         )}
                         {item.treeContext && (
                           <div className="mt-1 text-[10px] text-text-disabled">
-                            {item.treeContext}
+                            WO: {item.treeContext}
                           </div>
                         )}
                       </div>
@@ -189,28 +295,33 @@ const ActivityPickerModal: React.FC<Props> = ({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {suggestions.map(({ activity, score, treePath }) => (
-                      <button
-                        key={activity.id}
-                        type="button"
-                        onClick={() => setSelectedActivityId(activity.id)}
-                        className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
-                          selectedActivityId === activity.id
-                            ? "border-primary/30 bg-primary-muted"
-                            : "border-border-default hover:bg-surface-base"
-                        }`}
-                      >
-                        <div className="font-semibold text-slate-800">
-                          {activity.activityCode} {activity.activityName}
-                        </div>
-                        <div className="mt-1 text-text-muted">
-                          {treePath || `${activity.wbsNode?.wbsCode || ""} ${activity.wbsNode?.wbsName || ""}`}
-                        </div>
-                        <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                          Match score {score}
-                        </div>
-                      </button>
-                    ))}
+                    {suggestions.map(
+                      ({ activity, score, treePath, locationMatches }) => (
+                        <button
+                          key={activity.id}
+                          type="button"
+                          onClick={() => setSelectedActivityId(activity.id)}
+                          className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                            selectedActivityId === activity.id
+                              ? "border-primary/30 bg-primary-muted"
+                              : "border-border-default hover:bg-surface-base"
+                          }`}
+                        >
+                          <div className="font-semibold text-slate-800">
+                            {activity.activityCode} {activity.activityName}
+                          </div>
+                          <div className="mt-1 text-text-muted">{treePath}</div>
+                          {locationMatches.length > 0 && (
+                            <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-green-700">
+                              {locationMatches.join(", ")}
+                            </div>
+                          )}
+                          <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                            Match score {score}
+                          </div>
+                        </button>
+                      ),
+                    )}
                   </div>
                 )}
               </div>
@@ -228,7 +339,6 @@ const ActivityPickerModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t bg-surface-base flex justify-end gap-3 rounded-b-lg">
           <button
             onClick={onClose}
@@ -239,12 +349,11 @@ const ActivityPickerModal: React.FC<Props> = ({
           <button
             onClick={() => selectedActivityId && onConfirm(selectedActivityId)}
             disabled={!selectedActivityId}
-            className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2
-                            ${
-                              selectedActivityId
-                                ? "bg-primary text-white hover:bg-primary-dark shadow-sm"
-                                : "bg-gray-300 text-text-muted cursor-not-allowed"
-                            }`}
+            className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
+              selectedActivityId
+                ? "bg-primary text-white hover:bg-primary-dark shadow-sm"
+                : "bg-gray-300 text-text-muted cursor-not-allowed"
+            }`}
           >
             <Check size={16} />
             Link Selected Items
