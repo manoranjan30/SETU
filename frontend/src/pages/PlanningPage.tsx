@@ -29,7 +29,14 @@ const PlanningPage = () => {
   const currentView = searchParams.get("view") || "schedule"; // Default to schedule
 
   const setCurrentView = (view: string) => {
-    setSearchParams({ view });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("view", view);
+      if (view !== "gantt_version") {
+        next.delete("versionId");
+      }
+      return next;
+    });
   };
 
   const renderContent = () => {

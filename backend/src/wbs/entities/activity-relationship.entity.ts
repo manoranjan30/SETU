@@ -22,6 +22,9 @@ export class ActivityRelationship {
   @Column()
   projectId: number;
 
+  @Column({ type: 'int', nullable: true })
+  versionId: number | null;
+
   @ManyToOne(() => Activity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'predecessor_activity_id' })
   predecessor: Activity;

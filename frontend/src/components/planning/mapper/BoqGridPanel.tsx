@@ -55,6 +55,9 @@ const BoqGridPanel: React.FC<Props> = ({
 }) => {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "ALL" | "UNMAPPED" | "PARTIAL" | "MAPPED" | "SELECTED"
+  >("ALL");
 
   // Toggle expand/collapse
   const toggleExpand = useCallback((key: string) => {
@@ -280,15 +283,38 @@ const BoqGridPanel: React.FC<Props> = ({
 
   // Filter rows based on search + expansion state
   const visibleRows = useMemo(() => {
-    if (searchText.trim()) {
+    const rowMatchesFilter = (row: TreeRow) => {
+      if (statusFilter === "ALL") return true;
+      if (statusFilter === "SELECTED") {
+        return Boolean(
+          row.workOrderItemId && selectedWoItemIds.includes(row.workOrderItemId),
+        );
+      }
+      if (statusFilter === "UNMAPPED") {
+        return !row.mappingStatus || row.mappingStatus === "UNMAPPED";
+      }
+      if (statusFilter === "PARTIAL") {
+        return row.mappingStatus === "PARTIALLY_MAPPED";
+      }
+      if (statusFilter === "MAPPED") {
+        return row.mappingStatus === "MAPPED";
+      }
+      return true;
+    };
+
+    if (searchText.trim() || statusFilter !== "ALL") {
       // When searching, show all matching rows + their ancestors
       const lowerSearch = searchText.toLowerCase();
       const matchKeys = new Set<string>();
 
       displayRows.forEach((row) => {
-        if (
+        const searchMatch =
+          !searchText.trim() ||
           row.label?.toLowerCase().includes(lowerSearch) ||
-          row.subtitle?.toLowerCase().includes(lowerSearch)
+          row.subtitle?.toLowerCase().includes(lowerSearch) ||
+          row.linkedActivities?.toLowerCase().includes(lowerSearch);
+        if (
+          searchMatch && rowMatchesFilter(row)
         ) {
           // Add this row and all ancestors
           matchKeys.add(row.key);
@@ -315,7 +341,7 @@ const BoqGridPanel: React.FC<Props> = ({
       }
       return true;
     });
-  }, [displayRows, searchText, expandedKeys]);
+  }, [displayRows, searchText, expandedKeys, statusFilter, selectedWoItemIds]);
 
   // Selection helpers
   const toggleSelect = useCallback(
@@ -497,6 +523,23 @@ const BoqGridPanel: React.FC<Props> = ({
         >
           Collapse All
         </button>
+        <div className="ml-2 flex items-center gap-1 rounded border bg-surface-card p-1">
+          {(["ALL", "UNMAPPED", "PARTIAL", "MAPPED", "SELECTED"] as const).map(
+            (filter) => (
+              <button
+                key={filter}
+                onClick={() => setStatusFilter(filter)}
+                className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-widest ${
+                  statusFilter === filter
+                    ? "bg-primary-muted text-primary"
+                    : "text-text-muted hover:bg-surface-raised"
+                }`}
+              >
+                {filter === "PARTIAL" ? "PARTIAL" : filter}
+              </button>
+            ),
+          )}
+        </div>
       </div>
 
       {/* Column Headers */}

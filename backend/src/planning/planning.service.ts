@@ -973,7 +973,7 @@ export class PlanningService {
     projectId: number,
   ): Promise<ActivityRelationship[]> {
     return this.relRepo.find({
-      where: { projectId },
+      where: { projectId, versionId: IsNull() },
       relations: ['predecessor', 'successor'],
     });
   }
@@ -981,7 +981,7 @@ export class PlanningService {
   async getProjectSchedule(projectId: number) {
     const [activities, relationships] = await Promise.all([
       this.activityRepo.find({
-        where: { projectId },
+        where: { projectId, originVersionId: IsNull() },
         relations: ['wbsNode'],
       }),
       this.getProjectRelationships(projectId),

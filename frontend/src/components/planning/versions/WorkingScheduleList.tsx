@@ -432,7 +432,15 @@ const WorkingScheduleList: React.FC = () => {
               </div>
             </div>
           </div>
-          <button className="px-4 py-2 text-text-disabled hover:text-primary font-medium text-sm flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                `/dashboard/projects/${projectId}/planning?view=gantt_version&master=1`,
+              )
+            }
+            className="px-4 py-2 text-text-disabled hover:text-primary font-medium text-sm flex items-center gap-1"
+          >
             View Details <ArrowRight size={16} />
           </button>
         </div>

@@ -11,7 +11,9 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Pencil,
   Settings,
+  Trash2,
 } from "lucide-react";
 // @ts-ignore
 import * as ReactWindowPkg from "react-window";
@@ -101,7 +103,10 @@ interface ScheduleTableProps {
     suggestedCode?: string;
     startDate?: string | null;
     finishDate?: string | null;
+    predecessorActivityId?: number;
   }) => void;
+  onRequestEditActivity?: (activity: any) => void;
+  onRequestDeleteActivity?: (activity: any) => void;
 }
 
 interface TreeRow {
@@ -156,6 +161,8 @@ interface RowProps {
   fontSize: string;
   enableManualInsert?: boolean;
   onRequestAddActivity?: ScheduleTableProps["onRequestAddActivity"];
+  onRequestEditActivity?: ScheduleTableProps["onRequestEditActivity"];
+  onRequestDeleteActivity?: ScheduleTableProps["onRequestDeleteActivity"];
 }
 
 // --- 3. HELPER COMPONENTS ---
@@ -511,6 +518,8 @@ const TableRow = (props: RowProps) => {
 
   return (
     <div
+      data-schedule-row="true"
+      data-schedule-row-id={row.id}
       style={rowStyle}
       className={clsx(
         "relative flex border-b border-border-default text-sm group isolate",
@@ -610,6 +619,8 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
   onUpdateActivity,
   enableManualInsert,
   onRequestAddActivity,
+  onRequestEditActivity,
+  onRequestDeleteActivity,
   ...props
 }) => {
   // DEBUG STATE
@@ -875,13 +886,13 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
           width: colWidths.name,
           sticky: "left" as const,
           render: ({ isWbs, rowData, isCritical }: CellProps) => (
-            <div className="flex items-center w-full truncate">
+            <div className="flex items-center gap-2 w-full min-w-0">
               {!isWbs && isCritical && (
                 <AlertTriangle className="w-3 h-3 text-error mr-2 flex-shrink-0" />
               )}
               <span
                 className={clsx(
-                  "truncate",
+                  "truncate min-w-0 flex-1",
                   isWbs
                     ? "text-text-primary font-bold pl-2"
                     : "text-text-secondary",
@@ -890,6 +901,36 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
               >
                 {isWbs ? rowData.wbsName : rowData.activityName}
               </span>
+              {!isWbs &&
+                enableManualInsert &&
+                rowData.isManualRevisionActivity &&
+                onRequestEditActivity &&
+                onRequestDeleteActivity && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      title="Edit added activity"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRequestEditActivity(rowData);
+                      }}
+                      className="rounded-md border border-blue-200 bg-blue-50 p-1 text-blue-700 hover:bg-blue-100"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete added activity"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRequestDeleteActivity(rowData);
+                      }}
+                      className="rounded-md border border-red-200 bg-red-50 p-1 text-red-600 hover:bg-red-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
             </div>
           ),
         },
@@ -1244,6 +1285,8 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
       fontSize: `${0.875 * zoom}rem`,
       enableManualInsert,
       onRequestAddActivity,
+      onRequestEditActivity,
+      onRequestDeleteActivity,
     }),
     [
       flattenedRows,
@@ -1261,11 +1304,22 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
       zoom,
       enableManualInsert,
       onRequestAddActivity,
+      onRequestEditActivity,
+      onRequestDeleteActivity,
     ],
   );
 
   return (
-    <div className="flex-1 h-full w-full overflow-hidden bg-surface-card flex flex-col min-h-0 relative">
+    <div
+      className="flex-1 h-full w-full overflow-hidden bg-surface-card flex flex-col min-h-0 relative"
+      onContextMenuCapture={(event) => {
+        if (!enableManualInsert || !onRequestAddActivity) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-schedule-row='true']")) {
+          event.preventDefault();
+        }
+      }}
+    >
       {/* Column Config */}
       <div className="absolute top-2 right-2 z-50">
         <button
@@ -1400,6 +1454,7 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
                   suggestedName: `${rowData.activityName} - New`,
                   startDate: rowData.startDatePlanned,
                   finishDate: rowData.finishDatePlanned,
+                  predecessorActivityId: rowData.id,
                 });
               }
               setContextMenu(null);
@@ -1408,6 +1463,32 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({
           >
             Add Activity Here
           </button>
+          {!contextMenu.isWbs &&
+            contextMenu.rowData?.isManualRevisionActivity &&
+            onRequestEditActivity && (
+              <button
+                onClick={() => {
+                  onRequestEditActivity(contextMenu.rowData);
+                  setContextMenu(null);
+                }}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-surface-base"
+              >
+                Edit Added Activity
+              </button>
+            )}
+          {!contextMenu.isWbs &&
+            contextMenu.rowData?.isManualRevisionActivity &&
+            onRequestDeleteActivity && (
+              <button
+                onClick={() => {
+                  onRequestDeleteActivity(contextMenu.rowData);
+                  setContextMenu(null);
+                }}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                Delete Added Activity
+              </button>
+            )}
         </div>
       )}
     </div>

@@ -176,7 +176,7 @@ export class WbsService {
     wbsNodeId: number,
   ): Promise<Activity[]> {
     return this.activityRepo.find({
-      where: { wbsNode: { id: wbsNodeId }, projectId },
+      where: { wbsNode: { id: wbsNodeId }, projectId, originVersionId: IsNull() },
       order: { createdOn: 'ASC' },
       relations: ['masterActivity', 'wbsNode'],
     });
@@ -185,7 +185,7 @@ export class WbsService {
   async getAllActivities(projectId: number): Promise<Activity[]> {
     try {
       return await this.activityRepo.find({
-        where: { projectId },
+        where: { projectId, originVersionId: IsNull() },
         order: { id: 'ASC' },
         relations: ['wbsNode', 'masterActivity'],
       });
