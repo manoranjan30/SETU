@@ -121,8 +121,11 @@ export class Activity {
   @OneToOne(() => ActivitySchedule, (schedule) => schedule.activity)
   schedule: ActivitySchedule;
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   masterActivityId: number;
+
+  @Column({ type: 'int', nullable: true })
+  originVersionId: number | null;
 
   @ManyToOne(() => Activity, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'masterActivityId' })

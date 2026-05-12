@@ -15,6 +15,7 @@ interface Props {
   onSelectActivity: (id: number | null) => void;
   selectedActivityId: number | null;
   projectId: number;
+  suggestedActivityIds?: number[];
 }
 
 interface TreeNode {
@@ -33,12 +34,17 @@ const ScheduleTreePanel: React.FC<Props> = ({
   onSelectActivity,
   selectedActivityId,
   projectId,
+  suggestedActivityIds = [],
 }) => {
   const [wbsNodes, setWbsNodes] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [showOnlyLeaves, setShowOnlyLeaves] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const suggestionSet = useMemo(
+    () => new Set(suggestedActivityIds.map((id) => `ACT-${id}`)),
+    [suggestedActivityIds],
+  );
 
   useEffect(() => {
     if (projectId) {
@@ -176,6 +182,19 @@ const ScheduleTreePanel: React.FC<Props> = ({
     setExpanded(next);
   }, [normalizedSearch, visibleTree]);
 
+  useEffect(() => {
+    if (suggestionSet.size === 0) return;
+    const next = new Set(expanded);
+    const walk = (node: TreeNode, parents: string[]) => {
+      if (suggestionSet.has(node.id)) {
+        parents.forEach((parentId) => next.add(parentId));
+      }
+      node.children.forEach((child) => walk(child, [...parents, node.id]));
+    };
+    visibleTree.forEach((node) => walk(node, []));
+    setExpanded(next);
+  }, [suggestionSet, visibleTree]);
+
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -201,6 +220,7 @@ const ScheduleTreePanel: React.FC<Props> = ({
     const isOpen = expanded.has(node.id) || normalizedSearch.length > 0;
     const isSelected =
       node.type === "ACTIVITY" && selectedActivityId === node.activityId;
+    const isSuggested = suggestionSet.has(node.id);
 
     return (
       <div key={node.id}>
@@ -208,6 +228,8 @@ const ScheduleTreePanel: React.FC<Props> = ({
           className={`group flex items-center gap-2 rounded-xl border px-2 py-2 text-sm transition-all ${
             isSelected
               ? "border-primary/30 bg-primary-muted text-text-primary"
+              : isSuggested
+                ? "border-amber-200 bg-amber-50 text-slate-900"
               : "border-transparent text-text-secondary hover:border-border-default hover:bg-surface-raised"
           }`}
           style={{ paddingLeft: `${level * 14 + 8}px` }}
@@ -240,6 +262,11 @@ const ScheduleTreePanel: React.FC<Props> = ({
               <Calendar size={14} className="text-primary" />
             )}
             <span className="truncate font-medium">{node.label}</span>
+            {isSuggested && node.type === "ACTIVITY" && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                Suggested
+              </span>
+            )}
           </button>
 
           <button
@@ -299,6 +326,11 @@ const ScheduleTreePanel: React.FC<Props> = ({
             />
             Only leaf activities
           </label>
+          {suggestedActivityIds.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+              {suggestedActivityIds.length} likely matches highlighted
+            </span>
+          )}
           <span className="inline-flex items-center gap-1 text-text-disabled">
             <RotateCcw size={12} /> Hidden branches and focus state are remembered for this session.
           </span>

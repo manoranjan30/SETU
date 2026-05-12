@@ -797,6 +797,12 @@ export class PlanningController {
     return this.versionService.getVersionActivities(+versionId);
   }
 
+  @Get('versions/:versionId/relationships')
+  @Permissions('SCHEDULE.VERSION.READ')
+  getVersionRelationships(@Param('versionId', ParseIntPipe) versionId: number) {
+    return this.versionService.getVersionRelationships(versionId);
+  }
+
   @Delete(':projectId/versions/:versionId')
   @Permissions('SCHEDULE.VERSION.DELETE')
   deleteVersion(
@@ -844,9 +850,43 @@ export class PlanningController {
       duration?: number;
       remarks?: string;
       createdBy?: string;
+      predecessorActivityId?: number | null;
+      relationshipType?: string;
+      lagDays?: number | null;
     },
   ) {
     return this.versionService.addManualActivity(versionId, body);
+  }
+
+  @Put('versions/:versionId/activities/:activityId/manual')
+  @Permissions('SCHEDULE.VERSION.UPDATE')
+  updateManualVersionActivity(
+    @Param('versionId', ParseIntPipe) versionId: number,
+    @Param('activityId', ParseIntPipe) activityId: number,
+    @Body()
+    body: {
+      targetWbsNodeId: number;
+      activityCode?: string;
+      activityName: string;
+      startDate?: string | Date | null;
+      finishDate?: string | Date | null;
+      duration?: number;
+      remarks?: string;
+      predecessorActivityId?: number | null;
+      relationshipType?: string;
+      lagDays?: number | null;
+    },
+  ) {
+    return this.versionService.updateManualActivity(versionId, activityId, body);
+  }
+
+  @Delete('versions/:versionId/activities/:activityId/manual')
+  @Permissions('SCHEDULE.VERSION.UPDATE')
+  deleteManualVersionActivity(
+    @Param('versionId', ParseIntPipe) versionId: number,
+    @Param('activityId', ParseIntPipe) activityId: number,
+  ) {
+    return this.versionService.deleteManualActivity(versionId, activityId);
   }
 
   // ---------------------------------------------------------
@@ -880,8 +920,7 @@ export class PlanningController {
     const projectId = activities[0]?.activity?.projectId; // Get from first av
 
     if (projectId) {
-      relationships =
-        await this.planningService.getProjectRelationships(projectId);
+      relationships = await this.versionService.getVersionRelationships(+versionId);
     }
 
     const buffer = this.importService.generateRevisionTemplate(

@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, IsNull, In } from 'typeorm';
 import * as xml2js from 'xml2js';
 import {
   ScheduleVersion,
@@ -128,6 +128,73 @@ export class ScheduleVersionService {
     }
   }
 
+  async getVersionRelationships(versionId: number) {
+    const version = await this.versionRepo.findOne({ where: { id: versionId } });
+    if (!version) {
+      throw new NotFoundException('Working schedule version not found');
+    }
+    return this.relRepo.find({
+      where: [
+        { projectId: version.projectId, versionId: IsNull() },
+        { projectId: version.projectId, versionId },
+      ],
+      relations: ['predecessor', 'successor'],
+    });
+  }
+
+  private async syncVersionPredecessorLink(
+    versionId: number,
+    successorActivityId: number,
+    predecessorActivityId?: number | null,
+    relationshipType: string = 'FS',
+    lagDays?: number | null,
+  ) {
+    await this.relRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ActivityRelationship)
+      .where('versionId = :versionId', { versionId })
+      .andWhere('successor_activity_id = :successorActivityId', {
+        successorActivityId,
+      })
+      .execute();
+
+    if (!predecessorActivityId) {
+      return;
+    }
+
+    const predecessorExists = await this.activityVersionRepo.findOne({
+      where: { versionId, activityId: predecessorActivityId },
+    });
+    if (!predecessorExists) {
+      throw new BadRequestException(
+        'Selected predecessor is not available in this working schedule.',
+      );
+    }
+
+    const predecessor = await this.activityRepo.findOne({
+      where: { id: predecessorActivityId },
+    });
+    const successor = await this.activityRepo.findOne({
+      where: { id: successorActivityId },
+    });
+
+    if (!predecessor || !successor) {
+      throw new NotFoundException('Unable to resolve predecessor activity');
+    }
+
+    await this.relRepo.save(
+      this.relRepo.create({
+        projectId: predecessor.projectId,
+        versionId,
+        predecessor,
+        successor,
+        relationshipType: relationshipType as any,
+        lagDays: Number(lagDays || 0),
+      }),
+    );
+  }
+
   async getVersions(projectId: number) {
     return this.versionRepo.find({
       where: { projectId },
@@ -220,6 +287,28 @@ export class ScheduleVersionService {
         });
 
         await queryRunner.manager.save(ActivityVersion, versions);
+
+        const sourceRelationships = await queryRunner.manager.find(
+          ActivityRelationship,
+          {
+            where: { projectId, versionId: sourceVersionId },
+            relations: ['predecessor', 'successor'],
+          },
+        );
+
+        if (sourceRelationships.length > 0) {
+          const clonedRelationships = sourceRelationships.map((rel) =>
+            queryRunner.manager.create(ActivityRelationship, {
+              projectId,
+              versionId: savedVersion.id,
+              predecessor: rel.predecessor,
+              successor: rel.successor,
+              relationshipType: rel.relationshipType,
+              lagDays: rel.lagDays,
+            }),
+          );
+          await queryRunner.manager.save(ActivityRelationship, clonedRelationships);
+        }
       }
 
       await queryRunner.commitTransaction();
@@ -315,6 +404,9 @@ export class ScheduleVersionService {
       duration?: number;
       remarks?: string;
       createdBy?: string;
+      predecessorActivityId?: number | null;
+      relationshipType?: string;
+      lagDays?: number | null;
     },
   ) {
     const version = await this.versionRepo.findOne({ where: { id: versionId } });
@@ -380,6 +472,7 @@ export class ScheduleVersionService {
         percentComplete: 0,
         budgetedValue: 0,
         actualValue: 0,
+        originVersionId: versionId,
       });
       const savedActivity = await queryRunner.manager.save(Activity, activity);
       savedActivityId = savedActivity.id;
@@ -395,6 +488,26 @@ export class ScheduleVersionService {
           `Manual insertion in ${version.versionCode}`,
       });
       await queryRunner.manager.save(ActivityVersion, versionRow);
+
+      if (payload.predecessorActivityId) {
+        const predecessor = await queryRunner.manager.findOne(Activity, {
+          where: { id: payload.predecessorActivityId },
+        });
+        if (!predecessor) {
+          throw new NotFoundException('Selected predecessor activity not found');
+        }
+        await queryRunner.manager.save(
+          ActivityRelationship,
+          queryRunner.manager.create(ActivityRelationship, {
+            projectId: version.projectId,
+            versionId,
+            predecessor,
+            successor: savedActivity,
+            relationshipType: (payload.relationshipType || 'FS') as any,
+            lagDays: Number(payload.lagDays || 0),
+          }),
+        );
+      }
 
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -439,6 +552,210 @@ export class ScheduleVersionService {
     });
   }
 
+  async updateManualActivity(
+    versionId: number,
+    activityId: number,
+    payload: {
+      targetWbsNodeId: number;
+      activityCode?: string;
+      activityName: string;
+      startDate?: string | Date | null;
+      finishDate?: string | Date | null;
+      duration?: number;
+      remarks?: string;
+      predecessorActivityId?: number | null;
+      relationshipType?: string;
+      lagDays?: number | null;
+    },
+  ) {
+    const version = await this.versionRepo.findOne({ where: { id: versionId } });
+    if (!version) throw new NotFoundException('Working schedule version not found');
+
+    const activityVersion = await this.activityVersionRepo.findOne({
+      where: { versionId, activityId },
+      relations: ['activity', 'activity.wbsNode'],
+    });
+    if (!activityVersion?.activity) {
+      throw new NotFoundException('Manual activity not found in this version');
+    }
+    if (!activityVersion.activity.originVersionId) {
+      throw new BadRequestException(
+        'Only manually added working schedule activities can be edited here.',
+      );
+    }
+
+    const targetWbs = await this.wbsRepo.findOne({
+      where: { id: payload.targetWbsNodeId, projectId: version.projectId },
+    });
+    if (!targetWbs) {
+      throw new NotFoundException('Target WBS node not found in this project');
+    }
+
+    const originalFinish = await this.getVersionFinish(versionId);
+    const previousActivityState = {
+      activityCode: activityVersion.activity.activityCode,
+      activityName: activityVersion.activity.activityName,
+      wbsNodeId: activityVersion.activity.wbsNode?.id,
+      startDate: activityVersion.startDate,
+      finishDate: activityVersion.finishDate,
+      duration: activityVersion.duration,
+      remarks: activityVersion.remarks,
+    };
+    const previousPredecessors = await this.relRepo.find({
+      where: { versionId, successor: { id: activityId } as Activity },
+      relations: ['predecessor', 'successor'],
+    });
+
+    const startDate = this.parseDateInput(payload.startDate);
+    const finishDate = this.parseDateInput(payload.finishDate);
+    if (!startDate || !finishDate) {
+      throw new BadRequestException(
+        'Manual activity requires planned start and finish dates.',
+      );
+    }
+    if (finishDate.getTime() < startDate.getTime()) {
+      throw new BadRequestException(
+        'Finish date cannot be earlier than start date.',
+      );
+    }
+
+    activityVersion.activity.wbsNode = targetWbs;
+    activityVersion.activity.activityCode = (payload.activityCode || '').trim()
+      ? payload.activityCode!.trim()
+      : activityVersion.activity.activityCode;
+    activityVersion.activity.activityName = payload.activityName.trim();
+    activityVersion.activity.durationPlanned = Number(payload.duration || activityVersion.duration || 1);
+    activityVersion.activity.startDatePlanned = startDate;
+    activityVersion.activity.finishDatePlanned = finishDate;
+    activityVersion.activity.startDateMSP = startDate;
+    activityVersion.activity.finishDateMSP = finishDate;
+
+    activityVersion.startDate = startDate;
+    activityVersion.finishDate = finishDate;
+    activityVersion.duration = Number(payload.duration || activityVersion.duration || 1);
+    activityVersion.remarks =
+      payload.remarks?.trim() || activityVersion.remarks || '';
+
+    await this.activityRepo.save(activityVersion.activity);
+    await this.activityVersionRepo.save(activityVersion);
+    await this.syncVersionPredecessorLink(
+      versionId,
+      activityId,
+      payload.predecessorActivityId,
+      payload.relationshipType,
+      payload.lagDays,
+    );
+
+    await this.recalculateSchedule(versionId);
+    const newFinish = await this.getVersionFinish(versionId);
+
+    if (
+      originalFinish &&
+      newFinish &&
+      newFinish.getTime() > originalFinish.getTime()
+    ) {
+      activityVersion.activity.activityCode = previousActivityState.activityCode;
+      activityVersion.activity.activityName = previousActivityState.activityName;
+      if (previousActivityState.wbsNodeId) {
+        const previousWbs = await this.wbsRepo.findOne({
+          where: { id: previousActivityState.wbsNodeId },
+        });
+        if (previousWbs) {
+          activityVersion.activity.wbsNode = previousWbs;
+        }
+      }
+      activityVersion.activity.startDatePlanned = previousActivityState.startDate;
+      activityVersion.activity.finishDatePlanned = previousActivityState.finishDate;
+      activityVersion.activity.startDateMSP = previousActivityState.startDate;
+      activityVersion.activity.finishDateMSP = previousActivityState.finishDate;
+      activityVersion.activity.durationPlanned = Number(previousActivityState.duration || 0);
+      activityVersion.startDate = previousActivityState.startDate;
+      activityVersion.finishDate = previousActivityState.finishDate;
+      activityVersion.duration = Number(previousActivityState.duration || 0);
+      activityVersion.remarks = previousActivityState.remarks || '';
+
+      await this.activityRepo.save(activityVersion.activity);
+      await this.activityVersionRepo.save(activityVersion);
+      await this.relRepo
+        .createQueryBuilder()
+        .delete()
+        .from(ActivityRelationship)
+        .where('versionId = :versionId', { versionId })
+        .andWhere('successor_activity_id = :activityId', { activityId })
+        .execute();
+      if (previousPredecessors.length > 0) {
+        await this.relRepo.save(
+          previousPredecessors.map((rel) =>
+            this.relRepo.create({
+              projectId: rel.projectId,
+              versionId: rel.versionId,
+              predecessor: rel.predecessor,
+              successor: rel.successor,
+              relationshipType: rel.relationshipType,
+              lagDays: rel.lagDays,
+            }),
+          ),
+        );
+      }
+      await this.recalculateSchedule(versionId);
+
+      throw new BadRequestException(
+        `This activity cannot be updated because it would push the project finish from ${originalFinish.toISOString().split('T')[0]} to ${newFinish.toISOString().split('T')[0]}. Kindly revise the schedule and import the updated XML instead.`,
+      );
+    }
+
+    return this.activityVersionRepo.findOne({
+      where: { versionId, activityId },
+      relations: ['activity', 'activity.wbsNode'],
+    });
+  }
+
+  async deleteManualActivity(versionId: number, activityId: number) {
+    const activityVersion = await this.activityVersionRepo.findOne({
+      where: { versionId, activityId },
+      relations: ['activity'],
+    });
+    if (!activityVersion?.activity) {
+      throw new NotFoundException('Manual activity not found in this version');
+    }
+    if (!activityVersion.activity.originVersionId) {
+      throw new BadRequestException(
+        'Only manually added working schedule activities can be deleted here.',
+      );
+    }
+
+    await this.relRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ActivityRelationship)
+      .where('versionId = :versionId', { versionId })
+      .andWhere(
+        '(successor_activity_id = :activityId OR predecessor_activity_id = :activityId)',
+        { activityId },
+      )
+      .execute();
+    await this.activityVersionRepo.delete({ versionId, activityId });
+
+    const remainingVersions = await this.activityVersionRepo.count({
+      where: { activityId },
+    });
+    if (remainingVersions === 0) {
+      await this.relRepo
+        .createQueryBuilder()
+        .delete()
+        .from(ActivityRelationship)
+        .where(
+          'successor_activity_id = :activityId OR predecessor_activity_id = :activityId',
+          { activityId },
+        )
+        .execute();
+      await this.activityRepo.delete({ id: activityId });
+    }
+
+    await this.recalculateSchedule(versionId);
+    return { success: true };
+  }
+
   async deleteVersion(projectId: number, versionId: number) {
     // 1. Check Constraint: Cannot delete if a newer version depends on this (parentVersionId = versionId)
     const childVersion = await this.versionRepo.findOne({
@@ -474,10 +791,7 @@ export class ScheduleVersionService {
     if (!projectId)
       throw new NotFoundException('Project not found for version');
 
-    const relationships = await this.relRepo.find({
-      where: { projectId },
-      relations: ['predecessor', 'successor'],
-    });
+    const relationships = await this.getVersionRelationships(versionId);
 
     // 3. Run Engine
     // Use earliest start date from activities as project start? Or Project Start Date?
@@ -700,10 +1014,7 @@ export class ScheduleVersionService {
       relations: ['activity', 'activity.wbsNode'],
       order: { id: 'ASC' },
     });
-    const relationships = await this.relRepo.find({
-      where: { projectId: version.projectId },
-      relations: ['predecessor', 'successor'],
-    });
+    const relationships = await this.getVersionRelationships(versionId);
 
     const outlineByWbsId = this.buildWbsOutlineNumbers(wbsNodes);
     const predecessorLinksBySuccessor = new Map<number, any[]>();

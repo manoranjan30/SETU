@@ -141,12 +141,15 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
   const visibleMenuItems = menuItems.filter(
     (item: any) => !item.permission || hasPermission(item.permission),
   );
+  const isRecognizedView =
+    currentView === "gantt_version" ||
+    visibleMenuItems.some((item) => item.key === currentView);
 
   useEffect(() => {
-    if (!visibleMenuItems.some((item) => item.key === currentView) && visibleMenuItems[0]) {
+    if (!isRecognizedView && visibleMenuItems[0]) {
       onViewChange(visibleMenuItems[0].key);
     }
-  }, [currentView, onViewChange, visibleMenuItems]);
+  }, [currentView, isRecognizedView, onViewChange, visibleMenuItems]);
 
   return (
     <div className="ui-shell flex min-h-full overflow-hidden ui-animate-page">
@@ -163,10 +166,13 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
             {visibleMenuItems.map((item) => (
               <li key={item.key}>
                 <button
+                  type="button"
                   onClick={() => onViewChange(item.key)}
                   className={clsx(
                     "w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-xl transition-colors border",
-                    currentView === item.key
+                    currentView === item.key ||
+                      (item.key === "schedules" &&
+                        currentView === "gantt_version")
                       ? "bg-primary-muted text-primary border-primary/30"
                       : "text-text-secondary border-transparent hover:bg-surface-raised hover:text-text-primary hover:border-border-default",
                   )}

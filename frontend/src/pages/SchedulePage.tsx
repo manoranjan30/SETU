@@ -8,18 +8,23 @@ import ScheduleImportWizard from "../components/schedule/ScheduleImportWizard";
 interface ManualActivityDraft {
   targetWbsNodeId: number;
   selectedActivityId?: number;
+  editingActivityId?: number;
   activityCode: string;
   activityName: string;
   startDate: string;
   finishDate: string;
   duration: number;
   remarks: string;
+  predecessorActivityId?: number | null;
+  relationshipType: "FS" | "SS" | "FF" | "SF";
+  lagDays: number;
 }
 
 const SchedulePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const versionId = searchParams.get("versionId");
+  const masterWorkingView = searchParams.get("master") === "1";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +38,9 @@ const SchedulePage: React.FC = () => {
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [activityDraft, setActivityDraft] = useState<ManualActivityDraft | null>(
     null,
+  );
+  const [activityModalMode, setActivityModalMode] = useState<"add" | "edit">(
+    "add",
   );
 
   const [projectCode, setProjectCode] = useState<string>("");
@@ -57,8 +65,11 @@ const SchedulePage: React.FC = () => {
             `/planning/versions/${versionId}/activities?projectId=${projectId}`,
           ),
         );
-        // Fetch Relationships (from Master for now)
-        promises.push(api.get(`/planning/${projectId}/relationships`));
+        promises.push(
+          api.get(
+            `/planning/versions/${versionId}/relationships?projectId=${projectId}`,
+          ),
+        );
       } else {
         // Fetch Master Data
         promises.unshift(api.get(`/projects/${projectId}/schedule`));
@@ -95,6 +106,7 @@ const SchedulePage: React.FC = () => {
           startDatePlanned: av.startDate,
           finishDatePlanned: av.finishDate,
           durationPlanned: av.duration,
+          isManualRevisionActivity: Boolean(av.activity?.originVersionId),
         }));
 
         setScheduleData({
@@ -119,6 +131,7 @@ const SchedulePage: React.FC = () => {
     suggestedCode?: string;
     startDate?: string | null;
     finishDate?: string | null;
+    predecessorActivityId?: number;
   }) => {
     if (!versionId) {
       alert(
@@ -144,12 +157,59 @@ const SchedulePage: React.FC = () => {
       finishDate,
       duration: 1,
       remarks: "Manual activity inserted from working schedule",
+      predecessorActivityId: context.predecessorActivityId || null,
+      relationshipType: "FS",
+      lagDays: 0,
     });
+    setActivityModalMode("add");
     setShowAddActivityModal(true);
   };
 
+  const openEditManualActivityModal = (activity: any) => {
+    if (!versionId) return;
+    const predecessorLink = scheduleData?.relationships.find(
+      (relationship) =>
+        relationship.versionId === Number(versionId) &&
+        relationship.successor?.id === activity.id,
+    );
+    setActivityDraft({
+      editingActivityId: activity.id,
+      targetWbsNodeId: activity.wbsNode?.id,
+      selectedActivityId: activity.id,
+      activityCode: activity.activityCode || "",
+      activityName: activity.activityName || "",
+      startDate: activity.startDatePlanned?.split?.("T")[0] || "",
+      finishDate: activity.finishDatePlanned?.split?.("T")[0] || "",
+      duration: Number(activity.durationPlanned || 1),
+      remarks: activity.remarks || "",
+      predecessorActivityId: predecessorLink?.predecessor?.id || null,
+      relationshipType: predecessorLink?.relationshipType || "FS",
+      lagDays: Number(predecessorLink?.lagDays || 0),
+    });
+    setActivityModalMode("edit");
+    setShowAddActivityModal(true);
+  };
+
+  const deleteManualActivity = async (activity: any) => {
+    if (!versionId || !projectId) return;
+    if (!confirm(`Delete manual activity "${activity.activityName}"?`)) return;
+    try {
+      setLoading(true);
+      await api.delete(
+        `/planning/versions/${versionId}/activities/${activity.id}/manual?projectId=${projectId}`,
+      );
+      setLastRefresh(new Date());
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        "Failed to delete activity from the working schedule.";
+      alert(Array.isArray(message) ? message.join("\n") : String(message));
+      setLoading(false);
+    }
+  };
+
   const submitManualActivity = async () => {
-    if (!versionId || !activityDraft) return;
+    if (!versionId || !activityDraft || !projectId) return;
     if (!activityDraft.activityName.trim()) {
       alert("Please enter an activity name.");
       return;
@@ -157,7 +217,21 @@ const SchedulePage: React.FC = () => {
 
     try {
       setLoading(true);
-      await api.post(`/planning/versions/${versionId}/activities`, activityDraft);
+      const payload = {
+        ...activityDraft,
+        projectId: Number(projectId),
+      };
+      if (activityModalMode === "edit" && activityDraft.editingActivityId) {
+        await api.put(
+          `/planning/versions/${versionId}/activities/${activityDraft.editingActivityId}/manual?projectId=${projectId}`,
+          payload,
+        );
+      } else {
+        await api.post(
+          `/planning/versions/${versionId}/activities?projectId=${projectId}`,
+          payload,
+        );
+      }
       setShowAddActivityModal(false);
       setActivityDraft(null);
       setLastRefresh(new Date());
@@ -258,12 +332,18 @@ const SchedulePage: React.FC = () => {
       <div className="px-6 py-4 border-b border-border-default bg-surface-card flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-gray-800">
-            {versionId ? "Working Schedule Version" : "Master Project Schedule"}
+            {versionId
+              ? "Working Schedule Version"
+              : masterWorkingView
+                ? "Working Schedule (Master Source)"
+                : "Master Project Schedule"}
           </h1>
           <p className="text-sm text-text-muted">
             {versionId
               ? "Editing Baseline / revised dates"
-              : "CPM Engine & Imports"}
+              : masterWorkingView
+                ? "Viewing the master schedule through the Working Schedules menu"
+                : "CPM Engine & Imports"}
           </p>
         </div>
         <div className="flex gap-2 items-center">
@@ -425,6 +505,8 @@ const SchedulePage: React.FC = () => {
               onUpdateActivity={handleUpdateActivity}
               enableManualInsert={Boolean(versionId)}
               onRequestAddActivity={openManualActivityModal}
+              onRequestEditActivity={openEditManualActivityModal}
+              onRequestDeleteActivity={deleteManualActivity}
             />
           </div>
         )}
@@ -445,7 +527,9 @@ const SchedulePage: React.FC = () => {
           <div className="w-full max-w-2xl rounded-2xl border border-border-default bg-surface-card p-6 shadow-2xl">
             <div className="mb-5">
               <h3 className="text-xl font-bold text-slate-900">
-                Add Activity to Working Schedule
+                {activityModalMode === "edit"
+                  ? "Edit Added Activity"
+                  : "Add Activity to Working Schedule"}
               </h3>
               <p className="mt-1 text-sm text-text-muted">
                 This will be allowed only if the revision finish date stays unchanged. If it extends the completion date, the request will be rejected with the reason.
@@ -547,6 +631,76 @@ const SchedulePage: React.FC = () => {
                   className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
                 />
               </label>
+              <label className="text-sm font-medium text-slate-700">
+                Predecessor
+                <select
+                  value={activityDraft.predecessorActivityId || ""}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            predecessorActivityId: e.target.value
+                              ? Number(e.target.value)
+                              : null,
+                          }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                >
+                  <option value="">No predecessor</option>
+                  {(scheduleData?.activities || [])
+                    .filter((activity) => activity.id !== activityDraft.editingActivityId)
+                    .map((activity) => (
+                      <option key={activity.id} value={activity.id}>
+                        {activity.wbsNode?.wbsCode || "WBS"} / {activity.activityCode} -{" "}
+                        {activity.activityName}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Relationship Type
+                <select
+                  value={activityDraft.relationshipType}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            relationshipType: e.target.value as
+                              | "FS"
+                              | "SS"
+                              | "FF"
+                              | "SF",
+                          }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                >
+                  <option value="FS">Finish to Start</option>
+                  <option value="SS">Start to Start</option>
+                  <option value="FF">Finish to Finish</option>
+                  <option value="SF">Start to Finish</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Lag (days)
+                <input
+                  type="number"
+                  value={activityDraft.lagDays}
+                  onChange={(e) =>
+                    setActivityDraft((prev) =>
+                      prev
+                        ? { ...prev, lagDays: Number(e.target.value || 0) }
+                        : prev,
+                    )
+                  }
+                  className="mt-1 w-full rounded-lg border border-border-default px-3 py-2"
+                />
+              </label>
               <label className="md:col-span-2 text-sm font-medium text-slate-700">
                 Remarks
                 <textarea
@@ -576,7 +730,7 @@ const SchedulePage: React.FC = () => {
                 onClick={submitManualActivity}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark"
               >
-                Save Activity
+                {activityModalMode === "edit" ? "Save Changes" : "Save Activity"}
               </button>
             </div>
           </div>
