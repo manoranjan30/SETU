@@ -995,6 +995,11 @@ export class PlanningService {
     workOrderItemId: number,
     activityId: number,
     quantity: number,
+    options?: {
+      mappingType?: MappingType;
+      mappingRules?: Record<string, unknown>;
+      createdBy?: string;
+    },
   ) {
     const activity = await this.activityRepo.findOne({
       where: { id: activityId },
@@ -1074,6 +1079,14 @@ export class PlanningService {
       if (existing) {
         existing.plannedQuantity = plannedQuantity;
         existing.executionEpsNodeId = executionEpsNodeId;
+        existing.mappingType = options?.mappingType || existing.mappingType;
+        existing.mappingRules = {
+          ...(existing.mappingRules || {}),
+          ...(options?.mappingRules || {}),
+        };
+        if (!existing.createdBy && options?.createdBy) {
+          existing.createdBy = options.createdBy;
+        }
         savedPlans.push(await this.planRepo.save(existing));
         continue;
       }
@@ -1090,7 +1103,9 @@ export class PlanningService {
         executionEpsNodeId,
         plannedQuantity,
         planningBasis: PlanningBasis.INITIAL,
-        mappingType: MappingType.DIRECT,
+        mappingType: options?.mappingType || MappingType.DIRECT,
+        mappingRules: options?.mappingRules || null,
+        createdBy: options?.createdBy || 'system',
       });
 
       savedPlans.push(await this.planRepo.save(plan));
@@ -1098,6 +1113,28 @@ export class PlanningService {
 
     await this.updateActivityFinancials(activityId);
     return savedPlans;
+  }
+
+  async getWoMapperMappings(projectId: number) {
+    const plans = await this.planRepo.find({
+      where: { projectId },
+      relations: ['activity'],
+      order: { updatedOn: 'DESC' },
+    });
+
+    return plans.map((plan) => ({
+      id: plan.id,
+      workOrderItemId: plan.workOrderItemId,
+      activityId: plan.activityId,
+      activityCode: plan.activity?.activityCode || '',
+      activityName: plan.activity?.activityName || '',
+      plannedQuantity: Number(plan.plannedQuantity || 0),
+      mappingType: plan.mappingType,
+      mappingRules: plan.mappingRules || null,
+      createdBy: plan.createdBy || null,
+      createdOn: plan.createdOn,
+      updatedOn: plan.updatedOn,
+    }));
   }
 
   async unlinkWoItem(workOrderItemId: number): Promise<void> {

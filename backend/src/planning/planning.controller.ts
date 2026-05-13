@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { PlanningService } from './planning.service';
 import { PlanningBasis } from './entities/boq-activity-plan.entity';
+import { MappingType } from './entities/wo-activity-plan.entity';
 import { ScheduleVersionService } from './schedule-version.service';
 import { ImportExportService } from './import-export.service';
 import { LookAheadDto } from './dto/look-ahead.dto';
@@ -542,11 +543,22 @@ export class PlanningController {
     @Body('workOrderItemId') workOrderItemId: number,
     @Body('activityId') activityId: number,
     @Body('quantity') quantity: number,
+    @Body('mappingType') mappingType?: MappingType,
+    @Body('mappingRules') mappingRules?: Record<string, unknown>,
+    @Request() req?,
   ) {
     return this.planningService.distributeWoItemToActivity(
       workOrderItemId,
       activityId,
       quantity,
+      {
+        mappingType,
+        mappingRules,
+        createdBy:
+          req?.user?.username ||
+          req?.user?.email ||
+          String(req?.user?.id || 'system'),
+      },
     );
   }
 
@@ -701,6 +713,14 @@ export class PlanningController {
       'Content-Length': buffer.length,
     });
     res.end(buffer);
+  }
+
+  @Get(':projectId/wo-mapper/mappings')
+  @Permissions('PLANNING.MATRIX.READ')
+  async getWoMapperMappings(
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.planningService.getWoMapperMappings(projectId);
   }
 
   @Post(':projectId/wo-mapper/import/preview')
