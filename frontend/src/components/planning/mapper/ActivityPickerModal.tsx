@@ -2,6 +2,7 @@ import React from "react";
 import { X, Check, Maximize2, Minimize2 } from "lucide-react";
 import api from "../../../api/axios";
 import ScheduleTreePanel from "./ScheduleTreePanel";
+import { computeActivitySuggestions } from "./mapperMatching";
 
 interface Props {
   isOpen: boolean;
@@ -20,90 +21,6 @@ interface Props {
   }>;
 }
 
-const normalizeMapperText = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
-
-const splitHierarchySegments = (value: string) =>
-  value
-    .split(">")
-    .map((segment) => segment.trim().toLowerCase())
-    .filter(Boolean);
-
-const extractLocationPhrases = (value: string) => {
-  const text = value.toLowerCase();
-  const matches = new Set<string>();
-  const patterns = [
-    /\bblock[\s-]*[a-z0-9]+\b/g,
-    /\btower[\s-]*[a-z0-9]+\b/g,
-    /\bwing[\s-]*[a-z0-9]+\b/g,
-    /\bfloor[\s-]*[a-z0-9]+\b/g,
-    /\b\d+(st|nd|rd|th)\s+floor\b/g,
-    /\bground floor\b/g,
-    /\bgf\b/g,
-    /\bff\b/g,
-    /\bsf\b/g,
-    /\btf\b/g,
-    /\bbasement[\s-]*\d*\b/g,
-    /\bstilt\b/g,
-    /\bpodium\b/g,
-  ];
-
-  patterns.forEach((pattern) => {
-    const found = text.match(pattern) || [];
-    found.forEach((match) => matches.add(match.trim()));
-  });
-
-  return Array.from(matches);
-};
-
-const buildMapperContext = (parts: Array<string | undefined>) => {
-  const fullText = parts.filter(Boolean).join(" > ");
-  return {
-    tokens: Array.from(new Set(normalizeMapperText(fullText))),
-    segments: Array.from(new Set(splitHierarchySegments(fullText))),
-    locationPhrases: Array.from(new Set(extractLocationPhrases(fullText))),
-  };
-};
-
-const scoreMapperContexts = (
-  source: ReturnType<typeof buildMapperContext>,
-  target: ReturnType<typeof buildMapperContext>,
-) => {
-  const tokenMatches = source.tokens.filter((token) =>
-    target.tokens.includes(token),
-  );
-  const segmentMatches = source.segments.filter((segment) =>
-    target.segments.some(
-      (targetSegment) =>
-        targetSegment.includes(segment) || segment.includes(targetSegment),
-    ),
-  );
-  const locationMatches = source.locationPhrases.filter((phrase) =>
-    target.locationPhrases.some(
-      (targetPhrase) =>
-        targetPhrase.includes(phrase) || phrase.includes(targetPhrase),
-    ),
-  );
-
-  let score =
-    tokenMatches.length +
-    segmentMatches.length * 4 +
-    locationMatches.length * 8;
-
-  if (source.locationPhrases.length > 0 && locationMatches.length === 0) {
-    score -= 6;
-  }
-
-  return {
-    score,
-    locationMatches,
-  };
-};
-
 const ActivityPickerModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -117,6 +34,8 @@ const ActivityPickerModal: React.FC<Props> = ({
   >(null);
   const [wbsNodes, setWbsNodes] = React.useState<any[]>([]);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isSuggesting, setIsSuggesting] = React.useState(false);
+  const [suggestions, setSuggestions] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     if (!isOpen || !projectId) return;
@@ -154,44 +73,41 @@ const ActivityPickerModal: React.FC<Props> = ({
     return { get: buildPath };
   }, [wbsNodes]);
 
-  const suggestions = React.useMemo(() => {
-    const sourceContext = buildMapperContext(
-      selectedWoItems.flatMap((item) => [
-        item.materialCode,
-        item.description,
-        item.linkedActivities,
-        item.treeContext,
-        item.boqPath,
-        item.fullContext,
-      ]),
-    );
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!isOpen || selectedWoItems.length === 0 || activities.length === 0) {
+      setSuggestions([]);
+      setIsSuggesting(false);
+      return;
+    }
 
-    if (sourceContext.tokens.length === 0) return [];
+    setIsSuggesting(true);
+    const timer = window.setTimeout(() => {
+      const nextSuggestions = computeActivitySuggestions({
+        activities,
+        sourceParts: selectedWoItems.flatMap((item) => [
+          item.materialCode,
+          item.description,
+          item.linkedActivities,
+          item.treeContext,
+          item.boqPath,
+          item.fullContext,
+        ]),
+        getTreePath: wbsPathById.get,
+        limit: 8,
+      });
 
-    return activities
-      .map((activity) => {
-        const treePath = wbsPathById.get(
-          activity.wbsNode?.id || activity.wbsNodeId,
-        );
-        const targetContext = buildMapperContext([
-          activity.activityCode,
-          activity.activityName,
-          activity.wbsNode?.wbsCode,
-          activity.wbsNode?.wbsName,
-          treePath,
-        ]);
-        const scored = scoreMapperContexts(sourceContext, targetContext);
-        return {
-          activity,
-          score: scored.score,
-          treePath,
-          locationMatches: scored.locationMatches,
-        };
-      })
-      .filter((entry) => entry.score > 0)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, 8);
-  }, [activities, selectedWoItems, wbsPathById]);
+      if (!cancelled) {
+        setSuggestions(nextSuggestions);
+        setIsSuggesting(false);
+      }
+    }, selectedWoItems.length > 80 ? 50 : 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activities, isOpen, selectedWoItems, wbsPathById]);
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -253,6 +169,12 @@ const ActivityPickerModal: React.FC<Props> = ({
               Suggestions are scored from BOQ path plus activity tree path, with
               extra weight for block, tower, and floor matches.
             </p>
+            {isSuggesting && (
+              <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+                Analysing {selectedWoItems.length} selected WO row(s) against{" "}
+                {activities.length} schedule activities...
+              </div>
+            )}
 
             <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
               {selectedWoItems.length > 0 && (
@@ -289,14 +211,18 @@ const ActivityPickerModal: React.FC<Props> = ({
                 <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
                   Suggested Activities
                 </div>
-                {suggestions.length === 0 ? (
+                {isSuggesting ? (
+                  <div className="text-xs text-text-muted">
+                    Building smart suggestions using the full BOQ hierarchy, full schedule tree, and location phrases.
+                  </div>
+                ) : suggestions.length === 0 ? (
                   <div className="text-xs text-text-muted">
                     No strong matches found yet. Use the tree search on the right.
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {suggestions.map(
-                      ({ activity, score, treePath, locationMatches }) => (
+                      ({ activity, score, treePath, locationMatches, confidence, branchPath }) => (
                         <button
                           key={activity.id}
                           type="button"
@@ -311,13 +237,21 @@ const ActivityPickerModal: React.FC<Props> = ({
                             {activity.activityCode} {activity.activityName}
                           </div>
                           <div className="mt-1 text-text-muted">{treePath}</div>
+                          <div className="mt-1 text-[10px] text-text-disabled">
+                            Branch: {branchPath}
+                          </div>
                           {locationMatches.length > 0 && (
                             <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-green-700">
                               {locationMatches.join(", ")}
                             </div>
                           )}
-                          <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                            Match score {score}
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                              Match score {score}
+                            </div>
+                            <div className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-slate-700">
+                              {confidence}
+                            </div>
                           </div>
                         </button>
                       ),

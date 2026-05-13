@@ -28,11 +28,17 @@ import BoqGridPanel from "./BoqGridPanel";
 import ActivityPickerModal from "./ActivityPickerModal";
 import WoBulkMappingImportWizard from "./WoBulkMappingImportWizard";
 import {
+  computeActivitySuggestions,
+  extractLocationPhrases,
+} from "./mapperMatching";
+import type {
+  ActivitySuggestion,
+  ConfidenceLevel,
+} from "./mapperMatching";
+import {
   downloadBlob,
   withFileExtension,
 } from "../../../utils/file-download.utils";
-
-type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";
 type ReviewStatus =
   | "APPROVED"
   | "NEEDS_REVIEW"
@@ -50,20 +56,6 @@ type SelectedWoItem = {
   locationKey?: string;
 };
 
-type SuggestionMatch = {
-  tokenMatches: string[];
-  segmentMatches: string[];
-  locationMatches: string[];
-};
-
-type ActivitySuggestion = {
-  activity: any;
-  score: number;
-  treePath: string;
-  branchPath: string;
-  confidence: ConfidenceLevel;
-  matches: SuggestionMatch;
-};
 
 type MappingAuditEntry = {
   id: number;
@@ -98,129 +90,6 @@ type BranchSuggestion = {
 };
 
 const REVIEW_SESSION_PREFIX = "wo-mapper-review";
-
-const normalizeMapperText = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
-
-const splitHierarchySegments = (value: string) =>
-  value
-    .split(">")
-    .map((segment) => segment.trim().toLowerCase())
-    .filter(Boolean);
-
-const extractLocationPhrases = (value: string) => {
-  const text = value.toLowerCase();
-  const matches = new Set<string>();
-  const patterns = [
-    /\bblock[\s-]*[a-z0-9]+\b/g,
-    /\btower[\s-]*[a-z0-9]+\b/g,
-    /\bwing[\s-]*[a-z0-9]+\b/g,
-    /\bfloor[\s-]*[a-z0-9]+\b/g,
-    /\b\d+(st|nd|rd|th)\s+floor\b/g,
-    /\bground floor\b/g,
-    /\bgf\b/g,
-    /\bff\b/g,
-    /\bsf\b/g,
-    /\btf\b/g,
-    /\bbasement[\s-]*\d*\b/g,
-    /\bstilt\b/g,
-    /\bpodium\b/g,
-  ];
-
-  patterns.forEach((pattern) => {
-    const found = text.match(pattern) || [];
-    found.forEach((match) => matches.add(match.trim()));
-  });
-
-  return Array.from(matches);
-};
-
-const deriveBranchPath = (treePath: string) => {
-  const parts = treePath
-    .split(">")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length <= 1) return treePath;
-
-  let lastLocationIndex = -1;
-  parts.forEach((part, index) => {
-    if (
-      /\b(block|tower|wing|floor|ground floor|basement|stilt|podium|gf|ff|sf|tf)\b/i.test(
-        part,
-      )
-    ) {
-      lastLocationIndex = index;
-    }
-  });
-
-  if (lastLocationIndex >= 0) {
-    return parts.slice(0, lastLocationIndex + 1).join(" > ");
-  }
-
-  return parts.slice(0, Math.max(1, parts.length - 1)).join(" > ");
-};
-
-const buildMapperContext = (parts: Array<string | undefined>) => {
-  const fullText = parts.filter(Boolean).join(" > ");
-  return {
-    fullText,
-    tokens: Array.from(new Set(normalizeMapperText(fullText))),
-    segments: Array.from(new Set(splitHierarchySegments(fullText))),
-    locationPhrases: Array.from(new Set(extractLocationPhrases(fullText))),
-  };
-};
-
-const scoreMapperContexts = (
-  source: ReturnType<typeof buildMapperContext>,
-  target: ReturnType<typeof buildMapperContext>,
-): { score: number; matches: SuggestionMatch } => {
-  const tokenMatches = source.tokens.filter((token) =>
-    target.tokens.includes(token),
-  );
-  const segmentMatches = source.segments.filter((segment) =>
-    target.segments.some(
-      (targetSegment) =>
-        targetSegment.includes(segment) || segment.includes(targetSegment),
-    ),
-  );
-  const locationMatches = source.locationPhrases.filter((phrase) =>
-    target.locationPhrases.some(
-      (targetPhrase) =>
-        targetPhrase.includes(phrase) || phrase.includes(targetPhrase),
-    ),
-  );
-
-  let score =
-    tokenMatches.length +
-    segmentMatches.length * 4 +
-    locationMatches.length * 8;
-
-  if (source.locationPhrases.length > 0 && locationMatches.length === 0) {
-    score -= 6;
-  }
-
-  return {
-    score,
-    matches: {
-      tokenMatches,
-      segmentMatches,
-      locationMatches,
-    },
-  };
-};
-
-const getConfidenceFromSuggestion = (
-  score: number,
-  matches: SuggestionMatch,
-): ConfidenceLevel => {
-  if (matches.locationMatches.length >= 2 || score >= 24) return "HIGH";
-  if (matches.locationMatches.length >= 1 || score >= 12) return "MEDIUM";
-  return "LOW";
-};
 
 const getConfidenceTone = (confidence: ConfidenceLevel) => {
   switch (confidence) {
@@ -272,6 +141,8 @@ const isEditableTarget = (target: EventTarget | null) => {
 type AssistantPanelProps = {
   fullscreen?: boolean;
   selectedWoItems: SelectedWoItem[];
+  isSuggestionEngineRunning: boolean;
+  suggestionEngineMessage: string;
   assistantMode: "suggestions" | "workbench" | "review";
   setAssistantMode: (mode: "suggestions" | "workbench" | "review") => void;
   quickSuggestions: ActivitySuggestion[];
@@ -323,6 +194,8 @@ type AssistantPanelProps = {
 const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
   fullscreen = false,
   selectedWoItems,
+  isSuggestionEngineRunning,
+  suggestionEngineMessage,
   assistantMode,
   setAssistantMode,
   quickSuggestions,
@@ -409,6 +282,20 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
+          {(isSuggestionEngineRunning || selectedWoItems.length > 80) && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-700">
+              <div className="flex items-center gap-2 font-semibold">
+                <Loader className="h-3.5 w-3.5 animate-spin" />
+                {isSuggestionEngineRunning
+                  ? suggestionEngineMessage
+                  : "Large parent selection detected. The mapper is preparing hierarchy-aware suggestions."}
+              </div>
+              <div className="mt-1 text-[11px] text-blue-600">
+                Parent selection includes many child measurement rows, so the assistant is matching full BOQ hierarchy against the full schedule tree.
+              </div>
+            </div>
+          )}
+
           <div className="rounded-xl border border-border-default bg-surface-base p-3">
             <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
               Current Selection
@@ -1217,6 +1104,9 @@ const ExecutionMapper: React.FC = () => {
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [isAssistantFullscreenOpen, setIsAssistantFullscreenOpen] =
     useState(false);
+  const [isSuggestionEngineRunning, setIsSuggestionEngineRunning] =
+    useState(false);
+  const [suggestionEngineMessage, setSuggestionEngineMessage] = useState("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [downloadingSheet, setDownloadingSheet] = useState(false);
   const [assistantMode, setAssistantMode] = useState<
@@ -1249,6 +1139,12 @@ const ExecutionMapper: React.FC = () => {
   const [mappingAuditByItem, setMappingAuditByItem] = useState<
     Record<number, MappingAuditEntry[]>
   >({});
+  const [quickSuggestions, setQuickSuggestions] = useState<ActivitySuggestion[]>(
+    [],
+  );
+  const [suggestionsByItem, setSuggestionsByItem] = useState<
+    Map<number, ActivitySuggestion[]>
+  >(new Map());
 
   useEffect(() => {
     try {
@@ -1427,70 +1323,74 @@ const ExecutionMapper: React.FC = () => {
     return { get: buildPath };
   }, [wbsNodes]);
 
-  const buildSuggestionsForSource = (sourceParts: Array<string | undefined>) => {
-    const sourceContext = buildMapperContext(sourceParts);
-    if (sourceContext.tokens.length === 0) return [] as ActivitySuggestion[];
+  useEffect(() => {
+    let cancelled = false;
+    if (selectedWoItems.length === 0 || activities.length === 0) {
+      setQuickSuggestions([]);
+      setSuggestionsByItem(new Map());
+      setIsSuggestionEngineRunning(false);
+      setSuggestionEngineMessage("");
+      return;
+    }
 
-    return activities
-      .map((activity) => {
-        const treePath = wbsPathById.get(
-          activity.wbsNode?.id || activity.wbsNodeId,
+    setIsSuggestionEngineRunning(true);
+    setSuggestionEngineMessage(
+      `Analysing ${selectedWoItems.length} WO row(s) against ${activities.length} schedule activities...`,
+    );
+
+    const timer = window.setTimeout(() => {
+      const nextQuickSuggestions = computeActivitySuggestions({
+        activities,
+        sourceParts: selectedWoItems.flatMap((item) => [
+          item.materialCode,
+          item.description,
+          item.linkedActivities,
+          item.treeContext,
+          item.boqPath,
+          item.fullContext,
+        ]),
+        getTreePath: wbsPathById.get,
+        limit: 6,
+      });
+
+      const nextSuggestionsByItem = new Map<number, ActivitySuggestion[]>();
+      selectedWoItems.forEach((item, index) => {
+        if (index > 0 && index % 25 === 0 && !cancelled) {
+          setSuggestionEngineMessage(
+            `Analysing ${selectedWoItems.length} WO row(s) against ${activities.length} schedule activities... processed ${index}/${selectedWoItems.length}.`,
+          );
+        }
+
+        nextSuggestionsByItem.set(
+          item.workOrderItemId,
+          computeActivitySuggestions({
+            activities,
+            sourceParts: [
+              item.materialCode,
+              item.description,
+              item.linkedActivities,
+              item.treeContext,
+              item.boqPath,
+              item.fullContext,
+            ],
+            getTreePath: wbsPathById.get,
+            limit: 8,
+          }),
         );
-        const targetContext = buildMapperContext([
-          activity.activityCode,
-          activity.activityName,
-          activity.wbsNode?.wbsCode,
-          activity.wbsNode?.wbsName,
-          treePath,
-        ]);
-        const result = scoreMapperContexts(sourceContext, targetContext);
-        const confidence = getConfidenceFromSuggestion(
-          result.score,
-          result.matches,
-        );
-        return {
-          activity,
-          score: result.score,
-          treePath,
-          branchPath: deriveBranchPath(treePath),
-          confidence,
-          matches: result.matches,
-        };
-      })
-      .filter((entry) => entry.score > 0)
-      .sort((left, right) => right.score - left.score);
-  };
+      });
 
-  const quickSuggestions = useMemo<ActivitySuggestion[]>(() => {
-    return buildSuggestionsForSource(
-      selectedWoItems.flatMap((item) => [
-        item.materialCode,
-        item.description,
-        item.linkedActivities,
-        item.treeContext,
-        item.boqPath,
-        item.fullContext,
-      ]),
-    ).slice(0, 6);
-  }, [activities, selectedWoItems, wbsPathById]);
+      if (!cancelled) {
+        setQuickSuggestions(nextQuickSuggestions);
+        setSuggestionsByItem(nextSuggestionsByItem);
+        setIsSuggestionEngineRunning(false);
+        setSuggestionEngineMessage("");
+      }
+    }, selectedWoItems.length > 80 ? 60 : 0);
 
-  const suggestionsByItem = useMemo(() => {
-    const result = new Map<number, ActivitySuggestion[]>();
-
-    selectedWoItems.forEach((item) => {
-      const suggestions = buildSuggestionsForSource([
-        item.materialCode,
-        item.description,
-        item.linkedActivities,
-        item.treeContext,
-        item.boqPath,
-        item.fullContext,
-      ]).slice(0, 8);
-
-      result.set(item.workOrderItemId, suggestions);
-    });
-
-    return result;
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [activities, selectedWoItems, wbsPathById]);
 
   const branchSuggestions = useMemo<BranchSuggestion[]>(() => {
@@ -2277,6 +2177,8 @@ const ExecutionMapper: React.FC = () => {
 
           <MapperAssistantPanel
             selectedWoItems={selectedWoItems}
+            isSuggestionEngineRunning={isSuggestionEngineRunning}
+            suggestionEngineMessage={suggestionEngineMessage}
             assistantMode={assistantMode}
             setAssistantMode={setAssistantMode}
             quickSuggestions={quickSuggestions}
@@ -2336,6 +2238,8 @@ const ExecutionMapper: React.FC = () => {
                 <MapperAssistantPanel
                   fullscreen
                   selectedWoItems={selectedWoItems}
+                  isSuggestionEngineRunning={isSuggestionEngineRunning}
+                  suggestionEngineMessage={suggestionEngineMessage}
                   assistantMode={assistantMode}
                   setAssistantMode={setAssistantMode}
                   quickSuggestions={quickSuggestions}
