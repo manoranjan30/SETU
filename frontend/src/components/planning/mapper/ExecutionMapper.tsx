@@ -1,4 +1,4 @@
-import React, { startTransition, useEffect, useMemo, useState } from "react";
+import React, { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../../../api/axios";
 import {
@@ -98,6 +98,13 @@ type SelectionFeedbackState = {
   active: boolean;
   message: string;
   progress: number;
+};
+
+type MappingInFlightState = {
+  active: boolean;
+  processed: number;
+  total: number;
+  message: string;
 };
 
 const REVIEW_SESSION_PREFIX = "wo-mapper-review";
@@ -1180,6 +1187,12 @@ const ExecutionMapper: React.FC = () => {
       message: "",
       progress: 0,
     });
+  const [mappingInFlight, setMappingInFlight] = useState<MappingInFlightState>({
+    active: false,
+    processed: 0,
+    total: 0,
+    message: "",
+  });
 
   useEffect(() => {
     try {
@@ -1856,7 +1869,91 @@ const ExecutionMapper: React.FC = () => {
     }
   };
 
-  const handleLinkItems = async (
+  const updateVendorTreeMappingState = useCallback(
+    (workOrderItemIds: number[], activityLabel: string) => {
+      const targetIds = new Set(workOrderItemIds);
+
+      setVendorTree((currentTree) =>
+        (currentTree || []).map((vendor: any) => ({
+          ...vendor,
+          workOrders: (vendor.workOrders || []).map((wo: any) => ({
+            ...wo,
+            boqItems: (wo.boqItems || []).map((boq: any) => ({
+              ...boq,
+              directWoItems: (boq.directWoItems || []).map((direct: any) =>
+                targetIds.has(direct.workOrderItemId)
+                  ? {
+                      ...direct,
+                      mappingStatus: "MAPPED",
+                      linkedActivities: activityLabel,
+                    }
+                  : direct,
+              ),
+              subItems: (boq.subItems || []).map((sub: any) => ({
+                ...sub,
+                woItem:
+                  sub.woItem && targetIds.has(sub.woItem.workOrderItemId)
+                    ? {
+                        ...sub.woItem,
+                        mappingStatus: "MAPPED",
+                        linkedActivities: activityLabel,
+                      }
+                    : sub.woItem,
+                measurements: (sub.measurements || []).map((measurement: any) =>
+                  targetIds.has(measurement.workOrderItemId)
+                    ? {
+                        ...measurement,
+                        mappingStatus: "MAPPED",
+                        linkedActivities: activityLabel,
+                      }
+                    : measurement,
+                ),
+              })),
+            })),
+          })),
+        })),
+      );
+    },
+    [],
+  );
+
+  const updateLocalMappingAudit = useCallback(
+    (workOrderItemIds: number[], targetActivityId: number, mappingType = "DIRECT") => {
+      const activity = activityById.get(targetActivityId);
+      const activityCode = activity?.activityCode || "";
+      const activityName = activity?.activityName || "";
+      const treePath = activity
+        ? wbsPathById.get(activity.wbsNode?.id || activity.wbsNodeId)
+        : "";
+      const timestamp = new Date().toISOString();
+
+      setMappingAuditByItem((current) => {
+        const next = { ...current };
+        workOrderItemIds.forEach((workOrderItemId) => {
+          next[workOrderItemId] = [
+            {
+              id: Number(`${workOrderItemId}${targetActivityId}`),
+              workOrderItemId,
+              activityId: targetActivityId,
+              activityCode,
+              activityName,
+              plannedQuantity: -1,
+              mappingType,
+              mappingRules: null,
+              createdBy: "Current User",
+              createdOn: timestamp,
+              updatedOn: timestamp,
+              treePath,
+            },
+          ];
+        });
+        return next;
+      });
+    },
+    [activityById, wbsPathById],
+  );
+
+  const handleLinkItems = useCallback(async (
     workOrderItemIds: number[],
     targetActivityId: number,
     options?: {
@@ -1872,13 +1969,29 @@ const ExecutionMapper: React.FC = () => {
     const {
       closeModal = true,
       clearSelection = true,
-      refresh = true,
+      refresh = false,
       showSuccess = true,
       mappingRulesByItem,
     } = options || {};
 
     try {
-      for (const woItemId of workOrderItemIds) {
+      const activity = activityById.get(targetActivityId);
+      const activityLabel = [activity?.activityCode, activity?.activityName]
+        .filter(Boolean)
+        .join(" ");
+
+      setMappingInFlight({
+        active: true,
+        processed: 0,
+        total: workOrderItemIds.length,
+        message:
+          workOrderItemIds.length > 1
+            ? `Mapping ${workOrderItemIds.length} WO rows to ${activityLabel || "the selected activity"}...`
+            : `Mapping selected WO row to ${activityLabel || "the selected activity"}...`,
+      });
+
+      for (let index = 0; index < workOrderItemIds.length; index += 1) {
+        const woItemId = workOrderItemIds[index];
         await api.post(`/planning/distribute-wo`, {
           projectId: numericProjectId,
           activityId: targetActivityId,
@@ -1887,7 +2000,19 @@ const ExecutionMapper: React.FC = () => {
           mappingType: "DIRECT",
           mappingRules: mappingRulesByItem?.[woItemId] || null,
         });
+
+        setMappingInFlight((current) => ({
+          ...current,
+          processed: index + 1,
+        }));
+
+        if (index < workOrderItemIds.length - 1) {
+          await yieldToMainThread();
+        }
       }
+
+      updateVendorTreeMappingState(workOrderItemIds, activityLabel);
+      updateLocalMappingAudit(workOrderItemIds, targetActivityId);
 
       if (closeModal) {
         setIsLinkModalOpen(false);
@@ -1906,8 +2031,20 @@ const ExecutionMapper: React.FC = () => {
     } catch (error) {
       console.error("Linking failed", error);
       alert("Linking failed. See console for details.");
+    } finally {
+      setMappingInFlight({
+        active: false,
+        processed: 0,
+        total: 0,
+        message: "",
+      });
     }
-  };
+  }, [
+    activityById,
+    numericProjectId,
+    updateLocalMappingAudit,
+    updateVendorTreeMappingState,
+  ]);
 
   const handleLink = async (targetActivityId: number) => {
     await handleLinkItems(selectedWoItemIds, targetActivityId);
@@ -2303,6 +2440,50 @@ const ExecutionMapper: React.FC = () => {
       </div>
 
       <div className="relative flex-1 overflow-hidden p-4">
+        {mappingInFlight.active && (
+          <div className="absolute inset-0 z-[66] flex items-center justify-center bg-slate-950/26 backdrop-blur-[1px]">
+            <div className="w-[min(460px,88vw)] rounded-2xl border border-emerald-200 bg-white p-5 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <Loader className="h-5 w-5 animate-spin text-emerald-600" />
+                <div>
+                  <div className="text-sm font-bold text-slate-900">
+                    Saving WO Mapping
+                  </div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    {mappingInFlight.message}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emerald-600 transition-[width] duration-150"
+                  style={{
+                    width: `${
+                      mappingInFlight.total > 0
+                        ? Math.max(
+                            12,
+                            Math.round(
+                              (mappingInFlight.processed / mappingInFlight.total) *
+                                100,
+                            ),
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                <span>
+                  Updating the current mapping and preparing the next row
+                </span>
+                <span>
+                  {mappingInFlight.processed}/{mappingInFlight.total}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectionFeedback.active && (
           <div className="absolute inset-0 z-[65] flex items-center justify-center bg-slate-950/30 backdrop-blur-[1px]">
             <div className="w-[min(520px,92vw)] rounded-2xl border border-blue-200 bg-white p-5 shadow-2xl">
