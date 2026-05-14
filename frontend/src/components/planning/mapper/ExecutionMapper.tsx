@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../../../api/axios";
 import {
@@ -87,6 +87,12 @@ type BranchSuggestion = {
   matchedItems: number;
   avgScore: number;
   sampleActivities: string[];
+};
+
+type SelectionFeedbackState = {
+  active: boolean;
+  message: string;
+  progress: number;
 };
 
 const REVIEW_SESSION_PREFIX = "wo-mapper-review";
@@ -1145,6 +1151,12 @@ const ExecutionMapper: React.FC = () => {
   const [suggestionsByItem, setSuggestionsByItem] = useState<
     Map<number, ActivitySuggestion[]>
   >(new Map());
+  const [selectionFeedback, setSelectionFeedback] =
+    useState<SelectionFeedbackState>({
+      active: false,
+      message: "",
+      progress: 0,
+    });
 
   useEffect(() => {
     try {
@@ -1187,37 +1199,32 @@ const ExecutionMapper: React.FC = () => {
     sessionKey,
   ]);
 
-  const selectedWoItems = useMemo<SelectedWoItem[]>(() => {
-    const rows: SelectedWoItem[] = [];
+  const woItemLookup = useMemo(() => {
+    const lookup = new Map<number, SelectedWoItem>();
 
     for (const vendor of vendorTree || []) {
       for (const wo of vendor.workOrders || []) {
         for (const boq of wo.boqItems || []) {
           for (const direct of boq.directWoItems || []) {
-            if (selectedWoItemIds.includes(direct.workOrderItemId)) {
-              const context = [boq.boqCode, boq.description, direct.description]
+            const context = [boq.boqCode, boq.description, direct.description]
+              .filter(Boolean)
+              .join(" > ");
+            lookup.set(direct.workOrderItemId, {
+              workOrderItemId: direct.workOrderItemId,
+              description: direct.description,
+              materialCode: boq.boqCode,
+              linkedActivities: direct.linkedActivities,
+              boqPath: [boq.boqCode, boq.description].filter(Boolean).join(" > "),
+              fullContext: context,
+              treeContext: [vendor.vendorName, wo.woNumber, boq.description]
                 .filter(Boolean)
-                .join(" > ");
-              rows.push({
-                workOrderItemId: direct.workOrderItemId,
-                description: direct.description,
-                materialCode: boq.boqCode,
-                linkedActivities: direct.linkedActivities,
-                boqPath: [boq.boqCode, boq.description].filter(Boolean).join(" > "),
-                fullContext: context,
-                treeContext: [vendor.vendorName, wo.woNumber, boq.description]
-                  .filter(Boolean)
-                  .join(" > "),
-                locationKey: extractLocationPhrases(context).join("|"),
-              });
-            }
+                .join(" > "),
+              locationKey: extractLocationPhrases(context).join("|"),
+            });
           }
 
           for (const sub of boq.subItems || []) {
-            if (
-              sub.woItem?.workOrderItemId &&
-              selectedWoItemIds.includes(sub.woItem.workOrderItemId)
-            ) {
+            if (sub.woItem?.workOrderItemId) {
               const context = [
                 boq.boqCode,
                 boq.description,
@@ -1226,7 +1233,7 @@ const ExecutionMapper: React.FC = () => {
               ]
                 .filter(Boolean)
                 .join(" > ");
-              rows.push({
+              lookup.set(sub.woItem.workOrderItemId, {
                 workOrderItemId: sub.woItem.workOrderItemId,
                 description: sub.woItem.description || sub.description,
                 materialCode: boq.boqCode,
@@ -1248,49 +1255,53 @@ const ExecutionMapper: React.FC = () => {
             }
 
             for (const measurement of sub.measurements || []) {
-              if (selectedWoItemIds.includes(measurement.workOrderItemId)) {
-                const context = [
+              const context = [
+                boq.boqCode,
+                boq.description,
+                sub.description,
+                measurement.description,
+              ]
+                .filter(Boolean)
+                .join(" > ");
+              lookup.set(measurement.workOrderItemId, {
+                workOrderItemId: measurement.workOrderItemId,
+                description: measurement.description,
+                materialCode: boq.boqCode,
+                linkedActivities: measurement.linkedActivities,
+                boqPath: [
                   boq.boqCode,
                   boq.description,
                   sub.description,
                   measurement.description,
                 ]
                   .filter(Boolean)
-                  .join(" > ");
-                rows.push({
-                  workOrderItemId: measurement.workOrderItemId,
-                  description: measurement.description,
-                  materialCode: boq.boqCode,
-                  linkedActivities: measurement.linkedActivities,
-                  boqPath: [
-                    boq.boqCode,
-                    boq.description,
-                    sub.description,
-                    measurement.description,
-                  ]
-                    .filter(Boolean)
-                    .join(" > "),
-                  fullContext: context,
-                  treeContext: [
-                    vendor.vendorName,
-                    wo.woNumber,
-                    boq.description,
-                    sub.description,
-                    measurement.description,
-                  ]
-                    .filter(Boolean)
-                    .join(" > "),
-                  locationKey: extractLocationPhrases(context).join("|"),
-                });
-              }
+                  .join(" > "),
+                fullContext: context,
+                treeContext: [
+                  vendor.vendorName,
+                  wo.woNumber,
+                  boq.description,
+                  sub.description,
+                  measurement.description,
+                ]
+                  .filter(Boolean)
+                  .join(" > "),
+                locationKey: extractLocationPhrases(context).join("|"),
+              });
             }
           }
         }
       }
     }
 
-    return rows;
-  }, [selectedWoItemIds, vendorTree]);
+    return lookup;
+  }, [vendorTree]);
+
+  const selectedWoItems = useMemo<SelectedWoItem[]>(() => {
+    return selectedWoItemIds
+      .map((id) => woItemLookup.get(id))
+      .filter((item): item is SelectedWoItem => Boolean(item));
+  }, [selectedWoItemIds, woItemLookup]);
 
   const activityById = useMemo(() => {
     const map = new Map<number, any>();
@@ -1392,6 +1403,42 @@ const ExecutionMapper: React.FC = () => {
       window.clearTimeout(timer);
     };
   }, [activities, selectedWoItems, wbsPathById]);
+
+  useEffect(() => {
+    if (!selectionFeedback.active || !isSuggestionEngineRunning) return;
+
+    const interval = window.setInterval(() => {
+      setSelectionFeedback((current) => ({
+        ...current,
+        progress:
+          current.progress >= 88
+            ? current.progress
+            : Math.min(88, current.progress + 6),
+      }));
+    }, 140);
+
+    return () => window.clearInterval(interval);
+  }, [isSuggestionEngineRunning, selectionFeedback.active]);
+
+  useEffect(() => {
+    if (!selectionFeedback.active || isSuggestionEngineRunning) return;
+
+    setSelectionFeedback((current) => ({
+      ...current,
+      progress: 100,
+      message: "Selection ready. Rendering smart suggestions...",
+    }));
+
+    const timeout = window.setTimeout(() => {
+      setSelectionFeedback({
+        active: false,
+        message: "",
+        progress: 0,
+      });
+    }, 320);
+
+    return () => window.clearTimeout(timeout);
+  }, [isSuggestionEngineRunning, selectionFeedback.active]);
 
   const branchSuggestions = useMemo<BranchSuggestion[]>(() => {
     const branchMap = new Map<
@@ -1801,6 +1848,31 @@ const ExecutionMapper: React.FC = () => {
     await handleLinkItems(selectedWoItemIds, targetActivityId);
   };
 
+  const handleSelectionChange = (nextIds: number[]) => {
+    const delta = Math.abs(nextIds.length - selectedWoItemIds.length);
+    const shouldShowProgress = delta > 8 || nextIds.length > 40;
+
+    if (shouldShowProgress) {
+      setSelectionFeedback({
+        active: true,
+        progress: 12,
+        message:
+          delta > 1
+            ? `Preparing ${delta} selected child row(s) and building hierarchy-aware suggestions...`
+            : "Preparing selection and building smart suggestions...",
+      });
+
+      window.requestAnimationFrame(() => {
+        startTransition(() => {
+          setSelectedWoItemIds(nextIds);
+        });
+      });
+      return;
+    }
+
+    setSelectedWoItemIds(nextIds);
+  };
+
   const setBulkReviewSelection = (
     workOrderItemId: number,
     activityId: number,
@@ -2165,13 +2237,41 @@ const ExecutionMapper: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden p-4">
+      <div className="relative flex-1 overflow-hidden p-4">
+        {selectionFeedback.active && (
+          <div className="absolute inset-0 z-[65] flex items-center justify-center bg-slate-950/30 backdrop-blur-[1px]">
+            <div className="w-[min(520px,92vw)] rounded-2xl border border-blue-200 bg-white p-5 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <Loader className="h-5 w-5 animate-spin text-blue-600" />
+                <div>
+                  <div className="text-sm font-bold text-slate-900">
+                    Preparing WO Mapper Selection
+                  </div>
+                  <div className="mt-1 text-xs text-slate-600">
+                    {selectionFeedback.message}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-[width] duration-150"
+                  style={{ width: `${selectionFeedback.progress}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Large parent selection can take a moment</span>
+                <span>{selectionFeedback.progress}%</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid h-full min-h-0 grid-cols-[minmax(0,1.8fr)_380px] gap-4">
           <div className="h-full overflow-hidden rounded-lg border bg-surface-card shadow">
             <BoqGridPanel
               vendorTree={vendorTree}
               selectedWoItemIds={selectedWoItemIds}
-              onSelectionChange={setSelectedWoItemIds}
+              onSelectionChange={handleSelectionChange}
             />
           </div>
 
