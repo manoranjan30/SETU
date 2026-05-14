@@ -25,6 +25,7 @@ import 'package:setu_mobile/features/quality/presentation/pages/quality_approval
 import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
+import 'package:setu_mobile/features/design/presentation/pages/design_register_page.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/pages/tower_lens_page.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/shared/widgets/connectivity_banner.dart';
@@ -709,6 +710,13 @@ class _ModuleGrid extends StatelessWidget {
           color: const Color(0xFF065F46),
           onTap: () => _goLabor(context),
         ),
+      // Design register — drawing register with Open With for DWG/PDF files (available to all)
+      _ModuleDef(
+        icon: Icons.architecture_outlined,
+        label: 'Design\nDrawings',
+        color: const Color(0xFF0C4A6E),
+        onTap: () => _goDesign(context),
+      ),
       // Tower Lens — 3D building progress visualization (available to all users)
       _ModuleDef(
         icon: Icons.view_in_ar_rounded,
@@ -891,6 +899,18 @@ class _ModuleGrid extends StatelessWidget {
       context,
       FadeSlideRoute(
         child: TowerLensPage(
+          projectId: project.id,
+          projectName: project.name,
+        ),
+      ),
+    );
+  }
+
+  void _goDesign(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(
+        child: DesignRegisterPage(
           projectId: project.id,
           projectName: project.name,
         ),

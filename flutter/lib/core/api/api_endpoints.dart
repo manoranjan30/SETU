@@ -494,6 +494,26 @@ class ApiEndpoints {
   /// Accepts {currentPassword, newPassword}. Returns 200 on success, 401 if current password is wrong.
   static const String userPassword = '/users/me/password';
 
+  // ==================== DESIGN MODULE ENDPOINTS ====================
+
+  /// GET /design/categories
+  /// Returns all drawing categories (hierarchical — ARCH, STR, MEP, etc.)
+  static const String designCategories = '/design/categories';
+
+  /// GET /design/:projectId/register?categoryId=X
+  /// Returns the drawing register for a project, with currentRevision eagerly loaded.
+  static String designRegister(int projectId) => '/design/$projectId/register';
+
+  /// GET /design/:projectId/register/:registerId/revisions
+  /// Returns all revisions for a specific drawing register item.
+  static String designRevisions(int projectId, int registerId) =>
+      '/design/$projectId/register/$registerId/revisions';
+
+  /// GET /design/:projectId/download/:revisionId
+  /// Streams the file for download. Requires auth token in header.
+  static String designDownload(int projectId, int revisionId) =>
+      '/design/$projectId/download/$revisionId';
+
   // ==================== FCM / PUSH NOTIFICATION ENDPOINTS ====================
 
   /// POST /users/fcm-token — Register/update device FCM token

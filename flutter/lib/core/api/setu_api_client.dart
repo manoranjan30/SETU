@@ -1122,6 +1122,47 @@ class SetuApiClient {
     });
   }
 
+  // ==================== DESIGN MODULE ====================
+
+  /// Returns all drawing categories (ARCH, STR, MEP, etc.)
+  Future<List<Map<String, dynamic>>> getDrawingCategories() async {
+    final response = await _dio.get(ApiEndpoints.designCategories);
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Returns the drawing register for a project, optionally filtered by category.
+  Future<List<Map<String, dynamic>>> getDrawingRegister(
+    int projectId, {
+    int? categoryId,
+  }) async {
+    final query = categoryId != null ? '?categoryId=$categoryId' : '';
+    final response =
+        await _dio.get('${ApiEndpoints.designRegister(projectId)}$query');
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Downloads a drawing revision file to [savePath] with progress callback.
+  ///
+  /// Uses the authenticated Dio instance so the Bearer token is sent.
+  /// [onProgress] receives bytes received and total bytes (total may be -1
+  /// if the server does not send Content-Length).
+  Future<void> downloadDrawingRevision({
+    required int projectId,
+    required int revisionId,
+    required String savePath,
+    void Function(int received, int total)? onProgress,
+  }) async {
+    await _dio.download(
+      ApiEndpoints.designDownload(projectId, revisionId),
+      savePath,
+      onReceiveProgress: onProgress,
+    );
+  }
+
   // ==================== TOWER LENS / 3D PROGRESS ====================
 
   /// Fetches per-floor aggregated progress for all towers in a project.

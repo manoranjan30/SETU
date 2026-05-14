@@ -58,6 +58,10 @@ const BoqGridPanel: React.FC<Props> = ({
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "UNMAPPED" | "PARTIAL" | "MAPPED" | "SELECTED"
   >("ALL");
+  const selectedWoItemIdSet = useMemo(
+    () => new Set(selectedWoItemIds),
+    [selectedWoItemIds],
+  );
 
   // Toggle expand/collapse
   const toggleExpand = useCallback((key: string) => {
@@ -226,60 +230,110 @@ const BoqGridPanel: React.FC<Props> = ({
     setExpandedKeys(new Set());
   }, []);
 
-  const displayRows = useMemo<TreeRow[]>(() => {
+  const hierarchyMeta = useMemo(() => {
     const childrenByParentKey = new Map<string, TreeRow[]>();
+    const rowByKey = new Map<string, TreeRow>();
+    const measurementIdsByKey = new Map<string, number[]>();
+    const aggregateByKey = new Map<
+      string,
+      { mappedCount: number; totalCount: number; linkedActivities: string }
+    >();
+
     allRows.forEach((row) => {
+      rowByKey.set(row.key, row);
       if (!row.parentKey) return;
       const bucket = childrenByParentKey.get(row.parentKey) || [];
       bucket.push(row);
       childrenByParentKey.set(row.parentKey, bucket);
     });
 
-    const collectMeasurementLeaves = (row: TreeRow): TreeRow[] => {
-      const children = childrenByParentKey.get(row.key) || [];
-      if (children.length === 0) {
-        return isMeasurementRow(row) ? [row] : [];
+    const collectMeasurementIds = (row: TreeRow): number[] => {
+      if (measurementIdsByKey.has(row.key)) {
+        return measurementIdsByKey.get(row.key)!;
       }
-      return children.flatMap(collectMeasurementLeaves);
+
+      let ids: number[] = [];
+      if (isMeasurementRow(row) && row.workOrderItemId) {
+        ids = [row.workOrderItemId];
+      } else {
+        const children = childrenByParentKey.get(row.key) || [];
+        ids = children.flatMap(collectMeasurementIds);
+      }
+
+      measurementIdsByKey.set(row.key, ids);
+      return ids;
     };
 
-    return allRows.map((row) => {
-      if (!row.hasChildren) return row;
-
-      const descendantMeasurements = collectMeasurementLeaves(row);
-      if (descendantMeasurements.length === 0) {
-        return row;
+    const buildAggregate = (row: TreeRow) => {
+      const children = childrenByParentKey.get(row.key) || [];
+      if (children.length === 0) {
+        const linkedActivities = (row.linkedActivities || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .join(", ");
+        const totalCount = isMeasurementRow(row) ? 1 : 0;
+        const mappedCount =
+          totalCount > 0 && isMappedStatus(row.mappingStatus) ? 1 : 0;
+        const aggregate = { mappedCount, totalCount, linkedActivities };
+        aggregateByKey.set(row.key, aggregate);
+        return aggregate;
       }
 
-      const mappedCount = descendantMeasurements.filter((child) =>
-        isMappedStatus(child.mappingStatus),
-      ).length;
+      let mappedCount = 0;
+      let totalCount = 0;
+      const linkedActivitySet = new Set<string>();
+
+      children.forEach((child) => {
+        const childAggregate = buildAggregate(child);
+        mappedCount += childAggregate.mappedCount;
+        totalCount += childAggregate.totalCount;
+        childAggregate.linkedActivities
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .forEach((value) => linkedActivitySet.add(value));
+      });
+
+      const aggregate = {
+        mappedCount,
+        totalCount,
+        linkedActivities: Array.from(linkedActivitySet).join(", "),
+      };
+      aggregateByKey.set(row.key, aggregate);
+      return aggregate;
+    };
+
+    allRows.forEach((row) => {
+      collectMeasurementIds(row);
+      if (!aggregateByKey.has(row.key)) {
+        buildAggregate(row);
+      }
+    });
+
+    const displayRows = allRows.map((row) => {
+      if (!row.hasChildren) return row;
+      const aggregate = aggregateByKey.get(row.key);
+      if (!aggregate || aggregate.totalCount === 0) return row;
 
       let mappingStatus = "UNMAPPED";
-      if (mappedCount === descendantMeasurements.length) {
+      if (aggregate.mappedCount === aggregate.totalCount) {
         mappingStatus = "MAPPED";
-      } else if (mappedCount > 0) {
+      } else if (aggregate.mappedCount > 0) {
         mappingStatus = "PARTIALLY_MAPPED";
       }
-
-      const linkedActivities = Array.from(
-        new Set(
-          descendantMeasurements.flatMap((child) =>
-            (child.linkedActivities || "")
-              .split(",")
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-        ),
-      ).join(", ");
 
       return {
         ...row,
         mappingStatus,
-        linkedActivities,
+        linkedActivities: aggregate.linkedActivities,
       };
     });
+
+    return { childrenByParentKey, rowByKey, measurementIdsByKey, displayRows };
   }, [allRows]);
+
+  const displayRows = hierarchyMeta.displayRows;
 
   // Filter rows based on search + expansion state
   const visibleRows = useMemo(() => {
@@ -287,7 +341,7 @@ const BoqGridPanel: React.FC<Props> = ({
       if (statusFilter === "ALL") return true;
       if (statusFilter === "SELECTED") {
         return Boolean(
-          row.workOrderItemId && selectedWoItemIds.includes(row.workOrderItemId),
+          row.workOrderItemId && selectedWoItemIdSet.has(row.workOrderItemId),
         );
       }
       if (statusFilter === "UNMAPPED") {
@@ -321,7 +375,7 @@ const BoqGridPanel: React.FC<Props> = ({
           let parentKey = row.parentKey;
           while (parentKey) {
             matchKeys.add(parentKey);
-            const parent = displayRows.find((r) => r.key === parentKey);
+            const parent = hierarchyMeta.rowByKey.get(parentKey);
             parentKey = parent?.parentKey;
           }
         }
@@ -335,53 +389,45 @@ const BoqGridPanel: React.FC<Props> = ({
       let currentKey = row.parentKey;
       while (currentKey) {
         if (!expandedKeys.has(currentKey)) return false;
-        const parent = displayRows.find((r) => r.key === currentKey);
+        const parent = hierarchyMeta.rowByKey.get(currentKey);
         if (!parent) break;
         currentKey = parent.parentKey;
       }
       return true;
     });
-  }, [displayRows, searchText, expandedKeys, statusFilter, selectedWoItemIds]);
+  }, [
+    displayRows,
+    expandedKeys,
+    hierarchyMeta.rowByKey,
+    searchText,
+    selectedWoItemIdSet,
+    statusFilter,
+  ]);
 
   // Selection helpers
   const toggleSelect = useCallback(
     (woItemId: number) => {
       onSelectionChange(
-        selectedWoItemIds.includes(woItemId)
+        selectedWoItemIdSet.has(woItemId)
           ? selectedWoItemIds.filter((id) => id !== woItemId)
           : [...selectedWoItemIds, woItemId],
       );
     },
-    [selectedWoItemIds, onSelectionChange],
+    [onSelectionChange, selectedWoItemIdSet, selectedWoItemIds],
   );
 
   // Collect all selectable WO Item IDs under a branch
   const getDescendantWoItemIds = useCallback(
     (key: string): number[] => {
-      const ids: number[] = [];
-      for (const row of allRows) {
-        if (
-          row.key.startsWith(key + "|") &&
-          row.workOrderItemId &&
-          isMeasurementRow(row)
-        ) {
-          ids.push(row.workOrderItemId);
-        }
-        if (row.key === key && row.workOrderItemId && isMeasurementRow(row)) {
-          ids.push(row.workOrderItemId);
-        }
-      }
-      return ids;
+      return hierarchyMeta.measurementIdsByKey.get(key) || [];
     },
-    [allRows],
+    [hierarchyMeta.measurementIdsByKey],
   );
 
   const toggleSelectBranch = useCallback(
     (key: string) => {
       const branchIds = getDescendantWoItemIds(key);
-      const allSelected = branchIds.every((id) =>
-        selectedWoItemIds.includes(id),
-      );
+      const allSelected = branchIds.every((id) => selectedWoItemIdSet.has(id));
 
       if (allSelected) {
         // Deselect all
@@ -394,7 +440,7 @@ const BoqGridPanel: React.FC<Props> = ({
         onSelectionChange(merged);
       }
     },
-    [selectedWoItemIds, onSelectionChange, getDescendantWoItemIds],
+    [getDescendantWoItemIds, onSelectionChange, selectedWoItemIdSet, selectedWoItemIds],
   );
 
   const getBranchSelectionState = useCallback(
@@ -402,13 +448,13 @@ const BoqGridPanel: React.FC<Props> = ({
       const branchIds = getDescendantWoItemIds(key);
       if (branchIds.length === 0) return "none";
       const selectedCount = branchIds.filter((id) =>
-        selectedWoItemIds.includes(id),
+        selectedWoItemIdSet.has(id),
       ).length;
       if (selectedCount === 0) return "none";
       if (selectedCount === branchIds.length) return "all";
       return "some";
     },
-    [selectedWoItemIds, getDescendantWoItemIds],
+    [getDescendantWoItemIds, selectedWoItemIdSet],
   );
 
   // Icon helpers
@@ -451,7 +497,7 @@ const BoqGridPanel: React.FC<Props> = ({
   // Checkbox renderer
   const renderCheckbox = (row: TreeRow) => {
     if (row.workOrderItemId && isMeasurementRow(row)) {
-      const isSelected = selectedWoItemIds.includes(row.workOrderItemId);
+      const isSelected = selectedWoItemIdSet.has(row.workOrderItemId);
       return (
         <button
           type="button"
@@ -570,7 +616,7 @@ const BoqGridPanel: React.FC<Props> = ({
           const isExpanded = expandedKeys.has(row.key);
           const isLeaf = !!row.workOrderItemId && isMeasurementRow(row);
           const isSelected =
-            isLeaf && selectedWoItemIds.includes(row.workOrderItemId!);
+            isLeaf && selectedWoItemIdSet.has(row.workOrderItemId!);
 
           // Row background color based on level
           let bgClass = "hover:bg-primary-muted";
