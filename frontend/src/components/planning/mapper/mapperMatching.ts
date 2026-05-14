@@ -15,6 +15,13 @@ export type ActivitySuggestion = {
   matches: SuggestionMatch;
 };
 
+export type IndexedActivitySuggestionTarget = {
+  activity: any;
+  treePath: string;
+  branchPath: string;
+  context: ReturnType<typeof buildMapperContext>;
+};
+
 const NUMBER_WORDS: Record<string, number> = {
   ground: 0,
   zeroth: 0,
@@ -290,6 +297,59 @@ export const computeActivitySuggestions = ({
         score: result.score,
         treePath,
         branchPath: deriveBranchPath(treePath),
+        confidence: getConfidenceFromSuggestion(result.score, result.matches),
+        matches: result.matches,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, limit);
+};
+
+export const buildActivitySuggestionIndex = ({
+  activities,
+  getTreePath,
+}: {
+  activities: any[];
+  getTreePath: (id?: number) => string;
+}): IndexedActivitySuggestionTarget[] => {
+  return activities.map((activity) => {
+    const treePath = getTreePath(activity.wbsNode?.id || activity.wbsNodeId);
+    return {
+      activity,
+      treePath,
+      branchPath: deriveBranchPath(treePath),
+      context: buildMapperContext([
+        activity.activityCode,
+        activity.activityName,
+        activity.wbsNode?.wbsCode,
+        activity.wbsNode?.wbsName,
+        treePath,
+      ]),
+    };
+  });
+};
+
+export const computeActivitySuggestionsFromIndex = ({
+  indexedActivities,
+  sourceParts,
+  limit = 8,
+}: {
+  indexedActivities: IndexedActivitySuggestionTarget[];
+  sourceParts: Array<string | undefined>;
+  limit?: number;
+}): ActivitySuggestion[] => {
+  const sourceContext = buildMapperContext(sourceParts);
+  if (sourceContext.tokens.length === 0) return [];
+
+  return indexedActivities
+    .map((entry) => {
+      const result = scoreMapperContexts(sourceContext, entry.context);
+      return {
+        activity: entry.activity,
+        score: result.score,
+        treePath: entry.treePath,
+        branchPath: entry.branchPath,
         confidence: getConfidenceFromSuggestion(result.score, result.matches),
         matches: result.matches,
       };

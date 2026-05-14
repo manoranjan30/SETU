@@ -17,6 +17,10 @@ import {
 import api from "../../../api/axios";
 import RevisionImportModal from "./RevisionImportModal";
 
+const announceRouteLoading = () => {
+  window.dispatchEvent(new Event("setu-route-loading-start"));
+};
+
 interface ScheduleVersion {
   id: number;
   versionCode: string;
@@ -113,6 +117,7 @@ const WorkingScheduleList: React.FC = () => {
 
   const handleCompare = () => {
     if (compareSource && compareTargetId) {
+      announceRouteLoading();
       navigate(
         `/dashboard/projects/${projectId}/planning/compare?v1=${compareTargetId}&v2=${compareSource.id}`,
       );
@@ -434,11 +439,12 @@ const WorkingScheduleList: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              announceRouteLoading();
               navigate(
                 `/dashboard/projects/${projectId}/planning?view=gantt_version&master=1`,
-              )
-            }
+              );
+            }}
             className="px-4 py-2 text-text-disabled hover:text-primary font-medium text-sm flex items-center gap-1"
           >
             View Details <ArrowRight size={16} />
@@ -530,11 +536,12 @@ const WorkingScheduleList: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    announceRouteLoading();
                     navigate(
                       `/dashboard/projects/${projectId}/planning?view=gantt_version&versionId=${version.id}`,
-                    )
-                  }
+                    );
+                  }}
                   className="px-4 py-2 bg-surface-card border border-border-default text-text-secondary rounded-lg hover:border-blue-400 hover:text-primary font-medium text-sm flex items-center gap-2 shadow-sm"
                 >
                   Open <ArrowRight size={16} />

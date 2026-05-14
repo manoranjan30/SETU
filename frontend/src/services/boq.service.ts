@@ -1,6 +1,8 @@
 import api from "../api/axios";
 import { downloadBlob, withFileExtension } from "../utils/file-download.utils";
 
+const heavyRequestConfig = { timeout: 300000 };
+
 export interface BoqEpsNodeRef {
   id: number;
   name: string;
@@ -125,12 +127,16 @@ export const boqService = {
 
   // Get Items
   getBoqItems: async (projectId: number): Promise<BoqItem[]> => {
-    const response = await api.get(`/boq/project/${projectId}`);
+    const response = await api.get(`/boq/project/${projectId}`, heavyRequestConfig);
     return response.data;
   },
 
   recalculateProjectBoq: async (projectId: number) => {
-    return await api.post(`/boq/project/${projectId}/recalculate`);
+    return await api.post(
+      `/boq/project/${projectId}/recalculate`,
+      undefined,
+      heavyRequestConfig,
+    );
   },
 
   // Get EPS List (for Dropdown)
@@ -140,7 +146,7 @@ export const boqService = {
   },
 
   getProjectEpsList: async (projectId: number) => {
-    const response = await api.get(`/eps/${projectId}/tree`);
+    const response = await api.get(`/eps/${projectId}/tree`, heavyRequestConfig);
     const flatten = (
       nodes: Array<Record<string, unknown>>,
       acc: BoqEpsNodeRef[] = [],

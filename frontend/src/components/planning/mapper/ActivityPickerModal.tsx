@@ -2,7 +2,10 @@ import React from "react";
 import { X, Check, Maximize2, Minimize2 } from "lucide-react";
 import api from "../../../api/axios";
 import ScheduleTreePanel from "./ScheduleTreePanel";
-import { computeActivitySuggestions } from "./mapperMatching";
+import {
+  buildActivitySuggestionIndex,
+  computeActivitySuggestionsFromIndex,
+} from "./mapperMatching";
 
 interface Props {
   isOpen: boolean;
@@ -73,6 +76,15 @@ const ActivityPickerModal: React.FC<Props> = ({
     return { get: buildPath };
   }, [wbsNodes]);
 
+  const indexedActivities = React.useMemo(
+    () =>
+      buildActivitySuggestionIndex({
+        activities,
+        getTreePath: wbsPathById.get,
+      }),
+    [activities, wbsPathById],
+  );
+
   React.useEffect(() => {
     let cancelled = false;
     if (!isOpen || selectedWoItems.length === 0 || activities.length === 0) {
@@ -83,8 +95,8 @@ const ActivityPickerModal: React.FC<Props> = ({
 
     setIsSuggesting(true);
     const timer = window.setTimeout(() => {
-      const nextSuggestions = computeActivitySuggestions({
-        activities,
+      const fastSuggestions = computeActivitySuggestionsFromIndex({
+        indexedActivities,
         sourceParts: selectedWoItems.flatMap((item) => [
           item.materialCode,
           item.description,
@@ -93,12 +105,11 @@ const ActivityPickerModal: React.FC<Props> = ({
           item.boqPath,
           item.fullContext,
         ]),
-        getTreePath: wbsPathById.get,
         limit: 8,
       });
 
       if (!cancelled) {
-        setSuggestions(nextSuggestions);
+        setSuggestions(fastSuggestions);
         setIsSuggesting(false);
       }
     }, selectedWoItems.length > 80 ? 50 : 0);
@@ -107,7 +118,7 @@ const ActivityPickerModal: React.FC<Props> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activities, isOpen, selectedWoItems, wbsPathById]);
+  }, [indexedActivities, isOpen, selectedWoItems]);
 
   React.useEffect(() => {
     if (!isOpen) {

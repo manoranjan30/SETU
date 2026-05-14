@@ -335,6 +335,36 @@ const BoqGridPanel: React.FC<Props> = ({
 
   const displayRows = hierarchyMeta.displayRows;
 
+  const branchSelectionStateByKey = useMemo(() => {
+    const stateByKey = new Map<string, "none" | "some" | "all">();
+
+    displayRows.forEach((row) => {
+      if (!row.hasChildren) return;
+      const branchIds = hierarchyMeta.measurementIdsByKey.get(row.key) || [];
+      if (branchIds.length === 0) {
+        stateByKey.set(row.key, "none");
+        return;
+      }
+
+      let selectedCount = 0;
+      for (const id of branchIds) {
+        if (selectedWoItemIdSet.has(id)) {
+          selectedCount += 1;
+        }
+      }
+
+      if (selectedCount === 0) {
+        stateByKey.set(row.key, "none");
+      } else if (selectedCount === branchIds.length) {
+        stateByKey.set(row.key, "all");
+      } else {
+        stateByKey.set(row.key, "some");
+      }
+    });
+
+    return stateByKey;
+  }, [displayRows, hierarchyMeta.measurementIdsByKey, selectedWoItemIdSet]);
+
   // Filter rows based on search + expansion state
   const visibleRows = useMemo(() => {
     const rowMatchesFilter = (row: TreeRow) => {
@@ -428,11 +458,12 @@ const BoqGridPanel: React.FC<Props> = ({
     (key: string) => {
       const branchIds = getDescendantWoItemIds(key);
       const allSelected = branchIds.every((id) => selectedWoItemIdSet.has(id));
+      const branchIdSet = new Set(branchIds);
 
       if (allSelected) {
         // Deselect all
         onSelectionChange(
-          selectedWoItemIds.filter((id) => !branchIds.includes(id)),
+          selectedWoItemIds.filter((id) => !branchIdSet.has(id)),
         );
       } else {
         // Select all
@@ -445,16 +476,9 @@ const BoqGridPanel: React.FC<Props> = ({
 
   const getBranchSelectionState = useCallback(
     (key: string): "none" | "some" | "all" => {
-      const branchIds = getDescendantWoItemIds(key);
-      if (branchIds.length === 0) return "none";
-      const selectedCount = branchIds.filter((id) =>
-        selectedWoItemIdSet.has(id),
-      ).length;
-      if (selectedCount === 0) return "none";
-      if (selectedCount === branchIds.length) return "all";
-      return "some";
+      return branchSelectionStateByKey.get(key) || "none";
     },
-    [getDescendantWoItemIds, selectedWoItemIdSet],
+    [branchSelectionStateByKey],
   );
 
   // Icon helpers

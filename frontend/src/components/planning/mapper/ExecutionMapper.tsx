@@ -28,7 +28,8 @@ import BoqGridPanel from "./BoqGridPanel";
 import ActivityPickerModal from "./ActivityPickerModal";
 import WoBulkMappingImportWizard from "./WoBulkMappingImportWizard";
 import {
-  computeActivitySuggestions,
+  buildActivitySuggestionIndex,
+  computeActivitySuggestionsFromIndex,
   extractLocationPhrases,
 } from "./mapperMatching";
 import type {
@@ -39,6 +40,10 @@ import {
   downloadBlob,
   withFileExtension,
 } from "../../../utils/file-download.utils";
+
+const yieldToMainThread = () =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
 type ReviewStatus =
   | "APPROVED"
   | "NEEDS_REVIEW"
@@ -235,7 +240,14 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
   openFullTreeValidation,
   openFullscreen,
   closeFullscreen,
-}) => (
+}) => {
+  const displayedSelectionItems = selectedWoItems.slice(0, 60);
+  const hiddenSelectionCount = Math.max(
+    0,
+    selectedWoItems.length - displayedSelectionItems.length,
+  );
+
+  return (
   <div
     className={`flex min-h-0 flex-col rounded-lg border bg-surface-card shadow ${
       fullscreen ? "h-full" : ""
@@ -307,7 +319,7 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
               Current Selection
             </div>
             <div className="max-h-56 space-y-2 overflow-y-auto pr-1 text-xs">
-              {selectedWoItems.map((item) => (
+              {displayedSelectionItems.map((item) => (
                 <div
                   key={item.workOrderItemId}
                   className="rounded-lg bg-surface-card px-2 py-2"
@@ -327,6 +339,11 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                   )}
                 </div>
               ))}
+              {hiddenSelectionCount > 0 && (
+                <div className="rounded-lg border border-dashed border-border-default bg-surface-base px-2 py-2 text-[11px] text-text-muted">
+                  {hiddenSelectionCount} more selected WO rows are hidden here to keep the mapper responsive.
+                </div>
+              )}
             </div>
           </div>
 
@@ -497,7 +514,7 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-2">
                   <div className="space-y-2">
-                    {selectedWoItems.map((item) => (
+                    {displayedSelectionItems.map((item) => (
                       <button
                         key={item.workOrderItemId}
                         type="button"
@@ -536,6 +553,11 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                         </div>
                       </button>
                     ))}
+                    {hiddenSelectionCount > 0 && (
+                      <div className="rounded-lg border border-dashed border-border-default bg-surface-base px-3 py-2 text-[11px] text-text-muted">
+                        Showing the first {displayedSelectionItems.length} items in the queue. {hiddenSelectionCount} more selected rows remain in the current batch.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1095,7 +1117,8 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
       )}
     </div>
   </div>
-);
+  );
+};
 
 const ExecutionMapper: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -1334,6 +1357,15 @@ const ExecutionMapper: React.FC = () => {
     return { get: buildPath };
   }, [wbsNodes]);
 
+  const indexedActivities = useMemo(
+    () =>
+      buildActivitySuggestionIndex({
+        activities,
+        getTreePath: wbsPathById.get,
+      }),
+    [activities, wbsPathById],
+  );
+
   useEffect(() => {
     let cancelled = false;
     if (selectedWoItems.length === 0 || activities.length === 0) {
@@ -1349,60 +1381,82 @@ const ExecutionMapper: React.FC = () => {
       `Analysing ${selectedWoItems.length} WO row(s) against ${activities.length} schedule activities...`,
     );
 
-    const timer = window.setTimeout(() => {
-      const nextQuickSuggestions = computeActivitySuggestions({
-        activities,
-        sourceParts: selectedWoItems.flatMap((item) => [
+    const runSuggestionPass = async () => {
+      if (selectedWoItems.length > 80) {
+        await yieldToMainThread();
+      }
+      if (cancelled) return;
+
+      const sampledQuickSourceParts = selectedWoItems
+        .slice(0, Math.min(selectedWoItems.length, 160))
+        .flatMap((item) => [
           item.materialCode,
           item.description,
           item.linkedActivities,
           item.treeContext,
           item.boqPath,
           item.fullContext,
-        ]),
-        getTreePath: wbsPathById.get,
+        ]);
+
+      const fastQuickSuggestions = computeActivitySuggestionsFromIndex({
+        indexedActivities,
+        sourceParts: sampledQuickSourceParts,
         limit: 6,
       });
 
-      const nextSuggestionsByItem = new Map<number, ActivitySuggestion[]>();
-      selectedWoItems.forEach((item, index) => {
-        if (index > 0 && index % 25 === 0 && !cancelled) {
-          setSuggestionEngineMessage(
-            `Analysing ${selectedWoItems.length} WO row(s) against ${activities.length} schedule activities... processed ${index}/${selectedWoItems.length}.`,
-          );
-        }
+      if (cancelled) return;
 
-        nextSuggestionsByItem.set(
-          item.workOrderItemId,
-          computeActivitySuggestions({
-            activities,
-            sourceParts: [
-              item.materialCode,
-              item.description,
-              item.linkedActivities,
-              item.treeContext,
-              item.boqPath,
-              item.fullContext,
-            ],
-            getTreePath: wbsPathById.get,
-            limit: 8,
-          }),
+      const nextSuggestionsByItem = new Map<number, ActivitySuggestion[]>();
+      const batchSize = selectedWoItems.length > 300 ? 6 : selectedWoItems.length > 120 ? 10 : 16;
+
+      for (let index = 0; index < selectedWoItems.length; index += batchSize) {
+        const batch = selectedWoItems.slice(index, index + batchSize);
+        batch.forEach((item) => {
+          nextSuggestionsByItem.set(
+            item.workOrderItemId,
+            computeActivitySuggestionsFromIndex({
+              indexedActivities,
+              sourceParts: [
+                item.materialCode,
+                item.description,
+                item.linkedActivities,
+                item.treeContext,
+                item.boqPath,
+                item.fullContext,
+              ],
+              limit: 8,
+            }),
+          );
+        });
+
+        if (cancelled) return;
+
+        const processed = Math.min(index + batch.length, selectedWoItems.length);
+        setSuggestionEngineMessage(
+          `Analysing ${selectedWoItems.length} WO row(s) against ${activities.length} schedule activities... processed ${processed}/${selectedWoItems.length}.`,
         );
-      });
+
+        if (processed < selectedWoItems.length) {
+          await yieldToMainThread();
+        }
+      }
 
       if (!cancelled) {
-        setQuickSuggestions(nextQuickSuggestions);
-        setSuggestionsByItem(nextSuggestionsByItem);
-        setIsSuggestionEngineRunning(false);
-        setSuggestionEngineMessage("");
+        startTransition(() => {
+          setQuickSuggestions(fastQuickSuggestions);
+          setSuggestionsByItem(nextSuggestionsByItem);
+          setIsSuggestionEngineRunning(false);
+          setSuggestionEngineMessage("");
+        });
       }
-    }, selectedWoItems.length > 80 ? 60 : 0);
+    };
+
+    void runSuggestionPass();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [activities, selectedWoItems, wbsPathById]);
+  }, [activities.length, indexedActivities, selectedWoItems]);
 
   useEffect(() => {
     if (!selectionFeedback.active || !isSuggestionEngineRunning) return;
@@ -1441,6 +1495,9 @@ const ExecutionMapper: React.FC = () => {
   }, [isSuggestionEngineRunning, selectionFeedback.active]);
 
   const branchSuggestions = useMemo<BranchSuggestion[]>(() => {
+    if (assistantMode !== "suggestions") {
+      return [];
+    }
     const branchMap = new Map<
       string,
       { scores: number[]; sampleActivities: Set<string>; itemIds: Set<number> }
@@ -1484,23 +1541,27 @@ const ExecutionMapper: React.FC = () => {
         return right.avgScore - left.avgScore;
       })
       .slice(0, 6);
-  }, [selectedWoItems, suggestionsByItem]);
+  }, [assistantMode, selectedWoItems, suggestionsByItem]);
 
   const activeWorkbenchItem = useMemo(() => {
+    if (assistantMode !== "workbench" || selectedWoItems.length === 0) return null;
     if (selectedWoItems.length === 0) return null;
     return (
       selectedWoItems.find(
         (item) => item.workOrderItemId === activeWorkbenchItemId,
       ) || selectedWoItems[0]
     );
-  }, [activeWorkbenchItemId, selectedWoItems]);
+  }, [activeWorkbenchItemId, assistantMode, selectedWoItems]);
 
   const activeWorkbenchSuggestions = useMemo(() => {
-    if (!activeWorkbenchItem) return [];
+    if (assistantMode !== "workbench" || !activeWorkbenchItem) return [];
     return suggestionsByItem.get(activeWorkbenchItem.workOrderItemId) || [];
-  }, [activeWorkbenchItem, suggestionsByItem]);
+  }, [activeWorkbenchItem, assistantMode, suggestionsByItem]);
 
   const bulkReviewRows = useMemo<ReviewRow[]>(() => {
+    if (assistantMode !== "review") {
+      return [];
+    }
     return selectedWoItems.map((item) => {
       const suggestions =
         (suggestionsByItem.get(item.workOrderItemId) || []).slice(0, 3);
@@ -1545,6 +1606,7 @@ const ExecutionMapper: React.FC = () => {
       };
     });
   }, [
+    assistantMode,
     activityById,
     bulkReviewSelections,
     mappingAuditByItem,
@@ -1556,6 +1618,9 @@ const ExecutionMapper: React.FC = () => {
   ]);
 
   const filteredReviewRows = useMemo(() => {
+    if (assistantMode !== "review") {
+      return [];
+    }
     return bulkReviewRows.filter((row) => {
       const confidenceOk =
         reviewConfidenceFilter === "ALL" ||
@@ -1564,7 +1629,7 @@ const ExecutionMapper: React.FC = () => {
         reviewStatusFilter === "ALL" || row.status === reviewStatusFilter;
       return confidenceOk && statusOk;
     });
-  }, [bulkReviewRows, reviewConfidenceFilter, reviewStatusFilter]);
+  }, [assistantMode, bulkReviewRows, reviewConfidenceFilter, reviewStatusFilter]);
 
   const activeReviewRow = useMemo(
     () =>
