@@ -45,6 +45,7 @@ const SchedulePage: React.FC = () => {
 
   const [projectCode, setProjectCode] = useState<string>("");
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const heavyRequestConfig = { timeout: 300000 };
 
   useEffect(() => {
     if (projectId) fetchData();
@@ -54,8 +55,8 @@ const SchedulePage: React.FC = () => {
     setLoading(true);
     try {
       const promises: any[] = [
-        api.get(`/projects/${projectId}/wbs`),
-        api.get(`/eps/${projectId}/profile`),
+        api.get(`/projects/${projectId}/wbs`, heavyRequestConfig),
+        api.get(`/eps/${projectId}/profile`, heavyRequestConfig),
       ];
 
       if (versionId) {
@@ -63,16 +64,18 @@ const SchedulePage: React.FC = () => {
         promises.unshift(
           api.get(
             `/planning/versions/${versionId}/activities?projectId=${projectId}`,
+            heavyRequestConfig,
           ),
         );
         promises.push(
           api.get(
             `/planning/versions/${versionId}/relationships?projectId=${projectId}`,
+            heavyRequestConfig,
           ),
         );
       } else {
         // Fetch Master Data
-        promises.unshift(api.get(`/projects/${projectId}/schedule`));
+        promises.unshift(api.get(`/projects/${projectId}/schedule`, heavyRequestConfig));
       }
 
       const results = await Promise.all(promises);

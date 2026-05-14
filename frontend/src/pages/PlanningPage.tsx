@@ -29,6 +29,7 @@ const PlanningPage = () => {
   const currentView = searchParams.get("view") || "schedule"; // Default to schedule
 
   const setCurrentView = (view: string) => {
+    window.dispatchEvent(new Event("setu-route-loading-start"));
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("view", view);

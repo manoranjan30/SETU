@@ -28,12 +28,16 @@ const WorkOrderList: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const heavyRequestConfig = { timeout: 300000 };
 
   const fetchWorkOrders = async () => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const response = await api.get(`/workdoc/${projectId}/work-orders`);
+      const response = await api.get(
+        `/workdoc/${projectId}/work-orders`,
+        heavyRequestConfig,
+      );
       setWorkOrders(response.data);
     } catch (error) {
       console.error("Failed to fetch work orders", error);
@@ -72,7 +76,10 @@ const WorkOrderList: React.FC = () => {
 
   const handleViewDetails = async (woId: number) => {
     try {
-      const response = await api.get(`/workdoc/work-orders/${woId}`);
+      const response = await api.get(
+        `/workdoc/work-orders/${woId}`,
+        heavyRequestConfig,
+      );
       setSelectedWO(response.data);
       setIsDetailModalOpen(true);
     } catch (error) {

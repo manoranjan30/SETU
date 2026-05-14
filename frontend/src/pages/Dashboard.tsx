@@ -7,6 +7,8 @@ import BackButton from "../components/common/BackButton";
 const Dashboard = () => {
   const location = useLocation();
   const [showRouteLoader, setShowRouteLoader] = useState(false);
+  const [routeTransitionPending, setRouteTransitionPending] = useState(false);
+  const [activeRequestCount, setActiveRequestCount] = useState(0);
   const previousRouteKeyRef = useRef<string | null>(null);
 
   // Pages where we don't want a back button (top level)
@@ -19,15 +21,27 @@ const Dashboard = () => {
 
   useEffect(() => {
     const handleRouteLoadingStart = () => {
+      setRouteTransitionPending(true);
+      setShowRouteLoader(true);
+    };
+    const handleApiLoadingStop = () => {
+      setActiveRequestCount((current) => Math.max(0, current - 1));
+    };
+    const handleApiLoadingStart = () => {
+      setActiveRequestCount((current) => current + 1);
       setShowRouteLoader(true);
     };
 
     window.addEventListener("setu-route-loading-start", handleRouteLoadingStart);
+    window.addEventListener("setu-api-loading-start", handleApiLoadingStart);
+    window.addEventListener("setu-api-loading-stop", handleApiLoadingStop);
     return () => {
       window.removeEventListener(
         "setu-route-loading-start",
         handleRouteLoadingStart,
       );
+      window.removeEventListener("setu-api-loading-start", handleApiLoadingStart);
+      window.removeEventListener("setu-api-loading-stop", handleApiLoadingStop);
     };
   }, []);
 
@@ -45,14 +59,16 @@ const Dashboard = () => {
 
     previousRouteKeyRef.current = routeKey;
 
-    // Keep a short visible loading state so users get feedback
-    // instead of seeing the previous page linger during route/data setup.
     const hideTimer = window.setTimeout(() => {
-      setShowRouteLoader(false);
-    }, 550);
+      setRouteTransitionPending(false);
+    }, 350);
 
     return () => window.clearTimeout(hideTimer);
   }, [location.hash, location.pathname, location.search]);
+
+  useEffect(() => {
+    setShowRouteLoader(routeTransitionPending || activeRequestCount > 0);
+  }, [activeRequestCount, routeTransitionPending]);
 
   return (
     <div className="ui-shell flex h-screen">

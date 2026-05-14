@@ -22,7 +22,10 @@ export const notificationService = {
     projectId?: number,
   ): Promise<PendingTasksResponse> => {
     const params = projectId ? { projectId } : {};
-    const res = await api.get("/pending-tasks/my", { params });
+    const res = await api.get("/pending-tasks/my", {
+      params,
+      headers: { "X-Setu-Silent-Loader": "true" },
+    });
     return res.data;
   },
 };

@@ -307,7 +307,12 @@ const PlanningMatrix: React.FC = () => {
                             with no budget/scope assigned. This is a risk.
                           </span>
                           <button
-                            onClick={() => navigate({ search: "?view=mapper" })}
+                            onClick={() => {
+                              window.dispatchEvent(
+                                new Event("setu-route-loading-start"),
+                              );
+                              navigate({ search: "?view=mapper" });
+                            }}
                             className="bg-surface-card border border-red-200 text-red-700 px-3 py-1 rounded shadow-sm hover:bg-red-100 text-xs font-bold"
                           >
                             Go to Mapper to Fix
@@ -366,7 +371,12 @@ const PlanningMatrix: React.FC = () => {
                             scope.
                           </span>
                           <button
-                            onClick={() => navigate({ search: "?view=mapper" })}
+                            onClick={() => {
+                              window.dispatchEvent(
+                                new Event("setu-route-loading-start"),
+                              );
+                              navigate({ search: "?view=mapper" });
+                            }}
                             className="bg-surface-card border border-orange-200 text-orange-700 px-3 py-1 rounded shadow-sm hover:bg-orange-100 text-xs font-bold"
                           >
                             Go to Mapper to Fix
