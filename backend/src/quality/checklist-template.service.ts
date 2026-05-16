@@ -227,6 +227,13 @@ export class ChecklistTemplateService {
     const saved: QualityChecklistTemplate[] = [];
 
     for (const template of templates) {
+      const sanitizedTemplate: CreateChecklistTemplateDto = {
+        ...template,
+        stages: (template.stages || []).map((stage) => ({
+          ...stage,
+          signatureSlots: [],
+        })),
+      };
       const checklistNo = template.checklistNo?.trim();
       if (overwriteExisting && checklistNo) {
         const existing = await this.templateRepo.findOne({
@@ -241,7 +248,7 @@ export class ChecklistTemplateService {
         }
       }
 
-      saved.push(await this.create(projectId, template));
+      saved.push(await this.create(projectId, sanitizedTemplate));
     }
 
     return {

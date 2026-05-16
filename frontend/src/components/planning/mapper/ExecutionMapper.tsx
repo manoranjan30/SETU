@@ -18,6 +18,7 @@ import {
   MapPin,
   Minimize2,
   PanelRightOpen,
+  RotateCcw,
   Rows3,
   Sparkles,
   Split,
@@ -30,11 +31,14 @@ import WoBulkMappingImportWizard from "./WoBulkMappingImportWizard";
 import {
   buildActivitySuggestionIndex,
   computeActivitySuggestionsFromIndex,
+  deriveBranchPath,
   extractLocationPhrases,
+  normalizeMapperText,
 } from "./mapperMatching";
 import type {
   ActivitySuggestion,
   ConfidenceLevel,
+  LearnedMappingPatternIndex,
 } from "./mapperMatching";
 import {
   downloadBlob,
@@ -108,6 +112,7 @@ type MappingInFlightState = {
 };
 
 const REVIEW_SESSION_PREFIX = "wo-mapper-review";
+const LEARNED_MAPPING_RESET_PREFIX = "wo-mapper-learning-reset";
 
 const getConfidenceTone = (confidence: ConfidenceLevel) => {
   switch (confidence) {
@@ -142,6 +147,33 @@ const formatAuditTime = (value?: string | null) => {
   } catch {
     return value;
   }
+};
+
+const getLearnedSuggestionSummary = (suggestion: ActivitySuggestion) => {
+  if (!suggestion.learned?.totalBoost) return "";
+
+  const locationReasons = Array.from(
+    new Set([
+      ...(suggestion.learned.branchLocations || []),
+      ...(suggestion.learned.activityLocations || []),
+    ]),
+  ).slice(0, 3);
+
+  const tokenReasons = Array.from(
+    new Set([
+      ...(suggestion.learned.branchTokens || []),
+      ...(suggestion.learned.activityTokens || []),
+    ]),
+  )
+    .filter((token) => token.length > 2)
+    .slice(0, 3);
+
+  const reasons = [...locationReasons, ...tokenReasons].slice(0, 4);
+  if (reasons.length === 0) {
+    return "Learned from previous approved mappings";
+  }
+
+  return `Learned from previous mappings: ${reasons.join(" + ")}`;
 };
 
 const isEditableTarget = (target: EventTarget | null) => {
@@ -207,6 +239,10 @@ type AssistantPanelProps = {
   openFullTreeValidation: () => void;
   openFullscreen?: () => void;
   closeFullscreen?: () => void;
+  learnedActivityPatternCount: number;
+  learnedBranchPatternCount: number;
+  learnedResetAt: number;
+  resetLearnedPatternMemory: () => void;
 };
 
 const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
@@ -247,6 +283,10 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
   openFullTreeValidation,
   openFullscreen,
   closeFullscreen,
+  learnedActivityPatternCount,
+  learnedBranchPatternCount,
+  learnedResetAt,
+  resetLearnedPatternMemory,
 }) => {
   const displayedSelectionItems = selectedWoItems.slice(0, 60);
   const hiddenSelectionCount = Math.max(
@@ -273,30 +313,52 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
             Confidence scoring, branch intelligence, fast review statuses, and
             keyboard-driven approvals are all active here.
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">
+              Learned patterns: {learnedActivityPatternCount} activity, {learnedBranchPatternCount} branch
+            </span>
+            {learnedResetAt > 0 && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+                Reset after {new Date(learnedResetAt).toLocaleString("en-IN")}
+              </span>
+            )}
+          </div>
         </div>
-        {fullscreen ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={closeFullscreen}
+            onClick={resetLearnedPatternMemory}
             className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
           >
             <span className="inline-flex items-center gap-2">
-              <Minimize2 className="h-3.5 w-3.5" />
-              Exit Full Screen
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset Learned Memory
             </span>
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={openFullscreen}
-            className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
-          >
-            <span className="inline-flex items-center gap-2">
-              <PanelRightOpen className="h-3.5 w-3.5" />
-              Open Full Screen
-            </span>
-          </button>
-        )}
+          {fullscreen ? (
+            <button
+              type="button"
+              onClick={closeFullscreen}
+              className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Minimize2 className="h-3.5 w-3.5" />
+                Exit Full Screen
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openFullscreen}
+              className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+            >
+              <span className="inline-flex items-center gap-2">
+                <PanelRightOpen className="h-3.5 w-3.5" />
+                Open Full Screen
+              </span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
 
@@ -483,6 +545,17 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                             {suggestion.matches.locationMatches.join(", ")}
                           </div>
                         )}
+                        {suggestion.learned?.totalBoost ? (
+                          <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-violet-700">
+                            {getLearnedSuggestionSummary(suggestion)}
+                            {suggestion.learned.branchPatternHits > 0
+                              ? ` • branch ${suggestion.learned.branchPatternHits}`
+                              : ""}
+                            {suggestion.learned.activityPatternHits > 0
+                              ? ` • activity ${suggestion.learned.activityPatternHits}`
+                              : ""}
+                          </div>
+                        ) : null}
                         <div className="mt-2 flex items-center justify-between">
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                             Match score {suggestion.score}
@@ -633,6 +706,11 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                               {suggestion.matches.locationMatches.join(", ")}
                             </div>
                           )}
+                          {suggestion.learned?.totalBoost ? (
+                            <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-violet-700">
+                              {getLearnedSuggestionSummary(suggestion)}
+                            </div>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                               Match score {suggestion.score}
@@ -834,6 +912,14 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                               >
                                 {selectedSuggestion.confidence}
                               </span>
+                              {selectedSuggestion.learned?.totalBoost ? (
+                                <span
+                                  title={getLearnedSuggestionSummary(selectedSuggestion)}
+                                  className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700"
+                                >
+                                  Learned
+                                </span>
+                              ) : null}
                               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                                 Score {selectedSuggestion.score}
                               </span>
@@ -1041,13 +1127,23 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                                     <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
                                       {suggestion.score}
                                     </span>
-                                    <span
-                                      className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getConfidenceTone(
-                                        suggestion.confidence,
-                                      )}`}
-                                    >
-                                      {suggestion.confidence}
-                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      {suggestion.learned?.totalBoost ? (
+                                        <span
+                                          title={getLearnedSuggestionSummary(suggestion)}
+                                          className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-violet-700"
+                                        >
+                                          Learned
+                                        </span>
+                                      ) : null}
+                                      <span
+                                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getConfidenceTone(
+                                          suggestion.confidence,
+                                        )}`}
+                                      >
+                                        {suggestion.confidence}
+                                      </span>
+                                    </div>
                                   </div>
                                 </button>
                               );
@@ -1131,6 +1227,7 @@ const ExecutionMapper: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const numericProjectId = Number(projectId || 0);
   const sessionKey = `${REVIEW_SESSION_PREFIX}:${numericProjectId}`;
+  const learnedResetKey = `${LEARNED_MAPPING_RESET_PREFIX}:${numericProjectId}`;
 
   const [selectedWoItemIds, setSelectedWoItemIds] = useState<number[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
@@ -1193,6 +1290,17 @@ const ExecutionMapper: React.FC = () => {
     total: 0,
     message: "",
   });
+  const [learnedResetAt, setLearnedResetAt] = useState(0);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(learnedResetKey);
+      setLearnedResetAt(raw ? Number(raw) || 0 : 0);
+    } catch (error) {
+      console.error("Failed to restore WO mapper learned reset marker", error);
+      setLearnedResetAt(0);
+    }
+  }, [learnedResetKey]);
 
   useEffect(() => {
     try {
@@ -1379,6 +1487,89 @@ const ExecutionMapper: React.FC = () => {
     [activities, wbsPathById],
   );
 
+  const learnedPatternIndex = useMemo<LearnedMappingPatternIndex>(() => {
+    const byActivityId = new Map<
+      number,
+      { tokens: Set<string>; locations: Set<string>; count: number }
+    >();
+    const byBranchPath = new Map<
+      string,
+      { tokens: Set<string>; locations: Set<string>; count: number }
+    >();
+
+    Object.values(mappingAuditByItem)
+      .flat()
+      .forEach((entry) => {
+        const entryTimestamp = Date.parse(entry.updatedOn || entry.createdOn || "");
+        if (
+          learnedResetAt > 0 &&
+          (!Number.isFinite(entryTimestamp) || entryTimestamp <= learnedResetAt)
+        ) {
+          return;
+        }
+
+        const rules = (entry.mappingRules || {}) as Record<string, unknown>;
+        const sourceText = [
+          typeof rules.boqPath === "string" ? rules.boqPath : "",
+          typeof rules.woPath === "string" ? rules.woPath : "",
+          typeof rules.fullContext === "string" ? rules.fullContext : "",
+        ]
+          .filter(Boolean)
+          .join(" > ");
+        const branchPath =
+          typeof rules.branchPath === "string" && rules.branchPath
+            ? rules.branchPath
+            : entry.treePath
+              ? deriveBranchPath(entry.treePath)
+              : "";
+
+        const tokens = normalizeMapperText(sourceText);
+        const locations = extractLocationPhrases(sourceText);
+
+        const activityBucket = byActivityId.get(entry.activityId) || {
+          tokens: new Set<string>(),
+          locations: new Set<string>(),
+          count: 0,
+        };
+        tokens.forEach((token) => activityBucket.tokens.add(token));
+        locations.forEach((location) => activityBucket.locations.add(location));
+        activityBucket.count += 1;
+        byActivityId.set(entry.activityId, activityBucket);
+
+        if (branchPath) {
+          const branchBucket = byBranchPath.get(branchPath) || {
+            tokens: new Set<string>(),
+            locations: new Set<string>(),
+            count: 0,
+          };
+          tokens.forEach((token) => branchBucket.tokens.add(token));
+          locations.forEach((location) => branchBucket.locations.add(location));
+          branchBucket.count += 1;
+          byBranchPath.set(branchPath, branchBucket);
+        }
+      });
+
+    return { byActivityId, byBranchPath };
+  }, [learnedResetAt, mappingAuditByItem]);
+
+  const resetLearnedPatternMemory = useCallback(() => {
+    if (
+      !window.confirm(
+        "Reset learned smart-mapping memory for this project? Saved mappings will remain, but old mappings will stop influencing future smart suggestions until new mappings are created.",
+      )
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    try {
+      window.localStorage.setItem(learnedResetKey, String(now));
+    } catch (error) {
+      console.error("Failed to persist WO mapper learned reset marker", error);
+    }
+    setLearnedResetAt(now);
+  }, [learnedResetKey]);
+
   useEffect(() => {
     let cancelled = false;
     if (selectedWoItems.length === 0 || activities.length === 0) {
@@ -1415,6 +1606,7 @@ const ExecutionMapper: React.FC = () => {
         indexedActivities,
         sourceParts: sampledQuickSourceParts,
         limit: 6,
+        learnedPatternIndex,
       });
 
       if (cancelled) return;
@@ -1438,6 +1630,7 @@ const ExecutionMapper: React.FC = () => {
                 item.fullContext,
               ],
               limit: 8,
+              learnedPatternIndex,
             }),
           );
         });
@@ -1469,7 +1662,7 @@ const ExecutionMapper: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activities.length, indexedActivities, selectedWoItems]);
+  }, [activities.length, indexedActivities, learnedPatternIndex, selectedWoItems]);
 
   useEffect(() => {
     if (!selectionFeedback.active || !isSuggestionEngineRunning) return;
@@ -1918,7 +2111,12 @@ const ExecutionMapper: React.FC = () => {
   );
 
   const updateLocalMappingAudit = useCallback(
-    (workOrderItemIds: number[], targetActivityId: number, mappingType = "DIRECT") => {
+    (
+      workOrderItemIds: number[],
+      targetActivityId: number,
+      mappingType = "DIRECT",
+      mappingRulesByItem?: Record<number, Record<string, unknown>>,
+    ) => {
       const activity = activityById.get(targetActivityId);
       const activityCode = activity?.activityCode || "";
       const activityName = activity?.activityName || "";
@@ -1939,7 +2137,7 @@ const ExecutionMapper: React.FC = () => {
               activityName,
               plannedQuantity: -1,
               mappingType,
-              mappingRules: null,
+              mappingRules: mappingRulesByItem?.[workOrderItemId] || null,
               createdBy: "Current User",
               createdOn: timestamp,
               updatedOn: timestamp,
@@ -1951,6 +2149,49 @@ const ExecutionMapper: React.FC = () => {
       });
     },
     [activityById, wbsPathById],
+  );
+
+  const buildDirectMappingRulesByItem = useCallback(
+    (
+      workOrderItemIds: number[],
+      targetActivityId: number,
+    ): Record<number, Record<string, unknown>> => {
+      const activity = activityById.get(targetActivityId);
+      const treePath = activity
+        ? wbsPathById.get(activity.wbsNode?.id || activity.wbsNodeId)
+        : "";
+      const branchPath = treePath ? deriveBranchPath(treePath) : null;
+      const rulesByItem: Record<number, Record<string, unknown>> = {};
+
+      workOrderItemIds.forEach((id) => {
+        const item = woItemLookup.get(id);
+        if (!item) return;
+
+        rulesByItem[id] = {
+          reviewStatus: "MANUAL",
+          overrideReason: null,
+          confidence: "MANUAL",
+          suggestionScore: null,
+          branchPath,
+          matchedLocationPhrases: extractLocationPhrases(
+            [item.boqPath, item.treeContext, item.fullContext]
+              .filter(Boolean)
+              .join(" > "),
+          ),
+          matchedSegments: [],
+          isManualOverride: false,
+          boqPath: item.boqPath || null,
+          woPath: item.treeContext || null,
+          fullContext: item.fullContext || null,
+          locationKey: item.locationKey || null,
+          activityTreePath: treePath || null,
+          mappingMode: "MANUAL_DIRECT",
+        };
+      });
+
+      return rulesByItem;
+    },
+    [activityById, wbsPathById, woItemLookup],
   );
 
   const handleLinkItems = useCallback(async (
@@ -1971,7 +2212,7 @@ const ExecutionMapper: React.FC = () => {
       clearSelection = true,
       refresh = false,
       showSuccess = true,
-      mappingRulesByItem,
+      mappingRulesByItem: providedMappingRulesByItem,
     } = options || {};
 
     try {
@@ -1979,6 +2220,9 @@ const ExecutionMapper: React.FC = () => {
       const activityLabel = [activity?.activityCode, activity?.activityName]
         .filter(Boolean)
         .join(" ");
+      const mappingRulesByItem =
+        providedMappingRulesByItem ||
+        buildDirectMappingRulesByItem(workOrderItemIds, targetActivityId);
 
       setMappingInFlight({
         active: true,
@@ -2012,7 +2256,12 @@ const ExecutionMapper: React.FC = () => {
       }
 
       updateVendorTreeMappingState(workOrderItemIds, activityLabel);
-      updateLocalMappingAudit(workOrderItemIds, targetActivityId);
+      updateLocalMappingAudit(
+        workOrderItemIds,
+        targetActivityId,
+        "DIRECT",
+        mappingRulesByItem,
+      );
 
       if (closeModal) {
         setIsLinkModalOpen(false);
@@ -2041,6 +2290,7 @@ const ExecutionMapper: React.FC = () => {
     }
   }, [
     activityById,
+    buildDirectMappingRulesByItem,
     numericProjectId,
     updateLocalMappingAudit,
     updateVendorTreeMappingState,
@@ -2557,6 +2807,10 @@ const ExecutionMapper: React.FC = () => {
             handleLinkItems={handleLinkItems}
             openFullTreeValidation={() => setIsLinkModalOpen(true)}
             openFullscreen={() => setIsAssistantFullscreenOpen(true)}
+            learnedActivityPatternCount={learnedPatternIndex.byActivityId.size}
+            learnedBranchPatternCount={learnedPatternIndex.byBranchPath.size}
+            learnedResetAt={learnedResetAt}
+            resetLearnedPatternMemory={resetLearnedPatternMemory}
           />
         </div>
 
@@ -2618,6 +2872,14 @@ const ExecutionMapper: React.FC = () => {
                   handleLinkItems={handleLinkItems}
                   openFullTreeValidation={() => setIsLinkModalOpen(true)}
                   closeFullscreen={() => setIsAssistantFullscreenOpen(false)}
+                  learnedActivityPatternCount={
+                    learnedPatternIndex.byActivityId.size
+                  }
+                  learnedBranchPatternCount={
+                    learnedPatternIndex.byBranchPath.size
+                  }
+                  learnedResetAt={learnedResetAt}
+                  resetLearnedPatternMemory={resetLearnedPatternMemory}
                 />
               </div>
             </div>

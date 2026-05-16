@@ -13,6 +13,15 @@ export type ActivitySuggestion = {
   branchPath: string;
   confidence: ConfidenceLevel;
   matches: SuggestionMatch;
+  learned?: {
+    activityPatternHits: number;
+    branchPatternHits: number;
+    totalBoost: number;
+    activityTokens: string[];
+    branchTokens: string[];
+    activityLocations: string[];
+    branchLocations: string[];
+  } | null;
 };
 
 export type IndexedActivitySuggestionTarget = {
@@ -20,6 +29,25 @@ export type IndexedActivitySuggestionTarget = {
   treePath: string;
   branchPath: string;
   context: ReturnType<typeof buildMapperContext>;
+};
+
+export type LearnedMappingPatternIndex = {
+  byActivityId: Map<
+    number,
+    {
+      tokens: Set<string>;
+      locations: Set<string>;
+      count: number;
+    }
+  >;
+  byBranchPath: Map<
+    string,
+    {
+      tokens: Set<string>;
+      locations: Set<string>;
+      count: number;
+    }
+  >;
 };
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -334,10 +362,12 @@ export const computeActivitySuggestionsFromIndex = ({
   indexedActivities,
   sourceParts,
   limit = 8,
+  learnedPatternIndex,
 }: {
   indexedActivities: IndexedActivitySuggestionTarget[];
   sourceParts: Array<string | undefined>;
   limit?: number;
+  learnedPatternIndex?: LearnedMappingPatternIndex;
 }): ActivitySuggestion[] => {
   const sourceContext = buildMapperContext(sourceParts);
   if (sourceContext.tokens.length === 0) return [];
@@ -345,13 +375,81 @@ export const computeActivitySuggestionsFromIndex = ({
   return indexedActivities
     .map((entry) => {
       const result = scoreMapperContexts(sourceContext, entry.context);
+      let learnedBoost = 0;
+
+      if (learnedPatternIndex) {
+        const activityPattern = learnedPatternIndex.byActivityId.get(entry.activity.id);
+        let activityPatternHits = 0;
+        let branchPatternHits = 0;
+        let activityTokens: string[] = [];
+        let branchTokens: string[] = [];
+        let activityLocations: string[] = [];
+        let branchLocations: string[] = [];
+        if (activityPattern) {
+          const tokenMatches = sourceContext.tokens.filter((token) =>
+            activityPattern.tokens.has(token),
+          );
+          const locationMatches = sourceContext.locationPhrases.filter((phrase) =>
+            activityPattern.locations.has(phrase),
+          );
+          const tokenHits = tokenMatches.length;
+          const locationHits = locationMatches.length;
+          activityPatternHits = tokenHits + locationHits;
+          activityTokens = tokenMatches.slice(0, 4);
+          activityLocations = locationMatches.slice(0, 3);
+          learnedBoost += tokenHits * 2 + locationHits * 8 + Math.min(6, activityPattern.count);
+        }
+
+        const branchPattern = learnedPatternIndex.byBranchPath.get(entry.branchPath);
+        if (branchPattern) {
+          const tokenMatches = sourceContext.tokens.filter((token) =>
+            branchPattern.tokens.has(token),
+          );
+          const locationMatches = sourceContext.locationPhrases.filter((phrase) =>
+            branchPattern.locations.has(phrase),
+          );
+          const tokenHits = tokenMatches.length;
+          const locationHits = locationMatches.length;
+          branchPatternHits = tokenHits + locationHits;
+          branchTokens = tokenMatches.slice(0, 4);
+          branchLocations = locationMatches.slice(0, 3);
+          learnedBoost += tokenHits + locationHits * 5 + Math.min(4, branchPattern.count);
+        }
+
+        const boostedScore = result.score + learnedBoost;
+        return {
+          activity: entry.activity,
+          score: boostedScore,
+          treePath: entry.treePath,
+          branchPath: entry.branchPath,
+          confidence: getConfidenceFromSuggestion(boostedScore, result.matches),
+          matches: result.matches,
+          learned:
+            learnedBoost > 0
+              ? {
+                  activityPatternHits,
+                  branchPatternHits,
+                  totalBoost: learnedBoost,
+                  activityTokens,
+                  branchTokens,
+                  activityLocations,
+                  branchLocations,
+                }
+              : null,
+        };
+      }
+
       return {
         activity: entry.activity,
-        score: result.score,
+        score: result.score + learnedBoost,
         treePath: entry.treePath,
         branchPath: entry.branchPath,
-        confidence: getConfidenceFromSuggestion(result.score, result.matches),
+        confidence: getConfidenceFromSuggestion(
+          result.score + learnedBoost,
+          result.matches,
+        ),
         matches: result.matches,
+        learned: null,
       };
     })
     .filter((entry) => entry.score > 0)
