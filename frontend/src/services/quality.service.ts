@@ -319,7 +319,7 @@ export const qualityService = {
           isHoldPoint: stage.isHoldPoint,
           isWitnessPoint: stage.isWitnessPoint,
           responsibleParty: stage.responsibleParty,
-          signatureSlots: stage.signatureSlots,
+          signatureSlots: [],
           items: stage.items.map((item, index) => ({
             itemText: item.description,
             type: item.type,

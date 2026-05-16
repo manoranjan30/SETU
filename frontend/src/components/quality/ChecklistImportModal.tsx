@@ -5,13 +5,18 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle,
+  ChevronDown,
   FileSpreadsheet,
   FileText,
   Loader2,
   Upload,
 } from "lucide-react";
 import { qualityService } from "../../services/quality.service";
-import type { ParsedChecklistPreview, PdfParseResult } from "../../types/quality";
+import type {
+  ChecklistImportStage,
+  ParsedChecklistPreview,
+  PdfParseResult,
+} from "../../types/quality";
 
 interface Props {
   isOpen: boolean;
@@ -33,6 +38,76 @@ const fieldLabels: Array<keyof Pick<
   "discipline",
   "applicableTrade",
 ];
+
+const STAGE_PREVIEW_LIMIT = 3;
+
+const StagePreviewCard: React.FC<{
+  stage: ChecklistImportStage;
+  editable?: boolean;
+  onStageNameChange?: (value: string) => void;
+}> = ({ stage, editable = false, onStageNameChange }) => {
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded
+    ? stage.items
+    : stage.items.slice(0, STAGE_PREVIEW_LIMIT);
+  const remainingCount = Math.max(0, stage.items.length - visibleItems.length);
+
+  return (
+    <div className="rounded-xl border border-border-default bg-surface-card p-3">
+      {editable ? (
+        <input
+          className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm font-semibold"
+          value={stage.name}
+          onChange={(event) => onStageNameChange?.(event.target.value)}
+        />
+      ) : (
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-text-primary">{stage.name}</p>
+          <p className="text-xs text-text-muted">{stage.items.length} items</p>
+        </div>
+      )}
+
+      <p className="mt-2 text-xs text-text-muted">
+        {stage.items.length} items - {stage.confidence}% confidence
+      </p>
+
+      {visibleItems.length > 0 && (
+        <div className="mt-3 rounded-lg border border-border-default/70 bg-surface-base px-3 py-2">
+          {stage.items.length > STAGE_PREVIEW_LIMIT && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="text-xs font-semibold text-orange-700 hover:text-orange-800"
+              >
+                {expanded ? "Collapse checkpoints" : "Expand all checkpoints"}
+              </button>
+            </div>
+          )}
+          <div className="space-y-2">
+            {visibleItems.map((item, index) => (
+              <div
+                key={`${stage.sequence}-${item.slNo ?? index}-${index}`}
+                className="text-sm text-text-secondary"
+              >
+                <span className="font-semibold text-text-primary">
+                  {item.slNo ?? index + 1}.
+                </span>{" "}
+                {item.description}
+              </div>
+            ))}
+          </div>
+          {!expanded && remainingCount > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-xs font-medium text-text-muted">
+              <ChevronDown className="h-3.5 w-3.5" />
+              +{remainingCount} more checkpoints in this section
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const ChecklistImportModal: React.FC<Props> = ({
   isOpen,
@@ -259,21 +334,14 @@ const ChecklistImportModal: React.FC<Props> = ({
             </p>
             <div className="space-y-3">
               {current.stages.map((stage, stageIndex) => (
-                <div
+                <StagePreviewCard
                   key={`${stage.name}-${stageIndex}`}
-                  className="rounded-xl border border-border-default bg-surface-card p-3"
-                >
-                  <input
-                    className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm font-semibold"
-                    value={stage.name}
-                    onChange={(event) =>
-                      updateStageName(activeIndex, stageIndex, event.target.value)
-                    }
-                  />
-                  <p className="mt-2 text-xs text-text-muted">
-                    {stage.items.length} items - {stage.confidence}% confidence
-                  </p>
-                </div>
+                  stage={stage}
+                  editable
+                  onStageNameChange={(value) =>
+                    updateStageName(activeIndex, stageIndex, value)
+                  }
+                />
               ))}
             </div>
           </div>
@@ -383,17 +451,10 @@ const ChecklistImportModal: React.FC<Props> = ({
 
                 <div className="mt-4 space-y-2">
                   {template.stages.map((stage) => (
-                    <div
+                    <StagePreviewCard
                       key={`${template.sheetName}-${stage.sequence}-${stage.name}`}
-                      className="rounded-xl border border-border-default bg-surface-card px-4 py-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-text-primary">{stage.name}</p>
-                        <p className="text-xs text-text-muted">
-                          {stage.items.length} items
-                        </p>
-                      </div>
-                    </div>
+                      stage={stage}
+                    />
                   ))}
                 </div>
               </div>
