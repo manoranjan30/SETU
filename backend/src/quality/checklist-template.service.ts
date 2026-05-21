@@ -145,6 +145,78 @@ export class ChecklistTemplateService {
     return report;
   }
 
+  async cloneFromProject(
+    sourceProjectId: number,
+    targetProjectId: number,
+    options?: {
+      templateIds?: number[];
+      overwriteExisting?: boolean;
+    },
+  ) {
+    if (sourceProjectId === targetProjectId) {
+      throw new BadRequestException(
+        'Source and target project cannot be the same',
+      );
+    }
+
+    const sourceTemplates = await this.templateRepo.find({
+      where: { projectId: sourceProjectId },
+      relations: ['stages', 'stages.items'],
+      order: {
+        stages: {
+          sequence: 'ASC',
+          items: {
+            sequence: 'ASC',
+          },
+        },
+      },
+    });
+
+    const selectedIds = new Set(options?.templateIds || []);
+    const templatesToClone = selectedIds.size
+      ? sourceTemplates.filter((template) => selectedIds.has(template.id))
+      : sourceTemplates;
+
+    const cloned: QualityChecklistTemplate[] = [];
+    const skipped: QualityChecklistTemplate[] = [];
+    const updated: QualityChecklistTemplate[] = [];
+
+    for (const sourceTemplate of templatesToClone) {
+      const existing = await this.findExistingTargetTemplate(
+        targetProjectId,
+        sourceTemplate,
+      );
+      const payload = this.toCreatePayload(sourceTemplate);
+
+      if (existing && options?.overwriteExisting) {
+        await this.assertTemplateStagesNotInUse(
+          existing.id,
+          `overwrite checklist template ${existing.checklistNo || existing.name}`,
+        );
+        updated.push(await this.update(existing.id, payload));
+        continue;
+      }
+
+      if (existing) {
+        skipped.push(existing);
+        continue;
+      }
+
+      cloned.push(await this.create(targetProjectId, payload));
+    }
+
+    return {
+      sourceProjectId,
+      targetProjectId,
+      clonedCount: cloned.length,
+      skippedCount: skipped.length,
+      updatedCount: updated.length,
+      cloned,
+      skipped,
+      updated,
+    };
+  }
+
   async delete(id: number) {
     const template = await this.findOne(id);
     await this.assertTemplateStagesNotInUse(
@@ -254,6 +326,55 @@ export class ChecklistTemplateService {
     return {
       savedCount: saved.length,
       templates: saved,
+    };
+  }
+
+  private async findExistingTargetTemplate(
+    targetProjectId: number,
+    sourceTemplate: QualityChecklistTemplate,
+  ) {
+    const checklistNo = sourceTemplate.checklistNo?.trim();
+    if (checklistNo) {
+      const byChecklistNo = await this.templateRepo.findOne({
+        where: { projectId: targetProjectId, checklistNo },
+      });
+      if (byChecklistNo) return byChecklistNo;
+    }
+
+    return this.templateRepo.findOne({
+      where: { projectId: targetProjectId, name: sourceTemplate.name },
+    });
+  }
+
+  private toCreatePayload(
+    template: QualityChecklistTemplate,
+  ): CreateChecklistTemplateDto {
+    return {
+      name: template.name,
+      description: template.description,
+      checklistNo: template.checklistNo || undefined,
+      revNo: template.revNo || '01',
+      activityTitle: template.activityTitle || template.name,
+      activityType: template.activityType || undefined,
+      discipline: template.discipline || undefined,
+      applicableTrade: template.applicableTrade || undefined,
+      isGlobal: template.isGlobal,
+      stages: (template.stages || []).map((stage) => ({
+        name: stage.name,
+        sequence: stage.sequence,
+        isHoldPoint: stage.isHoldPoint,
+        isWitnessPoint: stage.isWitnessPoint,
+        responsibleParty: stage.responsibleParty,
+        signatureSlots: stage.signatureSlots || [],
+        items: (stage.items || []).map((item) => ({
+          itemText: item.itemText,
+          type: item.type,
+          isMandatory: item.isMandatory,
+          photoRequired: item.photoRequired,
+          options: item.options,
+          sequence: item.sequence,
+        })),
+      })),
     };
   }
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { CheckSquare, Plus, Search, Settings2, Trash2, Upload, X, GripVertical } from "lucide-react";
+import { CheckSquare, Copy, Plus, Search, Settings2, Trash2, Upload, X, GripVertical } from "lucide-react";
 import { toast } from "react-hot-toast";
+import api from "../../../api/axios";
 import { qualityService } from "../../../services/quality.service";
 import ChecklistImportModal from "../../../components/quality/ChecklistImportModal";
 import type { QualityChecklistTemplatePayload, SignatureSlotConfig } from "../../../types/quality";
+import { filterOperationalProjects } from "../../../utils/project-lifecycle.utils";
 
 interface Props {
   projectId: number;
@@ -46,6 +48,13 @@ const QualityChecklist: React.FC<Props> = ({ projectId }) => {
   const [search, setSearch] = useState("");
   const [builderOpen, setBuilderOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneLoading, setCloneLoading] = useState(false);
+  const [cloneProjects, setCloneProjects] = useState<{ id: number; name: string; status?: string | null }[]>([]);
+  const [cloneSourceProjectId, setCloneSourceProjectId] = useState<number | null>(null);
+  const [cloneSourceTemplates, setCloneSourceTemplates] = useState<any[]>([]);
+  const [selectedCloneTemplateIds, setSelectedCloneTemplateIds] = useState<number[]>([]);
+  const [overwriteCloneTemplates, setOverwriteCloneTemplates] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
   const [formData, setFormData] = useState<QualityChecklistTemplatePayload>(baseForm());
 
@@ -60,6 +69,43 @@ const QualityChecklist: React.FC<Props> = ({ projectId }) => {
   useEffect(() => {
     load();
   }, [projectId]);
+
+  useEffect(() => {
+    if (!cloneOpen) return;
+    const loadProjects = async () => {
+      setCloneLoading(true);
+      try {
+        const res = await api.get("/dashboard/summary");
+        setCloneProjects(filterOperationalProjects(res.data.projects || []));
+      } catch {
+        toast.error("Failed to load source projects");
+      } finally {
+        setCloneLoading(false);
+      }
+    };
+    loadProjects();
+  }, [cloneOpen]);
+
+  useEffect(() => {
+    if (!cloneSourceProjectId) {
+      setCloneSourceTemplates([]);
+      setSelectedCloneTemplateIds([]);
+      return;
+    }
+    const loadSourceTemplates = async () => {
+      setCloneLoading(true);
+      try {
+        const sourceTemplates = await qualityService.getChecklistTemplates(cloneSourceProjectId);
+        setCloneSourceTemplates(sourceTemplates);
+        setSelectedCloneTemplateIds(sourceTemplates.map((template: any) => template.id));
+      } catch {
+        toast.error("Failed to load checklist templates from source project");
+      } finally {
+        setCloneLoading(false);
+      }
+    };
+    loadSourceTemplates();
+  }, [cloneSourceProjectId]);
 
   const filtered = templates.filter((t) =>
     `${t.name} ${t.activityTitle || ""} ${t.checklistNo || ""}`.toLowerCase().includes(search.toLowerCase()),
@@ -159,6 +205,46 @@ const QualityChecklist: React.FC<Props> = ({ projectId }) => {
     }
   };
 
+  const toggleCloneTemplate = (templateId: number) => {
+    setSelectedCloneTemplateIds((prev) =>
+      prev.includes(templateId)
+        ? prev.filter((id) => id !== templateId)
+        : [...prev, templateId],
+    );
+  };
+
+  const cloneFromProject = async () => {
+    if (!cloneSourceProjectId) {
+      toast.error("Select a source project");
+      return;
+    }
+    if (!selectedCloneTemplateIds.length) {
+      toast.error("Select at least one checklist template");
+      return;
+    }
+    setCloneLoading(true);
+    try {
+      const result = await qualityService.cloneChecklistTemplatesFromProject(projectId, {
+        sourceProjectId: cloneSourceProjectId,
+        templateIds: selectedCloneTemplateIds,
+        overwriteExisting: overwriteCloneTemplates,
+      });
+      toast.success(
+        `Checklist clone completed: ${result.clonedCount || 0} added, ${result.updatedCount || 0} updated, ${result.skippedCount || 0} skipped`,
+      );
+      setCloneOpen(false);
+      setCloneSourceProjectId(null);
+      setCloneSourceTemplates([]);
+      setSelectedCloneTemplateIds([]);
+      setOverwriteCloneTemplates(false);
+      load();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to clone checklist templates");
+    } finally {
+      setCloneLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-surface-card p-4">
@@ -193,6 +279,13 @@ const QualityChecklist: React.FC<Props> = ({ projectId }) => {
           >
             <Upload className="h-4 w-4" />
             Smart Import
+          </button>
+          <button
+            onClick={() => setCloneOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white"
+          >
+            <Copy className="h-4 w-4" />
+            Clone From Project
           </button>
           <button
             onClick={openCreateBuilder}
@@ -274,6 +367,130 @@ const QualityChecklist: React.FC<Props> = ({ projectId }) => {
         projectId={projectId}
         onSuccess={load}
       />
+
+      {cloneOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-surface-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border-subtle bg-surface-base p-6">
+              <div>
+                <h2 className="text-xl font-bold text-text-primary">Clone Checklists From Project</h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  Pull checklist templates from another active project into this project.
+                </p>
+              </div>
+              <button
+                onClick={() => setCloneOpen(false)}
+                className="rounded-full border border-border-default bg-surface-card p-2"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto p-6">
+              <label className="block text-sm font-semibold text-text-secondary">
+                Source Project
+                <select
+                  className="mt-2 w-full rounded-xl border border-border-default bg-surface-base px-4 py-3 text-sm"
+                  value={cloneSourceProjectId || ""}
+                  onChange={(event) => setCloneSourceProjectId(Number(event.target.value) || null)}
+                >
+                  <option value="">
+                    {cloneLoading && !cloneProjects.length ? "Loading projects..." : "Select source project..."}
+                  </option>
+                  {cloneProjects
+                    .filter((project) => project.id !== projectId)
+                    .map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label className="flex items-center gap-2 rounded-xl border border-border-subtle bg-surface-base p-3 text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={overwriteCloneTemplates}
+                  onChange={(event) => setOverwriteCloneTemplates(event.target.checked)}
+                />
+                Overwrite matching templates by checklist number/name when safe
+              </label>
+
+              <div className="rounded-2xl border border-border-subtle">
+                <div className="flex items-center justify-between border-b border-border-subtle p-3">
+                  <span className="text-sm font-semibold text-text-primary">
+                    Templates ({cloneSourceTemplates.length})
+                  </span>
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-blue-700"
+                    onClick={() =>
+                      setSelectedCloneTemplateIds(
+                        selectedCloneTemplateIds.length === cloneSourceTemplates.length
+                          ? []
+                          : cloneSourceTemplates.map((template) => template.id),
+                      )
+                    }
+                  >
+                    {selectedCloneTemplateIds.length === cloneSourceTemplates.length ? "Clear All" : "Select All"}
+                  </button>
+                </div>
+                <div className="max-h-80 divide-y divide-border-subtle overflow-y-auto">
+                  {cloneSourceTemplates.map((template) => (
+                    <label
+                      key={template.id}
+                      className="flex cursor-pointer items-start gap-3 p-3 hover:bg-surface-base"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={selectedCloneTemplateIds.includes(template.id)}
+                        onChange={() => toggleCloneTemplate(template.id)}
+                      />
+                      <span>
+                        <span className="block text-sm font-semibold text-text-primary">
+                          {template.activityTitle || template.name}
+                        </span>
+                        <span className="text-xs text-text-muted">
+                          {template.checklistNo || "No checklist number"} - {(template.stages || []).length} stages
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                  {!cloneSourceProjectId && (
+                    <div className="p-6 text-center text-sm text-text-muted">
+                      Select a source project to view its checklist templates.
+                    </div>
+                  )}
+                  {cloneSourceProjectId && !cloneLoading && cloneSourceTemplates.length === 0 && (
+                    <div className="p-6 text-center text-sm text-text-muted">
+                      No checklist templates found in the selected project.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-border-subtle bg-surface-base p-5">
+              <button
+                type="button"
+                onClick={() => setCloneOpen(false)}
+                className="rounded-xl px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={cloneLoading || !selectedCloneTemplateIds.length}
+                onClick={cloneFromProject}
+                className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {cloneLoading ? "Working..." : "Clone Selected"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {builderOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
