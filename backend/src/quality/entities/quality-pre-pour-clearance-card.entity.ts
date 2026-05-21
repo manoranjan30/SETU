@@ -91,6 +91,18 @@ export class QualityPrePourClearanceCard {
   @Column({ type: 'int', nullable: true })
   vibratorCount: number | null;
 
+  @Column({ type: 'int', nullable: true })
+  activationStageTemplateId: number | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  activationStageName: string | null;
+
+  @Column({ default: false })
+  isActivated: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  activatedAt: Date | null;
+
   @Column({ type: 'jsonb', default: () => "'{}'" })
   attachments: {
     checklistPccAttached?: 'YES' | 'NO' | 'NA';
@@ -102,12 +114,26 @@ export class QualityPrePourClearanceCard {
     concretePourCardAttached?: 'YES' | 'NO' | 'NA';
   };
 
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  attachmentChecklistSelections: Record<string, number[]>;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   signoffs: Array<{
+    id?: string;
     department: string;
+    designation?: string | null;
+    isActive?: boolean;
     personName?: string | null;
     signedDate?: string | null;
+    signedAt?: string | null;
+    signedByUserId?: number | null;
+    signerUsername?: string | null;
+    signerDisplayName?: string | null;
+    signerRoles?: string[];
+    signatureMode?: 'DRAWN_NOW' | 'SAVED_PROFILE' | string | null;
     signatureData?: string | null;
+    signatureHash?: string | null;
+    signatureEvidence?: Record<string, unknown> | null;
     status?: 'PENDING' | 'SIGNED' | 'WAIVED';
   }>;
 
@@ -120,6 +146,30 @@ export class QualityPrePourClearanceCard {
 
   @Column({ type: 'int', nullable: true })
   createdByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  submittedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  submittedByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  approvedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  approvedByUserId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  approvalRemarks: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rejectedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  rejectedByUserId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  rejectionRemarks: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

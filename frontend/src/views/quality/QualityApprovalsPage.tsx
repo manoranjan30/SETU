@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, type MouseEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { PermissionCode } from "../../config/permissions";
@@ -53,6 +53,13 @@ interface QualityInspection {
     activityName: string;
     requiresPourCard?: boolean;
     requiresPourClearanceCard?: boolean;
+    pourClearanceTriggerStageTemplateId?: number | null;
+    pourClearanceSignoffTemplate?: Array<{
+      id: string;
+      department: string;
+      designation?: string | null;
+      isActive: boolean;
+    }>;
   };
   epsNode?: {
     label: string;
@@ -132,6 +139,12 @@ interface QualityInspection {
     currentUserActionHint?: string | null;
     currentUserBlockedReason?: string | null;
     activeLevel?: number | null;
+  };
+  cardSummary?: {
+    pourCardStatus?: string | null;
+    prePourClearanceStatus?: string | null;
+    pourCardApproved?: boolean;
+    prePourClearanceApproved?: boolean;
   };
   slaDueAt?: string;
   isLocked?: boolean;
@@ -486,6 +499,28 @@ function getWorkflowStepMeta(step: any, isCurrent: boolean, isLastStepNode: bool
   };
 }
 
+type ClearanceAttachmentKey =
+  | "checklistPccAttached"
+  | "checklistWaterproofingAttached"
+  | "checklistFormworkAttached"
+  | "checklistReinforcementAttached"
+  | "checklistMepAttached"
+  | "checklistConcretingAttached"
+  | "concretePourCardAttached";
+
+const CLEARANCE_ATTACHMENT_OPTIONS: Array<{
+  key: ClearanceAttachmentKey;
+  label: string;
+}> = [
+  { key: "checklistPccAttached", label: "PCC Checklist" },
+  { key: "checklistWaterproofingAttached", label: "Waterproofing Checklist" },
+  { key: "checklistFormworkAttached", label: "Formwork Checklist" },
+  { key: "checklistReinforcementAttached", label: "Reinforcement Checklist" },
+  { key: "checklistMepAttached", label: "MEP Checklist" },
+  { key: "checklistConcretingAttached", label: "Concreting Checklist" },
+  { key: "concretePourCardAttached", label: "Concrete Pour Card" },
+];
+
 function safeCsvCell(value: unknown) {
   const stringValue =
     value === null || value === undefined ? "" : String(value).trim();
@@ -512,10 +547,12 @@ export default function QualityApprovalsPage() {
   const { projectId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const concreteCardsRef = useRef<HTMLDivElement | null>(null);
   const [inspections, setInspections] = useState<QualityInspection[]>([]);
   const [selectedInspectionId, setSelectedInspectionId] = useState<
     number | null
   >(null);
+  const [jumpToConcreteCards, setJumpToConcreteCards] = useState(false);
   const [inspectionDetail, setInspectionDetail] = useState<any>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -568,6 +605,24 @@ export default function QualityApprovalsPage() {
     }
   }, [selectedInspectionId]);
 
+  const selectedInspectionSummary = useMemo(
+    () =>
+      selectedInspectionId
+        ? inspections.find((inspection) => inspection.id === selectedInspectionId) ||
+          null
+        : null,
+    [inspections, selectedInspectionId],
+  );
+
+  const effectiveInspectionActivity =
+    inspectionDetail?.activity || selectedInspectionSummary?.activity || null;
+  const requiresPourCardForSelected = Boolean(
+    effectiveInspectionActivity?.requiresPourCard,
+  );
+  const requiresPourClearanceForSelected = Boolean(
+    effectiveInspectionActivity?.requiresPourClearanceCard,
+  );
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setDashboardFullscreen(document.fullscreenElement === workspaceRef.current);
@@ -590,7 +645,7 @@ export default function QualityApprovalsPage() {
   // showReversalSig could also be added if reversal needs digital signature, but reason is already captured in modal.
 
   // User info
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const isAdmin = hasPermission(PermissionCode.QUALITY_INSPECTION_DELETE);
   const canApproveInspection = hasPermission(
     PermissionCode.QUALITY_INSPECTION_APPROVE,
@@ -629,6 +684,10 @@ export default function QualityApprovalsPage() {
   const [savingPrePourClearance, setSavingPrePourClearance] = useState(false);
   const [submittingPourCard, setSubmittingPourCard] = useState(false);
   const [submittingPrePourClearance, setSubmittingPrePourClearance] =
+    useState(false);
+  const [activeClearanceSignoffIndex, setActiveClearanceSignoffIndex] =
+    useState<number | null>(null);
+  const [showClearanceSignoffSignature, setShowClearanceSignoffSignature] =
     useState(false);
 
   const applyFullscreenThemeVars = () => {
@@ -776,9 +835,8 @@ export default function QualityApprovalsPage() {
 
   useEffect(() => {
     const inspectionId = inspectionDetail?.id;
-    const requiresPourCard = inspectionDetail?.activity?.requiresPourCard;
-    const requiresPrePourClearance =
-      inspectionDetail?.activity?.requiresPourClearanceCard;
+    const requiresPourCard = requiresPourCardForSelected;
+    const requiresPrePourClearance = requiresPourClearanceForSelected;
 
     if (!inspectionId || (!requiresPourCard && !requiresPrePourClearance)) {
       setPourCard(null);
@@ -806,8 +864,90 @@ export default function QualityApprovalsPage() {
       .finally(() => setLoadingCards(false));
   }, [
     inspectionDetail?.id,
-    inspectionDetail?.activity?.requiresPourCard,
-    inspectionDetail?.activity?.requiresPourClearanceCard,
+    requiresPourCardForSelected,
+    requiresPourClearanceForSelected,
+    refreshKey,
+  ]);
+
+  const updatePrePourClearanceCard = (updater: (prev: any) => any) => {
+    setPrePourClearanceCard((prev: any) => (prev ? updater(prev) : prev));
+  };
+
+  const clearanceChecklistOptions = useMemo(() => {
+    const stageGroups = new Map<
+      number,
+      {
+        checklistTemplateId: number;
+        checklistName: string;
+        statuses: string[];
+      }
+    >();
+
+    for (const stage of inspectionDetail?.stages || []) {
+      const templateId = Number(stage?.stageTemplate?.templateId || 0);
+      if (!templateId) continue;
+      const bucket =
+        stageGroups.get(templateId) ||
+        ({
+          checklistTemplateId: templateId,
+          checklistName:
+            stage?.stageTemplate?.template?.name ||
+            `Checklist ${templateId}`,
+          statuses: [] as string[],
+        });
+      bucket.statuses.push(String(stage?.status || "PENDING").toUpperCase());
+      stageGroups.set(templateId, bucket);
+    }
+
+    return Array.from(stageGroups.values())
+      .map((group) => {
+        const allApproved = group.statuses.every(
+          (status) => status === "APPROVED",
+        );
+        const hasProgress = group.statuses.some((status) =>
+          ["APPROVED", "COMPLETED", "IN_PROGRESS"].includes(status),
+        );
+        return {
+          ...group,
+          approvalState: allApproved
+            ? "APPROVED"
+            : hasProgress
+              ? "PARTIALLY_APPROVED"
+              : "PENDING",
+        };
+      })
+      .filter((group) => group.approvalState !== "PENDING");
+  }, [inspectionDetail?.stages]);
+
+  const clearanceActivation = useMemo(() => {
+    const triggerStageTemplateId =
+      effectiveInspectionActivity?.pourClearanceTriggerStageTemplateId ??
+      prePourClearanceCard?.activationStageTemplateId ??
+      null;
+
+    const triggerStage =
+      (inspectionDetail?.stages || []).find(
+        (stage: any) => stage?.stageTemplateId === triggerStageTemplateId,
+      ) || null;
+
+    const triggerStageName =
+      prePourClearanceCard?.activationStageName ||
+      triggerStage?.stageTemplate?.name ||
+      null;
+
+    const isActivated = Boolean(prePourClearanceCard?.isActivated);
+
+    return {
+      triggerStageTemplateId,
+      triggerStageName,
+      isActivated,
+    };
+  }, [
+    effectiveInspectionActivity?.pourClearanceTriggerStageTemplateId,
+    inspectionDetail?.stages,
+    prePourClearanceCard?.activationStageName,
+    prePourClearanceCard?.activationStageTemplateId,
+    prePourClearanceCard?.isActivated,
   ]);
 
   const filterOptions = useMemo(() => {
@@ -887,6 +1027,97 @@ export default function QualityApprovalsPage() {
     } finally {
       setSubmittingPrePourClearance(false);
     }
+  };
+
+  const approveConcreteDocument = async (
+    documentType: "POUR_CARD" | "PRE_POUR_CLEARANCE",
+  ) => {
+    if (!inspectionDetail?.id) return;
+    const remarks = window.prompt("Approval remarks (optional)") || undefined;
+    try {
+      if (documentType === "POUR_CARD") {
+        const saved = await qualityService.approvePourCard(
+          inspectionDetail.id,
+          remarks,
+        );
+        setPourCard(saved);
+        alert("Pour card approved.");
+      } else {
+        const saved = await qualityService.approvePrePourClearanceCard(
+          inspectionDetail.id,
+          remarks,
+        );
+        setPrePourClearanceCard(saved);
+        alert("Pre-pour clearance approved.");
+      }
+      setRefreshKey((key) => key + 1);
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to approve document."));
+    }
+  };
+
+  const rejectConcreteDocument = async (
+    documentType: "POUR_CARD" | "PRE_POUR_CLEARANCE",
+  ) => {
+    if (!inspectionDetail?.id) return;
+    const remarks = window.prompt("Reason for rejection");
+    if (!remarks?.trim()) return;
+    try {
+      if (documentType === "POUR_CARD") {
+        const saved = await qualityService.rejectPourCard(
+          inspectionDetail.id,
+          remarks,
+        );
+        setPourCard(saved);
+        alert("Pour card rejected.");
+      } else {
+        const saved = await qualityService.rejectPrePourClearanceCard(
+          inspectionDetail.id,
+          remarks,
+        );
+        setPrePourClearanceCard(saved);
+        alert("Pre-pour clearance rejected.");
+      }
+      setRefreshKey((key) => key + 1);
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to reject document."));
+    }
+  };
+
+  const handleClearanceSignoffSignature = (
+    signatureData: string,
+    reuseExisting?: boolean,
+    evidence?: Record<string, unknown>,
+  ) => {
+    if (activeClearanceSignoffIndex == null) return;
+    const signedAt = new Date().toISOString();
+    updatePrePourClearanceCard((prev: any) => ({
+      ...prev,
+      signoffs: (prev.signoffs || []).map((row: any, rowIdx: number) =>
+        rowIdx === activeClearanceSignoffIndex
+          ? {
+              ...row,
+              signatureData,
+              signedDate: signedAt.slice(0, 10),
+              signedAt,
+              signatureMode: reuseExisting ? "SAVED_PROFILE" : "DRAWN_NOW",
+              signedByUserId: user?.id ?? null,
+              signerUsername: user?.username ?? null,
+              signerDisplayName: user?.displayName || user?.username || null,
+              signerRoles: user?.roles || [],
+              status: "SIGNED",
+              signatureEvidence: {
+                ...(evidence || {}),
+                signedAt,
+                meaning:
+                  "I have reviewed and signed this pre-pour clearance responsibility.",
+              },
+            }
+          : row,
+      ),
+    }));
+    setShowClearanceSignoffSignature(false);
+    setActiveClearanceSignoffIndex(null);
   };
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -1230,6 +1461,31 @@ export default function QualityApprovalsPage() {
     if (!inspectionId) return;
     setSelectedInspectionId(inspectionId);
   };
+
+  const jumpToConcreteCardsForInspection = (inspectionId: number) => {
+    setJumpToConcreteCards(true);
+    setSelectedInspectionId(inspectionId);
+  };
+
+  const openConcreteCards = (
+    event: MouseEvent<HTMLButtonElement>,
+    inspectionId: number,
+  ) => {
+    event.stopPropagation();
+    jumpToConcreteCardsForInspection(inspectionId);
+  };
+
+  useEffect(() => {
+    if (!jumpToConcreteCards || loadingDetail || !inspectionDetail) return;
+    const timer = window.setTimeout(() => {
+      concreteCardsRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setJumpToConcreteCards(false);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [inspectionDetail, jumpToConcreteCards, loadingDetail]);
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
@@ -2081,9 +2337,11 @@ export default function QualityApprovalsPage() {
     inspectionId: number,
     stageId: number,
     signatureData: string,
+    signatureEvidence?: Record<string, unknown>,
   ) => {
     return api.post(`/quality/inspections/${inspectionId}/stages/${stageId}/approve`, {
       signatureData,
+      signatureEvidence,
       comments: "Stage approved from checklist stage action",
     });
   };
@@ -2162,7 +2420,11 @@ export default function QualityApprovalsPage() {
     setShowFinalApproveSig(true);
   };
 
-  const executeFinalApprove = async (signatureData: string) => {
+  const executeFinalApprove = async (
+    signatureData: string,
+    _reuseExisting?: boolean,
+    signatureEvidence?: Record<string, unknown>,
+  ) => {
     try {
       if (activeStageId != null && inspectionDetail) {
         const targetStage = (inspectionDetail.stages || []).find(
@@ -2175,6 +2437,7 @@ export default function QualityApprovalsPage() {
           inspectionDetail.id,
           activeStageId,
           signatureData,
+          signatureEvidence,
         );
         alert("Stage approved successfully.");
         setShowFinalApproveSig(false);
@@ -2395,16 +2658,16 @@ export default function QualityApprovalsPage() {
   }, [observations]);
 
   const cardReadiness = useMemo(() => {
-    const requiresPourCard = Boolean(inspectionDetail?.activity?.requiresPourCard);
-    const requiresPrePourClearance = Boolean(
-      inspectionDetail?.activity?.requiresPourClearanceCard,
-    );
+    const requiresPourCard = requiresPourCardForSelected;
+    const requiresPrePourClearance = requiresPourClearanceForSelected;
     const pourCardReady = !requiresPourCard
       ? true
-      : ["SUBMITTED", "LOCKED"].includes(pourCard?.status || "");
+      : ["APPROVED", "LOCKED"].includes(pourCard?.status || "");
     const prePourClearanceReady = !requiresPrePourClearance
       ? true
-      : ["SUBMITTED", "LOCKED"].includes(prePourClearanceCard?.status || "");
+      : !clearanceActivation.isActivated
+        ? true
+      : ["APPROVED", "LOCKED"].includes(prePourClearanceCard?.status || "");
 
     return {
       requiresPourCard,
@@ -2414,11 +2677,25 @@ export default function QualityApprovalsPage() {
       allReady: pourCardReady && prePourClearanceReady,
     };
   }, [
-    inspectionDetail?.activity?.requiresPourCard,
-    inspectionDetail?.activity?.requiresPourClearanceCard,
+    requiresPourCardForSelected,
+    requiresPourClearanceForSelected,
+    clearanceActivation.isActivated,
     pourCard?.status,
     prePourClearanceCard?.status,
   ]);
+
+  const concreteCardApprovalStatuses = ["SUBMITTED", "APPROVED", "LOCKED"];
+  const shouldShowPourCardInApproval =
+    requiresPourCardForSelected &&
+    concreteCardApprovalStatuses.includes(pourCard?.status || "");
+  const shouldShowPrePourClearanceInApproval =
+    requiresPourClearanceForSelected &&
+    concreteCardApprovalStatuses.includes(prePourClearanceCard?.status || "");
+  const shouldShowConcreteCardsInApproval =
+    shouldShowPourCardInApproval || shouldShowPrePourClearanceInApproval;
+  const isConcreteCardsApprovalLoading =
+    loadingCards &&
+    (requiresPourCardForSelected || requiresPourClearanceForSelected);
 
   const getStagePendingObservationCount = (stageId: number) =>
     observations.filter(
@@ -3146,6 +3423,25 @@ export default function QualityApprovalsPage() {
                   const priority = getPriorityScore(insp);
                   const workflowStateBadge = getWorkflowStateBadge(insp);
                   const inspectionActionSummary = getInspectionActionSummary(insp);
+                  const hasPourCard = Boolean(insp.activity?.requiresPourCard);
+                  const hasPourClearance = Boolean(
+                    insp.activity?.requiresPourClearanceCard,
+                  );
+                  const totalStageApprovals =
+                    insp.stageApprovalSummary?.totalStages || 0;
+                  const approvedStageApprovals =
+                    insp.stageApprovalSummary?.approvedStages || 0;
+                  const pourClearanceReady =
+                    hasPourClearance &&
+                    totalStageApprovals > 0 &&
+                    approvedStageApprovals >= totalStageApprovals;
+                  const hasConcreteCardApprovalDocument =
+                    concreteCardApprovalStatuses.includes(
+                      insp.cardSummary?.pourCardStatus || "",
+                    ) ||
+                    concreteCardApprovalStatuses.includes(
+                      insp.cardSummary?.prePourClearanceStatus || "",
+                    );
                   return (
                     <div
                       key={insp.id}
@@ -3207,6 +3503,44 @@ export default function QualityApprovalsPage() {
                           </span>
                         ) : null}
                       </div>
+                      {(hasPourCard || hasPourClearance) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          {hasPourCard ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 font-semibold text-violet-700 ring-1 ring-violet-100">
+                              <ClipboardCheck className="h-3 w-3" />
+                              Pour Card
+                            </span>
+                          ) : null}
+                          {hasPourClearance ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-0.5 font-semibold text-cyan-700 ring-1 ring-cyan-100">
+                              <ShieldCheck className="h-3 w-3" />
+                              Pour Clearance
+                            </span>
+                          ) : null}
+                          {hasPourClearance && totalStageApprovals > 0 ? (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${
+                                pourClearanceReady
+                                  ? "bg-success-muted text-emerald-700"
+                                  : "bg-warning-muted text-amber-800"
+                              }`}
+                            >
+                              {pourClearanceReady
+                                ? "Clearance ready"
+                                : `Waiting ${approvedStageApprovals}/${totalStageApprovals} stages`}
+                            </span>
+                          ) : null}
+                          {hasConcreteCardApprovalDocument ? (
+                            <button
+                              type="button"
+                              onClick={(event) => openConcreteCards(event, insp.id)}
+                              className="inline-flex items-center rounded-full border border-border-default bg-surface-card px-2 py-0.5 font-semibold text-text-primary hover:border-secondary hover:text-secondary"
+                            >
+                              Review card
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
                       <div className="mt-1.5 flex items-center justify-between text-[11px]">
                         <span className="text-text-muted">
                           Risk Score: {priority}
@@ -3856,7 +4190,9 @@ export default function QualityApprovalsPage() {
                   Select an RFI
                 </h3>
                 <p className="max-w-sm text-center">
-                  Select an RFI from the left panel to review and execute its checklist.
+                  Select an RFI from the left panel to review its checklist. Pour
+                  Card and Pour Clearance details appear inside the selected RFI
+                  under Concrete Cards.
                 </p>
               </div>
             ) : loadingDetail ? (
@@ -3964,6 +4300,18 @@ export default function QualityApprovalsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
+                    {shouldShowConcreteCardsInApproval && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          jumpToConcreteCardsForInspection(inspectionDetail.id)
+                        }
+                        className="flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-sm font-semibold text-cyan-800 shadow-sm hover:bg-cyan-100"
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Concrete Cards
+                      </button>
+                    )}
                     {dashboardFullscreen ? (
                       <span className="hidden rounded-full bg-surface-raised px-3 py-1 text-[11px] font-medium text-text-muted xl:inline-flex">
                         Use Left / Right arrows to move through RFIs
@@ -4188,9 +4536,12 @@ export default function QualityApprovalsPage() {
                       </div>
                     )}
 
-                    {(inspectionDetail.activity?.requiresPourCard ||
-                      inspectionDetail.activity?.requiresPourClearanceCard) && (
-                      <div className="rounded-xl border bg-surface-card p-4">
+                    {(isConcreteCardsApprovalLoading ||
+                      shouldShowConcreteCardsInApproval) && (
+                      <div
+                        ref={concreteCardsRef}
+                        className="rounded-xl border bg-surface-card p-4 scroll-mt-4"
+                      >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <div className="text-sm font-semibold text-text-primary">
@@ -4207,15 +4558,39 @@ export default function QualityApprovalsPage() {
                           ) : null}
                         </div>
                         <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                          {inspectionDetail.activity?.requiresPourCard && pourCard ? (
+                          {shouldShowPourCardInApproval && pourCard ? (
                             <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="text-sm font-semibold text-text-primary">
                                   Pour Card
                                 </div>
-                                <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
-                                  {pourCard.status || "DRAFT"}
-                                </span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
+                                    {pourCard.status || "DRAFT"}
+                                  </span>
+                                  {pourCard.status === "SUBMITTED" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          approveConcreteDocument("POUR_CARD")
+                                        }
+                                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                                      >
+                                        Approve
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          rejectConcreteDocument("POUR_CARD")
+                                        }
+                                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  ) : null}
+                                </div>
                               </div>
                               <div className="mt-3 grid gap-3">
                                 <div className="grid gap-3 md:grid-cols-2">
@@ -4666,395 +5041,788 @@ export default function QualityApprovalsPage() {
                               </div>
                             </div>
                           ) : null}
+                          {shouldShowPourCardInApproval &&
+                          !loadingCards &&
+                          !pourCard ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                              <div className="font-semibold">
+                                Pour Card is required but not loaded
+                              </div>
+                              <div className="mt-1 text-xs">
+                                The RFI is blocked until the pour card is
+                                created and submitted. Use refresh to retry
+                                loading the card.
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setRefreshKey((key) => key + 1)}
+                                className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                              >
+                                Reload Card
+                              </button>
+                            </div>
+                          ) : null}
 
-                          {inspectionDetail.activity?.requiresPourClearanceCard &&
+                          {shouldShowPrePourClearanceInApproval &&
                           prePourClearanceCard ? (
                             <div className="rounded-lg border border-border-subtle bg-surface-base p-4">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-sm font-semibold text-text-primary">
-                                  Pre-Pour Clearance
-                                </div>
-                                <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
-                                  {prePourClearanceCard.status || "DRAFT"}
-                                </span>
-                              </div>
-                              <div className="mt-3 grid gap-3">
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <input
-                                    value={prePourClearanceCard.projectNameSnapshot || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        projectNameSnapshot: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Project name"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.contractorName || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        contractorName: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Contractor"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-3">
-                                  <input
-                                    value={prePourClearanceCard.cardDate || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        cardDate: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Date"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.pourStartTime || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        pourStartTime: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Pour start time"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.pourEndTime || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        pourEndTime: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Pour end time"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <input
-                                    value={prePourClearanceCard.locationText || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        locationText: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Checklist location"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.elementName || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        elementName: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Element"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                </div>
-                                <input
-                                  value={prePourClearanceCard.pourLocation || ""}
-                                  onChange={(e) =>
-                                    setPrePourClearanceCard((prev: any) => ({
-                                      ...prev,
-                                      pourLocation: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Pour location"
-                                  className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                />
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <input
-                                    value={prePourClearanceCard.pourNo || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        pourNo: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Pour no"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.gradeOfConcrete || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        gradeOfConcrete: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Grade of concrete"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.placementMethod || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        placementMethod: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Placement method"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                  <input
-                                    value={prePourClearanceCard.estimatedConcreteQty ?? ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        estimatedConcreteQty: e.target.value
-                                          ? Number(e.target.value)
-                                          : null,
-                                      }))
-                                    }
-                                    placeholder="Estimated qty"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.actualConcreteQty ?? ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        actualConcreteQty: e.target.value
-                                          ? Number(e.target.value)
-                                          : null,
-                                      }))
-                                    }
-                                    placeholder="Actual qty"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.concreteSupplier || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        concreteSupplier: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Concrete supplier"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.cubeMouldCount ?? ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        cubeMouldCount: e.target.value
-                                          ? Number(e.target.value)
-                                          : null,
-                                      }))
-                                    }
-                                    placeholder="Cube mould count"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.targetSlump || ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        targetSlump: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Target slump"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                  <input
-                                    value={prePourClearanceCard.vibratorCount ?? ""}
-                                    onChange={(e) =>
-                                      setPrePourClearanceCard((prev: any) => ({
-                                        ...prev,
-                                        vibratorCount: e.target.value
-                                          ? Number(e.target.value)
-                                          : null,
-                                      }))
-                                    }
-                                    placeholder="No. of vibrators"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
-                                  />
-                                </div>
-                                <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
-                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
-                                    Attachments
+                                <div>
+                                  <div className="text-sm font-semibold text-text-primary">
+                                    Pre-Pour Clearance
                                   </div>
-                                  <div className="grid gap-2 md:grid-cols-2">
-                                    {[
-                                      ["checklistPccAttached", "PCC Checklist"],
-                                      ["checklistWaterproofingAttached", "Waterproofing Checklist"],
-                                      ["checklistFormworkAttached", "Formwork Checklist"],
-                                      ["checklistReinforcementAttached", "Reinforcement Checklist"],
-                                      ["checklistMepAttached", "MEP Checklist"],
-                                      ["checklistConcretingAttached", "Concreting Checklist"],
-                                      ["concretePourCardAttached", "Concrete Pour Card"],
-                                    ].map(([key, label]) => (
-                                      <div
-                                        key={key}
-                                        className="grid grid-cols-[1fr_140px] items-center gap-3 text-sm text-text-secondary"
+                                  <div className="text-xs text-text-muted mt-1">
+                                    {clearanceActivation.triggerStageName
+                                      ? `Activates after checklist stage approval: ${clearanceActivation.triggerStageName}`
+                                      : "No activation stage configured. Clearance is available immediately."}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
+                                    {prePourClearanceCard.status || "DRAFT"}
+                                  </span>
+                                  {prePourClearanceCard.status === "SUBMITTED" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          approveConcreteDocument(
+                                            "PRE_POUR_CLEARANCE",
+                                          )
+                                        }
+                                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                                       >
-                                        <span>{label}</span>
-                                        <select
-                                          value={
-                                            prePourClearanceCard.attachments?.[key] === true
-                                              ? "YES"
-                                              : prePourClearanceCard.attachments?.[key] === false
-                                                ? "NO"
-                                                : prePourClearanceCard.attachments?.[key] || "NO"
-                                          }
-                                          onChange={(e) =>
-                                            setPrePourClearanceCard((prev: any) => ({
-                                              ...prev,
-                                              attachments: {
-                                                ...(prev.attachments || {}),
-                                                [key]: e.target.value,
-                                              },
-                                            }))
-                                          }
-                                          className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
-                                        >
-                                          <option value="NO">No</option>
-                                          <option value="YES">Yes</option>
-                                          <option value="NA">N/A</option>
-                                        </select>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
-                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
-                                    Signoff Parties
-                                  </div>
-                                  <div className="space-y-2">
-                                    {(prePourClearanceCard.signoffs || []).map(
-                                      (signoff: any, idx: number) => (
-                                        <div
-                                          key={`signoff-${idx}`}
-                                          className="grid gap-2 md:grid-cols-[1.1fr_1fr]"
-                                        >
-                                          <input
-                                            value={signoff.department || ""}
-                                            onChange={(e) =>
-                                              setPrePourClearanceCard((prev: any) => ({
-                                                ...prev,
-                                                signoffs: (prev.signoffs || []).map(
-                                                  (row: any, rowIdx: number) =>
-                                                    rowIdx === idx
-                                                      ? { ...row, department: e.target.value }
-                                                      : row,
-                                                ),
-                                              }))
-                                            }
-                                            placeholder="Department"
-                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
-                                          />
-                                          <input
-                                            value={signoff.personName || ""}
-                                            onChange={(e) =>
-                                              setPrePourClearanceCard((prev: any) => ({
-                                                ...prev,
-                                                signoffs: (prev.signoffs || []).map(
-                                                  (row: any, rowIdx: number) =>
-                                                    rowIdx === idx
-                                                      ? { ...row, personName: e.target.value }
-                                                      : row,
-                                                ),
-                                              }))
-                                            }
-                                            placeholder="Name"
-                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
-                                          />
-                                          <input
-                                            value={signoff.signedDate || ""}
-                                            onChange={(e) =>
-                                              setPrePourClearanceCard((prev: any) => ({
-                                                ...prev,
-                                                signoffs: (prev.signoffs || []).map(
-                                                  (row: any, rowIdx: number) =>
-                                                    rowIdx === idx
-                                                      ? { ...row, signedDate: e.target.value }
-                                                      : row,
-                                                ),
-                                              }))
-                                            }
-                                            placeholder="Signed date"
-                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
-                                          />
-                                          <select
-                                            value={signoff.status || "PENDING"}
-                                            onChange={(e) =>
-                                              setPrePourClearanceCard((prev: any) => ({
-                                                ...prev,
-                                                signoffs: (prev.signoffs || []).map(
-                                                  (row: any, rowIdx: number) =>
-                                                    rowIdx === idx
-                                                      ? { ...row, status: e.target.value }
-                                                      : row,
-                                                ),
-                                              }))
-                                            }
-                                            className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
-                                          >
-                                            <option value="PENDING">Pending</option>
-                                            <option value="SIGNED">Signed</option>
-                                            <option value="WAIVED">Waived</option>
-                                          </select>
-                                        </div>
-                                      ),
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex justify-end">
-                                  <div className="flex gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={downloadPrePourClearancePdf}
-                                      className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised"
-                                    >
-                                      Download PDF
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={savePrePourClearanceDetails}
-                                      disabled={
-                                        savingPrePourClearance ||
-                                        prePourClearanceCard.status === "LOCKED"
-                                      }
-                                      className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
-                                    >
-                                      {savingPrePourClearance
-                                        ? "Saving..."
-                                        : "Save Pre-Pour Clearance"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={submitPrePourClearanceDetails}
-                                      disabled={
-                                        submittingPrePourClearance ||
-                                        prePourClearanceCard.status === "LOCKED"
-                                      }
-                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-                                    >
-                                      {submittingPrePourClearance
-                                        ? "Submitting..."
-                                        : prePourClearanceCard.status === "SUBMITTED"
-                                          ? "Submitted"
-                                          : prePourClearanceCard.status === "LOCKED"
-                                            ? "Locked"
-                                            : "Submit"}
-                                    </button>
-                                  </div>
+                                        Approve
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          rejectConcreteDocument(
+                                            "PRE_POUR_CLEARANCE",
+                                          )
+                                        }
+                                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
+                              {!clearanceActivation.isActivated ? (
+                                <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+                                  <div className="font-semibold">
+                                    Waiting for trigger stage approval
+                                  </div>
+                                  <div className="mt-1 text-xs">
+                                    Approve the configured checklist stage first.
+                                    After that, this pour clearance certificate
+                                    will activate and allow concrete details,
+                                    related checklist linkage, and signatory
+                                    capture.
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-3 grid gap-3">
+                                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                                    <div className="font-semibold">
+                                      Pour clearance is active
+                                    </div>
+                                    <div className="mt-1 text-xs">
+                                      Enter the concrete details, mark
+                                      attachments, select related approved
+                                      checklist groups where required, and
+                                      capture signatory signatures below.
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
+                                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                                      Concrete Information
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                      <input
+                                        value={prePourClearanceCard.projectNameSnapshot || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            projectNameSnapshot: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Project name"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.contractorName || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            contractorName: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Contractor"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                    </div>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                      <input
+                                        value={prePourClearanceCard.cardDate || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            cardDate: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Date"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.pourStartTime || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            pourStartTime: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Pour start time"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.pourEndTime || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            pourEndTime: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Pour end time"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                    </div>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                      <input
+                                        value={prePourClearanceCard.locationText || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            locationText: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Checklist location"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.elementName || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            elementName: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Element"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                    </div>
+                                    <input
+                                      value={prePourClearanceCard.pourLocation || ""}
+                                      onChange={(e) =>
+                                        updatePrePourClearanceCard((prev) => ({
+                                          ...prev,
+                                          pourLocation: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Pour location"
+                                      className="mt-3 rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                    />
+                                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                      <input
+                                        value={prePourClearanceCard.pourNo || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            pourNo: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Pour no"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.gradeOfConcrete || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            gradeOfConcrete: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Grade of concrete"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.placementMethod || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            placementMethod: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Placement method"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                    </div>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                      <input
+                                        value={prePourClearanceCard.estimatedConcreteQty ?? ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            estimatedConcreteQty: e.target.value
+                                              ? Number(e.target.value)
+                                              : null,
+                                          }))
+                                        }
+                                        placeholder="Estimated qty"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.actualConcreteQty ?? ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            actualConcreteQty: e.target.value
+                                              ? Number(e.target.value)
+                                              : null,
+                                          }))
+                                        }
+                                        placeholder="Actual qty"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.concreteSupplier || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            concreteSupplier: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Concrete supplier"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.cubeMouldCount ?? ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            cubeMouldCount: e.target.value
+                                              ? Number(e.target.value)
+                                              : null,
+                                          }))
+                                        }
+                                        placeholder="Cube mould count"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.targetSlump || ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            targetSlump: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Target slump"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                      <input
+                                        value={prePourClearanceCard.vibratorCount ?? ""}
+                                        onChange={(e) =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            vibratorCount: e.target.value
+                                              ? Number(e.target.value)
+                                              : null,
+                                          }))
+                                        }
+                                        placeholder="No. of vibrators"
+                                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
+                                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                                      Related Attachments
+                                    </div>
+                                    <div className="space-y-3">
+                                      {CLEARANCE_ATTACHMENT_OPTIONS.map(
+                                        ({ key, label }) => (
+                                          <div
+                                            key={key}
+                                            className="rounded-lg border border-border-subtle bg-surface-base p-3"
+                                          >
+                                            <div className="grid items-center gap-3 md:grid-cols-[1fr_140px]">
+                                              <span className="text-sm text-text-secondary">
+                                                {label}
+                                              </span>
+                                              <select
+                                                value={
+                                                  prePourClearanceCard.attachments?.[
+                                                    key
+                                                  ] || "NO"
+                                                }
+                                                onChange={(e) =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      attachments: {
+                                                        ...(prev.attachments ||
+                                                          {}),
+                                                        [key]: e.target.value,
+                                                      },
+                                                      attachmentChecklistSelections:
+                                                        e.target.value === "YES"
+                                                          ? prev.attachmentChecklistSelections ||
+                                                            {}
+                                                          : {
+                                                              ...(prev.attachmentChecklistSelections ||
+                                                                {}),
+                                                              [key]: [],
+                                                            },
+                                                    }),
+                                                  )
+                                                }
+                                                className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                              >
+                                                <option value="NO">No</option>
+                                                <option value="YES">Yes</option>
+                                                <option value="NA">N/A</option>
+                                              </select>
+                                            </div>
+                                            {prePourClearanceCard.attachments?.[
+                                              key
+                                            ] === "YES" ? (
+                                              <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
+                                                <div className="text-xs font-semibold uppercase tracking-wide text-cyan-800">
+                                                  Select approved / partially approved related checklists
+                                                </div>
+                                                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                                  {clearanceChecklistOptions.length ===
+                                                  0 ? (
+                                                    <div className="text-xs text-cyan-900">
+                                                      No approved or partially approved
+                                                      checklist groups are available
+                                                      yet for this inspection.
+                                                    </div>
+                                                  ) : (
+                                                    clearanceChecklistOptions.map(
+                                                      (option) => {
+                                                        const selectedIds =
+                                                          prePourClearanceCard
+                                                            .attachmentChecklistSelections?.[
+                                                            key
+                                                          ] || [];
+                                                        return (
+                                                          <label
+                                                            key={`${key}-${option.checklistTemplateId}`}
+                                                            className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm"
+                                                          >
+                                                            <input
+                                                              type="checkbox"
+                                                              checked={selectedIds.includes(
+                                                                option.checklistTemplateId,
+                                                              )}
+                                                              onChange={(e) =>
+                                                                updatePrePourClearanceCard(
+                                                                  (prev) => {
+                                                                    const existing =
+                                                                      prev
+                                                                        .attachmentChecklistSelections?.[
+                                                                        key
+                                                                      ] || [];
+                                                                    const next =
+                                                                      e.target
+                                                                        .checked
+                                                                        ? [
+                                                                            ...existing,
+                                                                            option.checklistTemplateId,
+                                                                          ]
+                                                                        : existing.filter(
+                                                                            (
+                                                                              id: number,
+                                                                            ) =>
+                                                                              id !==
+                                                                              option.checklistTemplateId,
+                                                                          );
+                                                                    return {
+                                                                      ...prev,
+                                                                      attachmentChecklistSelections:
+                                                                        {
+                                                                          ...(prev.attachmentChecklistSelections ||
+                                                                            {}),
+                                                                          [key]:
+                                                                            Array.from(
+                                                                              new Set(
+                                                                                next,
+                                                                              ),
+                                                                            ),
+                                                                        },
+                                                                    };
+                                                                  },
+                                                                )
+                                                              }
+                                                            />
+                                                            <span>
+                                                              <span className="font-medium text-cyan-900">
+                                                                {option.checklistName}
+                                                              </span>
+                                                              <span className="ml-2 rounded-full bg-surface-card px-2 py-0.5 text-[11px] font-semibold text-text-secondary">
+                                                                {option.approvalState ===
+                                                                "APPROVED"
+                                                                  ? "Approved"
+                                                                  : "Partially Approved"}
+                                                              </span>
+                                                            </span>
+                                                          </label>
+                                                        );
+                                                      },
+                                                    )
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-lg border border-dashed border-border-default bg-surface-card px-3 py-3">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                      <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                                        Signoff Parties
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updatePrePourClearanceCard((prev) => ({
+                                            ...prev,
+                                            signoffs: [
+                                              ...(prev.signoffs || []),
+                                              {
+                                                id: `custom-${Date.now()}`,
+                                                department: "",
+                                                designation: "",
+                                                personName: "",
+                                                signedDate: "",
+                                                signatureData: null,
+                                                status: "PENDING",
+                                                isActive: true,
+                                              },
+                                            ],
+                                          }))
+                                        }
+                                        className="rounded-lg border border-border-default bg-surface-base px-3 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+                                      >
+                                        + Add Signatory
+                                      </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {(prePourClearanceCard.signoffs || []).map(
+                                        (signoff: any, idx: number) => (
+                                          <div
+                                            key={`signoff-${idx}`}
+                                            className="rounded-lg border border-border-subtle bg-surface-base p-3"
+                                          >
+                                            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                              <input
+                                                value={signoff.department || ""}
+                                                onChange={(e) =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      signoffs: (
+                                                        prev.signoffs || []
+                                                      ).map((row: any, rowIdx: number) =>
+                                                        rowIdx === idx
+                                                          ? {
+                                                              ...row,
+                                                              department:
+                                                                e.target.value,
+                                                            }
+                                                          : row,
+                                                      ),
+                                                    }),
+                                                  )
+                                                }
+                                                placeholder="Department"
+                                                className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                              />
+                                              <input
+                                                value={signoff.designation || ""}
+                                                onChange={(e) =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      signoffs: (
+                                                        prev.signoffs || []
+                                                      ).map((row: any, rowIdx: number) =>
+                                                        rowIdx === idx
+                                                          ? {
+                                                              ...row,
+                                                              designation:
+                                                                e.target.value,
+                                                            }
+                                                          : row,
+                                                      ),
+                                                    }),
+                                                  )
+                                                }
+                                                placeholder="Designation"
+                                                className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                              />
+                                              <input
+                                                value={signoff.personName || ""}
+                                                onChange={(e) =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      signoffs: (
+                                                        prev.signoffs || []
+                                                      ).map((row: any, rowIdx: number) =>
+                                                        rowIdx === idx
+                                                          ? {
+                                                              ...row,
+                                                              personName:
+                                                                e.target.value,
+                                                            }
+                                                          : row,
+                                                      ),
+                                                    }),
+                                                  )
+                                                }
+                                                placeholder="Person name"
+                                                className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                              />
+                                              <input
+                                                value={signoff.signedDate || ""}
+                                                onChange={(e) =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      signoffs: (
+                                                        prev.signoffs || []
+                                                      ).map((row: any, rowIdx: number) =>
+                                                        rowIdx === idx
+                                                          ? {
+                                                              ...row,
+                                                              signedDate:
+                                                                e.target.value,
+                                                            }
+                                                          : row,
+                                                      ),
+                                                    }),
+                                                  )
+                                                }
+                                                placeholder="Signed date"
+                                                className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                              />
+                                              <select
+                                                value={signoff.status || "PENDING"}
+                                                onChange={(e) =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      signoffs: (
+                                                        prev.signoffs || []
+                                                      ).map((row: any, rowIdx: number) =>
+                                                        rowIdx === idx
+                                                          ? {
+                                                              ...row,
+                                                              status:
+                                                                e.target.value,
+                                                            }
+                                                          : row,
+                                                      ),
+                                                    }),
+                                                  )
+                                                }
+                                                className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
+                                              >
+                                                <option value="PENDING">
+                                                  Pending
+                                                </option>
+                                                <option value="SIGNED">
+                                                  Signed
+                                                </option>
+                                                <option value="WAIVED">
+                                                  Waived
+                                                </option>
+                                              </select>
+                                              <label className="flex items-center gap-2 rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm text-text-secondary">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={signoff.isActive !== false}
+                                                  onChange={(e) =>
+                                                    updatePrePourClearanceCard(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        signoffs: (
+                                                          prev.signoffs || []
+                                                        ).map((row: any, rowIdx: number) =>
+                                                          rowIdx === idx
+                                                            ? {
+                                                                ...row,
+                                                                isActive:
+                                                                  e.target.checked,
+                                                              }
+                                                            : row,
+                                                        ),
+                                                      }),
+                                                    )
+                                                  }
+                                                />
+                                                Active
+                                              </label>
+                                            </div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setActiveClearanceSignoffIndex(
+                                                    idx,
+                                                  );
+                                                  setShowClearanceSignoffSignature(
+                                                    true,
+                                                  );
+                                                }}
+                                                className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
+                                              >
+                                                {signoff.signatureData
+                                                  ? "Update Signature"
+                                                  : "Sign"}
+                                              </button>
+                                              {signoff.signatureData ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    updatePrePourClearanceCard(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        signoffs: (
+                                                          prev.signoffs || []
+                                                        ).map((row: any, rowIdx: number) =>
+                                                          rowIdx === idx
+                                                            ? {
+                                                                ...row,
+                                                                signatureData:
+                                                                  null,
+                                                                signedDate: "",
+                                                                status:
+                                                                  row.status ===
+                                                                  "SIGNED"
+                                                                    ? "PENDING"
+                                                                    : row.status,
+                                                              }
+                                                            : row,
+                                                        ),
+                                                      }),
+                                                    )
+                                                  }
+                                                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                                >
+                                                  Clear Signature
+                                                </button>
+                                              ) : null}
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  updatePrePourClearanceCard(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      signoffs: (
+                                                        prev.signoffs || []
+                                                      ).filter(
+                                                        (_: any, rowIdx: number) =>
+                                                          rowIdx !== idx,
+                                                      ),
+                                                    }),
+                                                  )
+                                                }
+                                                className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                                              >
+                                                Remove
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex justify-end">
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={downloadPrePourClearancePdf}
+                                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-raised"
+                                      >
+                                        Download PDF
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={savePrePourClearanceDetails}
+                                        disabled={
+                                          savingPrePourClearance ||
+                                          prePourClearanceCard.status === "LOCKED"
+                                        }
+                                        className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
+                                      >
+                                        {savingPrePourClearance
+                                          ? "Saving..."
+                                          : "Save Pre-Pour Clearance"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={submitPrePourClearanceDetails}
+                                        disabled={
+                                          submittingPrePourClearance ||
+                                          prePourClearanceCard.status === "LOCKED"
+                                        }
+                                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                      >
+                                        {submittingPrePourClearance
+                                          ? "Submitting..."
+                                          : prePourClearanceCard.status ===
+                                              "SUBMITTED"
+                                            ? "Submitted"
+                                            : prePourClearanceCard.status ===
+                                                "LOCKED"
+                                              ? "Locked"
+                                              : "Submit"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                          {shouldShowPrePourClearanceInApproval &&
+                          !loadingCards &&
+                          !prePourClearanceCard ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                              <div className="font-semibold">
+                                Pre-Pour Clearance is required but not loaded
+                              </div>
+                              <div className="mt-1 text-xs">
+                                The RFI is configured for pour clearance, but
+                                the certificate record did not load. Use reload
+                                to retry. If it still appears, backend card
+                                creation needs attention.
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setRefreshKey((key) => key + 1)}
+                                className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                              >
+                                Reload Clearance
+                              </button>
                             </div>
                           ) : null}
                         </div>
@@ -5282,11 +6050,11 @@ export default function QualityApprovalsPage() {
                           <p className="text-xs mt-1">
                             {cardReadiness.requiresPourCard &&
                             !cardReadiness.pourCardReady
-                              ? "Required pour card is still draft or missing. "
+                              ? "Required pour card is not approved yet. "
                               : ""}
                             {cardReadiness.requiresPrePourClearance &&
                             !cardReadiness.prePourClearanceReady
-                              ? "Required pre-pour clearance card is still draft or missing."
+                              ? "Required pre-pour clearance card is not approved yet."
                               : ""}
                           </p>
                         </div>
@@ -6303,6 +7071,17 @@ export default function QualityApprovalsPage() {
             ? "Sign to approve this checklist stage."
             : "Sign to grant final approval for this RFI."
         }
+      />
+      <SignatureModal
+        isOpen={showClearanceSignoffSignature}
+        onClose={() => {
+          setShowClearanceSignoffSignature(false);
+          setActiveClearanceSignoffIndex(null);
+        }}
+        onSign={handleClearanceSignoffSignature}
+        title="Pour Clearance Signatory"
+        description="Use the digital pad or saved signature to sign this pre-pour clearance signoff."
+        actionLabel="Capture Signature"
       />
       {/* Delegation Modal */}
       {showDelegationModal && (

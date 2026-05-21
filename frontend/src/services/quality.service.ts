@@ -159,6 +159,13 @@ export const qualityService = {
       description?: string;
       requiresPourCard?: boolean;
       requiresPourClearanceCard?: boolean;
+      pourClearanceTriggerStageTemplateId?: number | null;
+      pourClearanceSignoffTemplate?: Array<{
+        id?: string;
+        department?: string;
+        designation?: string | null;
+        isActive?: boolean;
+      }>;
     },
   ) => {
     const res = await api.post(
@@ -184,6 +191,22 @@ export const qualityService = {
   submitPourCard: async (inspectionId: number) => {
     const res = await api.post(
       `${BASE_URL}/inspections/${inspectionId}/pour-card/submit`,
+    );
+    return res.data;
+  },
+
+  approvePourCard: async (inspectionId: number, remarks?: string) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pour-card/approve`,
+      { remarks },
+    );
+    return res.data;
+  },
+
+  rejectPourCard: async (inspectionId: number, remarks?: string) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pour-card/reject`,
+      { remarks },
     );
     return res.data;
   },
@@ -217,6 +240,22 @@ export const qualityService = {
   submitPrePourClearanceCard: async (inspectionId: number) => {
     const res = await api.post(
       `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/submit`,
+    );
+    return res.data;
+  },
+
+  approvePrePourClearanceCard: async (inspectionId: number, remarks?: string) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/approve`,
+      { remarks },
+    );
+    return res.data;
+  },
+
+  rejectPrePourClearanceCard: async (inspectionId: number, remarks?: string) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/reject`,
+      { remarks },
     );
     return res.data;
   },

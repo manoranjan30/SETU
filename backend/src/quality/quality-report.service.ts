@@ -317,7 +317,7 @@ export class QualityReportService {
         .fontSize(9)
         .font('Helvetica-Bold')
         .text(
-          'Note : Please [X] appropriate box as per requirements',
+          'Note : Please tick the appropriate box as per requirements',
           startX,
           currentY + 5,
         );
@@ -336,7 +336,7 @@ export class QualityReportService {
           .fontSize(11)
           .font('Helvetica-Bold')
           .fillColor('#059669')
-          .text('✓ FINAL APPROVED CHECKLIST', startX, currentY + 2, {
+          .text('✔ FINAL APPROVED CHECKLIST', startX, currentY + 2, {
             align: 'center',
             width: pageWidth,
           });
@@ -582,13 +582,13 @@ export class QualityReportService {
                 item.value === 'YES' || (item.isOk && item.value !== 'NA');
               const isNa = item.value === 'NA';
               doc.text(
-                isYes ? '[ X ]' : '[   ]',
+                isYes ? '[ ✔ ]' : '[   ]',
                 startX + colWidths.si + colWidths.desc,
                 currentY + 8,
                 { width: colWidths.yes, align: 'center' },
               );
               doc.text(
-                isNa ? '[ X ]' : '[   ]',
+                isNa ? '[ ✔ ]' : '[   ]',
                 startX + colWidths.si + colWidths.desc + colWidths.yes,
                 currentY + 8,
                 { width: colWidths.na, align: 'center' },

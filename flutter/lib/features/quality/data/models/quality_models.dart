@@ -497,6 +497,12 @@ class QualityInspection extends Equatable {
   /// Short label for the approval cards list, e.g. "2 stages pending".
   final String? pendingApprovalLabel;
 
+  /// Whether this inspection's activity requires a Pour Card document.
+  final bool requiresPourCard;
+
+  /// Whether this inspection's activity requires a Pre-Pour Clearance Card.
+  final bool requiresPourClearanceCard;
+
   const QualityInspection({
     required this.id,
     required this.activityId,
@@ -528,6 +534,8 @@ class QualityInspection extends Equatable {
     this.qualityUnitId,
     this.pendingApprovalDisplay,
     this.pendingApprovalLabel,
+    this.requiresPourCard = false,
+    this.requiresPourClearanceCard = false,
   });
 
   factory QualityInspection.fromJson(Map<String, dynamic> json) {
@@ -626,6 +634,8 @@ class QualityInspection extends Equatable {
       qualityUnitId: json['qualityUnitId'] as int?,
       pendingApprovalDisplay: json['pendingApprovalDisplay'] as String?,
       pendingApprovalLabel: json['pendingApprovalLabel'] as String?,
+      requiresPourCard: activity?['requiresPourCard'] as bool? ?? false,
+      requiresPourClearanceCard: activity?['requiresPourClearanceCard'] as bool? ?? false,
     );
   }
 
@@ -710,6 +720,8 @@ class QualityInspection extends Equatable {
         vendorName,
         pendingApprovalDisplay,
         pendingApprovalLabel,
+        requiresPourCard,
+        requiresPourClearanceCard,
       ];
 }
 
@@ -1436,4 +1448,626 @@ class QualitySiteObservation extends Equatable {
   List<Object?> get props => [
         id, projectId, description, severity, status, createdAt,
       ];
+}
+
+// ============================================================
+// POUR CARD MODELS
+// ============================================================
+
+enum QualityCardStatus {
+  draft, submitted, approved, rejected, locked;
+
+  static QualityCardStatus fromString(String s) {
+    switch (s.toUpperCase()) {
+      case 'SUBMITTED': return QualityCardStatus.submitted;
+      case 'APPROVED':  return QualityCardStatus.approved;
+      case 'REJECTED':  return QualityCardStatus.rejected;
+      case 'LOCKED':    return QualityCardStatus.locked;
+      default:          return QualityCardStatus.draft;
+    }
+  }
+
+  String get label => switch (this) {
+    QualityCardStatus.draft     => 'Draft',
+    QualityCardStatus.submitted => 'Submitted',
+    QualityCardStatus.approved  => 'Approved',
+    QualityCardStatus.rejected  => 'Rejected',
+    QualityCardStatus.locked    => 'Locked',
+  };
+
+  Color get color => switch (this) {
+    QualityCardStatus.draft     => const Color(0xFF6B7280),
+    QualityCardStatus.submitted => const Color(0xFF1D4ED8),
+    QualityCardStatus.approved  => const Color(0xFF15803D),
+    QualityCardStatus.rejected  => const Color(0xFFDC2626),
+    QualityCardStatus.locked    => const Color(0xFF7C3AED),
+  };
+
+  bool get isEditable =>
+      this == QualityCardStatus.draft || this == QualityCardStatus.rejected;
+}
+
+class PourCardEntry extends Equatable {
+  final String? pourDate;
+  final String? truckNo;
+  final String? deliveryChallanNo;
+  final String? mixIdOrGrade;
+  final double? quantityM3;
+  final double? cumulativeQtyM3;
+  final String? arrivalTimeAtSite;
+  final String? batchStartTime;
+  final String? finishingTime;
+  final int? timeTakenMinutes;
+  final double? slumpMm;
+  final double? concreteTemperature;
+  final int? noOfCubesTaken;
+  final String? supplierRepresentative;
+  final String? contractorRepresentative;
+  final String? clientRepresentative;
+  final String? remarks;
+
+  const PourCardEntry({
+    this.pourDate,
+    this.truckNo,
+    this.deliveryChallanNo,
+    this.mixIdOrGrade,
+    this.quantityM3,
+    this.cumulativeQtyM3,
+    this.arrivalTimeAtSite,
+    this.batchStartTime,
+    this.finishingTime,
+    this.timeTakenMinutes,
+    this.slumpMm,
+    this.concreteTemperature,
+    this.noOfCubesTaken,
+    this.supplierRepresentative,
+    this.contractorRepresentative,
+    this.clientRepresentative,
+    this.remarks,
+  });
+
+  factory PourCardEntry.fromJson(Map<String, dynamic> j) {
+    double? d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
+    int? i(dynamic v) => v == null ? null : (v is int ? v : int.tryParse(v.toString()));
+    return PourCardEntry(
+      pourDate: j['pourDate'] as String?,
+      truckNo: j['truckNo'] as String?,
+      deliveryChallanNo: j['deliveryChallanNo'] as String?,
+      mixIdOrGrade: j['mixIdOrGrade'] as String?,
+      quantityM3: d(j['quantityM3']),
+      cumulativeQtyM3: d(j['cumulativeQtyM3']),
+      arrivalTimeAtSite: j['arrivalTimeAtSite'] as String?,
+      batchStartTime: j['batchStartTime'] as String?,
+      finishingTime: j['finishingTime'] as String?,
+      timeTakenMinutes: i(j['timeTakenMinutes']),
+      slumpMm: d(j['slumpMm']),
+      concreteTemperature: d(j['concreteTemperature']),
+      noOfCubesTaken: i(j['noOfCubesTaken']),
+      supplierRepresentative: j['supplierRepresentative'] as String?,
+      contractorRepresentative: j['contractorRepresentative'] as String?,
+      clientRepresentative: j['clientRepresentative'] as String?,
+      remarks: j['remarks'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'pourDate': pourDate,
+    'truckNo': truckNo,
+    'deliveryChallanNo': deliveryChallanNo,
+    'mixIdOrGrade': mixIdOrGrade,
+    'quantityM3': quantityM3,
+    'cumulativeQtyM3': cumulativeQtyM3,
+    'arrivalTimeAtSite': arrivalTimeAtSite,
+    'batchStartTime': batchStartTime,
+    'finishingTime': finishingTime,
+    'timeTakenMinutes': timeTakenMinutes,
+    'slumpMm': slumpMm,
+    'concreteTemperature': concreteTemperature,
+    'noOfCubesTaken': noOfCubesTaken,
+    'supplierRepresentative': supplierRepresentative,
+    'contractorRepresentative': contractorRepresentative,
+    'clientRepresentative': clientRepresentative,
+    'remarks': remarks,
+  };
+
+  PourCardEntry copyWith({
+    String? pourDate, String? truckNo, String? deliveryChallanNo,
+    String? mixIdOrGrade, double? quantityM3, double? slumpMm,
+    double? concreteTemperature,
+    int? noOfCubesTaken, String? remarks,
+  }) => PourCardEntry(
+    pourDate: pourDate ?? this.pourDate,
+    truckNo: truckNo ?? this.truckNo,
+    deliveryChallanNo: deliveryChallanNo ?? this.deliveryChallanNo,
+    mixIdOrGrade: mixIdOrGrade ?? this.mixIdOrGrade,
+    quantityM3: quantityM3 ?? this.quantityM3,
+    cumulativeQtyM3: cumulativeQtyM3,
+    arrivalTimeAtSite: arrivalTimeAtSite,
+    batchStartTime: batchStartTime,
+    finishingTime: finishingTime,
+    timeTakenMinutes: timeTakenMinutes,
+    slumpMm: slumpMm ?? this.slumpMm,
+    concreteTemperature: concreteTemperature ?? this.concreteTemperature,
+    noOfCubesTaken: noOfCubesTaken ?? this.noOfCubesTaken,
+    supplierRepresentative: supplierRepresentative,
+    contractorRepresentative: contractorRepresentative,
+    clientRepresentative: clientRepresentative,
+    remarks: remarks ?? this.remarks,
+  );
+
+  @override
+  List<Object?> get props => [pourDate, truckNo, mixIdOrGrade, quantityM3];
+}
+
+class QualityPourCard extends Equatable {
+  final int id;
+  final int inspectionId;
+  final QualityCardStatus status;
+  final String? elementName;
+  final String? locationText;
+  final String? projectNameSnapshot;
+  final String? clientName;
+  final String? consultantName;
+  final String? contractorName;
+  final String? approvedByName;
+  final String formatNo;
+  final String? revisionNo;
+  final List<PourCardEntry> entries;
+  final String? remarks;
+  final String? approvalRemarks;
+  final String? rejectionRemarks;
+  final DateTime? submittedAt;
+  final DateTime? approvedAt;
+  final DateTime? rejectedAt;
+
+  const QualityPourCard({
+    required this.id,
+    required this.inspectionId,
+    required this.status,
+    this.elementName,
+    this.locationText,
+    this.projectNameSnapshot,
+    this.clientName,
+    this.consultantName,
+    this.contractorName,
+    this.approvedByName,
+    this.formatNo = 'F/QA/16',
+    this.revisionNo,
+    this.entries = const [],
+    this.remarks,
+    this.approvalRemarks,
+    this.rejectionRemarks,
+    this.submittedAt,
+    this.approvedAt,
+    this.rejectedAt,
+  });
+
+  factory QualityPourCard.fromJson(Map<String, dynamic> j) {
+    DateTime? dt(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
+    return QualityPourCard(
+      id: j['id'] as int? ?? 0,
+      inspectionId: j['inspectionId'] as int? ?? 0,
+      status: QualityCardStatus.fromString(j['status'] as String? ?? 'DRAFT'),
+      elementName: j['elementName'] as String?,
+      locationText: j['locationText'] as String?,
+      projectNameSnapshot: j['projectNameSnapshot'] as String?,
+      clientName: j['clientName'] as String?,
+      consultantName: j['consultantName'] as String?,
+      contractorName: j['contractorName'] as String?,
+      approvedByName: j['approvedByName'] as String?,
+      formatNo: j['formatNo'] as String? ?? 'F/QA/16',
+      revisionNo: j['revisionNo'] as String?,
+      entries: (j['entries'] as List<dynamic>?)
+              ?.map((e) => PourCardEntry.fromJson(e as Map<String, dynamic>))
+              .toList() ?? [],
+      remarks: j['remarks'] as String?,
+      approvalRemarks: j['approvalRemarks'] as String?,
+      rejectionRemarks: j['rejectionRemarks'] as String?,
+      submittedAt: dt(j['submittedAt']),
+      approvedAt: dt(j['approvedAt']),
+      rejectedAt: dt(j['rejectedAt']),
+    );
+  }
+
+  Map<String, dynamic> toSaveJson() => {
+    'elementName': elementName,
+    'locationText': locationText,
+    'projectNameSnapshot': projectNameSnapshot,
+    'clientName': clientName,
+    'consultantName': consultantName,
+    'contractorName': contractorName,
+    'approvedByName': approvedByName,
+    'formatNo': formatNo,
+    'revisionNo': revisionNo,
+    'entries': entries.map((e) => e.toJson()).toList(),
+    'remarks': remarks,
+  };
+
+  QualityPourCard copyWith({
+    QualityCardStatus? status,
+    String? elementName, String? locationText, String? projectNameSnapshot,
+    String? clientName, String? consultantName, String? contractorName,
+    String? approvedByName, String? formatNo, String? revisionNo,
+    List<PourCardEntry>? entries, String? remarks,
+  }) => QualityPourCard(
+    id: id, inspectionId: inspectionId,
+    status: status ?? this.status,
+    elementName: elementName ?? this.elementName,
+    locationText: locationText ?? this.locationText,
+    projectNameSnapshot: projectNameSnapshot ?? this.projectNameSnapshot,
+    clientName: clientName ?? this.clientName,
+    consultantName: consultantName ?? this.consultantName,
+    contractorName: contractorName ?? this.contractorName,
+    approvedByName: approvedByName ?? this.approvedByName,
+    formatNo: formatNo ?? this.formatNo,
+    revisionNo: revisionNo ?? this.revisionNo,
+    entries: entries ?? this.entries,
+    remarks: remarks ?? this.remarks,
+    approvalRemarks: approvalRemarks,
+    rejectionRemarks: rejectionRemarks,
+    submittedAt: submittedAt, approvedAt: approvedAt, rejectedAt: rejectedAt,
+  );
+
+  @override
+  List<Object?> get props => [id, inspectionId, status, entries];
+}
+
+// ============================================================
+// PRE-POUR CLEARANCE CARD MODELS
+// ============================================================
+
+enum ClearanceSignoffStatus {
+  pending, signed, waived;
+  static ClearanceSignoffStatus fromString(String s) {
+    switch (s.toUpperCase()) {
+      case 'SIGNED': return ClearanceSignoffStatus.signed;
+      case 'WAIVED': return ClearanceSignoffStatus.waived;
+      default: return ClearanceSignoffStatus.pending;
+    }
+  }
+  String get label => switch (this) {
+    ClearanceSignoffStatus.pending => 'Pending',
+    ClearanceSignoffStatus.signed  => 'Signed',
+    ClearanceSignoffStatus.waived  => 'Waived',
+  };
+  Color get color => switch (this) {
+    ClearanceSignoffStatus.pending => const Color(0xFFF59E0B),
+    ClearanceSignoffStatus.signed  => const Color(0xFF15803D),
+    ClearanceSignoffStatus.waived  => const Color(0xFF6B7280),
+  };
+}
+
+class ClearanceSignoff extends Equatable {
+  final String? id;
+  final String department;
+  final String? designation;
+  final bool isActive;
+  final String? personName;
+  final String? signedDate;
+  final ClearanceSignoffStatus status;
+
+  const ClearanceSignoff({
+    this.id,
+    required this.department,
+    this.designation,
+    this.isActive = true,
+    this.personName,
+    this.signedDate,
+    this.status = ClearanceSignoffStatus.pending,
+  });
+
+  factory ClearanceSignoff.fromJson(Map<String, dynamic> j) => ClearanceSignoff(
+    id: j['id'] as String?,
+    department: j['department'] as String? ?? '',
+    designation: j['designation'] as String?,
+    isActive: j['isActive'] as bool? ?? true,
+    personName: j['personName'] as String?,
+    signedDate: j['signedDate'] as String?,
+    status: ClearanceSignoffStatus.fromString(j['status'] as String? ?? 'PENDING'),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'department': department,
+    'designation': designation,
+    'isActive': isActive,
+    'personName': personName,
+    'signedDate': signedDate,
+    'status': status.name.toUpperCase(),
+  };
+
+  ClearanceSignoff copyWith({
+    String? department, String? designation, bool? isActive,
+    String? personName, String? signedDate, ClearanceSignoffStatus? status,
+  }) => ClearanceSignoff(
+    id: id,
+    department: department ?? this.department,
+    designation: designation ?? this.designation,
+    isActive: isActive ?? this.isActive,
+    personName: personName ?? this.personName,
+    signedDate: signedDate ?? this.signedDate,
+    status: status ?? this.status,
+  );
+
+  @override
+  List<Object?> get props => [id, department, isActive, status];
+}
+
+class QualityPrePourClearanceCard extends Equatable {
+  final int id;
+  final int inspectionId;
+  final QualityCardStatus status;
+  final bool isActivated;
+  final String? activationStageName;
+  final String? elementName;
+  final String? locationText;
+  final String? activityLabel;
+  final String? projectNameSnapshot;
+  final String? contractorName;
+  final String? cardDate;
+  final String? pourStartTime;
+  final String? pourEndTime;
+  final String? pourLocation;
+  final String? pourNo;
+  final String? gradeOfConcrete;
+  final String? placementMethod;
+  final String? concreteSupplier;
+  final double? estimatedConcreteQty;
+  final double? actualConcreteQty;
+  final int? cubeMouldCount;
+  final String? targetSlump;
+  final int? vibratorCount;
+  final String formatNo;
+  final String? revisionNo;
+  final Map<String, String> attachments;
+  final List<ClearanceSignoff> signoffs;
+  final String? approvalRemarks;
+  final String? rejectionRemarks;
+  final DateTime? submittedAt;
+  final DateTime? approvedAt;
+  final DateTime? rejectedAt;
+
+  const QualityPrePourClearanceCard({
+    required this.id,
+    required this.inspectionId,
+    required this.status,
+    this.isActivated = false,
+    this.activationStageName,
+    this.elementName,
+    this.locationText,
+    this.activityLabel,
+    this.projectNameSnapshot,
+    this.contractorName,
+    this.cardDate,
+    this.pourStartTime,
+    this.pourEndTime,
+    this.pourLocation,
+    this.pourNo,
+    this.gradeOfConcrete,
+    this.placementMethod,
+    this.concreteSupplier,
+    this.estimatedConcreteQty,
+    this.actualConcreteQty,
+    this.cubeMouldCount,
+    this.targetSlump,
+    this.vibratorCount,
+    this.formatNo = 'F/QA/20',
+    this.revisionNo,
+    this.attachments = const {},
+    this.signoffs = const [],
+    this.approvalRemarks,
+    this.rejectionRemarks,
+    this.submittedAt,
+    this.approvedAt,
+    this.rejectedAt,
+  });
+
+  factory QualityPrePourClearanceCard.fromJson(Map<String, dynamic> j) {
+    DateTime? dt(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
+    double? d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
+    int? i(dynamic v) => v == null ? null : (v is int ? v : int.tryParse(v.toString()));
+
+    final rawAttachments = j['attachments'] as Map<String, dynamic>? ?? {};
+    final attachments = rawAttachments.map((k, v) => MapEntry(k, v?.toString() ?? 'NO'));
+
+    return QualityPrePourClearanceCard(
+      id: j['id'] as int? ?? 0,
+      inspectionId: j['inspectionId'] as int? ?? 0,
+      status: QualityCardStatus.fromString(j['status'] as String? ?? 'DRAFT'),
+      isActivated: j['isActivated'] as bool? ?? false,
+      activationStageName: j['activationStageName'] as String?,
+      elementName: j['elementName'] as String?,
+      locationText: j['locationText'] as String?,
+      activityLabel: j['activityLabel'] as String?,
+      projectNameSnapshot: j['projectNameSnapshot'] as String?,
+      contractorName: j['contractorName'] as String?,
+      cardDate: j['cardDate'] as String?,
+      pourStartTime: j['pourStartTime'] as String?,
+      pourEndTime: j['pourEndTime'] as String?,
+      pourLocation: j['pourLocation'] as String?,
+      pourNo: j['pourNo'] as String?,
+      gradeOfConcrete: j['gradeOfConcrete'] as String?,
+      placementMethod: j['placementMethod'] as String?,
+      concreteSupplier: j['concreteSupplier'] as String?,
+      estimatedConcreteQty: d(j['estimatedConcreteQty']),
+      actualConcreteQty: d(j['actualConcreteQty']),
+      cubeMouldCount: i(j['cubeMouldCount']),
+      targetSlump: j['targetSlump'] as String?,
+      vibratorCount: i(j['vibratorCount']),
+      formatNo: j['formatNo'] as String? ?? 'F/QA/20',
+      revisionNo: j['revisionNo'] as String?,
+      attachments: attachments,
+      signoffs: (j['signoffs'] as List<dynamic>?)
+              ?.map((e) => ClearanceSignoff.fromJson(e as Map<String, dynamic>))
+              .toList() ?? [],
+      approvalRemarks: j['approvalRemarks'] as String?,
+      rejectionRemarks: j['rejectionRemarks'] as String?,
+      submittedAt: dt(j['submittedAt']),
+      approvedAt: dt(j['approvedAt']),
+      rejectedAt: dt(j['rejectedAt']),
+    );
+  }
+
+  Map<String, dynamic> toSaveJson() => {
+    'elementName': elementName,
+    'locationText': locationText,
+    'projectNameSnapshot': projectNameSnapshot,
+    'contractorName': contractorName,
+    'cardDate': cardDate,
+    'pourStartTime': pourStartTime,
+    'pourEndTime': pourEndTime,
+    'pourLocation': pourLocation,
+    'pourNo': pourNo,
+    'gradeOfConcrete': gradeOfConcrete,
+    'placementMethod': placementMethod,
+    'concreteSupplier': concreteSupplier,
+    'estimatedConcreteQty': estimatedConcreteQty,
+    'actualConcreteQty': actualConcreteQty,
+    'cubeMouldCount': cubeMouldCount,
+    'targetSlump': targetSlump,
+    'vibratorCount': vibratorCount,
+    'formatNo': formatNo,
+    'revisionNo': revisionNo,
+    'attachments': attachments,
+    'signoffs': signoffs.map((s) => s.toJson()).toList(),
+  };
+
+  QualityPrePourClearanceCard copyWith({
+    QualityCardStatus? status,
+    String? elementName, String? locationText, String? projectNameSnapshot,
+    String? contractorName, String? cardDate, String? pourStartTime,
+    String? pourEndTime, String? pourLocation, String? pourNo,
+    String? gradeOfConcrete, String? placementMethod, String? concreteSupplier,
+    double? estimatedConcreteQty, double? actualConcreteQty,
+    int? cubeMouldCount, String? targetSlump, int? vibratorCount,
+    Map<String, String>? attachments, List<ClearanceSignoff>? signoffs,
+  }) => QualityPrePourClearanceCard(
+    id: id, inspectionId: inspectionId,
+    status: status ?? this.status,
+    isActivated: isActivated, activationStageName: activationStageName,
+    elementName: elementName ?? this.elementName,
+    locationText: locationText ?? this.locationText,
+    activityLabel: activityLabel,
+    projectNameSnapshot: projectNameSnapshot ?? this.projectNameSnapshot,
+    contractorName: contractorName ?? this.contractorName,
+    cardDate: cardDate ?? this.cardDate,
+    pourStartTime: pourStartTime ?? this.pourStartTime,
+    pourEndTime: pourEndTime ?? this.pourEndTime,
+    pourLocation: pourLocation ?? this.pourLocation,
+    pourNo: pourNo ?? this.pourNo,
+    gradeOfConcrete: gradeOfConcrete ?? this.gradeOfConcrete,
+    placementMethod: placementMethod ?? this.placementMethod,
+    concreteSupplier: concreteSupplier ?? this.concreteSupplier,
+    estimatedConcreteQty: estimatedConcreteQty ?? this.estimatedConcreteQty,
+    actualConcreteQty: actualConcreteQty ?? this.actualConcreteQty,
+    cubeMouldCount: cubeMouldCount ?? this.cubeMouldCount,
+    targetSlump: targetSlump ?? this.targetSlump,
+    vibratorCount: vibratorCount ?? this.vibratorCount,
+    formatNo: formatNo, revisionNo: revisionNo,
+    attachments: attachments ?? this.attachments,
+    signoffs: signoffs ?? this.signoffs,
+    approvalRemarks: approvalRemarks, rejectionRemarks: rejectionRemarks,
+    submittedAt: submittedAt, approvedAt: approvedAt, rejectedAt: rejectedAt,
+  );
+
+  @override
+  List<Object?> get props => [id, inspectionId, status, isActivated, signoffs];
+}
+
+// ============================================================
+// SNAG MODELS
+// ============================================================
+
+enum SnagStatus {
+  open, rectified, verified, closed;
+
+  static SnagStatus fromString(String s) {
+    switch (s.toUpperCase()) {
+      case 'RECTIFIED': return SnagStatus.rectified;
+      case 'VERIFIED':  return SnagStatus.verified;
+      case 'CLOSED':    return SnagStatus.closed;
+      default:          return SnagStatus.open;
+    }
+  }
+
+  String get label => switch (this) {
+    SnagStatus.open      => 'Open',
+    SnagStatus.rectified => 'Rectified',
+    SnagStatus.verified  => 'Verified',
+    SnagStatus.closed    => 'Closed',
+  };
+
+  Color get color => switch (this) {
+    SnagStatus.open      => const Color(0xFFDC2626),
+    SnagStatus.rectified => const Color(0xFF1D4ED8),
+    SnagStatus.verified  => const Color(0xFF15803D),
+    SnagStatus.closed    => const Color(0xFF6B7280),
+  };
+}
+
+class QualitySnag extends Equatable {
+  final int id;
+  final int projectId;
+  final int? epsNodeId;
+  final String title;
+  final String? description;
+  final String? location;
+  final String priority;
+  final SnagStatus status;
+  final List<String> photoUrls;
+  final String? raisedByName;
+  final DateTime? dueDate;
+  final DateTime createdAt;
+  final DateTime? rectifiedAt;
+  final DateTime? verifiedAt;
+
+  const QualitySnag({
+    required this.id,
+    required this.projectId,
+    this.epsNodeId,
+    required this.title,
+    this.description,
+    this.location,
+    this.priority = 'MEDIUM',
+    required this.status,
+    this.photoUrls = const [],
+    this.raisedByName,
+    this.dueDate,
+    required this.createdAt,
+    this.rectifiedAt,
+    this.verifiedAt,
+  });
+
+  factory QualitySnag.fromJson(Map<String, dynamic> j) {
+    DateTime? dt(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
+    return QualitySnag(
+      id: j['id'] as int? ?? 0,
+      projectId: j['projectId'] as int? ?? 0,
+      epsNodeId: j['epsNodeId'] as int?,
+      title: j['title'] as String? ?? '',
+      description: j['description'] as String?,
+      location: j['location'] as String?,
+      priority: j['priority'] as String? ?? 'MEDIUM',
+      status: SnagStatus.fromString(j['status'] as String? ?? 'OPEN'),
+      photoUrls: (j['photoUrls'] as List<dynamic>?)
+              ?.map((e) => ApiEndpoints.resolveUrl(e.toString()))
+              .toList() ?? [],
+      raisedByName: (j['raisedBy'] as Map<String, dynamic>?)?['name'] as String?
+          ?? j['raisedByName'] as String?,
+      dueDate: dt(j['dueDate']),
+      createdAt: dt(j['createdAt']) ?? DateTime.now(),
+      rectifiedAt: dt(j['rectifiedAt']),
+      verifiedAt: dt(j['verifiedAt']),
+    );
+  }
+
+  Color get priorityColor => switch (priority.toUpperCase()) {
+    'HIGH'     => const Color(0xFFDC2626),
+    'CRITICAL' => const Color(0xFF7C3AED),
+    'LOW'      => const Color(0xFF15803D),
+    _          => const Color(0xFFF59E0B),
+  };
+
+  @override
+  List<Object?> get props => [id, projectId, title, status, priority, createdAt];
 }

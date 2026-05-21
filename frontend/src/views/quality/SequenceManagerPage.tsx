@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   DndContext,
@@ -68,13 +68,29 @@ interface Activity {
   assignedChecklistIds?: number[];
   requiresPourCard?: boolean;
   requiresPourClearanceCard?: boolean;
+  pourClearanceTriggerStageTemplateId?: number | null;
+  pourClearanceSignoffTemplate?: PourClearanceSignoffTemplateEntry[];
   floorVisibility?: FloorVisibilityConfig;
+}
+
+interface ChecklistStageTemplate {
+  id: number;
+  name: string;
+  sequence?: number;
+  templateId?: number;
 }
 
 interface ChecklistTemplate {
   id: number;
   name: string;
-  stages?: any[];
+  stages?: ChecklistStageTemplate[];
+}
+
+interface PourClearanceSignoffTemplateEntry {
+  id: string;
+  department: string;
+  designation?: string | null;
+  isActive: boolean;
 }
 
 interface ActivityList {
@@ -85,6 +101,35 @@ interface ActivityList {
 }
 
 interface EpsNode extends FloorVisibilityTreeNode {}
+
+const DEFAULT_POUR_CLEARANCE_SIGNOFFS: PourClearanceSignoffTemplateEntry[] = [
+  "Surveyor",
+  "Site Engineer",
+  "Project Manager",
+  "Rebar Engineer",
+  "Quality Incharge",
+  "Safety Incharge",
+  "Electrical Incharge",
+  "Plumbing Incharge",
+  "PMC Representative",
+  "PMC MEP Incharge",
+  "Client Representative",
+].map((department) => ({
+  id: department.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+  department,
+  designation: "",
+  isActive: true,
+}));
+
+const createEmptySignoffTemplate = (): PourClearanceSignoffTemplateEntry => ({
+  id:
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `signoff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  department: "",
+  designation: "",
+  isActive: true,
+});
 
 // ─── Sortable Row ─────────────────────────────────────────────────────────────
 
@@ -138,6 +183,20 @@ const SortableRow = ({
           allActivities.find((a) => a.id === activity.previousActivityId),
         ].filter(Boolean)
       : [];
+  const pourClearanceTriggerLabel = activity.pourClearanceTriggerStageTemplateId
+    ? (() => {
+        for (const checklist of checklists) {
+          const stage = (checklist.stages || []).find(
+            (entry) =>
+              entry.id === activity.pourClearanceTriggerStageTemplateId,
+          );
+          if (stage) {
+            return `${checklist.name}: ${stage.name}`;
+          }
+        }
+        return `Stage #${activity.pourClearanceTriggerStageTemplateId}`;
+      })()
+    : null;
 
   return (
     <div
@@ -233,6 +292,12 @@ const SortableRow = ({
                 {activity.requiresPourClearanceCard ? (
                   <span className="inline-flex items-center gap-1 text-xs bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100 font-medium">
                     Pour Clearance
+                  </span>
+                ) : null}
+                {activity.requiresPourClearanceCard &&
+                pourClearanceTriggerLabel ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded border border-cyan-200 font-medium">
+                    After: {pourClearanceTriggerLabel}
                   </span>
                 ) : null}
               </div>
@@ -499,6 +564,12 @@ const ActivityForm = ({
     assignedChecklistIds: initial?.assignedChecklistIds || ([] as number[]),
     requiresPourCard: initial?.requiresPourCard || false,
     requiresPourClearanceCard: initial?.requiresPourClearanceCard || false,
+    pourClearanceTriggerStageTemplateId:
+      initial?.pourClearanceTriggerStageTemplateId ?? null,
+    pourClearanceSignoffTemplate:
+      initial?.pourClearanceSignoffTemplate?.length
+        ? initial.pourClearanceSignoffTemplate
+        : DEFAULT_POUR_CLEARANCE_SIGNOFFS,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -519,9 +590,105 @@ const ActivityForm = ({
     c.name.toLowerCase().includes(clSearch.toLowerCase()),
   );
 
+  const pourClearanceStageOptions = useMemo(() => {
+    const options: Array<{
+      id: number;
+      label: string;
+      checklistName: string;
+      checklistId: number;
+      sequence: number;
+    }> = [];
+    const seen = new Set<number>();
+
+    for (const checklistId of form.assignedChecklistIds) {
+      const template = checklists.find((c) => c.id === checklistId);
+      for (const stage of template?.stages || []) {
+        if (!stage?.id || seen.has(stage.id)) continue;
+        seen.add(stage.id);
+        options.push({
+          id: stage.id,
+          label: stage.name,
+          checklistName: template?.name || `Checklist ${checklistId}`,
+          checklistId,
+          sequence: stage.sequence || 0,
+        });
+      }
+    }
+
+    return options.sort((a, b) =>
+      a.checklistName === b.checklistName
+        ? a.sequence - b.sequence
+        : a.checklistName.localeCompare(b.checklistName),
+    );
+  }, [checklists, form.assignedChecklistIds]);
+
+  useEffect(() => {
+    if (!form.requiresPourClearanceCard) {
+      return;
+    }
+
+    if (!form.pourClearanceSignoffTemplate.length) {
+      setForm((prev) => ({
+        ...prev,
+        pourClearanceSignoffTemplate: DEFAULT_POUR_CLEARANCE_SIGNOFFS,
+      }));
+    }
+  }, [form.requiresPourClearanceCard, form.pourClearanceSignoffTemplate.length]);
+
+  useEffect(() => {
+    if (
+      form.pourClearanceTriggerStageTemplateId &&
+      !pourClearanceStageOptions.some(
+        (stage) => stage.id === form.pourClearanceTriggerStageTemplateId,
+      )
+    ) {
+      set("pourClearanceTriggerStageTemplateId", null);
+    }
+  }, [form.pourClearanceTriggerStageTemplateId, pourClearanceStageOptions]);
+
+  const updateSignoffTemplateRow = (
+    id: string,
+    patch: Partial<PourClearanceSignoffTemplateEntry>,
+  ) => {
+    setForm((prev) => ({
+      ...prev,
+      pourClearanceSignoffTemplate: prev.pourClearanceSignoffTemplate.map((row) =>
+        row.id === id ? { ...row, ...patch } : row,
+      ),
+    }));
+  };
+
+  const addSignoffTemplateRow = () => {
+    setForm((prev) => ({
+      ...prev,
+      pourClearanceSignoffTemplate: [
+        ...(prev.pourClearanceSignoffTemplate || []),
+        createEmptySignoffTemplate(),
+      ],
+    }));
+  };
+
+  const removeSignoffTemplateRow = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      pourClearanceSignoffTemplate: prev.pourClearanceSignoffTemplate.filter(
+        (row) => row.id !== id,
+      ),
+    }));
+  };
+
   const handleSave = async () => {
     if (!form.activityName.trim()) {
       setError("Activity name is required");
+      return;
+    }
+    if (
+      form.requiresPourClearanceCard &&
+      form.assignedChecklistIds.length > 0 &&
+      pourClearanceStageOptions.length > 0 &&
+      !form.pourClearanceTriggerStageTemplateId
+    ) {
+      setError("Select the checklist stage after which pour clearance activates.");
       return;
     }
     setSaving(true);
@@ -739,6 +906,127 @@ const ActivityForm = ({
           </label>
         ))}
       </div>
+      {form.requiresPourClearanceCard && (
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4 space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-cyan-900">
+              Pour Clearance Activation
+            </div>
+            <div className="mt-1 text-xs text-cyan-800">
+              Choose the checklist stage after which the pre-pour clearance card
+              should become active in QA/QC approvals.
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-text-secondary">
+                Activate After Stage
+              </label>
+              <select
+                className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
+                value={form.pourClearanceTriggerStageTemplateId ?? ""}
+                onChange={(e) =>
+                  set(
+                    "pourClearanceTriggerStageTemplateId",
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+              >
+                <option value="">
+                  {pourClearanceStageOptions.length
+                    ? "Select a checklist stage"
+                    : "Assign checklists first"}
+                </option>
+                {pourClearanceStageOptions.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.checklistName} - Stage {stage.sequence || "?"}:{" "}
+                    {stage.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-lg border border-dashed border-cyan-300 bg-white/70 px-3 py-2 text-xs text-cyan-900">
+              Once this stage is fully approved in QA/QC, the pre-pour
+              clearance certificate and concrete details form will open for the
+              inspection.
+            </div>
+          </div>
+          <div className="rounded-lg border border-border-subtle bg-white p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-text-primary">
+                  Pour Clearance Signatories
+                </div>
+                <div className="text-xs text-text-muted">
+                  Add, deactivate, or edit the default signatories that should
+                  appear on the pre-pour clearance certificate.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={addSignoffTemplateRow}
+                className="rounded-lg border border-cyan-300 bg-cyan-100 px-3 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-200"
+              >
+                + Add Signatory
+              </button>
+            </div>
+            <div className="space-y-2">
+              {form.pourClearanceSignoffTemplate.map((row) => (
+                <div
+                  key={row.id}
+                  className="grid gap-2 rounded-lg border border-border-subtle bg-surface-card p-3 md:grid-cols-[1.2fr_1fr_auto_auto]"
+                >
+                  <input
+                    value={row.department}
+                    onChange={(e) =>
+                      updateSignoffTemplateRow(row.id, {
+                        department: e.target.value,
+                      })
+                    }
+                    placeholder="Department / Signatory"
+                    className="rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={row.designation || ""}
+                    onChange={(e) =>
+                      updateSignoffTemplateRow(row.id, {
+                        designation: e.target.value,
+                      })
+                    }
+                    placeholder="Designation"
+                    className="rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
+                  />
+                  <label className="flex items-center gap-2 rounded-lg border border-border-default bg-white px-3 py-2 text-xs font-semibold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={row.isActive}
+                      onChange={(e) =>
+                        updateSignoffTemplateRow(row.id, {
+                          isActive: e.target.checked,
+                        })
+                      }
+                    />
+                    Active
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeSignoffTemplateRow(row.id)}
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              {form.pourClearanceSignoffTemplate.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border-default px-3 py-4 text-center text-xs text-text-muted">
+                  No signatories configured. Add at least one signatory for the
+                  pour clearance card.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <button
           onClick={onCancel}

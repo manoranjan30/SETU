@@ -1122,6 +1122,212 @@ class SetuApiClient {
     });
   }
 
+  // ==================== QUALITY POUR CARD ====================
+
+  Future<Map<String, dynamic>> getPourCard(int inspectionId) async {
+    final response = await _dio.get(ApiEndpoints.pourCard(inspectionId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> savePourCard(
+      int inspectionId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.put(ApiEndpoints.pourCard(inspectionId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> submitPourCard(int inspectionId) async {
+    final response =
+        await _dio.post(ApiEndpoints.pourCardSubmit(inspectionId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> approvePourCard(
+      int inspectionId, {String? remarks}) async {
+    final response = await _dio.post(ApiEndpoints.pourCardApprove(inspectionId),
+        data: {'remarks': remarks});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> rejectPourCard(
+      int inspectionId, {String? remarks}) async {
+    final response = await _dio.post(ApiEndpoints.pourCardReject(inspectionId),
+        data: {'remarks': remarks});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> downloadPourCardPdf(int inspectionId, String savePath) async {
+    await _dio.download(ApiEndpoints.pourCardPdf(inspectionId), savePath);
+  }
+
+  // ==================== QUALITY PRE-POUR CLEARANCE ====================
+
+  Future<Map<String, dynamic>> getClearanceCard(int inspectionId) async {
+    final response = await _dio.get(ApiEndpoints.clearanceCard(inspectionId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> saveClearanceCard(
+      int inspectionId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.put(ApiEndpoints.clearanceCard(inspectionId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> submitClearanceCard(int inspectionId) async {
+    final response =
+        await _dio.post(ApiEndpoints.clearanceCardSubmit(inspectionId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> approveClearanceCard(
+      int inspectionId, {String? remarks}) async {
+    final response = await _dio.post(
+        ApiEndpoints.clearanceCardApprove(inspectionId),
+        data: {'remarks': remarks});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> rejectClearanceCard(
+      int inspectionId, {String? remarks}) async {
+    final response = await _dio.post(
+        ApiEndpoints.clearanceCardReject(inspectionId),
+        data: {'remarks': remarks});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> downloadClearanceCardPdf(
+      int inspectionId, String savePath) async {
+    await _dio.download(
+        ApiEndpoints.clearanceCardPdf(inspectionId), savePath);
+  }
+
+  // ==================== QUALITY SNAGS ====================
+
+  Future<List<Map<String, dynamic>>> getSnags(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.snags(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createSnag(
+      Map<String, dynamic> data) async {
+    final response =
+        await _dio.post(ApiEndpoints.createSnag, data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateSnag(
+      int snagId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.put(ApiEndpoints.updateSnag(snagId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteSnag(int snagId) async {
+    await _dio.delete(ApiEndpoints.deleteSnag(snagId));
+  }
+
+  // ==================== EHS DASHBOARD ====================
+
+  Future<Map<String, dynamic>> getEhsSummary(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsSummary(projectId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getEhsPerformance(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsPerformance(projectId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getEhsManhours(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsManhours(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['data'] is List)
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createEhsManhours(
+      int projectId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.post(ApiEndpoints.ehsManhours(projectId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getEhsTraining(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsTraining(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['data'] is List)
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createEhsTraining(
+      int projectId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.post(ApiEndpoints.ehsTraining(projectId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getEhsLegal(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsLegal(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['data'] is List)
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createEhsLegal(
+      int projectId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.post(ApiEndpoints.ehsLegal(projectId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateEhsLegal(
+      int projectId, int itemId, Map<String, dynamic> data) async {
+    final response = await _dio
+        .put(ApiEndpoints.ehsLegalItem(projectId, itemId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getEhsMachinery(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsMachinery(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['data'] is List)
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createEhsMachinery(
+      int projectId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.post(ApiEndpoints.ehsMachinery(projectId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getEhsVehicles(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.ehsVehicles(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['data'] is List)
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createEhsVehicle(
+      int projectId, Map<String, dynamic> data) async {
+    final response =
+        await _dio.post(ApiEndpoints.ehsVehicles(projectId), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
   // ==================== DESIGN MODULE ====================
 
   /// Returns all drawing categories (ARCH, STR, MEP, etc.)

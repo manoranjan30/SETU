@@ -25,6 +25,8 @@ import 'package:setu_mobile/features/quality/presentation/pages/quality_approval
 import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/snag_list_page.dart';
+import 'package:setu_mobile/features/ehs/presentation/pages/ehs_hub_page.dart';
 import 'package:setu_mobile/features/design/presentation/pages/design_register_page.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/pages/tower_lens_page.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -702,6 +704,22 @@ class _ModuleGrid extends StatelessWidget {
           color: const Color(0xFFB91C1C),
           onTap: () => _goEhsIncidents(context),
         ),
+      // EHS Hub — full dashboard (manhours, training, legal, machinery, vehicles)
+      if (ps.canReadEhsDashboard)
+        _ModuleDef(
+          icon: Icons.shield_outlined,
+          label: 'EHS\nHub',
+          color: const Color(0xFF7C3AED),
+          onTap: () => _goEhsHub(context),
+        ),
+      // Snag list — quality punch list / snag tracking
+      if (ps.hasAnyQualityObsAccess)
+        _ModuleDef(
+          icon: Icons.bug_report_outlined,
+          label: 'Snag\nList',
+          color: const Color(0xFFDB2777),
+          onTap: () => _goSnagList(context),
+        ),
       // Labor register — daily headcount entry
       if (ps.hasAnyLaborAccess)
         _ModuleDef(
@@ -911,6 +929,30 @@ class _ModuleGrid extends StatelessWidget {
       context,
       FadeSlideRoute(
         child: DesignRegisterPage(
+          projectId: project.id,
+          projectName: project.name,
+        ),
+      ),
+    );
+  }
+
+  void _goEhsHub(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(
+        child: EhsHubPage(
+          projectId: project.id,
+          projectName: project.name,
+        ),
+      ),
+    );
+  }
+
+  void _goSnagList(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(
+        child: SnagListPage(
           projectId: project.id,
           projectName: project.name,
         ),

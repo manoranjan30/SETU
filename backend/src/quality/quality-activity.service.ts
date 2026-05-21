@@ -10,6 +10,7 @@ import {
   QualityActivity,
   QualityActivityStatus,
   QualityApplicabilityLevel,
+  PourClearanceSignoffTemplateEntry,
 } from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import {
@@ -52,6 +53,13 @@ export interface CreateActivityDto {
   applicabilityLevel?: QualityApplicabilityLevel;
   requiresPourCard?: boolean;
   requiresPourClearanceCard?: boolean;
+  pourClearanceTriggerStageTemplateId?: number | null;
+  pourClearanceSignoffTemplate?: Array<{
+    id?: string;
+    department?: string;
+    designation?: string | null;
+    isActive?: boolean;
+  }>;
   floorVisibility?: {
     mode?: 'ALL' | 'RESTRICTED';
     selectedNodeIds?: number[];
@@ -228,6 +236,11 @@ export class QualityActivityService {
 
     const activity = this.activityRepo.create({
       ...dto,
+      pourClearanceTriggerStageTemplateId:
+        dto.pourClearanceTriggerStageTemplateId ?? null,
+      pourClearanceSignoffTemplate: this.normalizePourClearanceSignoffTemplate(
+        dto.pourClearanceSignoffTemplate,
+      ),
       floorVisibility: this.normalizeFloorVisibility(dto.floorVisibility),
       listId,
       sequence: nextSeq,
@@ -249,6 +262,16 @@ export class QualityActivityService {
     if (!activity) throw new NotFoundException(`Activity #${id} not found`);
 
     Object.assign(activity, dto);
+    if ('pourClearanceTriggerStageTemplateId' in dto) {
+      activity.pourClearanceTriggerStageTemplateId =
+        dto.pourClearanceTriggerStageTemplateId ?? null;
+    }
+    if ('pourClearanceSignoffTemplate' in dto) {
+      activity.pourClearanceSignoffTemplate =
+        this.normalizePourClearanceSignoffTemplate(
+          dto.pourClearanceSignoffTemplate,
+        );
+    }
     if ('floorVisibility' in dto) {
       activity.floorVisibility = this.normalizeFloorVisibility(
         dto.floorVisibility,
@@ -749,6 +772,10 @@ export class QualityActivityService {
         applicabilityLevel: act.applicabilityLevel,
         requiresPourCard: act.requiresPourCard,
         requiresPourClearanceCard: act.requiresPourClearanceCard,
+        pourClearanceTriggerStageTemplateId:
+          act.pourClearanceTriggerStageTemplateId,
+        pourClearanceSignoffTemplate:
+          act.pourClearanceSignoffTemplate || [],
         floorVisibility: act.floorVisibility,
         position: act.position,
         status: QualityActivityStatus.NOT_STARTED,
@@ -887,6 +914,35 @@ export class QualityActivityService {
       activity.assignedChecklistIds = [activity.checklistTemplateId];
     }
     return activity;
+  }
+
+  private normalizePourClearanceSignoffTemplate(
+    value?: Array<{
+      id?: string;
+      department?: string;
+      designation?: string | null;
+      isActive?: boolean;
+    }> | null,
+  ): PourClearanceSignoffTemplateEntry[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((entry) => ({
+        id:
+          typeof entry?.id === 'string' && entry.id.trim()
+            ? entry.id.trim()
+            : crypto.randomUUID(),
+        department:
+          typeof entry?.department === 'string' ? entry.department.trim() : '',
+        designation:
+          typeof entry?.designation === 'string'
+            ? entry.designation.trim() || null
+            : null,
+        isActive: entry?.isActive !== false,
+      }))
+      .filter((entry) => entry.department.length > 0);
   }
 
   private normalizeFloorVisibility(
