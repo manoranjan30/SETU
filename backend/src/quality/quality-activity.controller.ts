@@ -90,6 +90,26 @@ export class QualityActivityController {
     return this.service.cloneList(id, targetProjectId);
   }
 
+  @Post('activity-lists/project/:projectId/clone-from-project')
+  @Permissions('QUALITY.ACTIVITYLIST.CREATE')
+  cloneListsFromProject(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body()
+    body: {
+      sourceProjectId: number;
+      listIds?: number[];
+    },
+  ) {
+    if (!body?.sourceProjectId) {
+      throw new BadRequestException('sourceProjectId is required');
+    }
+    return this.service.cloneListsFromProject(
+      Number(body.sourceProjectId),
+      projectId,
+      body.listIds?.map(Number).filter(Number.isFinite),
+    );
+  }
+
   // ── Activities ─────────────────────────────────────────────────────────
 
   @Get('activity-lists/:listId/activities')

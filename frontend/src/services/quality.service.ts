@@ -307,6 +307,21 @@ export const qualityService = {
     return res.data;
   },
 
+  cloneChecklistTemplatesFromProject: async (
+    targetProjectId: number,
+    data: {
+      sourceProjectId: number;
+      templateIds?: number[];
+      overwriteExisting?: boolean;
+    },
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/checklist-templates/project/${targetProjectId}/clone-from-project`,
+      data,
+    );
+    return res.data;
+  },
+
   previewChecklistExcelImport: async (
     projectId: number,
     file: File,

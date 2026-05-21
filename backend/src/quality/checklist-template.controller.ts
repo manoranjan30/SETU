@@ -54,6 +54,30 @@ export class ChecklistTemplateController {
     return this.templateService.create(projectId, data);
   }
 
+  @Post('project/:projectId/clone-from-project')
+  @Permissions('QUALITY.CHECKLIST.CREATE')
+  cloneFromProject(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body()
+    body: {
+      sourceProjectId: number;
+      templateIds?: number[];
+      overwriteExisting?: boolean;
+    },
+  ) {
+    if (!body?.sourceProjectId) {
+      throw new BadRequestException('sourceProjectId is required');
+    }
+    return this.templateService.cloneFromProject(
+      Number(body.sourceProjectId),
+      projectId,
+      {
+        templateIds: body.templateIds?.map(Number).filter(Number.isFinite),
+        overwriteExisting: Boolean(body.overwriteExisting),
+      },
+    );
+  }
+
   @Put(':id')
   @Permissions('QUALITY.CHECKLIST.UPDATE')
   update(

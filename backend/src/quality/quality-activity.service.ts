@@ -21,6 +21,9 @@ import {
 import { InspectionApproval } from './entities/inspection-approval.entity';
 import { QualityInspection } from './entities/quality-inspection.entity';
 import { QualityInspectionStage } from './entities/quality-inspection-stage.entity';
+import { QualityChecklistTemplate } from './entities/quality-checklist-template.entity';
+import { QualityStageTemplate } from './entities/quality-stage-template.entity';
+import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-template.entity';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { NotificationContextService } from '../notifications/notification-context.service';
 import * as crypto from 'crypto';
@@ -748,12 +751,23 @@ export class QualityActivityService {
     });
     if (!sourceList)
       throw new NotFoundException(`Source list #${sourceListId} not found`);
+    if (sourceList.projectId === targetProjectId) {
+      throw new BadRequestException(
+        'Source and target project cannot be the same',
+      );
+    }
+
+    const checklistMap = await this.cloneAssignedChecklistTemplates(
+      sourceList.activities || [],
+      targetProjectId,
+    );
 
     // 1. Create newList object
     const newList = this.listRepo.create({
-      name: `${sourceList.name} (Copy)`,
+      name: await this.buildUniqueListName(sourceList.name, targetProjectId),
       description: sourceList.description,
       projectId: targetProjectId,
+      epsNodeId: undefined,
     });
     const savedList = await this.listRepo.save(newList);
 
@@ -773,13 +787,22 @@ export class QualityActivityService {
         requiresPourCard: act.requiresPourCard,
         requiresPourClearanceCard: act.requiresPourClearanceCard,
         pourClearanceTriggerStageTemplateId:
-          act.pourClearanceTriggerStageTemplateId,
+          checklistMap.stageIdMap.get(
+            Number(act.pourClearanceTriggerStageTemplateId),
+          ) ??
+          act.pourClearanceTriggerStageTemplateId ??
+          undefined,
         pourClearanceSignoffTemplate:
           act.pourClearanceSignoffTemplate || [],
         floorVisibility: act.floorVisibility,
         position: act.position,
         status: QualityActivityStatus.NOT_STARTED,
-        assignedChecklistIds: act.assignedChecklistIds,
+        assignedChecklistIds: (act.assignedChecklistIds || [])
+          .map((id) => checklistMap.templateIdMap.get(Number(id)))
+          .filter((id): id is number => Boolean(id)),
+        checklistTemplateId:
+          checklistMap.templateIdMap.get(Number(act.checklistTemplateId)) ??
+          undefined,
       });
       const savedAct = await this.activityRepo.save(newAct);
       oldToNewMap.set(act.id, savedAct.id);
@@ -829,7 +852,212 @@ export class QualityActivityService {
     return savedList;
   }
 
+  async cloneListsFromProject(
+    sourceProjectId: number,
+    targetProjectId: number,
+    listIds?: number[],
+  ) {
+    if (sourceProjectId === targetProjectId) {
+      throw new BadRequestException(
+        'Source and target project cannot be the same',
+      );
+    }
+
+    const where: any = { projectId: sourceProjectId };
+    if (listIds?.length) where.id = In(listIds);
+
+    const sourceLists = await this.listRepo.find({
+      where,
+      order: { createdAt: 'ASC' },
+    });
+
+    const cloned: QualityActivityList[] = [];
+    for (const list of sourceLists) {
+      cloned.push(await this.cloneList(list.id, targetProjectId));
+    }
+
+    return {
+      sourceProjectId,
+      targetProjectId,
+      clonedCount: cloned.length,
+      cloned,
+    };
+  }
+
   // ── Private Helpers ────────────────────────────────────────────────────
+
+  private async buildUniqueListName(name: string, targetProjectId: number) {
+    const existing = await this.listRepo.find({
+      where: { projectId: targetProjectId },
+      select: ['name'],
+    });
+    const existingNames = new Set(existing.map((list) => list.name));
+    if (!existingNames.has(name)) return name;
+
+    let counter = 2;
+    let candidate = `${name} (Imported)`;
+    while (existingNames.has(candidate)) {
+      candidate = `${name} (Imported ${counter})`;
+      counter += 1;
+    }
+    return candidate;
+  }
+
+  private async cloneAssignedChecklistTemplates(
+    activities: QualityActivity[],
+    targetProjectId: number,
+  ) {
+    const templateIdMap = new Map<number, number>();
+    const stageIdMap = new Map<number, number>();
+    const sourceTemplateIds = new Set<number>();
+
+    for (const activity of activities) {
+      (activity.assignedChecklistIds || []).forEach((id) =>
+        sourceTemplateIds.add(Number(id)),
+      );
+      if (activity.checklistTemplateId) {
+        sourceTemplateIds.add(Number(activity.checklistTemplateId));
+      }
+    }
+
+    const triggerStageIds = activities
+      .map((activity) => Number(activity.pourClearanceTriggerStageTemplateId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    const stageRepo = this.dataSource.getRepository(QualityStageTemplate);
+    if (triggerStageIds.length) {
+      const triggerStages = await stageRepo.find({
+        where: { id: In(triggerStageIds) },
+      });
+      triggerStages.forEach((stage) => sourceTemplateIds.add(stage.templateId));
+    }
+
+    if (!sourceTemplateIds.size) {
+      return { templateIdMap, stageIdMap };
+    }
+
+    const templateRepo =
+      this.dataSource.getRepository(QualityChecklistTemplate);
+    const itemRepo = this.dataSource.getRepository(
+      QualityChecklistItemTemplate,
+    );
+    const sourceTemplates = await templateRepo.find({
+      where: { id: In(Array.from(sourceTemplateIds)) },
+      relations: ['stages', 'stages.items'],
+      order: {
+        stages: {
+          sequence: 'ASC',
+          items: {
+            sequence: 'ASC',
+          },
+        },
+      },
+    });
+
+    for (const sourceTemplate of sourceTemplates) {
+      let targetTemplate = await this.findTargetChecklistTemplate(
+        templateRepo,
+        targetProjectId,
+        sourceTemplate,
+      );
+
+      if (!targetTemplate) {
+        targetTemplate = await templateRepo.save(
+          templateRepo.create({
+            projectId: targetProjectId,
+            name: sourceTemplate.name,
+            description: sourceTemplate.description,
+            status: 'ACTIVE',
+            checklistNo: sourceTemplate.checklistNo,
+            revNo: sourceTemplate.revNo || '01',
+            activityTitle: sourceTemplate.activityTitle,
+            activityType: sourceTemplate.activityType,
+            discipline: sourceTemplate.discipline,
+            applicableTrade: sourceTemplate.applicableTrade,
+            isGlobal: sourceTemplate.isGlobal,
+          }),
+        );
+
+        for (const sourceStage of sourceTemplate.stages || []) {
+          const targetStage = await stageRepo.save(
+            stageRepo.create({
+              templateId: targetTemplate.id,
+              name: sourceStage.name,
+              sequence: sourceStage.sequence,
+              isHoldPoint: sourceStage.isHoldPoint,
+              isWitnessPoint: sourceStage.isWitnessPoint,
+              responsibleParty: sourceStage.responsibleParty,
+              signatureSlots: sourceStage.signatureSlots || [],
+            }),
+          );
+          stageIdMap.set(sourceStage.id, targetStage.id);
+
+          for (const sourceItem of sourceStage.items || []) {
+            await itemRepo.save(
+              itemRepo.create({
+                stageId: targetStage.id,
+                itemText: sourceItem.itemText,
+                type: sourceItem.type,
+                isMandatory: sourceItem.isMandatory,
+                photoRequired: sourceItem.photoRequired,
+                options: sourceItem.options,
+                sequence: sourceItem.sequence,
+              }),
+            );
+          }
+        }
+      }
+
+      templateIdMap.set(sourceTemplate.id, targetTemplate.id);
+      await this.mapExistingTargetStages(
+        stageRepo,
+        sourceTemplate,
+        targetTemplate.id,
+        stageIdMap,
+      );
+    }
+
+    return { templateIdMap, stageIdMap };
+  }
+
+  private async findTargetChecklistTemplate(
+    templateRepo: Repository<QualityChecklistTemplate>,
+    targetProjectId: number,
+    sourceTemplate: QualityChecklistTemplate,
+  ) {
+    const checklistNo = sourceTemplate.checklistNo?.trim();
+    if (checklistNo) {
+      const byChecklistNo = await templateRepo.findOne({
+        where: { projectId: targetProjectId, checklistNo },
+      });
+      if (byChecklistNo) return byChecklistNo;
+    }
+
+    return templateRepo.findOne({
+      where: { projectId: targetProjectId, name: sourceTemplate.name },
+    });
+  }
+
+  private async mapExistingTargetStages(
+    stageRepo: Repository<QualityStageTemplate>,
+    sourceTemplate: QualityChecklistTemplate,
+    targetTemplateId: number,
+    stageIdMap: Map<number, number>,
+  ) {
+    const targetStages = await stageRepo.find({
+      where: { templateId: targetTemplateId },
+    });
+    for (const sourceStage of sourceTemplate.stages || []) {
+      const matchingStage = targetStages.find(
+        (stage) =>
+          stage.sequence === sourceStage.sequence &&
+          stage.name.trim().toLowerCase() ===
+            sourceStage.name.trim().toLowerCase(),
+      );
+      if (matchingStage) {
+        stageIdMap.set(sourceStage.id, matchingStage.id);
+      }
+    }
+  }
 
   private async countUnresolvedObservationCountForActivity(activityId: number) {
     return this.obsRepo.count({
