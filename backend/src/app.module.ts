@@ -133,6 +133,8 @@ import { InspectionWorkflowRun } from './quality/entities/inspection-workflow-ru
 import { InspectionWorkflowStep } from './quality/entities/inspection-workflow-step.entity';
 import { QualityRatingConfig } from './quality/entities/quality-rating-config.entity';
 import { ProjectRating } from './quality/entities/quality-project-rating.entity';
+import { QualityPourCard } from './quality/entities/quality-pour-card.entity';
+import { QualityPrePourClearanceCard } from './quality/entities/quality-pre-pour-clearance-card.entity';
 
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
@@ -326,6 +328,8 @@ import { NotificationLog } from './notifications/notification-log.entity';
         InspectionWorkflowStep,
         QualityRatingConfig,
         ProjectRating,
+        QualityPourCard,
+        QualityPrePourClearanceCard,
         // Design
         DrawingCategory,
         DrawingRegister,

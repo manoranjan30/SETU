@@ -35,6 +35,11 @@ import { QualitySignature } from './entities/quality-signature.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
 import { QualityActivityStatus } from './entities/quality-activity.entity';
 import { QualityApplicabilityLevel } from './entities/quality-activity.entity';
+import {
+  QualityCardStatus,
+  QualityPourCard,
+} from './entities/quality-pour-card.entity';
+import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
@@ -128,6 +133,10 @@ export class QualityInspectionService {
     private readonly workOrderRepo: Repository<WorkOrder>,
     @InjectRepository(InspectionWorkflowRun)
     private readonly workflowRunRepo: Repository<InspectionWorkflowRun>,
+    @InjectRepository(QualityPourCard)
+    private readonly pourCardRepo: Repository<QualityPourCard>,
+    @InjectRepository(QualityPrePourClearanceCard)
+    private readonly prePourClearanceRepo: Repository<QualityPrePourClearanceCard>,
     private readonly complianceService: ComplianceService,
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
@@ -1093,6 +1102,7 @@ export class QualityInspectionService {
     signatureData?: string,
     comments?: string,
     isAdmin: boolean = false,
+    signatureEvidence?: Record<string, unknown>,
   ) {
     const stage = await this.stageRepo.findOne({
       where: { id: stageId, inspectionId },
@@ -1211,7 +1221,13 @@ export class QualityInspectionService {
           sourceType: signer.sourceType,
           signatureData,
           lockHash: fingerprint,
-          metadata: { timestamp: now },
+          metadata: {
+            timestamp: now,
+            ...(signatureEvidence || {}),
+            identityBound: true,
+            signatureMode:
+              (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
+          } as any,
         }),
       ),
     );
@@ -1384,6 +1400,7 @@ export class QualityInspectionService {
     signatureData?: string,
     comments?: string,
     isAdmin: boolean = false,
+    signatureEvidence?: Record<string, unknown>,
   ) {
     const inspection = await this.inspectionRepo.findOne({
       where: { id: inspectionId },
@@ -1456,7 +1473,13 @@ export class QualityInspectionService {
       sourceType: signer.sourceType,
       signatureData,
       lockHash: fingerprint,
-      metadata: { timestamp: new Date() },
+      metadata: {
+        timestamp: new Date(),
+        ...(signatureEvidence || {}),
+        identityBound: true,
+        signatureMode:
+          (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
+      } as any,
     });
     await this.signatureRepo.save(signature);
 
@@ -1637,6 +1660,7 @@ export class QualityInspectionService {
         'activity',
         'stages',
         'stages.stageTemplate',
+        'stages.stageTemplate.template',
         'stages.items',
         'stages.items.itemTemplate',
         'stages.signatures',
@@ -2156,6 +2180,21 @@ export class QualityInspectionService {
       legacyObservationCountRows.map((row) => [Number(row.activityId), Number(row.count)]),
     );
 
+    const [pourCards, prePourClearanceCards] = await Promise.all([
+      this.pourCardRepo.find({
+        where: { inspectionId: In(inspectionIds) },
+      }),
+      this.prePourClearanceRepo.find({
+        where: { inspectionId: In(inspectionIds) },
+      }),
+    ]);
+    const pourCardByInspectionId = new Map(
+      pourCards.map((card) => [card.inspectionId, card]),
+    );
+    const prePourClearanceByInspectionId = new Map(
+      prePourClearanceCards.map((card) => [card.inspectionId, card]),
+    );
+
     const actorMapByProject = new Map<number, Map<number, any>>();
     const roleMapByProject = new Map<number, Map<number, string>>();
     const viewerRoleIdsByProject = new Map<number, number[]>();
@@ -2214,6 +2253,34 @@ export class QualityInspectionService {
       const approvedStages =
         stages.filter((stage: any) => stage.stageApproval?.fullyApproved).length || 0;
       const totalStages = stages.length || 0;
+      const triggerStageTemplateId =
+        (inspection as any).activity?.pourClearanceTriggerStageTemplateId || null;
+      const triggerStage = triggerStageTemplateId
+        ? stages.find(
+            (stage: any) =>
+              Number(stage.stageTemplateId) === Number(triggerStageTemplateId),
+          )
+        : null;
+      const pourClearanceTriggerApproved = triggerStageTemplateId
+        ? Boolean(triggerStage?.stageApproval?.fullyApproved)
+        : totalStages > 0
+          ? approvedStages === totalStages
+          : false;
+      const pourCard = pourCardByInspectionId.get(inspection.id) || null;
+      const prePourClearance =
+        prePourClearanceByInspectionId.get(inspection.id) || null;
+      const prePourClearanceApproved = Boolean(
+        prePourClearance &&
+          [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+            prePourClearance.status,
+          ),
+      );
+      const pourCardApproved = Boolean(
+        pourCard &&
+          [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+            pourCard.status,
+          ),
+      );
 
       let pendingApprovalDisplay: string | null = null;
       let pendingApproverNames: string[] = [];
@@ -2388,6 +2455,16 @@ export class QualityInspectionService {
           currentUserBlockedReason: currentUserContext.currentUserBlockedReason,
           activeLevel:
             stagePendingContext?.level?.stepOrder || pendingStep?.stepOrder || null,
+          pourClearanceTriggerStageTemplateId: triggerStageTemplateId,
+          pourClearanceTriggerStageName:
+            triggerStage?.stageTemplate?.name || null,
+          pourClearanceTriggerApproved,
+        },
+        cardSummary: {
+          pourCardStatus: pourCard?.status || null,
+          pourCardApproved,
+          prePourClearanceStatus: prePourClearance?.status || null,
+          prePourClearanceApproved,
         },
       };
     });

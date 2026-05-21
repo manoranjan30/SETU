@@ -16,6 +16,8 @@ import 'package:setu_mobile/features/quality/presentation/widgets/observation_ca
 import 'package:setu_mobile/features/quality/presentation/widgets/raise_observation_sheet.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 import 'package:setu_mobile/shared/widgets/rectify_sheet.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/pour_card_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/pre_pour_clearance_page.dart';
 
 /// QC Inspector detail page for a single inspection.
 /// Shows checklist stages (expandable), observations, and approval actions.
@@ -368,6 +370,9 @@ class _ChecklistTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
+        // Pour Card / Pre-Pour Clearance quick-access panel
+        if (state.inspection.requiresPourCard || state.inspection.requiresPourClearanceCard)
+          _PourCardPanel(inspection: state.inspection),
         // Workflow approval timeline shown only when NOT using stage-level approval
         if (hasWorkflow && !usesStageApproval) _WorkflowTimeline(workflow: state.workflow!),
         if (state.stages.isEmpty)
@@ -382,6 +387,105 @@ class _ChecklistTab extends StatelessWidget {
             (i) => _StageSection(stage: state.stages[i], stageIndex: i),
           ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pour Card / Pre-Pour Clearance Panel
+// ---------------------------------------------------------------------------
+
+/// Shows "Open Pour Card" and/or "Open Pre-Pour Clearance" buttons when the
+/// inspection's activity requires them. Appears at the top of the checklist tab.
+class _PourCardPanel extends StatelessWidget {
+  final QualityInspection inspection;
+  const _PourCardPanel({required this.inspection});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: Colors.blue.shade100),
+        ),
+        color: Colors.blue.shade50,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.water_drop_outlined, size: 14, color: Colors.blue.shade700),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Concrete Pour Documents',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (inspection.requiresPourCard)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PourCardPage(
+                              inspectionId: inspection.id,
+                              activityName: inspection.activityName,
+                              locationLabel: inspection.locationDisplay,
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.assignment_outlined, size: 14),
+                        label: const Text('Pour Card'),
+                        style: OutlinedButton.styleFrom(
+                          textStyle: const TextStyle(fontSize: 12),
+                          foregroundColor: Colors.blue.shade700,
+                          side: BorderSide(color: Colors.blue.shade300),
+                        ),
+                      ),
+                    ),
+                  if (inspection.requiresPourCard && inspection.requiresPourClearanceCard)
+                    const SizedBox(width: 8),
+                  if (inspection.requiresPourClearanceCard)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PrePourClearancePage(
+                              inspectionId: inspection.id,
+                              activityName: inspection.activityName,
+                              locationLabel: inspection.locationDisplay,
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.checklist_outlined, size: 14),
+                        label: const Text('Clearance'),
+                        style: OutlinedButton.styleFrom(
+                          textStyle: const TextStyle(fontSize: 12),
+                          foregroundColor: Colors.teal.shade700,
+                          side: BorderSide(color: Colors.teal.shade300),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

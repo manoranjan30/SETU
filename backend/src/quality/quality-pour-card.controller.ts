@@ -20,6 +20,17 @@ import { QualityPourCardService } from './quality-pour-card.service';
 export class QualityPourCardController {
   constructor(private readonly service: QualityPourCardService) {}
 
+  private getRequestSignatureMeta(req: any) {
+    return {
+      ipAddress:
+        req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
+        req?.ip ||
+        req?.socket?.remoteAddress ||
+        null,
+      userAgent: req?.headers?.['user-agent'] || null,
+    };
+  }
+
   @Get(':inspectionId/pour-card')
   @Permissions('QUALITY.INSPECTION.READ')
   getPourCard(@Param('inspectionId', ParseIntPipe) inspectionId: number) {
@@ -49,6 +60,34 @@ export class QualityPourCardController {
     return this.service.submitPourCard(
       inspectionId,
       req.user?.userId || req.user?.id,
+    );
+  }
+
+  @Post(':inspectionId/pour-card/approve')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
+  approvePourCard(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Body() body: any,
+    @Request() req,
+  ) {
+    return this.service.approvePourCard(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      body?.remarks,
+    );
+  }
+
+  @Post(':inspectionId/pour-card/reject')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
+  rejectPourCard(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Body() body: any,
+    @Request() req,
+  ) {
+    return this.service.rejectPourCard(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      body?.remarks,
     );
   }
 
@@ -86,6 +125,7 @@ export class QualityPourCardController {
       inspectionId,
       body,
       req.user?.userId || req.user?.id,
+      this.getRequestSignatureMeta(req),
     );
   }
 
@@ -98,6 +138,34 @@ export class QualityPourCardController {
     return this.service.submitPrePourClearanceCard(
       inspectionId,
       req.user?.userId || req.user?.id,
+    );
+  }
+
+  @Post(':inspectionId/pre-pour-clearance/approve')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
+  approvePrePourClearance(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Body() body: any,
+    @Request() req,
+  ) {
+    return this.service.approvePrePourClearanceCard(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      body?.remarks,
+    );
+  }
+
+  @Post(':inspectionId/pre-pour-clearance/reject')
+  @Permissions('QUALITY.INSPECTION.APPROVE')
+  rejectPrePourClearance(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Body() body: any,
+    @Request() req,
+  ) {
+    return this.service.rejectPrePourClearanceCard(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      body?.remarks,
     );
   }
 

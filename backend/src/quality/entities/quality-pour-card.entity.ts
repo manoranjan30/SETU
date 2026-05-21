@@ -12,6 +12,8 @@ import { QualityInspection } from './quality-inspection.entity';
 export enum QualityCardStatus {
   DRAFT = 'DRAFT',
   SUBMITTED = 'SUBMITTED',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
   LOCKED = 'LOCKED',
 }
 
@@ -97,6 +99,30 @@ export class QualityPourCard {
 
   @Column({ type: 'int', nullable: true })
   createdByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  submittedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  submittedByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  approvedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  approvedByUserId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  approvalRemarks: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  rejectedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  rejectedByUserId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  rejectionRemarks: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

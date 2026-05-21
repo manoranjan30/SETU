@@ -34,6 +34,17 @@ export class QualityInspectionController {
     private readonly workflowService: InspectionWorkflowService,
   ) {}
 
+  private getSignatureRequestMeta(req: any) {
+    return {
+      ipAddress:
+        req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
+        req?.ip ||
+        req?.socket?.remoteAddress ||
+        null,
+      userAgent: req?.headers?.['user-agent'] || null,
+    };
+  }
+
   @Get()
   @Permissions('QUALITY.INSPECTION.READ')
   getInspections(
@@ -277,7 +288,12 @@ export class QualityInspectionController {
   approveStage(
     @Param('id', ParseIntPipe) inspectionId: number,
     @Param('stageId', ParseIntPipe) stageId: number,
-    @Body() body: { signatureData?: string; comments?: string },
+    @Body()
+    body: {
+      signatureData?: string;
+      comments?: string;
+      signatureEvidence?: Record<string, unknown>;
+    },
     @Request() req,
   ) {
     return this.service.approveStage(
@@ -287,6 +303,10 @@ export class QualityInspectionController {
       body.signatureData,
       body.comments,
       req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      {
+        ...(body.signatureEvidence || {}),
+        ...this.getSignatureRequestMeta(req),
+      },
     );
   }
 
@@ -295,7 +315,12 @@ export class QualityInspectionController {
   @Auditable('QUALITY', 'FINAL_APPROVE_RFI', 'id')
   finalApprove(
     @Param('id', ParseIntPipe) inspectionId: number,
-    @Body() body: { signatureData?: string; comments?: string },
+    @Body()
+    body: {
+      signatureData?: string;
+      comments?: string;
+      signatureEvidence?: Record<string, unknown>;
+    },
     @Request() req,
   ) {
     return this.service.finalApprove(
@@ -304,6 +329,10 @@ export class QualityInspectionController {
       body.signatureData,
       body.comments,
       req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      {
+        ...(body.signatureEvidence || {}),
+        ...this.getSignatureRequestMeta(req),
+      },
     );
   }
 

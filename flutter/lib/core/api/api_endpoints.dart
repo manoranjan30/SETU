@@ -537,6 +537,64 @@ class ApiEndpoints {
   /// Returns labor attendance/presence records for a project on a given date.
   static String laborPresence(int projectId) => '/labor/presence/$projectId';
 
+  // ==================== QUALITY POUR CARD ENDPOINTS ====================
+
+  /// GET/PUT /quality/inspections/:id/pour-card
+  static String pourCard(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pour-card';
+
+  /// POST /quality/inspections/:id/pour-card/submit
+  static String pourCardSubmit(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pour-card/submit';
+
+  /// POST /quality/inspections/:id/pour-card/approve
+  static String pourCardApprove(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pour-card/approve';
+
+  /// POST /quality/inspections/:id/pour-card/reject
+  static String pourCardReject(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pour-card/reject';
+
+  /// GET /quality/inspections/:id/pour-card/pdf
+  static String pourCardPdf(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pour-card/pdf';
+
+  // ==================== QUALITY PRE-POUR CLEARANCE ENDPOINTS ====================
+
+  /// GET/PUT /quality/inspections/:id/pre-pour-clearance
+  static String clearanceCard(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance';
+
+  /// POST /quality/inspections/:id/pre-pour-clearance/submit
+  static String clearanceCardSubmit(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/submit';
+
+  /// POST /quality/inspections/:id/pre-pour-clearance/approve
+  static String clearanceCardApprove(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/approve';
+
+  /// POST /quality/inspections/:id/pre-pour-clearance/reject
+  static String clearanceCardReject(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/reject';
+
+  /// GET /quality/inspections/:id/pre-pour-clearance/pdf
+  static String clearanceCardPdf(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/pdf';
+
+  // ==================== QUALITY SNAG ENDPOINTS ====================
+
+  /// GET /quality/:projectId/snags
+  static String snags(int projectId) => '/quality/$projectId/snags';
+
+  /// POST /quality/snags
+  static const String createSnag = '/quality/snags';
+
+  /// PUT /quality/snags/:id
+  static String updateSnag(int snagId) => '/quality/snags/$snagId';
+
+  /// DELETE /quality/snags/:id
+  static String deleteSnag(int snagId) => '/quality/snags/$snagId';
+
   // ==================== EHS INCIDENT ENDPOINTS ====================
 
   /// GET /ehs/:projectId/incidents
@@ -547,6 +605,33 @@ class ApiEndpoints {
   /// Creates a new EHS incident report (near-miss, first aid, LTI, etc.).
   static String createEhsIncident(int projectId) =>
       '/ehs/$projectId/incidents';
+
+  // ==================== EHS DASHBOARD ENDPOINTS ====================
+
+  /// GET /ehs/:projectId/summary — KPI summary
+  static String ehsSummary(int projectId) => '/ehs/$projectId/summary';
+
+  /// GET /ehs/:projectId/performance
+  static String ehsPerformance(int projectId) => '/ehs/$projectId/performance';
+
+  /// GET/POST /ehs/:projectId/manhours
+  static String ehsManhours(int projectId) => '/ehs/$projectId/manhours';
+
+  /// GET/POST /ehs/:projectId/training
+  static String ehsTraining(int projectId) => '/ehs/$projectId/training';
+
+  /// GET/POST/PUT /ehs/:projectId/legal
+  static String ehsLegal(int projectId) => '/ehs/$projectId/legal';
+
+  /// PUT /ehs/:projectId/legal/:id
+  static String ehsLegalItem(int projectId, int itemId) =>
+      '/ehs/$projectId/legal/$itemId';
+
+  /// GET/POST /ehs/:projectId/machinery
+  static String ehsMachinery(int projectId) => '/ehs/$projectId/machinery';
+
+  /// GET/POST /ehs/:projectId/vehicles
+  static String ehsVehicles(int projectId) => '/ehs/$projectId/vehicles';
 
   // ==================== TOWER LENS / 3D PROGRESS ENDPOINTS ====================
 

@@ -7,12 +7,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'stream';
+import { createHash } from 'crypto';
 import { QualityInspection } from './entities/quality-inspection.entity';
 import {
   QualityCardStatus,
   QualityPourCard,
 } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
+import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
 
 const DEFAULT_CLEARANCE_SIGNOFFS = [
   'Surveyor',
@@ -26,7 +28,12 @@ const DEFAULT_CLEARANCE_SIGNOFFS = [
   'PMC Representative',
   'PMC MEP Incharge',
   'Client Representative',
-];
+].map((department) => ({
+  id: department.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  department,
+  designation: null,
+  isActive: true,
+})) satisfies PourClearanceSignoffTemplateEntry[];
 
 const CLEARANCE_ATTACHMENT_KEYS = [
   'checklistPccAttached',
@@ -37,6 +44,34 @@ const CLEARANCE_ATTACHMENT_KEYS = [
   'checklistConcretingAttached',
   'concretePourCardAttached',
 ] as const;
+
+type ClearanceAttachmentKey = (typeof CLEARANCE_ATTACHMENT_KEYS)[number];
+
+type ClearanceSignoffRow = NonNullable<
+  QualityPrePourClearanceCard['signoffs']
+>[number];
+
+type ClearanceInspectionContext = QualityInspection & {
+  activity?: {
+    pourClearanceTriggerStageTemplateId?: number | null;
+    pourClearanceSignoffTemplate?: PourClearanceSignoffTemplateEntry[];
+    activityName?: string | null;
+  } | null;
+  epsNode?: { name?: string | null } | null;
+  stages?: Array<{
+    status?: string | null;
+    stageTemplateId?: number | null;
+    stageTemplate?: {
+      name?: string | null;
+      template?: { name?: string | null } | null;
+    } | null;
+  }>;
+};
+
+type SignatureRequestMeta = {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
 
 @Injectable()
 export class QualityPourCardService {
@@ -58,6 +93,25 @@ export class QualityPourCardService {
       throw new NotFoundException('Inspection not found');
     }
     return inspection;
+  }
+
+  private async getInspectionWithClearanceContextOrThrow(
+    inspectionId: number,
+  ): Promise<ClearanceInspectionContext> {
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id: inspectionId },
+      relations: [
+        'activity',
+        'epsNode',
+        'stages',
+        'stages.stageTemplate',
+        'stages.stageTemplate.template',
+      ],
+    });
+    if (!inspection) {
+      throw new NotFoundException('Inspection not found');
+    }
+    return inspection as ClearanceInspectionContext;
   }
 
   private buildPdfBuffer(
@@ -104,6 +158,62 @@ export class QualityPourCardService {
     doc.font('Helvetica').text(this.formatPdfValue(value), options);
   }
 
+  private writePdfTable(
+    doc: PDFKit.PDFDocument,
+    headers: string[],
+    rows: unknown[][],
+    columnWidths: number[],
+  ) {
+    const left = doc.page.margins.left;
+    const rowHeight = 24;
+    const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+    const ensureSpace = (currentY: number) => {
+      if (currentY + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+        return doc.y;
+      }
+      return currentY;
+    };
+
+    let y = ensureSpace(doc.y);
+    doc.rect(left, y, totalWidth, rowHeight).fillAndStroke('#e5e7eb', '#111827');
+    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(8);
+    let x = left;
+    headers.forEach((header, index) => {
+      doc.text(header, x + 4, y + 7, {
+        width: columnWidths[index] - 8,
+        align: 'center',
+      });
+      x += columnWidths[index];
+    });
+    y += rowHeight;
+    doc.fillColor('black').font('Helvetica').fontSize(8);
+
+    rows.forEach((row) => {
+      y = ensureSpace(y);
+      x = left;
+      doc.rect(left, y, totalWidth, rowHeight).stroke('#9ca3af');
+      row.forEach((cell, index) => {
+        doc
+          .moveTo(x, y)
+          .lineTo(x, y + rowHeight)
+          .stroke('#9ca3af');
+        doc.text(this.formatPdfValue(cell), x + 4, y + 6, {
+          width: columnWidths[index] - 8,
+          align: index === 0 ? 'center' : 'left',
+        });
+        x += columnWidths[index];
+      });
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + rowHeight)
+        .stroke('#9ca3af');
+      y += rowHeight;
+      doc.y = y;
+    });
+    doc.moveDown(0.5);
+  }
+
   private normalizeAttachmentState(value: unknown): 'YES' | 'NO' | 'NA' {
     if (value === true) return 'YES';
     if (value === false || value === null || value === undefined || value === '') {
@@ -118,15 +228,224 @@ export class QualityPourCardService {
 
   private normalizeAttachments(
     attachments?: Record<string, unknown> | null,
-  ): Record<(typeof CLEARANCE_ATTACHMENT_KEYS)[number], 'YES' | 'NO' | 'NA'> {
+  ): Record<ClearanceAttachmentKey, 'YES' | 'NO' | 'NA'> {
     const source = attachments || {};
     return CLEARANCE_ATTACHMENT_KEYS.reduce(
       (acc, key) => {
         acc[key] = this.normalizeAttachmentState(source[key]);
         return acc;
       },
-      {} as Record<(typeof CLEARANCE_ATTACHMENT_KEYS)[number], 'YES' | 'NO' | 'NA'>,
+      {} as Record<ClearanceAttachmentKey, 'YES' | 'NO' | 'NA'>,
     );
+  }
+
+  private normalizeAttachmentChecklistSelections(
+    selections?: Record<string, unknown> | null,
+  ): Record<ClearanceAttachmentKey, number[]> {
+    const source = selections || {};
+    return CLEARANCE_ATTACHMENT_KEYS.reduce(
+      (acc, key) => {
+        const raw = source[key];
+        acc[key] = Array.isArray(raw)
+          ? Array.from(
+              new Set(
+                raw
+                  .map((value) => Number(value))
+                  .filter((value) => Number.isFinite(value) && value > 0),
+              ),
+            )
+          : [];
+        return acc;
+      },
+      {} as Record<ClearanceAttachmentKey, number[]>,
+    );
+  }
+
+  private normalizeSignoffRows(
+    signoffs?: unknown,
+    signerUserId?: number,
+    requestMeta?: SignatureRequestMeta,
+  ): ClearanceSignoffRow[] {
+    if (!Array.isArray(signoffs)) {
+      return [];
+    }
+
+    const normalized = signoffs
+      .map((entry) => {
+        const row = entry as Record<string, unknown>;
+        const department =
+          typeof row.department === 'string' ? row.department.trim() : '';
+        if (!department) {
+          return null;
+        }
+
+        const rawStatus =
+          typeof row.status === 'string' ? row.status.toUpperCase() : 'PENDING';
+        const status =
+          rawStatus === 'SIGNED' || rawStatus === 'WAIVED'
+            ? rawStatus
+            : 'PENDING';
+        const signatureData =
+          typeof row.signatureData === 'string' && row.signatureData.trim()
+            ? row.signatureData
+            : null;
+        const signedAt =
+          typeof row.signedAt === 'string' && row.signedAt.trim()
+            ? row.signedAt.trim()
+            : status === 'SIGNED'
+              ? new Date().toISOString()
+              : null;
+        const signedByUserId =
+          typeof row.signedByUserId === 'number' && Number.isFinite(row.signedByUserId)
+            ? row.signedByUserId
+            : status === 'SIGNED'
+              ? signerUserId ?? null
+              : null;
+        const signatureHash = signatureData
+          ? createHash('sha256')
+              .update(
+                JSON.stringify({
+                  signatureData,
+                  signedByUserId,
+                  signedAt,
+                  department,
+                  designation: row.designation,
+                }),
+              )
+              .digest('hex')
+          : null;
+
+        return {
+          id:
+            typeof row.id === 'string' && row.id.trim()
+              ? row.id.trim()
+              : department.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          department,
+          designation:
+            typeof row.designation === 'string'
+              ? row.designation.trim() || null
+              : null,
+          isActive: row.isActive !== false,
+          personName:
+            typeof row.personName === 'string'
+              ? row.personName.trim() || null
+              : null,
+          signedDate:
+            typeof row.signedDate === 'string'
+              ? row.signedDate.trim() || null
+              : null,
+          signedAt,
+          signedByUserId,
+          signerUsername:
+            typeof row.signerUsername === 'string'
+              ? row.signerUsername.trim() || null
+              : null,
+          signerDisplayName:
+            typeof row.signerDisplayName === 'string'
+              ? row.signerDisplayName.trim() || null
+              : null,
+          signerRoles: Array.isArray(row.signerRoles)
+            ? row.signerRoles
+                .map((role) => String(role).trim())
+                .filter(Boolean)
+            : [],
+          signatureMode:
+            typeof row.signatureMode === 'string'
+              ? row.signatureMode.trim() || null
+              : null,
+          signatureData,
+          signatureHash,
+          signatureEvidence: {
+            ...(row.signatureEvidence &&
+            typeof row.signatureEvidence === 'object' &&
+            !Array.isArray(row.signatureEvidence)
+              ? (row.signatureEvidence as Record<string, unknown>)
+              : {}),
+            signedAt,
+            signedByUserId,
+            ipAddress: requestMeta?.ipAddress ?? null,
+            userAgent: requestMeta?.userAgent ?? null,
+          },
+          status,
+        } satisfies ClearanceSignoffRow;
+      })
+      .filter(Boolean);
+
+    return normalized as ClearanceSignoffRow[];
+  }
+
+  private buildDefaultClearanceSignoffs(
+    inspection: ClearanceInspectionContext,
+  ): ClearanceSignoffRow[] {
+    const templateEntries =
+      inspection.activity?.pourClearanceSignoffTemplate?.length
+        ? inspection.activity.pourClearanceSignoffTemplate
+        : DEFAULT_CLEARANCE_SIGNOFFS;
+
+    return templateEntries
+      .filter((entry) => entry.isActive !== false)
+      .map((entry) => ({
+        id: entry.id,
+        department: entry.department,
+        designation: entry.designation ?? null,
+        isActive: entry.isActive !== false,
+        personName: null,
+        signedDate: null,
+        signedAt: null,
+        signedByUserId: null,
+        signerUsername: null,
+        signerDisplayName: null,
+        signerRoles: [],
+        signatureMode: null,
+        signatureData: null,
+        signatureHash: null,
+        signatureEvidence: null,
+        status: 'PENDING' as const,
+      }));
+  }
+
+  private getClearanceActivationMeta(
+    inspection: ClearanceInspectionContext,
+  ) {
+    const triggerStageTemplateId =
+      inspection.activity?.pourClearanceTriggerStageTemplateId ?? null;
+    const triggerStage = triggerStageTemplateId
+      ? (inspection.stages || []).find(
+          (stage: any) => stage.stageTemplateId === triggerStageTemplateId,
+        )
+      : null;
+    const triggerStageApproved = triggerStage
+      ? String(triggerStage.status || '').toUpperCase() === 'APPROVED'
+      : !triggerStageTemplateId;
+
+    return {
+      triggerStageTemplateId,
+      triggerStageName: triggerStage?.stageTemplate?.name || null,
+      triggerStageApproved,
+    };
+  }
+
+  private async syncClearanceActivationState(
+    inspection: ClearanceInspectionContext,
+    card: QualityPrePourClearanceCard,
+  ) {
+    const activationMeta = this.getClearanceActivationMeta(inspection);
+    card.activationStageTemplateId = activationMeta.triggerStageTemplateId;
+    card.activationStageName = activationMeta.triggerStageName;
+
+    if (activationMeta.triggerStageApproved && !card.isActivated) {
+      card.isActivated = true;
+      card.activatedAt = card.activatedAt || new Date();
+      return this.clearanceRepo.save(card);
+    }
+
+    if (!activationMeta.triggerStageApproved && card.isActivated) {
+      card.isActivated = false;
+      card.activatedAt = null;
+      return this.clearanceRepo.save(card);
+    }
+
+    return card;
   }
 
   private writePdfTwoColumnFields(
@@ -185,7 +504,11 @@ export class QualityPourCardService {
 
   async savePourCard(inspectionId: number, payload: Partial<QualityPourCard>, userId?: number) {
     const existing = await this.getPourCard(inspectionId);
-    if (existing.status === QualityCardStatus.LOCKED) {
+    if (
+      [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(
+        existing.status,
+      )
+    ) {
       throw new BadRequestException('Locked pour cards cannot be edited.');
     }
 
@@ -202,8 +525,21 @@ export class QualityPourCardService {
       approvedByName: payload.approvedByName ?? existing.approvedByName,
       entries: Array.isArray(payload.entries) ? payload.entries : existing.entries,
       remarks: payload.remarks ?? existing.remarks,
-      status: payload.status ?? existing.status,
+      status:
+        existing.status === QualityCardStatus.REJECTED
+          ? QualityCardStatus.DRAFT
+          : existing.status,
       createdByUserId: existing.createdByUserId ?? userId ?? null,
+      rejectedAt:
+        existing.status === QualityCardStatus.REJECTED ? null : existing.rejectedAt,
+      rejectedByUserId:
+        existing.status === QualityCardStatus.REJECTED
+          ? null
+          : existing.rejectedByUserId,
+      rejectionRemarks:
+        existing.status === QualityCardStatus.REJECTED
+          ? null
+          : existing.rejectionRemarks,
     });
 
     return this.pourCardRepo.save(existing);
@@ -223,12 +559,81 @@ export class QualityPourCardService {
 
   async submitPourCard(inspectionId: number, userId?: number) {
     const card = await this.getPourCard(inspectionId);
-    if (card.status === QualityCardStatus.LOCKED) {
+    if ([QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(card.status)) {
       return card;
+    }
+    const inspection = await this.getInspectionWithClearanceContextOrThrow(
+      inspectionId,
+    );
+    if (inspection.activity?.requiresPourClearanceCard) {
+      const clearance = await this.clearanceRepo.findOne({
+        where: { inspectionId },
+      });
+      if (
+        !clearance ||
+        ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+          clearance.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Pre-pour clearance must be approved before submitting the pour card.',
+        );
+      }
     }
     this.validatePourCardForSubmission(card);
     card.status = QualityCardStatus.SUBMITTED;
     card.createdByUserId = card.createdByUserId ?? userId ?? null;
+    card.submittedByUserId = userId ?? card.submittedByUserId ?? null;
+    card.submittedAt = new Date();
+    card.approvedAt = null;
+    card.approvedByUserId = null;
+    card.approvalRemarks = null;
+    card.rejectedAt = null;
+    card.rejectedByUserId = null;
+    card.rejectionRemarks = null;
+    return this.pourCardRepo.save(card);
+  }
+
+  async approvePourCard(
+    inspectionId: number,
+    userId?: number,
+    remarks?: string,
+  ) {
+    const card = await this.getPourCard(inspectionId);
+    if (card.status === QualityCardStatus.LOCKED) return card;
+    if (card.status !== QualityCardStatus.SUBMITTED) {
+      throw new BadRequestException(
+        'Pour card must be submitted before it can be approved.',
+      );
+    }
+    card.status = QualityCardStatus.APPROVED;
+    card.approvedAt = new Date();
+    card.approvedByUserId = userId ?? null;
+    card.approvalRemarks = remarks?.trim() || null;
+    card.rejectedAt = null;
+    card.rejectedByUserId = null;
+    card.rejectionRemarks = null;
+    return this.pourCardRepo.save(card);
+  }
+
+  async rejectPourCard(
+    inspectionId: number,
+    userId?: number,
+    remarks?: string,
+  ) {
+    const card = await this.getPourCard(inspectionId);
+    if (card.status === QualityCardStatus.LOCKED) {
+      throw new BadRequestException('Locked pour cards cannot be rejected.');
+    }
+    if (card.status !== QualityCardStatus.SUBMITTED) {
+      throw new BadRequestException(
+        'Only submitted pour cards can be rejected.',
+      );
+    }
+    card.status = QualityCardStatus.REJECTED;
+    card.rejectedAt = new Date();
+    card.rejectedByUserId = userId ?? null;
+    card.rejectionRemarks = remarks?.trim() || 'Rejected for revision';
     return this.pourCardRepo.save(card);
   }
 
@@ -297,9 +702,12 @@ export class QualityPourCardService {
   }
 
   async getPrePourClearanceCard(inspectionId: number) {
-    const inspection = await this.getInspectionOrThrow(inspectionId);
+    const inspection = await this.getInspectionWithClearanceContextOrThrow(
+      inspectionId,
+    );
     let card = await this.clearanceRepo.findOne({ where: { inspectionId } });
     if (!card) {
+      const activationMeta = this.getClearanceActivationMeta(inspection);
       card = this.clearanceRepo.create({
         inspectionId,
         projectId: inspection.projectId,
@@ -313,6 +721,10 @@ export class QualityPourCardService {
         contractorName: inspection.contractorName ?? inspection.vendorName ?? null,
         formatNo: 'F/QA/20',
         revisionNo: '00',
+        activationStageTemplateId: activationMeta.triggerStageTemplateId,
+        activationStageName: activationMeta.triggerStageName,
+        isActivated: activationMeta.triggerStageApproved,
+        activatedAt: activationMeta.triggerStageApproved ? new Date() : null,
         attachments: {
           checklistPccAttached: 'NO',
           checklistWaterproofingAttached: 'NO',
@@ -322,18 +734,20 @@ export class QualityPourCardService {
           checklistConcretingAttached: 'NO',
           concretePourCardAttached: 'NO',
         },
-        signoffs: DEFAULT_CLEARANCE_SIGNOFFS.map((department) => ({
-          department,
-          personName: null,
-          signedDate: null,
-          signatureData: null,
-          status: 'PENDING' as const,
-        })),
+        attachmentChecklistSelections:
+          this.normalizeAttachmentChecklistSelections(null),
+        signoffs: this.buildDefaultClearanceSignoffs(inspection),
         status: QualityCardStatus.DRAFT,
       });
       card = await this.clearanceRepo.save(card);
     }
+    card = await this.syncClearanceActivationState(inspection, card);
     card.attachments = this.normalizeAttachments(card.attachments);
+    card.attachmentChecklistSelections =
+      this.normalizeAttachmentChecklistSelections(
+        card.attachmentChecklistSelections,
+      );
+    card.signoffs = this.normalizeSignoffRows(card.signoffs);
     return card;
   }
 
@@ -341,9 +755,14 @@ export class QualityPourCardService {
     inspectionId: number,
     payload: Partial<QualityPrePourClearanceCard>,
     userId?: number,
+    requestMeta?: SignatureRequestMeta,
   ) {
     const existing = await this.getPrePourClearanceCard(inspectionId);
-    if (existing.status === QualityCardStatus.LOCKED) {
+    if (
+      [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(
+        existing.status,
+      )
+    ) {
       throw new BadRequestException('Locked pre-pour clearance cards cannot be edited.');
     }
 
@@ -371,15 +790,46 @@ export class QualityPourCardService {
       cubeMouldCount: payload.cubeMouldCount ?? existing.cubeMouldCount,
       targetSlump: payload.targetSlump ?? existing.targetSlump,
       vibratorCount: payload.vibratorCount ?? existing.vibratorCount,
+      activationStageTemplateId:
+        payload.activationStageTemplateId ?? existing.activationStageTemplateId,
+      activationStageName:
+        payload.activationStageName ?? existing.activationStageName,
+      isActivated:
+        typeof payload.isActivated === 'boolean'
+          ? payload.isActivated
+          : existing.isActivated,
+      activatedAt: payload.activatedAt ?? existing.activatedAt,
       attachments:
         payload.attachments && typeof payload.attachments === 'object'
           ? this.normalizeAttachments(payload.attachments as Record<string, unknown>)
           : this.normalizeAttachments(existing.attachments),
+      attachmentChecklistSelections:
+        payload.attachmentChecklistSelections &&
+        typeof payload.attachmentChecklistSelections === 'object'
+          ? this.normalizeAttachmentChecklistSelections(
+              payload.attachmentChecklistSelections as Record<string, unknown>,
+            )
+          : this.normalizeAttachmentChecklistSelections(
+              existing.attachmentChecklistSelections,
+            ),
       signoffs: Array.isArray(payload.signoffs)
-        ? payload.signoffs
-        : existing.signoffs,
-      status: payload.status ?? existing.status,
+        ? this.normalizeSignoffRows(payload.signoffs, userId, requestMeta)
+        : this.normalizeSignoffRows(existing.signoffs, userId, requestMeta),
+      status:
+        existing.status === QualityCardStatus.REJECTED
+          ? QualityCardStatus.DRAFT
+          : existing.status,
       createdByUserId: existing.createdByUserId ?? userId ?? null,
+      rejectedAt:
+        existing.status === QualityCardStatus.REJECTED ? null : existing.rejectedAt,
+      rejectedByUserId:
+        existing.status === QualityCardStatus.REJECTED
+          ? null
+          : existing.rejectedByUserId,
+      rejectionRemarks:
+        existing.status === QualityCardStatus.REJECTED
+          ? null
+          : existing.rejectionRemarks,
     });
 
     return this.clearanceRepo.save(existing);
@@ -408,16 +858,113 @@ export class QualityPourCardService {
         'At least one signoff row is required before submitting the pre-pour clearance card.',
       );
     }
+    const activeSignoffs = card.signoffs.filter(
+      (signoff) => signoff?.isActive !== false,
+    );
+    if (activeSignoffs.length === 0) {
+      throw new BadRequestException(
+        'At least one active signoff row is required before submitting the pre-pour clearance card.',
+      );
+    }
+    const unsignedSignoffs = activeSignoffs.filter(
+      (signoff) => !['SIGNED', 'WAIVED'].includes(signoff?.status || ''),
+    );
+    if (unsignedSignoffs.length > 0) {
+      throw new BadRequestException(
+        'All active pre-pour clearance signatories must be signed or waived before submission.',
+      );
+    }
+    const weakSignedRows = activeSignoffs.filter(
+      (signoff) =>
+        signoff?.status === 'SIGNED' &&
+        (!signoff.signatureData ||
+          !signoff.signedByUserId ||
+          !signoff.signedAt ||
+          !signoff.signatureHash),
+    );
+    if (weakSignedRows.length > 0) {
+      throw new BadRequestException(
+        'All signed pre-pour clearance rows must use the digital signature pad so login identity and signature evidence are captured.',
+      );
+    }
+    for (const key of CLEARANCE_ATTACHMENT_KEYS) {
+      if (card.attachments?.[key] === 'YES') {
+        const selected = card.attachmentChecklistSelections?.[key] || [];
+        if (!selected.length) {
+          throw new BadRequestException(
+            `Select at least one related checklist for ${key} before submitting the pre-pour clearance card.`,
+          );
+        }
+      }
+    }
   }
 
   async submitPrePourClearanceCard(inspectionId: number, userId?: number) {
     const card = await this.getPrePourClearanceCard(inspectionId);
-    if (card.status === QualityCardStatus.LOCKED) {
+    if ([QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(card.status)) {
       return card;
+    }
+    if (!card.isActivated) {
+      throw new BadRequestException(
+        'Pre-pour clearance is not active yet. Approve the configured trigger stage first.',
+      );
     }
     this.validatePrePourClearanceForSubmission(card);
     card.status = QualityCardStatus.SUBMITTED;
     card.createdByUserId = card.createdByUserId ?? userId ?? null;
+    card.submittedByUserId = userId ?? card.submittedByUserId ?? null;
+    card.submittedAt = new Date();
+    card.approvedAt = null;
+    card.approvedByUserId = null;
+    card.approvalRemarks = null;
+    card.rejectedAt = null;
+    card.rejectedByUserId = null;
+    card.rejectionRemarks = null;
+    return this.clearanceRepo.save(card);
+  }
+
+  async approvePrePourClearanceCard(
+    inspectionId: number,
+    userId?: number,
+    remarks?: string,
+  ) {
+    const card = await this.getPrePourClearanceCard(inspectionId);
+    if (card.status === QualityCardStatus.LOCKED) return card;
+    if (card.status !== QualityCardStatus.SUBMITTED) {
+      throw new BadRequestException(
+        'Pre-pour clearance must be submitted before it can be approved.',
+      );
+    }
+    card.status = QualityCardStatus.APPROVED;
+    card.approvedAt = new Date();
+    card.approvedByUserId = userId ?? null;
+    card.approvalRemarks = remarks?.trim() || null;
+    card.rejectedAt = null;
+    card.rejectedByUserId = null;
+    card.rejectionRemarks = null;
+    return this.clearanceRepo.save(card);
+  }
+
+  async rejectPrePourClearanceCard(
+    inspectionId: number,
+    userId?: number,
+    remarks?: string,
+  ) {
+    const card = await this.getPrePourClearanceCard(inspectionId);
+    if (card.status === QualityCardStatus.LOCKED) {
+      throw new BadRequestException(
+        'Locked pre-pour clearance cards cannot be rejected.',
+      );
+    }
+    if (card.status !== QualityCardStatus.SUBMITTED) {
+      throw new BadRequestException(
+        'Only submitted pre-pour clearance cards can be rejected.',
+      );
+    }
+    card.status = QualityCardStatus.REJECTED;
+    card.rejectedAt = new Date();
+    card.rejectedByUserId = userId ?? null;
+    card.rejectionRemarks = remarks?.trim() || 'Rejected for revision';
     return this.clearanceRepo.save(card);
   }
 
@@ -434,7 +981,7 @@ export class QualityPourCardService {
       doc.fontSize(10).font('Helvetica');
       doc.text(`Format No: ${card.formatNo || 'F/QA/20'}`);
       doc.text(`Revision: ${card.revisionNo || '00'}`);
-      doc.text('Note: Please mark the appropriate attachment state as per site requirements.');
+      doc.text('Note: Please tick the appropriate attachment state as per site requirements.');
       this.writePdfSectionTitle(doc, 'Inspection Details');
       this.writePdfTwoColumnFields(doc, [
         ['Inspection ID', inspection.id, 'Status', card.status],
@@ -460,30 +1007,57 @@ export class QualityPourCardService {
         checklistConcretingAttached: 'Checklist for Concreting Attached',
         concretePourCardAttached: 'Concrete pour card Attached',
       };
-      Object.entries(card.attachments || {}).forEach(([key, value]) => {
-        this.writePdfField(
-          doc,
-          attachmentLabels[key] || key,
-          value,
-        );
-      });
+      this.writePdfTable(
+        doc,
+        ['Sl No', 'Description', 'Yes', 'No', 'NA', 'Related Checklist IDs'],
+        CLEARANCE_ATTACHMENT_KEYS.map((key, index) => {
+          const value = card.attachments?.[key] || 'NO';
+          return [
+            index + 1,
+            attachmentLabels[key] || key,
+            value === 'YES' ? '[✔]' : '[ ]',
+            value === 'NO' ? '[✔]' : '[ ]',
+            value === 'NA' ? '[✔]' : '[ ]',
+            (card.attachmentChecklistSelections?.[key] || []).join(', '),
+          ];
+        }),
+        [38, 220, 42, 42, 42, 130],
+      );
 
       this.writePdfSectionTitle(doc, 'Signoff Parties');
-      (card.signoffs || []).forEach((signoff, index) => {
-        doc
-          .font('Helvetica-Bold')
-          .fontSize(10)
-          .text(`Signoff ${index + 1}: ${this.formatPdfValue(signoff.department)}`);
-        this.writePdfTwoColumnFields(doc, [
-          ['Person Name', signoff.personName, 'Status', signoff.status || 'PENDING'],
-          ['Signed Date', signoff.signedDate, 'Signature Captured', signoff.signatureData ? 'Yes' : 'No'],
-        ]);
-      });
+      this.writePdfTable(
+        doc,
+        ['Sl No', 'Department / Party', 'Name', 'Status', 'Signed By', 'Evidence'],
+        (card.signoffs || [])
+          .filter((signoff) => signoff?.isActive !== false)
+          .map((signoff, index) => [
+            index + 1,
+            signoff.department,
+            signoff.personName,
+            signoff.status || 'PENDING',
+            signoff.signerDisplayName ||
+              (signoff.signedByUserId ? `User #${signoff.signedByUserId}` : ''),
+            signoff.status === 'SIGNED'
+              ? [
+                  signoff.signedDate || signoff.signedAt || '',
+                  signoff.signatureMode ? `Mode: ${signoff.signatureMode}` : '',
+                  signoff.signatureHash
+                    ? `Hash: ${String(signoff.signatureHash).slice(0, 12)}`
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' | ')
+              : '',
+          ]),
+        [38, 130, 85, 62, 92, 107],
+      );
     });
   }
 
   async assertRequiredCardsSubmitted(inspectionId: number) {
-    const inspection = await this.getInspectionOrThrow(inspectionId);
+    const inspection = await this.getInspectionWithClearanceContextOrThrow(
+      inspectionId,
+    );
     const requiresPourCard = Boolean(inspection.activity?.requiresPourCard);
     const requiresPrePourClearance = Boolean(
       inspection.activity?.requiresPourClearanceCard,
@@ -493,26 +1067,30 @@ export class QualityPourCardService {
       const pourCard = await this.pourCardRepo.findOne({ where: { inspectionId } });
       if (
         !pourCard ||
-        ![QualityCardStatus.SUBMITTED, QualityCardStatus.LOCKED].includes(
+        ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
           pourCard.status,
         )
       ) {
         throw new BadRequestException(
-          'Required pour card is not yet submitted for this inspection.',
+          'Required pour card is not yet approved for this inspection.',
         );
       }
     }
 
     if (requiresPrePourClearance) {
+      const activationMeta = this.getClearanceActivationMeta(inspection);
+      if (!activationMeta.triggerStageApproved) {
+        return;
+      }
       const clearance = await this.clearanceRepo.findOne({ where: { inspectionId } });
       if (
         !clearance ||
-        ![QualityCardStatus.SUBMITTED, QualityCardStatus.LOCKED].includes(
+        ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
           clearance.status,
         )
       ) {
         throw new BadRequestException(
-          'Required pre-pour clearance card is not yet submitted for this inspection.',
+          'Required pre-pour clearance card is not yet approved for this inspection.',
         );
       }
     }
@@ -524,12 +1102,12 @@ export class QualityPourCardService {
       this.clearanceRepo.findOne({ where: { inspectionId } }),
     ]);
 
-    if (pourCard && pourCard.status === QualityCardStatus.SUBMITTED) {
+    if (pourCard && pourCard.status === QualityCardStatus.APPROVED) {
       pourCard.status = QualityCardStatus.LOCKED;
       await this.pourCardRepo.save(pourCard);
     }
 
-    if (clearance && clearance.status === QualityCardStatus.SUBMITTED) {
+    if (clearance && clearance.status === QualityCardStatus.APPROVED) {
       clearance.status = QualityCardStatus.LOCKED;
       await this.clearanceRepo.save(clearance);
     }

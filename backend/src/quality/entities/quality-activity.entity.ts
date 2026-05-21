@@ -30,6 +30,13 @@ export enum QualityApplicabilityLevel {
   ROOM = 'ROOM',
 }
 
+export interface PourClearanceSignoffTemplateEntry {
+  id: string;
+  department: string;
+  designation?: string | null;
+  isActive: boolean;
+}
+
 @Entity('quality_activity')
 export class QualityActivity {
   @PrimaryGeneratedColumn()
@@ -92,6 +99,12 @@ export class QualityActivity {
 
   @Column({ default: false })
   requiresPourClearanceCard: boolean;
+
+  @Column({ type: 'int', nullable: true })
+  pourClearanceTriggerStageTemplateId: number | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  pourClearanceSignoffTemplate: PourClearanceSignoffTemplateEntry[];
 
   @Column({ type: 'jsonb', name: 'floor_visibility', nullable: true })
   floorVisibility: {

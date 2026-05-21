@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from "react";
 import SignatureCanvas from "react-signature-canvas";
-import { X, CheckCircle, RotateCcw } from "lucide-react";
+import { X, CheckCircle, RotateCcw, ShieldCheck } from "lucide-react";
 import api from "../../api/axios";
+import { useAuth } from "../../context/AuthContext";
 
 /** Manual trim: extracts just the drawn area from a canvas, bypassing broken trim-canvas dep */
 function trimCanvasToDataUrl(canvas: HTMLCanvasElement): string {
@@ -43,7 +44,11 @@ function trimCanvasToDataUrl(canvas: HTMLCanvasElement): string {
 interface SignatureModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSign: (signatureData: string, reuseExisting?: boolean) => void;
+  onSign: (
+    signatureData: string,
+    reuseExisting?: boolean,
+    evidence?: Record<string, unknown>,
+  ) => void;
   title?: string;
   description?: string;
   actionLabel?: string;
@@ -57,9 +62,10 @@ export default function SignatureModal({
   description = "Please provide your signature to proceed.",
   actionLabel = "Authorize Action",
 }: SignatureModalProps) {
+  const { user } = useAuth();
   const sigCanvas = useRef<any>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
-  const [useSaved, setUseSaved] = useState<boolean>(true);
+  const [useSaved, setUseSaved] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -69,7 +75,7 @@ export default function SignatureModal({
         .then((res) => {
           if (res.data?.signatureData) {
             setSavedSignature(res.data.signatureData);
-            setUseSaved(true);
+            setUseSaved(false);
           } else {
             setSavedSignature(null);
             setUseSaved(false);
@@ -88,15 +94,25 @@ export default function SignatureModal({
   };
 
   const handleConfirm = () => {
+    const evidence = {
+      mode: useSaved && savedSignature ? "SAVED_PROFILE" : "DRAWN_NOW",
+      signedAtClient: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      signedByUserId: user?.id ?? null,
+      signerUsername: user?.username ?? null,
+      signerDisplayName: user?.displayName || user?.username || null,
+      signerRoles: user?.roles || [],
+      source: "SETU_WEB_SIGNATURE_MODAL",
+    };
     if (useSaved && savedSignature) {
-      onSign(savedSignature, true);
+      onSign(savedSignature, true, evidence);
     } else {
       if (sigCanvas.current?.isEmpty()) {
         alert("Please provide a signature.");
         return;
       }
       const dataUrl = trimCanvasToDataUrl(sigCanvas.current.getCanvas());
-      onSign(dataUrl, false);
+      onSign(dataUrl, false, evidence);
     }
   };
 
@@ -117,6 +133,20 @@ export default function SignatureModal({
         </div>
 
         <div className="p-6">
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+            <div className="flex items-center gap-2 font-semibold">
+              <ShieldCheck className="h-4 w-4" />
+              Identity-bound signature
+            </div>
+            <div className="mt-1">
+              Signing as{" "}
+              <span className="font-semibold">
+                {user?.displayName || user?.username || "logged-in user"}
+              </span>
+              . SETU will attach your login identity, timestamp, and device
+              evidence with the visual signature.
+            </div>
+          </div>
           {savedSignature && (
             <div className="mb-6 flex space-x-4">
               <label
@@ -161,28 +191,32 @@ export default function SignatureModal({
             </div>
           )}
 
-          {(!savedSignature || !useSaved) && (
-            <div className="border-2 border-dashed border-border-strong rounded-xl bg-surface-base relative overflow-hidden group">
-              <SignatureCanvas
-                ref={sigCanvas}
-                penColor="blue"
-                canvasProps={{ className: "w-full h-40 cursor-crosshair" }}
-              />
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={clear}
-                  className="bg-surface-card text-text-secondary p-1.5 rounded-lg shadow-sm border border-border-default hover:bg-surface-base flex items-center gap-1 text-xs font-medium"
-                >
-                  <RotateCcw size={14} /> Clear
-                </button>
-              </div>
-              <div className="absolute inset-x-0 bottom-3 flex justify-center pointer-events-none">
-                <span className="text-[10px] text-gray-300 uppercase tracking-widest font-bold">
-                  Sign Here
-                </span>
-              </div>
+          <div
+            className={`border-2 border-dashed border-border-strong rounded-xl bg-surface-base relative overflow-hidden group ${
+              useSaved && savedSignature ? "opacity-50" : ""
+            }`}
+          >
+            <SignatureCanvas
+              ref={sigCanvas}
+              penColor="blue"
+              canvasProps={{ className: "w-full h-40 cursor-crosshair" }}
+            />
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={clear}
+                className="bg-surface-card text-text-secondary p-1.5 rounded-lg shadow-sm border border-border-default hover:bg-surface-base flex items-center gap-1 text-xs font-medium"
+              >
+                <RotateCcw size={14} /> Clear
+              </button>
             </div>
-          )}
+            <div className="absolute inset-x-0 bottom-3 flex justify-center pointer-events-none">
+              <span className="text-[10px] text-gray-300 uppercase tracking-widest font-bold">
+                {useSaved && savedSignature
+                  ? "Saved profile signature selected"
+                  : "Sign Here"}
+              </span>
+            </div>
+          </div>
 
           <div className="mt-6 flex gap-3">
             <button

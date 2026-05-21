@@ -14,6 +14,7 @@ import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
 import { useAuth } from "../../context/AuthContext";
 import { qualityService } from "../../services/quality.service";
+import SignatureModal from "../../components/quality/SignatureModal";
 import type { QualityUnitNode } from "../../types/quality";
 import {
   isActivityVisibleForFloorScope,
@@ -81,6 +82,18 @@ interface QualityInspection {
   documentType?: string;
   pendingObservationCount?: number | null;
   legacyActivityObservationCount?: number | null;
+  stageApprovalSummary?: {
+    approvedStages?: number;
+    totalStages?: number;
+    pourClearanceTriggerApproved?: boolean;
+    pourClearanceTriggerStageName?: string | null;
+  };
+  cardSummary?: {
+    pourCardStatus?: string | null;
+    pourCardApproved?: boolean;
+    prePourClearanceStatus?: string | null;
+    prePourClearanceApproved?: boolean;
+  };
 }
 
 interface ObservationGroup {
@@ -90,6 +103,28 @@ interface ObservationGroup {
   observations: ActivityObservation[];
   isLegacy?: boolean;
 }
+
+type ClearanceAttachmentKey =
+  | "checklistPccAttached"
+  | "checklistWaterproofingAttached"
+  | "checklistFormworkAttached"
+  | "checklistReinforcementAttached"
+  | "checklistMepAttached"
+  | "checklistConcretingAttached"
+  | "concretePourCardAttached";
+
+const CLEARANCE_ATTACHMENT_OPTIONS: Array<{
+  key: ClearanceAttachmentKey;
+  label: string;
+}> = [
+  { key: "checklistPccAttached", label: "PCC Checklist" },
+  { key: "checklistWaterproofingAttached", label: "Waterproofing Checklist" },
+  { key: "checklistFormworkAttached", label: "Formwork Checklist" },
+  { key: "checklistReinforcementAttached", label: "Reinforcement Checklist" },
+  { key: "checklistMepAttached", label: "MEP Checklist" },
+  { key: "checklistConcretingAttached", label: "Concreting Checklist" },
+  { key: "concretePourCardAttached", label: "Concrete Pour Card" },
+];
 
 interface ActivityList {
   id: number;
@@ -160,6 +195,19 @@ export default function InspectionRequestPage() {
   const [unitProgressByActivity, setUnitProgressByActivity] = useState<
     Record<number, UnitProgress>
   >({});
+  const [activeCardInspection, setActiveCardInspection] =
+    useState<QualityInspection | null>(null);
+  const [activeCardKind, setActiveCardKind] = useState<
+    "CLEARANCE" | "POUR_CARD" | null
+  >(null);
+  const [pourCard, setPourCard] = useState<any>(null);
+  const [prePourClearanceCard, setPrePourClearanceCard] = useState<any>(null);
+  const [loadingCardModal, setLoadingCardModal] = useState(false);
+  const [savingCardModal, setSavingCardModal] = useState(false);
+  const [activeClearanceSignoffIndex, setActiveClearanceSignoffIndex] =
+    useState<number | null>(null);
+  const [showClearanceSignatureModal, setShowClearanceSignatureModal] =
+    useState(false);
 
   // Load active vendors for internal users
   useEffect(() => {
@@ -175,6 +223,208 @@ export default function InspectionRequestPage() {
   // root) are resolved correctly even if the API URL includes /api.
   const getFileUrl = (path: string) => {
     return getPublicFileUrl(path);
+  };
+
+  const openCardModal = async (
+    inspection: QualityInspection,
+    kind: "CLEARANCE" | "POUR_CARD",
+  ) => {
+    if (
+      kind === "CLEARANCE" &&
+      !inspection.stageApprovalSummary?.pourClearanceTriggerApproved
+    ) {
+      alert(
+        `Pour clearance will open only after ${
+          inspection.stageApprovalSummary?.pourClearanceTriggerStageName ||
+          "the configured trigger stage"
+        } is approved.`,
+      );
+      return;
+    }
+    if (
+      kind === "POUR_CARD" &&
+      !inspection.cardSummary?.prePourClearanceApproved
+    ) {
+      alert("Concrete pour card will open only after pour clearance approval.");
+      return;
+    }
+    setActiveCardInspection(inspection);
+    setActiveCardKind(kind);
+    setLoadingCardModal(true);
+    try {
+      if (kind === "CLEARANCE") {
+        const card = await qualityService.getPrePourClearanceCard(inspection.id);
+        setPrePourClearanceCard(card);
+      } else {
+        const card = await qualityService.getPourCard(inspection.id);
+        setPourCard(card);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to load card.");
+      setActiveCardInspection(null);
+      setActiveCardKind(null);
+    } finally {
+      setLoadingCardModal(false);
+    }
+  };
+
+  const updatePrePourClearanceCard = (updater: (prev: any) => any) => {
+    setPrePourClearanceCard((prev: any) => (prev ? updater(prev) : prev));
+  };
+
+  const applyClearanceSignoffSignature = (
+    signatureData: string,
+    reuseExisting?: boolean,
+    evidence?: Record<string, unknown>,
+  ) => {
+    if (activeClearanceSignoffIndex == null) return;
+    const signedAt = new Date().toISOString();
+    updatePrePourClearanceCard((prev) => ({
+      ...prev,
+      signoffs: (prev.signoffs || []).map((row: any, rowIndex: number) =>
+        rowIndex === activeClearanceSignoffIndex
+          ? {
+              ...row,
+              status: "SIGNED",
+              signedDate: signedAt.slice(0, 10),
+              signatureData,
+              signatureMode: reuseExisting ? "SAVED_PROFILE" : "DRAWN_NOW",
+              signedAt,
+              signedByUserId: user?.id ?? null,
+              signerUsername: user?.username ?? null,
+              signerDisplayName: user?.displayName || user?.username || null,
+              signerRoles: user?.roles || [],
+              personName:
+                row.personName || user?.displayName || user?.username || null,
+              signatureEvidence: {
+                ...(evidence || {}),
+                signedAt,
+                meaning:
+                  "I have reviewed and signed this pre-pour clearance responsibility.",
+              },
+            }
+          : row,
+      ),
+    }));
+    setShowClearanceSignatureModal(false);
+    setActiveClearanceSignoffIndex(null);
+  };
+
+  const floorChecklistAttachmentOptions = useMemo(() => {
+    const active = activeCardInspection;
+    if (!active) return [];
+
+    const sameFloorInspections = inspections.filter((inspection) => {
+      if (inspection.id === active.id) return false;
+      if (active.qualityUnitId || inspection.qualityUnitId) {
+        return active.qualityUnitId === inspection.qualityUnitId;
+      }
+      if (active.qualityRoomId || inspection.qualityRoomId) {
+        return active.qualityRoomId === inspection.qualityRoomId;
+      }
+      return true;
+    });
+
+    return sameFloorInspections
+      .filter(
+        (inspection) =>
+          ["APPROVED", "PARTIALLY_APPROVED"].includes(inspection.status) ||
+          Boolean(inspection.stageApprovalSummary?.approvedStages),
+      )
+      .map((inspection) => {
+        const activityName =
+          activities.find((activity) => activity.id === inspection.activityId)
+            ?.activityName || `Checklist RFI #${inspection.id}`;
+        const scopeBits = [
+          inspection.goLabel || (inspection.goNo ? `GO ${inspection.goNo}` : ""),
+          inspection.unitName,
+          inspection.roomName,
+          inspection.drawingNo ? `Dwg ${inspection.drawingNo}` : "",
+          inspection.elementName ? `Element ${inspection.elementName}` : "",
+        ].filter(Boolean);
+        return {
+          id: inspection.id,
+          label: activityName,
+          status:
+            inspection.status === "APPROVED"
+              ? "Approved"
+              : `Partially Approved${
+                  inspection.stageApprovalSummary?.approvedStages &&
+                  inspection.stageApprovalSummary?.totalStages
+                    ? ` (${inspection.stageApprovalSummary.approvedStages}/${inspection.stageApprovalSummary.totalStages})`
+                    : ""
+                }`,
+          scope: scopeBits.join(" · "),
+        };
+      });
+  }, [activeCardInspection, activities, inspections]);
+
+  const saveActiveCard = async () => {
+    if (!activeCardInspection) return;
+    setSavingCardModal(true);
+    try {
+      if (activeCardKind === "CLEARANCE") {
+        const saved = await qualityService.savePrePourClearanceCard(
+          activeCardInspection.id,
+          prePourClearanceCard,
+        );
+        setPrePourClearanceCard(saved);
+        alert("Pour clearance saved.");
+      } else {
+        const saved = await qualityService.savePourCard(
+          activeCardInspection.id,
+          pourCard,
+        );
+        setPourCard(saved);
+        alert("Pour card saved.");
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to save card.");
+    } finally {
+      setSavingCardModal(false);
+    }
+  };
+
+  const submitActiveCard = async () => {
+    if (!activeCardInspection) return;
+    setSavingCardModal(true);
+    try {
+      if (activeCardKind === "CLEARANCE") {
+        const saved = await qualityService.submitPrePourClearanceCard(
+          activeCardInspection.id,
+        );
+        setPrePourClearanceCard(saved);
+        alert("Pour clearance sent for QA/QC approval.");
+      } else {
+        const saved = await qualityService.submitPourCard(activeCardInspection.id);
+        setPourCard(saved);
+        alert("Pour card sent for QA/QC approval.");
+      }
+      setRefreshKey((key) => key + 1);
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to submit card.");
+    } finally {
+      setSavingCardModal(false);
+    }
+  };
+
+  const downloadActiveCardPdf = async () => {
+    if (!activeCardInspection) return;
+    const blob =
+      activeCardKind === "CLEARANCE"
+        ? await qualityService.downloadPrePourClearancePdf(activeCardInspection.id)
+        : await qualityService.downloadPourCardPdf(activeCardInspection.id);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download =
+      activeCardKind === "CLEARANCE"
+        ? `Pour_Clearance_${activeCardInspection.id}.pdf`
+        : `Pour_Card_${activeCardInspection.id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Load EPS Structure
@@ -1182,6 +1432,62 @@ export default function InspectionRequestPage() {
                                 </div>
                               )}
                             </div>
+                            {(item.requiresPourClearanceCard ||
+                              item.requiresPourCard) && (
+                              <div className="mt-3 flex flex-wrap gap-2 border-t border-border-subtle pt-3">
+                                {item.requiresPourClearanceCard &&
+                                item.inspection.stageApprovalSummary
+                                  ?.pourClearanceTriggerApproved ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openCardModal(
+                                        item.inspection!,
+                                        "CLEARANCE",
+                                      )
+                                    }
+                                    className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
+                                  >
+                                    GO Pour Clearance
+                                  </button>
+                                ) : item.requiresPourClearanceCard ? (
+                                  <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                                    Pour clearance unlocks after{" "}
+                                    {item.inspection.stageApprovalSummary
+                                      ?.pourClearanceTriggerStageName ||
+                                      "configured stage"}{" "}
+                                    approval
+                                  </span>
+                                ) : null}
+                                {item.requiresPourCard &&
+                                (!item.requiresPourClearanceCard ||
+                                  item.inspection.cardSummary
+                                    ?.prePourClearanceApproved) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openCardModal(
+                                        item.inspection!,
+                                        "POUR_CARD",
+                                      )
+                                    }
+                                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                                  >
+                                    Concrete Pour Card
+                                  </button>
+                                ) : item.requiresPourCard ? (
+                                  <span className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
+                                    Pour card unlocks after clearance approval
+                                  </span>
+                                ) : null}
+                                <span className="text-xs text-text-muted">
+                                  GO:{" "}
+                                  {item.inspection.goLabel ||
+                                    item.inspection.partLabel ||
+                                    "RFI scope"}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         )}
                         {item.applicabilityLevel === "FLOOR" &&
@@ -1542,6 +1848,524 @@ export default function InspectionRequestPage() {
         </main>
       </div>
 
+      {activeCardInspection && activeCardKind && (
+        <div className="fixed inset-0 z-[9999] bg-white text-text-primary">
+          <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
+            <div className="flex shrink-0 items-center justify-between border-b border-border-default bg-white px-6 py-4 shadow-sm">
+              <div>
+                <h3 className="text-xl font-bold text-text-primary">
+                  {activeCardKind === "CLEARANCE"
+                    ? "GO Pour Clearance"
+                    : "Concrete Pour Card"}
+                </h3>
+                <p className="text-sm text-text-muted">
+                  RFI #{activeCardInspection.id} · GO{" "}
+                  {activeCardInspection.goLabel ||
+                    activeCardInspection.partLabel ||
+                    activeCardInspection.goNo ||
+                    "-"}{" "}
+                  · Element {activeCardInspection.elementName || "-"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadActiveCardPdf}
+                  className="rounded-lg border border-border-default px-3 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised"
+                >
+                  Download PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCardInspection(null);
+                    setActiveCardKind(null);
+                  }}
+                  className="rounded-lg border border-border-default px-3 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-slate-50 px-6 py-5">
+              {loadingCardModal ? (
+                <div className="rounded-xl border border-border-default bg-surface-card p-6 text-center text-text-muted">
+                  Loading card details...
+                </div>
+              ) : activeCardKind === "CLEARANCE" && prePourClearanceCard ? (
+                <div className="mx-auto max-w-6xl space-y-4">
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                    <div className="font-semibold">
+                      Status: {prePourClearanceCard.status || "DRAFT"}
+                    </div>
+                    <div className="mt-1">
+                      Fill the clearance, capture all relevant signatories, then
+                      send it for QA/QC approval. The concrete pour card opens
+                      after this clearance is approved.
+                    </div>
+                    {!prePourClearanceCard.isActivated ? (
+                      <div className="mt-2 font-semibold text-amber-800">
+                        Waiting for trigger stage approval:{" "}
+                        {prePourClearanceCard.activationStageName || "Configured stage"}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-xl border bg-surface-card p-4">
+                    <div className="mb-3 text-sm font-bold uppercase tracking-wide text-text-muted">
+                      Concrete Information
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {[
+                        ["projectNameSnapshot", "Project name"],
+                        ["contractorName", "Contractor"],
+                        ["cardDate", "Date"],
+                        ["elementName", "Element"],
+                        ["pourLocation", "Pour location"],
+                        ["pourNo", "Pour no"],
+                        ["gradeOfConcrete", "Grade of concrete"],
+                        ["placementMethod", "Placement method"],
+                        ["concreteSupplier", "Concrete supplier"],
+                        ["targetSlump", "Target slump"],
+                        ["pourStartTime", "Pour start time"],
+                        ["pourEndTime", "Pour end time"],
+                      ].map(([key, label]) => (
+                        <input
+                          key={key}
+                          value={prePourClearanceCard[key] || ""}
+                          onChange={(event) =>
+                            updatePrePourClearanceCard((prev) => ({
+                              ...prev,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          placeholder={label}
+                          className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+                        />
+                      ))}
+                      {[
+                        ["estimatedConcreteQty", "Estimated concrete qty"],
+                        ["actualConcreteQty", "Actual concrete qty"],
+                        ["cubeMouldCount", "Cube mould count"],
+                        ["vibratorCount", "Vibrator count"],
+                      ].map(([key, label]) => (
+                        <input
+                          key={key}
+                          type="number"
+                          value={prePourClearanceCard[key] ?? ""}
+                          onChange={(event) =>
+                            updatePrePourClearanceCard((prev) => ({
+                              ...prev,
+                              [key]: event.target.value
+                                ? Number(event.target.value)
+                                : null,
+                            }))
+                          }
+                          placeholder={label}
+                          className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-surface-card p-4">
+                    <div className="mb-3 text-sm font-bold uppercase tracking-wide text-text-muted">
+                      Attachment Checklist
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {CLEARANCE_ATTACHMENT_OPTIONS.map(({ key, label }) => (
+                        <div
+                          key={key}
+                          className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span>{label}</span>
+                            <select
+                              value={prePourClearanceCard.attachments?.[key] || "NO"}
+                              onChange={(event) =>
+                                updatePrePourClearanceCard((prev) => ({
+                                  ...prev,
+                                  attachments: {
+                                    ...(prev.attachments || {}),
+                                    [key]: event.target.value,
+                                  },
+                                  attachmentChecklistSelections:
+                                    event.target.value === "YES"
+                                      ? prev.attachmentChecklistSelections || {}
+                                      : {
+                                          ...(prev.attachmentChecklistSelections ||
+                                            {}),
+                                          [key]: [],
+                                        },
+                                }))
+                              }
+                              className="rounded border border-border-default bg-surface-card px-2 py-1 text-sm"
+                            >
+                              <option value="NO">No</option>
+                              <option value="YES">Yes</option>
+                              <option value="NA">NA</option>
+                            </select>
+                          </div>
+                          {prePourClearanceCard.attachments?.[key] === "YES" ? (
+                            <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-cyan-800">
+                                Select related checklist RFIs from this floor
+                              </div>
+                              <div className="mt-2 grid gap-2">
+                                {floorChecklistAttachmentOptions.length === 0 ? (
+                                  <div className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs text-cyan-900">
+                                    No approved or partially approved checklist
+                                    RFIs are available for this floor yet.
+                                  </div>
+                                ) : (
+                                  floorChecklistAttachmentOptions.map(
+                                    (option) => {
+                                      const selectedIds =
+                                        prePourClearanceCard
+                                          .attachmentChecklistSelections?.[
+                                          key
+                                        ] || [];
+                                      return (
+                                        <label
+                                          key={`${key}-${option.id}`}
+                                          className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            className="mt-1"
+                                            checked={selectedIds.includes(
+                                              option.id,
+                                            )}
+                                            onChange={(event) =>
+                                              updatePrePourClearanceCard(
+                                                (prev) => {
+                                                  const existing =
+                                                    prev
+                                                      .attachmentChecklistSelections?.[
+                                                      key
+                                                    ] || [];
+                                                  const next = event.target
+                                                    .checked
+                                                    ? [...existing, option.id]
+                                                    : existing.filter(
+                                                        (id: number) =>
+                                                          id !== option.id,
+                                                      );
+                                                  return {
+                                                    ...prev,
+                                                    attachmentChecklistSelections:
+                                                      {
+                                                        ...(prev.attachmentChecklistSelections ||
+                                                          {}),
+                                                        [key]: Array.from(
+                                                          new Set(next),
+                                                        ),
+                                                      },
+                                                  };
+                                                },
+                                              )
+                                            }
+                                          />
+                                          <span>
+                                            <span className="font-semibold text-cyan-950">
+                                              {option.label}
+                                            </span>
+                                            <span className="ml-2 rounded-full bg-surface-card px-2 py-0.5 text-[11px] font-semibold text-text-secondary">
+                                              {option.status}
+                                            </span>
+                                            {option.scope ? (
+                                              <span className="mt-1 block text-xs text-cyan-900">
+                                                {option.scope}
+                                              </span>
+                                            ) : null}
+                                          </span>
+                                        </label>
+                                      );
+                                    },
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-surface-card p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="text-sm font-bold uppercase tracking-wide text-text-muted">
+                        Signatories
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePrePourClearanceCard((prev) => ({
+                            ...prev,
+                            signoffs: [
+                              ...(prev.signoffs || []),
+                              {
+                                department: "",
+                                designation: "",
+                                personName: "",
+                                status: "PENDING",
+                                isActive: true,
+                              },
+                            ],
+                          }))
+                        }
+                        className="rounded-lg border border-border-default px-3 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+                      >
+                        Add Signatory
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {(prePourClearanceCard.signoffs || []).map(
+                        (signoff: any, index: number) => (
+                          <div
+                            key={`rfi-clearance-signoff-${index}`}
+                            className="rounded-lg border border-border-subtle bg-surface-base p-3"
+                          >
+                            <div className="grid gap-2 md:grid-cols-4">
+                              {["department", "designation", "personName"].map(
+                                (key) => (
+                                  <input
+                                    key={key}
+                                    value={signoff[key] || ""}
+                                    onChange={(event) =>
+                                      updatePrePourClearanceCard((prev) => ({
+                                        ...prev,
+                                        signoffs: (prev.signoffs || []).map(
+                                          (row: any, rowIndex: number) =>
+                                            rowIndex === index
+                                              ? {
+                                                  ...row,
+                                                  [key]: event.target.value,
+                                                }
+                                              : row,
+                                        ),
+                                      }))
+                                    }
+                                    placeholder={key}
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                  />
+                                ),
+                              )}
+                              <select
+                                value={signoff.status || "PENDING"}
+                                onChange={(event) =>
+                                  updatePrePourClearanceCard((prev) => ({
+                                    ...prev,
+                                    signoffs: (prev.signoffs || []).map(
+                                      (row: any, rowIndex: number) =>
+                                        rowIndex === index
+                                          ? { ...row, status: event.target.value }
+                                          : row,
+                                    ),
+                                  }))
+                                }
+                                className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                              >
+                                <option value="PENDING">Pending</option>
+                                <option value="SIGNED">Signed</option>
+                                <option value="WAIVED">Waived</option>
+                              </select>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveClearanceSignoffIndex(index);
+                                  setShowClearanceSignatureModal(true);
+                                }}
+                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                              >
+                                {signoff.signatureData
+                                  ? "Update Signature"
+                                  : "Sign with Identity"}
+                              </button>
+                              {signoff.signatureData ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                                  Signed by{" "}
+                                  {signoff.signerDisplayName ||
+                                    signoff.personName ||
+                                    "logged-in user"}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : activeCardKind === "POUR_CARD" && pourCard ? (
+                <div className="mx-auto max-w-6xl space-y-4">
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900">
+                    <div className="font-semibold">
+                      Status: {pourCard.status || "DRAFT"}
+                    </div>
+                    <div className="mt-1">
+                      Enter pour details as a table and submit for QA/QC
+                      approval. Final RFI approval opens after the pour card is
+                      approved.
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-surface-card p-4">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {[
+                        ["projectNameSnapshot", "Project name"],
+                        ["contractorName", "Contractor"],
+                        ["approvedByName", "Approved by"],
+                        ["elementName", "Element"],
+                        ["locationText", "Location"],
+                      ].map(([key, label]) => (
+                        <input
+                          key={key}
+                          value={pourCard[key] || ""}
+                          onChange={(event) =>
+                            setPourCard((prev: any) => ({
+                              ...prev,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          placeholder={label}
+                          className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-surface-card p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="text-sm font-bold uppercase tracking-wide text-text-muted">
+                        Pour Details
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPourCard((prev: any) => ({
+                            ...prev,
+                            entries: [
+                              ...(prev.entries || []),
+                              {
+                                pourDate: "",
+                                truckNo: "",
+                                deliveryChallanNo: "",
+                                mixIdOrGrade: "",
+                                quantityM3: null,
+                                slumpMm: null,
+                                noOfCubesTaken: null,
+                                remarks: "",
+                              },
+                            ],
+                          }))
+                        }
+                        className="rounded-lg border border-border-default px-3 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+                      >
+                        Add Row
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[980px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b text-xs uppercase tracking-wide text-text-muted">
+                            <th className="px-2 py-2">Date</th>
+                            <th className="px-2 py-2">Truck</th>
+                            <th className="px-2 py-2">Challan</th>
+                            <th className="px-2 py-2">Mix/Grade</th>
+                            <th className="px-2 py-2">Qty m3</th>
+                            <th className="px-2 py-2">Slump</th>
+                            <th className="px-2 py-2">Cubes</th>
+                            <th className="px-2 py-2">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(pourCard.entries || []).map(
+                            (entry: any, index: number) => (
+                              <tr key={`rfi-pour-entry-${index}`} className="border-b">
+                                {[
+                                  "pourDate",
+                                  "truckNo",
+                                  "deliveryChallanNo",
+                                  "mixIdOrGrade",
+                                  "quantityM3",
+                                  "slumpMm",
+                                  "noOfCubesTaken",
+                                  "remarks",
+                                ].map((key) => (
+                                  <td key={key} className="px-2 py-2">
+                                    <input
+                                      type={
+                                        ["quantityM3", "slumpMm", "noOfCubesTaken"].includes(key)
+                                          ? "number"
+                                          : "text"
+                                      }
+                                      value={entry[key] ?? ""}
+                                      onChange={(event) =>
+                                        setPourCard((prev: any) => ({
+                                          ...prev,
+                                          entries: (prev.entries || []).map(
+                                            (row: any, rowIndex: number) =>
+                                              rowIndex === index
+                                                ? {
+                                                    ...row,
+                                                    [key]: [
+                                                      "quantityM3",
+                                                      "slumpMm",
+                                                      "noOfCubesTaken",
+                                                    ].includes(key)
+                                                      ? event.target.value
+                                                        ? Number(event.target.value)
+                                                        : null
+                                                      : event.target.value,
+                                                  }
+                                                : row,
+                                          ),
+                                        }))
+                                      }
+                                      className="w-full rounded border border-border-default bg-surface-base px-2 py-1.5 text-sm"
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            ),
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex shrink-0 items-center justify-between border-t border-border-default bg-white px-6 py-4 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+              <div className="text-sm text-text-muted">
+                The submitted document will appear in QA/QC Approvals for review.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={saveActiveCard}
+                  disabled={savingCardModal || loadingCardModal}
+                  className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised disabled:opacity-50"
+                >
+                  {savingCardModal ? "Saving..." : "Save Draft"}
+                </button>
+                <button
+                  type="button"
+                  onClick={submitActiveCard}
+                  disabled={savingCardModal || loadingCardModal}
+                  className="rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white hover:bg-secondary-dark disabled:opacity-50"
+                >
+                  Send For Approval
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {rfiModalActivity && (
         <div className="fixed inset-0 bg-surface-overlay z-50 flex items-center justify-center p-4">
           <div className="bg-surface-card rounded-xl shadow-xl w-full max-w-lg">
@@ -1699,6 +2523,17 @@ export default function InspectionRequestPage() {
           </div>
         </div>
       )}
+      <SignatureModal
+        isOpen={showClearanceSignatureModal}
+        onClose={() => {
+          setShowClearanceSignatureModal(false);
+          setActiveClearanceSignoffIndex(null);
+        }}
+        onSign={applyClearanceSignoffSignature}
+        title="Pre-Pour Clearance Signatory"
+        description="Draw or reuse your saved signature. SETU will attach your logged-in identity for audit."
+        actionLabel="Sign Responsibility"
+      />
     </div>
   );
 }
