@@ -117,7 +117,7 @@ export default function SignatureModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[10000] animate-in fade-in duration-200">
       <div className="bg-surface-card rounded-2xl w-full max-w-md overflow-hidden shadow-xl border border-border-default">
         <div className="flex justify-between items-center p-4 border-b border-border-subtle bg-surface-base/50">
           <div>

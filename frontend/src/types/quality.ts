@@ -387,6 +387,38 @@ export interface QualityMaterialTestResult {
   obligation?: QualityMaterialTestObligation;
 }
 
+export interface QualityCubeTestRegister {
+  id: number;
+  projectId: number;
+  inspectionId: number;
+  pourCardId: number;
+  pourEntryIndex?: number | null;
+  cubeId: string;
+  testAge: "7_DAY" | "28_DAY";
+  castDate: string;
+  dueDate: string;
+  projectNameSnapshot?: string | null;
+  activityName?: string | null;
+  elementName?: string | null;
+  goLabel?: string | null;
+  goDetails?: string | null;
+  locationText?: string | null;
+  mixIdOrGrade?: string | null;
+  truckNo?: string | null;
+  deliveryChallanNo?: string | null;
+  quantityM3?: string | null;
+  specimenSize?: string | null;
+  loadKn?: string | null;
+  compressiveStrengthMpa?: string | null;
+  averageStrengthMpa?: string | null;
+  requiredStrengthMpa?: string | null;
+  calculationDetails?: Record<string, unknown> | null;
+  status: "PENDING" | "DUE_TODAY" | "OVERDUE" | "TESTED" | "APPROVED" | "FAILED";
+  testedByName?: string | null;
+  testedDate?: string | null;
+  remarks?: string | null;
+}
+
 export interface QualityMaterialEvidenceFile {
   id: number;
   projectId: number;

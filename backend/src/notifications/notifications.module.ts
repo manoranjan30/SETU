@@ -11,6 +11,7 @@ import { ActivityObservation } from '../quality/entities/activity-observation.en
 import { QualityMaterialApprovalRun } from '../quality/entities/quality-material-approval-run.entity';
 import { QualityMaterialApprovalStep } from '../quality/entities/quality-material-approval-step.entity';
 import { QualityMaterialTestObligation } from '../quality/entities/quality-material-test-obligation.entity';
+import { QualityCubeTestRegister } from '../quality/entities/quality-cube-test-register.entity';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { Role } from '../roles/role.entity';
 import { EpsNode } from '../eps/eps.entity';
@@ -31,6 +32,7 @@ import { NotificationLog } from './notification-log.entity';
       QualityMaterialApprovalRun,
       QualityMaterialApprovalStep,
       QualityMaterialTestObligation,
+      QualityCubeTestRegister,
       TempUser,
       Role,
       EpsNode,

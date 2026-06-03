@@ -735,6 +735,8 @@ class _RaiseRfiDialog extends StatefulWidget {
 
 class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
   final _drawingNoCtrl = TextEditingController();
+  final _elementNameCtrl = TextEditingController();
+  final _goDetailsCtrl = TextEditingController();
   final _commentsCtrl = TextEditingController();
 
   // Vendor loading
@@ -752,20 +754,55 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
   final Set<int> _selectedUnitIds = {};
   bool _unitsLoading = false;
 
+  // Previous approved RFIs from the same floor/node — for the related checklist picker
+  List<QualityInspection> _floorInspections = [];
+  final Set<int> _selectedRelatedIds = {};
+  bool _floorInspectionsLoading = false;
+
   bool get _isUnit => widget.activity.applicabilityLevel == 'UNIT';
+  bool get _isFloor => !_isUnit;
+  bool get _requiresElement =>
+      widget.activity.requiresPourCard || widget.activity.requiresPourClearanceCard;
 
   @override
   void initState() {
     super.initState();
     _loadVendors();
     if (_isUnit) _loadUnits();
+    if (_isFloor) _loadFloorInspections();
   }
 
   @override
   void dispose() {
     _drawingNoCtrl.dispose();
+    _elementNameCtrl.dispose();
+    _goDetailsCtrl.dispose();
     _commentsCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFloorInspections() async {
+    setState(() => _floorInspectionsLoading = true);
+    try {
+      final raw = await sl<SetuApiClient>().getQualityInspections(
+        projectId: widget.projectId,
+        epsNodeId: widget.epsNodeId,
+      );
+      if (!mounted) return;
+      final inspections = raw
+          .whereType<Map<String, dynamic>>()
+          .map(QualityInspection.fromJson)
+          .where((i) =>
+              i.status == InspectionStatus.approved ||
+              i.status == InspectionStatus.partiallyApproved)
+          .toList();
+      setState(() {
+        _floorInspections = inspections;
+        _floorInspectionsLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _floorInspectionsLoading = false);
+    }
   }
 
   Future<void> _loadVendors() async {
@@ -823,6 +860,8 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     if (_vendorLoading) return false;
     // Drawing number is required
     if (_drawingNoCtrl.text.trim().isEmpty) return false;
+    // Element name is required for pour card / clearance activities
+    if (_requiresElement && _elementNameCtrl.text.trim().isEmpty) return false;
     // Vendor required unless none exist or load failed
     if (_vendors.isNotEmpty &&
         _selectedVendor == null &&
@@ -836,11 +875,12 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
 
   void _submit() {
     final drawingNo = _drawingNoCtrl.text.trim();
-    final comments = _commentsCtrl.text.trim().isEmpty
-        ? null
-        : _commentsCtrl.text.trim();
+    final elementName = _elementNameCtrl.text.trim().isEmpty ? null : _elementNameCtrl.text.trim();
+    final goDetails = _goDetailsCtrl.text.trim().isEmpty ? null : _goDetailsCtrl.text.trim();
+    final comments = _commentsCtrl.text.trim().isEmpty ? null : _commentsCtrl.text.trim();
     final vendorId = _selectedVendor?['id'] as int?;
     final vendorName = _selectedVendor?['name'] as String?;
+    final relatedIds = _selectedRelatedIds.toList();
 
     if (_isUnit) {
       // Queue one RFI per selected unit (Unit Wise mode)
@@ -856,6 +896,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
           qualityUnitId: unitId,
           vendorId: vendorId,
           vendorName: vendorName,
+          elementName: elementName,
         ));
       }
     } else {
@@ -875,6 +916,9 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         documentType: 'FLOOR_RFI',
         vendorId: vendorId,
         vendorName: vendorName,
+        elementName: elementName,
+        goDetails: goDetails,
+        relatedChecklistInspectionIds: relatedIds,
       ));
     }
     Navigator.pop(context);
@@ -912,6 +956,135 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
+
+            // ── Element Name (required for pour card activities) ─────────
+            Text(
+              _requiresElement ? 'Element Name *' : 'Element Name',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _elementNameCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                hintText: 'e.g. Column C3, Slab Block A',
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                helperText: _requiresElement ? 'Required for pour card / clearance' : null,
+                helperStyle: TextStyle(fontSize: 10, color: Colors.orange.shade700),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+
+            // ── GO Details (FLOOR activities only) ───────────────────────
+            if (_isFloor) ...[
+              const Text('GO Details',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _goDetailsCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Describe the inspection scope for this GO…',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ── Link Previous Checklist RFIs (FLOOR only) ────────────────
+            if (_isFloor) ...[
+              const Text('Link Previous Checklist RFIs',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 4),
+              if (_floorInspectionsLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('Loading…', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ]),
+                )
+              else if (_floorInspections.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    'No previous approved RFIs available for this location.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                )
+              else
+                Column(
+                  children: _floorInspections.map((insp) {
+                    final isSelected = _selectedRelatedIds.contains(insp.id);
+                    final label = [
+                      if (insp.goLabel != null) insp.goLabel!,
+                      if (insp.activityName != null) insp.activityName!,
+                      'RFI #${insp.id}',
+                    ].join(' · ');
+                    final sublabel = insp.locationDisplay.isNotEmpty
+                        ? insp.locationDisplay
+                        : null;
+                    return InkWell(
+                      onTap: () => setState(() {
+                        if (isSelected) {
+                          _selectedRelatedIds.remove(insp.id);
+                        } else {
+                          _selectedRelatedIds.add(insp.id);
+                        }
+                      }),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: isSelected,
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (v) => setState(() {
+                                if (v == true) {
+                                  _selectedRelatedIds.add(insp.id);
+                                } else {
+                                  _selectedRelatedIds.remove(insp.id);
+                                }
+                              }),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(label,
+                                      style: const TextStyle(fontSize: 12),
+                                      overflow: TextOverflow.ellipsis),
+                                  if (sublabel != null)
+                                    Text(sublabel,
+                                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                                        overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: insp.status.color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                insp.status.label,
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: insp.status.color),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 16),
+            ],
 
             // ── Vendor / contractor selector ─────────────────────────────
             if (_vendorLoading)

@@ -34,6 +34,18 @@ export class AppConfig {
   @Column({ nullable: true, type: 'text' })
   updateUrl: string | null;
 
+  @Column({ nullable: true, type: 'text' })
+  apkFileName: string | null;
+
+  @Column({ nullable: true, type: 'text' })
+  apkOriginalName: string | null;
+
+  @Column({ nullable: true, type: 'bigint' })
+  apkFileSize: number | null;
+
+  @Column({ nullable: true, type: 'timestamp' })
+  apkUploadedAt: Date | null;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -67,6 +68,38 @@ class SignatureApprovalSheet extends StatefulWidget {
         ),
       ),
     );
+  }
+
+  /// Show the signature sheet for a clearance card signoff row.
+  /// Returns (signatureData, signedByName) when the user confirms, or null on cancel.
+  static Future<(String, String)?> showForSignoff(
+    BuildContext context, {
+    required String department,
+    String? personName,
+  }) {
+    final authBloc = context.read<AuthBloc>();
+    final completer = Completer<(String, String)?>();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => BlocProvider.value(
+        value: authBloc,
+        child: SignatureApprovalSheet(
+          title: 'Sign Off: $department',
+          subtitle: personName != null ? 'Signing as: $personName' : null,
+          onSubmit: (signatureData, signedBy, _) {
+            completer.complete((signatureData, signedBy));
+          },
+        ),
+      ),
+    ).then((_) {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+    return completer.future;
   }
 
   /// Show the sheet for stage-level approval.

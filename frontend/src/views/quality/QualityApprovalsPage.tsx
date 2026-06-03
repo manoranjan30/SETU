@@ -72,8 +72,22 @@ interface QualityInspection {
   roomName?: string;
   goNo?: number;
   goLabel?: string;
+  goDetails?: string | null;
+  relatedChecklistInspectionIds?: number[];
+  relatedChecklistInspections?: Array<{
+    id: number;
+    activityName: string;
+    status: QualityInspection["status"];
+    requestDate?: string;
+    goNo?: number;
+    goLabel?: string;
+    partNo?: number;
+    partLabel?: string;
+    drawingNo?: string;
+    elementName?: string | null;
+  }>;
   drawingNo?: string;
-  elementName?: string;
+  elementName?: string | null;
   partNo?: number;
   partLabel?: string;
   vendorName?: string;
@@ -880,6 +894,7 @@ export default function QualityApprovalsPage() {
         checklistTemplateId: number;
         checklistName: string;
         statuses: string[];
+        scopeDescription: string;
       }
     >();
 
@@ -894,6 +909,17 @@ export default function QualityApprovalsPage() {
             stage?.stageTemplate?.template?.name ||
             `Checklist ${templateId}`,
           statuses: [] as string[],
+          scopeDescription: [
+            getGoLabel(inspectionDetail || {}),
+            inspectionDetail?.elementName
+              ? `Element ${inspectionDetail.elementName}`
+              : null,
+            inspectionDetail?.goDetails || null,
+            inspectionDetail?.drawingNo ? `Dwg ${inspectionDetail.drawingNo}` : null,
+            inspectionDetail?.id ? `RFI #${inspectionDetail.id}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
         });
       bucket.statuses.push(String(stage?.status || "PENDING").toUpperCase());
       stageGroups.set(templateId, bucket);
@@ -917,7 +943,17 @@ export default function QualityApprovalsPage() {
         };
       })
       .filter((group) => group.approvalState !== "PENDING");
-  }, [inspectionDetail?.stages]);
+  }, [
+    inspectionDetail?.drawingNo,
+    inspectionDetail?.elementName,
+    inspectionDetail?.goDetails,
+    inspectionDetail?.goLabel,
+    inspectionDetail?.goNo,
+    inspectionDetail?.id,
+    inspectionDetail?.partLabel,
+    inspectionDetail?.partNo,
+    inspectionDetail?.stages,
+  ]);
 
   const clearanceActivation = useMemo(() => {
     const triggerStageTemplateId =
@@ -968,6 +1004,26 @@ export default function QualityApprovalsPage() {
     };
   }, [inspections]);
 
+  const pourCardEntryHistory = useMemo(() => {
+    const entries = Array.isArray(pourCard?.entries) ? pourCard.entries : [];
+    const lastFive = (field: string) => {
+      const values = entries
+        .map((entry: any) => entry?.[field])
+        .filter((value: any) => value !== null && value !== undefined && value !== "")
+        .map((value: any) => String(value));
+      return Array.from(new Set(values)).slice(-5).reverse();
+    };
+
+    return {
+      truckNo: lastFive("truckNo"),
+      deliveryChallanNo: lastFive("deliveryChallanNo"),
+      mixIdOrGrade: lastFive("mixIdOrGrade"),
+      supplierRepresentative: lastFive("supplierRepresentative"),
+      contractorRepresentative: lastFive("contractorRepresentative"),
+      clientRepresentative: lastFive("clientRepresentative"),
+    };
+  }, [pourCard?.entries]);
+
   const savePourCardDetails = async () => {
     if (!inspectionDetail?.id || !pourCard) return;
     setSavingPourCard(true);
@@ -1014,9 +1070,14 @@ export default function QualityApprovalsPage() {
   };
 
   const submitPrePourClearanceDetails = async () => {
-    if (!inspectionDetail?.id) return;
+    if (!inspectionDetail?.id || !prePourClearanceCard) return;
     setSubmittingPrePourClearance(true);
     try {
+      const draft = await qualityService.savePrePourClearanceCard(
+        inspectionDetail.id,
+        prePourClearanceCard,
+      );
+      setPrePourClearanceCard(draft);
       const saved = await qualityService.submitPrePourClearanceCard(
         inspectionDetail.id,
       );
@@ -2188,7 +2249,12 @@ export default function QualityApprovalsPage() {
     if (getStagePendingObservationCount(stage.id) > 0) {
       return "Close all observations for this stage before approval.";
     }
-    if (inspectionDetail?.workflowSummary?.currentUserCanApprove === false) {
+    const hasReleaseStrategyLevels =
+      Number(stage?.stageApproval?.requiredLevelCount || 0) > 0;
+    if (
+      hasReleaseStrategyLevels &&
+      inspectionDetail?.workflowSummary?.currentUserCanApprove === false
+    ) {
       return (
         inspectionDetail?.workflowSummary?.currentUserBlockedReason ||
         "Your approval is not active at the current level."
@@ -4298,6 +4364,67 @@ export default function QualityApprovalsPage() {
                         </span>
                       ) : null}
                     </div>
+                    {(inspectionDetail.goDetails ||
+                      inspectionDetail.relatedChecklistInspections?.length) && (
+                      <div className="mt-3 max-w-4xl rounded-lg border border-border-subtle bg-surface-base p-3 text-sm">
+                        {inspectionDetail.goDetails ? (
+                          <div>
+                            <div className="text-xs font-semibold uppercase text-text-muted">
+                              GO Details
+                            </div>
+                            <div className="mt-1 text-text-secondary">
+                              {inspectionDetail.goDetails}
+                            </div>
+                          </div>
+                        ) : null}
+                        {inspectionDetail.relatedChecklistInspections?.length ? (
+                          <div
+                            className={
+                              inspectionDetail.goDetails
+                                ? "mt-3 border-t border-border-subtle pt-3"
+                                : ""
+                            }
+                          >
+                            <div className="text-xs font-semibold uppercase text-text-muted">
+                              Related Previous Checklists
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {inspectionDetail.relatedChecklistInspections.map(
+                                (
+                                  related: NonNullable<
+                                    QualityInspection["relatedChecklistInspections"]
+                                  >[number],
+                                ) => (
+                                  <button
+                                    key={related.id}
+                                    type="button"
+                                    onClick={() =>
+                                      openInspectionDetail(related.id)
+                                    }
+                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-left text-xs hover:bg-surface-raised"
+                                  >
+                                    <span className="block font-semibold text-text-primary">
+                                      {related.activityName} · RFI #{related.id}
+                                    </span>
+                                    <span className="block text-text-muted">
+                                      {[
+                                        getGoLabel(related),
+                                        related.elementName
+                                          ? `Element ${related.elementName}`
+                                          : null,
+                                        related.status,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </span>
+                                  </button>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
                     {shouldShowConcreteCardsInApproval && (
@@ -4678,6 +4805,18 @@ export default function QualityApprovalsPage() {
                                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
                                     Pour Entries
                                   </div>
+                                  {Object.entries(pourCardEntryHistory).map(
+                                    ([field, values]) => (
+                                      <datalist
+                                        key={`pour-history-${field}`}
+                                        id={`pour-history-${field}`}
+                                      >
+                                        {(values as string[]).map((value) => (
+                                          <option key={value} value={value} />
+                                        ))}
+                                      </datalist>
+                                    ),
+                                  )}
                                   <div className="space-y-2">
                                     {(pourCard.entries || []).map((entry: any, idx: number) => (
                                       <div key={`pour-entry-${idx}`} className="rounded-lg border border-border-subtle bg-surface-base p-3">
@@ -4686,6 +4825,7 @@ export default function QualityApprovalsPage() {
                                         </div>
                                         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                                         <input
+                                          type="date"
                                           value={entry.pourDate || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4701,6 +4841,7 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-truckNo"
                                           value={entry.truckNo || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4716,6 +4857,7 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-deliveryChallanNo"
                                           value={entry.deliveryChallanNo || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4731,6 +4873,7 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-mixIdOrGrade"
                                           value={entry.mixIdOrGrade || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4905,6 +5048,7 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-supplierRepresentative"
                                           value={entry.supplierRepresentative || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4920,6 +5064,7 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-contractorRepresentative"
                                           value={entry.contractorRepresentative || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4935,6 +5080,7 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-clientRepresentative"
                                           value={entry.clientRepresentative || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -5421,6 +5567,10 @@ export default function QualityApprovalsPage() {
                                                         return (
                                                           <label
                                                             key={`${key}-${option.checklistTemplateId}`}
+                                                            title={
+                                                              option.scopeDescription ||
+                                                              option.checklistName
+                                                            }
                                                             className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm"
                                                           >
                                                             <input
@@ -5470,13 +5620,32 @@ export default function QualityApprovalsPage() {
                                                             />
                                                             <span>
                                                               <span className="font-medium text-cyan-900">
-                                                                {option.checklistName}
+                                                                {[
+                                                                  getGoLabel(
+                                                                    inspectionDetail ||
+                                                                      {},
+                                                                  ),
+                                                                  inspectionDetail?.elementName
+                                                                    ? `Element ${inspectionDetail.elementName}`
+                                                                    : null,
+                                                                  `RFI #${inspectionDetail?.id}`,
+                                                                ]
+                                                                  .filter(
+                                                                    Boolean,
+                                                                  )
+                                                                  .join(" · ")}
                                                               </span>
                                                               <span className="ml-2 rounded-full bg-surface-card px-2 py-0.5 text-[11px] font-semibold text-text-secondary">
                                                                 {option.approvalState ===
                                                                 "APPROVED"
                                                                   ? "Approved"
                                                                   : "Partially Approved"}
+                                                              </span>
+                                                              <span className="mt-1 block text-xs text-cyan-900">
+                                                                {option.checklistName}
+                                                                {option.scopeDescription
+                                                                  ? ` · ${option.scopeDescription}`
+                                                                  : ""}
                                                               </span>
                                                             </span>
                                                           </label>
@@ -5624,7 +5793,11 @@ export default function QualityApprovalsPage() {
                                                 className="rounded-lg border border-border-default bg-surface-base px-2.5 py-2 text-sm"
                                               />
                                               <select
-                                                value={signoff.status || "PENDING"}
+                                                value={
+                                                  signoff.status === "SIGNED"
+                                                    ? "SIGNED"
+                                                    : signoff.status || "PENDING"
+                                                }
                                                 onChange={(e) =>
                                                   updatePrePourClearanceCard(
                                                     (prev) => ({
@@ -5637,6 +5810,27 @@ export default function QualityApprovalsPage() {
                                                               ...row,
                                                               status:
                                                                 e.target.value,
+                                                              ...(e.target.value !==
+                                                              "SIGNED"
+                                                                ? {
+                                                                    signatureData:
+                                                                      null,
+                                                                    signedDate: "",
+                                                                    signedAt: null,
+                                                                    signedByUserId:
+                                                                      null,
+                                                                    signerUsername:
+                                                                      null,
+                                                                    signerDisplayName:
+                                                                      null,
+                                                                    signerRoles:
+                                                                      [],
+                                                                    signatureMode:
+                                                                      null,
+                                                                    signatureEvidence:
+                                                                      null,
+                                                                  }
+                                                                : {}),
                                                             }
                                                           : row,
                                                       ),
@@ -5648,9 +5842,11 @@ export default function QualityApprovalsPage() {
                                                 <option value="PENDING">
                                                   Pending
                                                 </option>
-                                                <option value="SIGNED">
-                                                  Signed
-                                                </option>
+                                                {signoff.status === "SIGNED" ? (
+                                                  <option value="SIGNED">
+                                                    Signed
+                                                  </option>
+                                                ) : null}
                                                 <option value="WAIVED">
                                                   Waived
                                                 </option>
@@ -5695,8 +5891,8 @@ export default function QualityApprovalsPage() {
                                                 className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100"
                                               >
                                                 {signoff.signatureData
-                                                  ? "Update Signature"
-                                                  : "Sign"}
+                                                  ? "Update identity signature"
+                                                  : "Sign with identity"}
                                               </button>
                                               {signoff.signatureData ? (
                                                 <button
@@ -5714,6 +5910,18 @@ export default function QualityApprovalsPage() {
                                                                 signatureData:
                                                                   null,
                                                                 signedDate: "",
+                                                                signedAt: null,
+                                                                signedByUserId:
+                                                                  null,
+                                                                signerUsername:
+                                                                  null,
+                                                                signerDisplayName:
+                                                                  null,
+                                                                signerRoles: [],
+                                                                signatureMode:
+                                                                  null,
+                                                                signatureEvidence:
+                                                                  null,
                                                                 status:
                                                                   row.status ===
                                                                   "SIGNED"

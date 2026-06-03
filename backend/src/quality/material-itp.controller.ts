@@ -175,6 +175,26 @@ export class MaterialItpController {
     return this.materialItpService.listResults(Number(projectId));
   }
 
+  @Get(':projectId/cube-test-register')
+  @Permissions('QUALITY.MATERIAL_TEST.READ')
+  listCubeTestRegister(@Param('projectId') projectId: number) {
+    return this.materialItpService.listCubeTestRegister(Number(projectId));
+  }
+
+  @Put('cube-test-register/:id')
+  @Permissions('QUALITY.MATERIAL_TEST.LOG')
+  updateCubeTestRegister(
+    @Param('id') id: number,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    return this.materialItpService.updateCubeTestRegister(
+      Number(id),
+      body,
+      this.getUserId(req),
+    );
+  }
+
   @Post('material-test-results/:id/submit-approval')
   @Permissions('QUALITY.MATERIAL_TEST.APPROVE')
   submitResultApproval(@Param('id') id: number, @Req() req: any) {
@@ -250,4 +270,3 @@ export class MaterialItpController {
     return Number(req.user?.userId || req.user?.id || req.user?.sub || 0);
   }
 }
-

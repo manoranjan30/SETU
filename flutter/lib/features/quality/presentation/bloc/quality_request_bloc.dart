@@ -84,6 +84,15 @@ class RaiseRfi extends QualityRequestEvent {
   // Required by backend — reference drawing for the inspection
   final String drawingNo;
 
+  // Element / component name (required for pour card activities)
+  final String? elementName;
+
+  // GO details — descriptive text for the concrete pour scope
+  final String? goDetails;
+
+  // IDs of previously approved RFIs that are referenced by this inspection
+  final List<int> relatedChecklistInspectionIds;
+
   const RaiseRfi({
     required this.projectId,
     required this.epsNodeId,
@@ -98,6 +107,9 @@ class RaiseRfi extends QualityRequestEvent {
     this.vendorName,
     this.qualityUnitId,
     this.documentType,
+    this.elementName,
+    this.goDetails,
+    this.relatedChecklistInspectionIds = const [],
   });
   @override
   List<Object?> get props => [
@@ -751,6 +763,12 @@ class QualityRequestBloc
           if (event.vendorId != null) 'vendorId': event.vendorId,
           if (event.vendorName != null && event.vendorName!.isNotEmpty)
             'vendorName': event.vendorName,
+          if (event.elementName != null && event.elementName!.isNotEmpty)
+            'elementName': event.elementName,
+          if (event.goDetails != null && event.goDetails!.isNotEmpty)
+            'goDetails': event.goDetails,
+          if (event.relatedChecklistInspectionIds.isNotEmpty)
+            'relatedChecklistInspectionIds': event.relatedChecklistInspectionIds,
         },
         priority: 2,
       );

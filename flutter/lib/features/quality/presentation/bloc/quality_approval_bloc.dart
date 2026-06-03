@@ -204,6 +204,16 @@ class ReverseWorkflowStep extends QualityApprovalEvent {
   List<Object?> get props => [reason];
 }
 
+/// Expand a single-GO floor RFI into a multi-part series (Part 2, Part 3 …).
+/// Only valid when the inspection is a single-part (totalParts == 1) FLOOR RFI.
+class ExpandGoSeries extends QualityApprovalEvent {
+  final int inspectionId;
+  final int newTotalParts;
+  const ExpandGoSeries({required this.inspectionId, required this.newTotalParts});
+  @override
+  List<Object?> get props => [inspectionId, newTotalParts];
+}
+
 /// Load only inspections where MY approval is currently pending.
 /// Used by the "My Approvals" dashboard badge/count.
 class LoadMyPendingInspections extends QualityApprovalEvent {
@@ -443,6 +453,7 @@ class QualityApprovalBloc
     on<ApproveInspection>(_onApproveInspection);
     on<ProvisionallyApproveInspection>(_onProvisionallyApproveInspection);
     on<RejectInspection>(_onRejectInspection);
+    on<ExpandGoSeries>(_onExpandGoSeries);
     on<AdvanceWorkflowStep>(_onAdvanceWorkflowStep);
     on<RejectWorkflowStep>(_onRejectWorkflowStep);
     on<DelegateWorkflowStep>(_onDelegateWorkflowStep);
@@ -868,6 +879,28 @@ class QualityApprovalBloc
       );
       emit(ApprovalActionQueued(
         action: 'reverse',
+        isOffline: false,
+        pendingSyncCount: 0,
+      ));
+    } catch (e) {
+      emit(QualityApprovalError(_friendly(e)));
+    }
+  }
+
+  /// Expands a single-GO floor RFI into multiple parts (Part 2, Part 3 …).
+  /// Calls the backend which creates the new inspection records, then emits
+  /// [ApprovalActionQueued] so the listener pops the detail page.
+  Future<void> _onExpandGoSeries(
+      ExpandGoSeries event,
+      Emitter<QualityApprovalState> emit) async {
+    emit(QualityApprovalLoading());
+    try {
+      await _apiClient.expandGoSeries(
+        inspectionId: event.inspectionId,
+        newTotalParts: event.newTotalParts,
+      );
+      emit(ApprovalActionQueued(
+        action: 'expand_go',
         isOffline: false,
         pendingSyncCount: 0,
       ));

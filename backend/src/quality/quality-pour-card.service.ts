@@ -14,7 +14,13 @@ import {
   QualityPourCard,
 } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
+import {
+  QualityCubeTestAge,
+  QualityCubeTestRegister,
+  QualityCubeTestStatus,
+} from './entities/quality-cube-test-register.entity';
 import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
+import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 
 const DEFAULT_CLEARANCE_SIGNOFFS = [
   'Surveyor',
@@ -82,6 +88,10 @@ export class QualityPourCardService {
     private readonly pourCardRepo: Repository<QualityPourCard>,
     @InjectRepository(QualityPrePourClearanceCard)
     private readonly clearanceRepo: Repository<QualityPrePourClearanceCard>,
+    @InjectRepository(QualityCubeTestRegister)
+    private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
+    @InjectRepository(EpsNode)
+    private readonly epsRepo: Repository<EpsNode>,
   ) {}
 
   private async getInspectionOrThrow(inspectionId: number) {
@@ -112,6 +122,120 @@ export class QualityPourCardService {
       throw new NotFoundException('Inspection not found');
     }
     return inspection as ClearanceInspectionContext;
+  }
+
+  private async getEpsAncestry(nodeId?: number | null): Promise<EpsNode[]> {
+    const ancestry: EpsNode[] = [];
+    let currentId = nodeId ?? null;
+
+    while (currentId) {
+      const node = await this.epsRepo.findOne({ where: { id: currentId } });
+      if (!node) break;
+      ancestry.unshift(node);
+      currentId = node.parentId || null;
+    }
+
+    return ancestry;
+  }
+
+  private async buildInspectionDefaults(inspection: ClearanceInspectionContext) {
+    const ancestry = await this.getEpsAncestry(inspection.epsNodeId);
+    const locationPath =
+      ancestry.map((node) => node.name).filter(Boolean).join(' / ') ||
+      inspection.epsNode?.name ||
+      null;
+    const projectName =
+      ancestry.find((node) => node.type === EpsNodeType.PROJECT)?.name ||
+      ancestry[0]?.name ||
+      null;
+    const goLabel =
+      inspection.goLabel ||
+      (typeof inspection.goNo === 'number'
+        ? `GO ${inspection.goNo}`
+        : inspection.partLabel
+          ? inspection.partLabel.replace(/^Part/i, 'GO')
+          : null);
+    const pourLocation = [
+      locationPath,
+      goLabel,
+      inspection.elementName ? `Element ${inspection.elementName}` : null,
+    ]
+      .filter(Boolean)
+      .join(' / ');
+
+    return {
+      projectName,
+      locationPath,
+      pourLocation: pourLocation || locationPath,
+      contractorName: inspection.contractorName ?? inspection.vendorName ?? null,
+    };
+  }
+
+  private resolveGoLabel(inspection: QualityInspection) {
+    return (
+      inspection.goLabel ||
+      (typeof inspection.goNo === 'number'
+        ? `GO ${inspection.goNo}`
+        : inspection.partLabel
+          ? inspection.partLabel.replace(/^Part/i, 'GO')
+          : null)
+    );
+  }
+
+  private normalizeDateOnly(value?: string | null) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+
+    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const date = new Date(`${text}T00:00:00.000Z`);
+      return Number.isNaN(date.getTime()) ? null : text;
+    }
+
+    const localMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (localMatch) {
+      const [, dayText, monthText, yearText] = localMatch;
+      const day = Number(dayText);
+      const month = Number(monthText);
+      const year = Number(yearText);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (
+        date.getUTCFullYear() !== year ||
+        date.getUTCMonth() !== month - 1 ||
+        date.getUTCDate() !== day
+      ) {
+        return null;
+      }
+      return date.toISOString().slice(0, 10);
+    }
+
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  private addDays(dateText: string, days: number) {
+    const normalizedDate = this.normalizeDateOnly(dateText);
+    if (!normalizedDate) return null;
+    const date = new Date(`${normalizedDate}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  private inferRequiredStrengthMpa(mixIdOrGrade?: string | null) {
+    const match = String(mixIdOrGrade || '').match(/M\s?(\d{2,3})/i);
+    return match ? Number(match[1]).toFixed(3) : null;
+  }
+
+  private buildCubeId(
+    card: QualityPourCard,
+    entryIndex: number,
+    cubeSerial: number,
+    age: QualityCubeTestAge,
+  ) {
+    const serial = String(cubeSerial).padStart(3, '0');
+    const ageCode = age === QualityCubeTestAge.SEVEN_DAY ? '7D' : '28D';
+    return `CUBE-P${card.projectId}-RFI${card.inspectionId}-E${entryIndex + 1}-${serial}-${ageCode}`;
   }
 
   private buildPdfBuffer(
@@ -158,6 +282,31 @@ export class QualityPourCardService {
     doc.font('Helvetica').text(this.formatPdfValue(value), options);
   }
 
+  private drawPdfCheckbox(
+    doc: PDFKit.PDFDocument,
+    x: number,
+    y: number,
+    width: number,
+    checked: boolean,
+  ) {
+    const boxSize = 10;
+    const boxX = x + (width - boxSize) / 2;
+    const boxY = y + 7;
+
+    doc.save();
+    doc.lineWidth(0.8).strokeColor('#111827');
+    doc.rect(boxX, boxY, boxSize, boxSize).stroke();
+    if (checked) {
+      doc
+        .lineWidth(1.4)
+        .moveTo(boxX + 2, boxY + 5)
+        .lineTo(boxX + 4.3, boxY + 7.5)
+        .lineTo(boxX + 8.3, boxY + 2.3)
+        .stroke();
+    }
+    doc.restore();
+  }
+
   private writePdfTable(
     doc: PDFKit.PDFDocument,
     headers: string[],
@@ -198,10 +347,20 @@ export class QualityPourCardService {
           .moveTo(x, y)
           .lineTo(x, y + rowHeight)
           .stroke('#9ca3af');
-        doc.text(this.formatPdfValue(cell), x + 4, y + 6, {
-          width: columnWidths[index] - 8,
-          align: index === 0 ? 'center' : 'left',
-        });
+        if (cell === '__PDF_CHECKED__' || cell === '__PDF_UNCHECKED__') {
+          this.drawPdfCheckbox(
+            doc,
+            x,
+            y,
+            columnWidths[index],
+            cell === '__PDF_CHECKED__',
+          );
+        } else {
+          doc.text(this.formatPdfValue(cell), x + 4, y + 6, {
+            width: columnWidths[index] - 8,
+            align: index === 0 ? 'center' : 'left',
+          });
+        }
         x += columnWidths[index];
       });
       doc
@@ -281,7 +440,7 @@ export class QualityPourCardService {
 
         const rawStatus =
           typeof row.status === 'string' ? row.status.toUpperCase() : 'PENDING';
-        const status =
+        const requestedStatus =
           rawStatus === 'SIGNED' || rawStatus === 'WAIVED'
             ? rawStatus
             : 'PENDING';
@@ -289,16 +448,20 @@ export class QualityPourCardService {
           typeof row.signatureData === 'string' && row.signatureData.trim()
             ? row.signatureData
             : null;
+        const status =
+          requestedStatus === 'SIGNED' && !signatureData
+            ? 'PENDING'
+            : requestedStatus;
         const signedAt =
           typeof row.signedAt === 'string' && row.signedAt.trim()
             ? row.signedAt.trim()
-            : status === 'SIGNED'
+            : status === 'SIGNED' && signatureData
               ? new Date().toISOString()
               : null;
         const signedByUserId =
           typeof row.signedByUserId === 'number' && Number.isFinite(row.signedByUserId)
             ? row.signedByUserId
-            : status === 'SIGNED'
+            : status === 'SIGNED' && signatureData
               ? signerUserId ?? null
               : null;
         const signatureHash = signatureData
@@ -481,7 +644,10 @@ export class QualityPourCardService {
   }
 
   async getPourCard(inspectionId: number) {
-    const inspection = await this.getInspectionOrThrow(inspectionId);
+    const inspection = await this.getInspectionWithClearanceContextOrThrow(
+      inspectionId,
+    );
+    const defaults = await this.buildInspectionDefaults(inspection);
     let card = await this.pourCardRepo.findOne({ where: { inspectionId } });
     if (!card) {
       card = this.pourCardRepo.create({
@@ -490,13 +656,34 @@ export class QualityPourCardService {
         activityId: inspection.activityId,
         epsNodeId: inspection.epsNodeId ?? null,
         elementName: inspection.elementName ?? null,
-        locationText: inspection.epsNode?.name || null,
-        contractorName: inspection.contractorName ?? inspection.vendorName ?? null,
+        locationText: defaults.pourLocation || defaults.locationPath,
+        projectNameSnapshot: defaults.projectName,
+        contractorName: defaults.contractorName,
         revisionNo: '01',
         entries: [],
         remarks: null,
         status: QualityCardStatus.DRAFT,
       });
+      card = await this.pourCardRepo.save(card);
+    }
+    let changed = false;
+    if (!card.projectNameSnapshot && defaults.projectName) {
+      card.projectNameSnapshot = defaults.projectName;
+      changed = true;
+    }
+    if (!card.locationText && (defaults.pourLocation || defaults.locationPath)) {
+      card.locationText = defaults.pourLocation || defaults.locationPath;
+      changed = true;
+    }
+    if (!card.contractorName && defaults.contractorName) {
+      card.contractorName = defaults.contractorName;
+      changed = true;
+    }
+    if (!card.elementName && inspection.elementName) {
+      card.elementName = inspection.elementName;
+      changed = true;
+    }
+    if (changed) {
       card = await this.pourCardRepo.save(card);
     }
     return card;
@@ -555,6 +742,19 @@ export class QualityPourCardService {
     if (!Array.isArray(card.entries) || card.entries.length === 0) {
       throw new BadRequestException('Add at least one pour card entry before submitting.');
     }
+    card.entries.forEach((entry, index) => {
+      const cubeCount = Math.max(0, Number(entry.noOfCubesTaken || 0));
+      if (entry.pourDate && !this.normalizeDateOnly(entry.pourDate)) {
+        throw new BadRequestException(
+          `Pour date in entry ${index + 1} is invalid. Use the calendar date format.`,
+        );
+      }
+      if (cubeCount > 0 && !this.normalizeDateOnly(entry.pourDate)) {
+        throw new BadRequestException(
+          `Pour date is required in entry ${index + 1} because cubes are taken.`,
+        );
+      }
+    });
   }
 
   async submitPourCard(inspectionId: number, userId?: number) {
@@ -594,6 +794,80 @@ export class QualityPourCardService {
     return this.pourCardRepo.save(card);
   }
 
+  private async ensureCubeRegisterForApprovedPourCard(
+    card: QualityPourCard,
+    inspection: QualityInspection,
+  ) {
+    const existing = await this.cubeRegisterRepo.find({
+      where: { pourCardId: card.id },
+    });
+    if (existing.length > 0) {
+      return existing;
+    }
+
+    const goLabel = this.resolveGoLabel(inspection);
+    const rows: QualityCubeTestRegister[] = [];
+    let cubeSerial = 1;
+
+    for (const [entryIndex, entry] of (card.entries || []).entries()) {
+      const cubeCount = Math.max(0, Number(entry.noOfCubesTaken || 0));
+      const castDate = this.normalizeDateOnly(entry.pourDate);
+      if (!cubeCount || !castDate) continue;
+
+      for (let cubeNo = 1; cubeNo <= cubeCount; cubeNo += 1) {
+        for (const age of [
+          QualityCubeTestAge.SEVEN_DAY,
+          QualityCubeTestAge.TWENTY_EIGHT_DAY,
+        ]) {
+          const dueDays = age === QualityCubeTestAge.SEVEN_DAY ? 7 : 28;
+          const requiredStrength = this.inferRequiredStrengthMpa(
+            entry.mixIdOrGrade,
+          );
+          const dueDate = this.addDays(castDate, dueDays);
+          if (!dueDate) continue;
+          rows.push(
+            this.cubeRegisterRepo.create({
+              projectId: card.projectId,
+              inspectionId: card.inspectionId,
+              pourCardId: card.id,
+              pourEntryIndex: entryIndex,
+              cubeId: this.buildCubeId(card, entryIndex, cubeSerial, age),
+              testAge: age,
+              castDate,
+              dueDate,
+              projectNameSnapshot: card.projectNameSnapshot,
+              activityName: inspection.activity?.activityName || null,
+              elementName: card.elementName || inspection.elementName || null,
+              goLabel,
+              goDetails: inspection.goDetails || null,
+              locationText: card.locationText || inspection.epsNode?.name || null,
+              mixIdOrGrade: entry.mixIdOrGrade || null,
+              truckNo: entry.truckNo || null,
+              deliveryChallanNo: entry.deliveryChallanNo || null,
+              quantityM3:
+                entry.quantityM3 === null || entry.quantityM3 === undefined
+                  ? null
+                  : String(entry.quantityM3),
+              specimenSize: '150 x 150 x 150 mm',
+              requiredStrengthMpa: requiredStrength,
+              calculationDetails: {
+                standardNote:
+                  'Compressive strength is calculated as maximum load divided by loaded area. For 150 mm cubes, loaded area is 22500 mm2.',
+                castDate,
+                dueDays,
+                requiredStrengthMpa: requiredStrength,
+              },
+              status: QualityCubeTestStatus.PENDING,
+            }),
+          );
+        }
+        cubeSerial += 1;
+      }
+    }
+
+    return rows.length ? this.cubeRegisterRepo.save(rows) : [];
+  }
+
   async approvePourCard(
     inspectionId: number,
     userId?: number,
@@ -606,6 +880,7 @@ export class QualityPourCardService {
         'Pour card must be submitted before it can be approved.',
       );
     }
+    this.validatePourCardForSubmission(card);
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;
@@ -613,7 +888,10 @@ export class QualityPourCardService {
     card.rejectedAt = null;
     card.rejectedByUserId = null;
     card.rejectionRemarks = null;
-    return this.pourCardRepo.save(card);
+    const saved = await this.pourCardRepo.save(card);
+    const inspection = await this.getInspectionOrThrow(inspectionId);
+    await this.ensureCubeRegisterForApprovedPourCard(saved, inspection);
+    return saved;
   }
 
   async rejectPourCard(
@@ -640,6 +918,7 @@ export class QualityPourCardService {
   async generatePourCardPdf(inspectionId: number): Promise<Buffer> {
     const card = await this.getPourCard(inspectionId);
     const inspection = await this.getInspectionOrThrow(inspectionId);
+    const goLabel = this.resolveGoLabel(inspection);
 
     return this.buildPdfBuffer((doc) => {
       doc.fontSize(16).font('Helvetica-Bold').text('CONCRETE POUR CARD', {
@@ -656,10 +935,16 @@ export class QualityPourCardService {
         ['Inspection ID', inspection.id, 'Status', card.status],
         ['Requested On', inspection.requestDate, 'Activity', inspection.activity?.activityName],
         ['Project', card.projectNameSnapshot, 'Element', card.elementName || inspection.elementName],
+        ['GO', goLabel, 'RFI Number', inspection.id],
         ['Client', card.clientName, 'Consultant', card.consultantName],
         ['Contractor', card.contractorName, 'Approved By', card.approvedByName],
         ['Location', card.locationText, 'EPS Node', inspection.epsNode?.name],
       ]);
+      if (inspection.goDetails) {
+        this.writePdfField(doc, 'GO Details / Description', inspection.goDetails, {
+          width: 515,
+        });
+      }
 
       this.writePdfSectionTitle(doc, 'Pour Entries');
 
@@ -705,6 +990,7 @@ export class QualityPourCardService {
     const inspection = await this.getInspectionWithClearanceContextOrThrow(
       inspectionId,
     );
+    const defaults = await this.buildInspectionDefaults(inspection);
     let card = await this.clearanceRepo.findOne({ where: { inspectionId } });
     if (!card) {
       const activationMeta = this.getClearanceActivationMeta(inspection);
@@ -714,13 +1000,14 @@ export class QualityPourCardService {
         activityId: inspection.activityId,
         epsNodeId: inspection.epsNodeId ?? null,
         activityLabel: inspection.activity?.activityName ?? null,
-        projectNameSnapshot: null,
+        projectNameSnapshot: defaults.projectName,
         elementName: inspection.elementName ?? null,
-        locationText: inspection.epsNode?.name || null,
+        locationText: defaults.locationPath,
         cardDate: inspection.requestDate ?? null,
-        contractorName: inspection.contractorName ?? inspection.vendorName ?? null,
+        contractorName: defaults.contractorName,
         formatNo: 'F/QA/20',
         revisionNo: '00',
+        pourLocation: defaults.pourLocation,
         activationStageTemplateId: activationMeta.triggerStageTemplateId,
         activationStageName: activationMeta.triggerStageName,
         isActivated: activationMeta.triggerStageApproved,
@@ -741,6 +1028,27 @@ export class QualityPourCardService {
       });
       card = await this.clearanceRepo.save(card);
     }
+    let defaultsChanged = false;
+    if (!card.projectNameSnapshot && defaults.projectName) {
+      card.projectNameSnapshot = defaults.projectName;
+      defaultsChanged = true;
+    }
+    if (!card.locationText && defaults.locationPath) {
+      card.locationText = defaults.locationPath;
+      defaultsChanged = true;
+    }
+    if (!card.pourLocation && defaults.pourLocation) {
+      card.pourLocation = defaults.pourLocation;
+      defaultsChanged = true;
+    }
+    if (!card.contractorName && defaults.contractorName) {
+      card.contractorName = defaults.contractorName;
+      defaultsChanged = true;
+    }
+    if (!card.elementName && inspection.elementName) {
+      card.elementName = inspection.elementName;
+      defaultsChanged = true;
+    }
     card = await this.syncClearanceActivationState(inspection, card);
     card.attachments = this.normalizeAttachments(card.attachments);
     card.attachmentChecklistSelections =
@@ -748,6 +1056,9 @@ export class QualityPourCardService {
         card.attachmentChecklistSelections,
       );
     card.signoffs = this.normalizeSignoffRows(card.signoffs);
+    if (defaultsChanged) {
+      card = await this.clearanceRepo.save(card);
+    }
     return card;
   }
 
@@ -1015,9 +1326,9 @@ export class QualityPourCardService {
           return [
             index + 1,
             attachmentLabels[key] || key,
-            value === 'YES' ? '[✔]' : '[ ]',
-            value === 'NO' ? '[✔]' : '[ ]',
-            value === 'NA' ? '[✔]' : '[ ]',
+            value === 'YES' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
+            value === 'NO' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
+            value === 'NA' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
             (card.attachmentChecklistSelections?.[key] || []).join(', '),
           ];
         }),
@@ -1113,3 +1424,4 @@ export class QualityPourCardService {
     }
   }
 }
+

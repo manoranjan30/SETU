@@ -403,6 +403,29 @@ export class QualityReportService {
         remarks: pageWidth - 40 - 280 - 45 - 45,
       };
       const tableHeaderHeight = 25;
+      const drawCheckbox = (
+        x: number,
+        y: number,
+        width: number,
+        checked: boolean,
+      ) => {
+        const boxSize = 10;
+        const boxX = x + (width - boxSize) / 2;
+        const boxY = y + 7;
+
+        doc.save();
+        doc.lineWidth(0.8).strokeColor('#111827');
+        doc.rect(boxX, boxY, boxSize, boxSize).stroke();
+        if (checked) {
+          doc
+            .lineWidth(1.4)
+            .moveTo(boxX + 2, boxY + 5)
+            .lineTo(boxX + 4.3, boxY + 7.5)
+            .lineTo(boxX + 8.3, boxY + 2.3)
+            .stroke();
+        }
+        doc.restore();
+      };
 
       // Table Header Background
       doc
@@ -577,21 +600,20 @@ export class QualityReportService {
               });
 
               // Checkboxes
-              doc.font('Helvetica-Bold');
               const isYes =
                 item.value === 'YES' || (item.isOk && item.value !== 'NA');
               const isNa = item.value === 'NA';
-              doc.text(
-                isYes ? '[ ✔ ]' : '[   ]',
+              drawCheckbox(
                 startX + colWidths.si + colWidths.desc,
-                currentY + 8,
-                { width: colWidths.yes, align: 'center' },
+                currentY,
+                colWidths.yes,
+                isYes,
               );
-              doc.text(
-                isNa ? '[ ✔ ]' : '[   ]',
+              drawCheckbox(
                 startX + colWidths.si + colWidths.desc + colWidths.yes,
-                currentY + 8,
-                { width: colWidths.na, align: 'center' },
+                currentY,
+                colWidths.na,
+                isNa,
               );
 
               if (item.remarks) {
@@ -1142,3 +1164,4 @@ export class QualityReportService {
     });
   }
 }
+

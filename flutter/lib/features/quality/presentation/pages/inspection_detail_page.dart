@@ -43,6 +43,72 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
   bool _isPdfDownloading = false;
 
   /// Downloads the PDF report and opens it with the system file viewer.
+  void _showExpandGoDialog(BuildContext context) {
+    int newTotal = 2;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Expand GO Series'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This will create additional GO parts for:\n${widget.inspection.activityName ?? 'this RFI'}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Total parts:', style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: newTotal > 2 ? () => setDialogState(() => newTotal--) : null,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('$newTotal',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: newTotal < 20 ? () => setDialogState(() => newTotal++) : null,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Part 1 already exists. Parts 2–$newTotal will be created.',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.read<QualityApprovalBloc>().add(ExpandGoSeries(
+                  inspectionId: widget.inspection.id,
+                  newTotalParts: newTotal,
+                ));
+              },
+              child: Text('Create ${newTotal - 1} Part(s)'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _downloadPdf() async {
     setState(() => _isPdfDownloading = true);
     try {
@@ -113,6 +179,15 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
           ],
         ),
         actions: [
+          // Expand GO Series — shown when this is a single-part FLOOR RFI
+          // and the user has permission to raise RFIs
+          if (PermissionService.of(context).canRaiseRfi &&
+              widget.inspection.totalParts == 1)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: 'Expand GO Series',
+              onPressed: () => _showExpandGoDialog(context),
+            ),
           // PDF report download
           _isPdfDownloading
               ? const Padding(
@@ -190,6 +265,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
                 'reject': 'Rejected',
                 'delegate': 'Step delegated',
                 'reverse': 'Approval reversed',
+                'expand_go': 'GO series expanded',
               }[state.action] ?? 'Done';
               msg = state.isOffline
                   ? '$label (queued — will sync when online)'
@@ -373,6 +449,9 @@ class _ChecklistTab extends StatelessWidget {
         // Pour Card / Pre-Pour Clearance quick-access panel
         if (state.inspection.requiresPourCard || state.inspection.requiresPourClearanceCard)
           _PourCardPanel(inspection: state.inspection),
+        // Linked checklists — previously approved RFIs referenced by this inspection
+        if (state.inspection.relatedChecklistInspectionIds.isNotEmpty)
+          _LinkedChecklistsSection(inspection: state.inspection),
         // Workflow approval timeline shown only when NOT using stage-level approval
         if (hasWorkflow && !usesStageApproval) _WorkflowTimeline(workflow: state.workflow!),
         if (state.stages.isEmpty)
@@ -429,9 +508,35 @@ class _PourCardPanel extends StatelessWidget {
                       color: Colors.blue.shade800,
                     ),
                   ),
+                  const Spacer(),
+                  // GO label badge (e.g. "GO 1") — shown when goLabel or goNo is set
+                  if (inspection.goLabel != null || inspection.goNo != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade700,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        inspection.goLabel ?? 'GO ${inspection.goNo}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                 ],
               ),
-              const SizedBox(height: 8),
+              // GO details text
+              if (inspection.goDetails != null && inspection.goDetails!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  inspection.goDetails!,
+                  style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+                ),
+              ],
+              const SizedBox(height: 8);
               Row(
                 children: [
                   if (inspection.requiresPourCard)
@@ -468,6 +573,8 @@ class _PourCardPanel extends StatelessWidget {
                               inspectionId: inspection.id,
                               activityName: inspection.activityName,
                               locationLabel: inspection.locationDisplay,
+                              projectId: inspection.projectId,
+                              epsNodeId: inspection.epsNodeId,
                             ),
                           ),
                         ),
@@ -485,6 +592,187 @@ class _PourCardPanel extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Linked Checklists Section
+// ---------------------------------------------------------------------------
+
+/// Shows the list of previously approved RFIs linked to this inspection.
+/// Each linked inspection is loaded lazily via a single floor-level API call
+/// and displayed as a compact info card for the approver to verify.
+class _LinkedChecklistsSection extends StatefulWidget {
+  final QualityInspection inspection;
+  const _LinkedChecklistsSection({required this.inspection});
+
+  @override
+  State<_LinkedChecklistsSection> createState() => _LinkedChecklistsSectionState();
+}
+
+class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
+  bool _expanded = false;
+  List<QualityInspection>? _linkedInspections;
+  bool _loading = false;
+
+  Future<void> _load() async {
+    if (_linkedInspections != null) return;
+    setState(() => _loading = true);
+    try {
+      final insp = widget.inspection;
+      final projectId = insp.projectId;
+      final epsNodeId = insp.epsNodeId;
+      if (projectId == null || epsNodeId == null) {
+        setState(() { _linkedInspections = []; _loading = false; });
+        return;
+      }
+      final raw = await sl<SetuApiClient>().getQualityInspections(
+        projectId: projectId,
+        epsNodeId: epsNodeId,
+      );
+      final linkedIds = widget.inspection.relatedChecklistInspectionIds.toSet();
+      final result = raw
+          .whereType<Map<String, dynamic>>()
+          .map(QualityInspection.fromJson)
+          .where((i) => linkedIds.contains(i.id))
+          .toList();
+      if (mounted) setState(() { _linkedInspections = result; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _linkedInspections = []; _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.inspection.relatedChecklistInspectionIds.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: Colors.amber.shade200),
+        ),
+        color: Colors.amber.shade50,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () {
+                setState(() => _expanded = !_expanded);
+                if (_expanded) _load();
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.link_rounded, size: 14, color: Colors.amber.shade800),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Linked Checklists ($count)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: Colors.amber.shade800,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_expanded) ...[
+              const Divider(height: 1),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (_linkedInspections == null || _linkedInspections!.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'No details available for linked RFIs.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                )
+              else
+                ..._linkedInspections!.map((linked) => _LinkedInspectionCard(linked: linked)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LinkedInspectionCard extends StatelessWidget {
+  final QualityInspection linked;
+  const _LinkedInspectionCard({required this.linked});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  linked.activityName ?? 'RFI #${linked.id}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: linked.status.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  linked.status.label,
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: linked.status.color),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          if (linked.goLabel != null || linked.goNo != null)
+            Row(children: [
+              Icon(Icons.water_drop_outlined, size: 11, color: Colors.blue.shade600),
+              const SizedBox(width: 3),
+              Text(linked.goLabel ?? 'GO ${linked.goNo}',
+                  style: TextStyle(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w600)),
+            ]),
+          if (linked.goDetails != null && linked.goDetails!.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(linked.goDetails!, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+          ],
+          if (linked.locationDisplay.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Row(children: [
+              Icon(Icons.location_on_outlined, size: 11, color: Colors.grey.shade500),
+              const SizedBox(width: 3),
+              Expanded(child: Text(linked.locationDisplay,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  overflow: TextOverflow.ellipsis)),
+            ]),
+          ],
+          Text('RFI #${linked.id}  ·  ${linked.requestDate}',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+          const Divider(height: 12),
+        ],
       ),
     );
   }
@@ -1313,7 +1601,7 @@ class _ActionBar extends StatelessWidget {
               // Delegate button — only shown in workflow mode with delegate permission
               if (useWorkflow && isAssignedApprover && ps.canDelegateInspection)
                 OutlinedButton.icon(
-                  onPressed: () => _showDelegateDialog(context),
+                  onPressed: () => _showDelegateDialog(context, state.inspection.projectId),
                   icon: const Icon(Icons.person_outline, size: 16),
                   label: const Text('Delegate'),
                   style: OutlinedButton.styleFrom(
@@ -1337,8 +1625,18 @@ class _ActionBar extends StatelessWidget {
                     ),
                   ),
                 ),
-              // Stage-based flow has no single final-approve button.
-              // Approval happens per-stage via the Approve Stage button in each stage card.
+              const Spacer(),
+              // Workflow advance — signature-required approve for multi-level workflow
+              if (useWorkflow && isAssignedApprover && !hasPendingObs)
+                FilledButton.icon(
+                  onPressed: () => SignatureApprovalSheet.show(context),
+                  icon: const Icon(Icons.verified_outlined, size: 16),
+                  label: const Text('Approve'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
             ],
           ),
         ],
@@ -1424,62 +1722,19 @@ class _ActionBar extends StatelessWidget {
   }
 
 
-  /// Shows a dialog to collect a delegate user ID and optional comments,
-  /// then dispatches [DelegateWorkflowStep].
-  /// Gated behind [PermissionService.canDelegateInspection].
-  void _showDelegateDialog(BuildContext context) {
-    final userIdCtrl = TextEditingController();
-    final commentsCtrl = TextEditingController();
+  /// Shows a dialog with the list of eligible approvers loaded from the API,
+  /// then dispatches [DelegateWorkflowStep] with the selected user's ID.
+  void _showDelegateDialog(BuildContext context, int? projectId) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delegate Step'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Numeric user ID input for the delegate
-            TextField(
-              controller: userIdCtrl,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Delegate to User ID *',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: commentsCtrl,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Comments (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              // Validate that a numeric user ID was entered
-              final id = int.tryParse(userIdCtrl.text.trim());
-              if (id == null) return;
-              context.read<QualityApprovalBloc>().add(DelegateWorkflowStep(
-                    toUserId: id,
-                    comments: commentsCtrl.text.trim().isEmpty
-                        ? null
-                        : commentsCtrl.text.trim(),
-                  ));
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.indigo.shade700),
-            child: const Text('Delegate'),
-          ),
-        ],
+      builder: (ctx) => _DelegateDialog(
+        projectId: projectId,
+        onDelegate: (userId, comments) {
+          context.read<QualityApprovalBloc>().add(DelegateWorkflowStep(
+                toUserId: userId,
+                comments: comments,
+              ));
+        },
       ),
     );
   }
@@ -1519,6 +1774,134 @@ class _ActionBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delegate Dialog — loads eligible approvers from API and shows a picker
+// ---------------------------------------------------------------------------
+
+class _DelegateDialog extends StatefulWidget {
+  final int? projectId;
+  final void Function(int userId, String? comments) onDelegate;
+
+  const _DelegateDialog({required this.projectId, required this.onDelegate});
+
+  @override
+  State<_DelegateDialog> createState() => _DelegateDialogState();
+}
+
+class _DelegateDialogState extends State<_DelegateDialog> {
+  final _commentsCtrl = TextEditingController();
+  List<Map<String, dynamic>> _users = [];
+  Map<String, dynamic>? _selected;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _commentsCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (widget.projectId == null) {
+      setState(() { _loading = false; _error = 'Project ID unavailable'; });
+      return;
+    }
+    try {
+      final users = await sl<SetuApiClient>().getEligibleApprovers(widget.projectId!);
+      if (mounted) setState(() { _users = users; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = 'Could not load approvers'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Delegate Step'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Text(_error!, style: TextStyle(color: Colors.red.shade700))
+            else if (_users.isEmpty)
+              const Text('No eligible approvers found for this project.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey))
+            else
+              DropdownButtonFormField<Map<String, dynamic>>(
+                value: _selected,
+                isExpanded: true,
+                hint: const Text('Select approver'),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                items: _users.map((u) {
+                  final name = u['displayName'] as String? ??
+                      u['fullName'] as String? ?? 'User ${u['id']}';
+                  final role = u['designation'] as String? ?? u['role'] as String?;
+                  return DropdownMenuItem(
+                    value: u,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(name, style: const TextStyle(fontSize: 13)),
+                        if (role != null)
+                          Text(role,
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (v) => setState(() => _selected = v),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _commentsCtrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Comments (optional)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _selected == null ? null : () {
+            final id = _selected!['id'] as int?;
+            if (id == null) return;
+            Navigator.pop(context);
+            widget.onDelegate(
+              id,
+              _commentsCtrl.text.trim().isEmpty ? null : _commentsCtrl.text.trim(),
+            );
+          },
+          style: FilledButton.styleFrom(backgroundColor: Colors.indigo.shade700),
+          child: const Text('Delegate'),
+        ),
+      ],
     );
   }
 }
