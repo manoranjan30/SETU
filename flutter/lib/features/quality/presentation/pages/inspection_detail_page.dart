@@ -83,7 +83,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
               ),
               const SizedBox(height: 8),
               Text(
-                'Part 1 already exists. Parts 2–$newTotal will be created.',
+                'Sets total GOs to $newTotal. Raise the remaining GOs from the activity list.',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
               ),
             ],
@@ -97,7 +97,9 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
               onPressed: () {
                 Navigator.pop(ctx);
                 context.read<QualityApprovalBloc>().add(ExpandGoSeries(
-                  inspectionId: widget.inspection.id,
+                  projectId: widget.inspection.projectId ?? 0,
+                  epsNodeId: widget.inspection.epsNodeId ?? 0,
+                  activityId: widget.inspection.activityId,
                   newTotalParts: newTotal,
                 ));
               },

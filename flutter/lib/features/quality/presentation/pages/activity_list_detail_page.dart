@@ -262,6 +262,12 @@ class _ActivityListBody extends StatelessWidget {
                             ? (inspection) =>
                                 _openInspectionApproval(context, inspection)
                             : null,
+                        // Expand GO series: add more GOs to an existing series
+                        onExpandGo: canRaiseMore &&
+                                row.allInspections.isNotEmpty &&
+                                row.activity.applicabilityLevel != 'UNIT'
+                            ? () => _showExpandGoDialog(context, row)
+                            : null,
                       );
                     },
                   ),
@@ -325,7 +331,7 @@ class _ActivityListBody extends StatelessWidget {
       BuildContext context, ActivityRow row, int partNo, int totalParts) {
     _showDrawingNoPrompt(
       context,
-      title: 'Raise Part $partNo of $totalParts',
+      title: 'Raise GO $partNo of $totalParts',
       onConfirm: (drawingNo) {
         context.read<QualityRequestBloc>().add(RaiseRfi(
               projectId: projectId,
@@ -335,7 +341,7 @@ class _ActivityListBody extends StatelessWidget {
               drawingNo: drawingNo,
               partNo: partNo,
               totalParts: totalParts,
-              partLabel: 'Part $partNo',
+              partLabel: 'GO $partNo',
               documentType: 'FLOOR_RFI',
               vendorId: row.inspection?.vendorId,
               vendorName: row.inspection?.vendorName,
@@ -369,6 +375,109 @@ class _ActivityListBody extends StatelessWidget {
   /// Shows a minimal dialog that collects a drawing number, then calls
   /// [onConfirm] with the trimmed value. Used for quick-raises from
   /// progress chips where the full RFI dialog is not needed again.
+  /// Opens a dialog to expand the GO series for [row]'s activity.
+  /// Loads the current totalParts from existing inspections and lets the user
+  /// set a higher total — then calls the backend expand-go endpoint.
+  void _showExpandGoDialog(BuildContext context, ActivityRow row) {
+    final currentTotal =
+        row.allInspections.fold(1, (max, i) => i.totalParts > max ? i.totalParts : max);
+    int newTotal = currentTotal + 1;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: const Text('Add GO'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Activity: ${row.activity.activityName}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Current total GOs: $currentTotal',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('New total GOs:', style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: newTotal > currentTotal + 1
+                        ? () => setS(() => newTotal--)
+                        : null,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('$newTotal',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: newTotal < 20
+                        ? () => setS(() => newTotal++)
+                        : null,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'GO ${currentTotal + 1}–$newTotal will be added to the series.',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  await sl<SetuApiClient>().expandGoSeries(
+                    projectId: projectId,
+                    epsNodeId: epsNodeId,
+                    activityId: row.activity.id,
+                    newTotalParts: newTotal,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                          'GO series expanded to $newTotal GOs. Raise the new GOs from the list.'),
+                      backgroundColor: Colors.green.shade700,
+                    ));
+                    context
+                        .read<QualityRequestBloc>()
+                        .add(const RefreshCurrentList());
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('Failed to expand GO series: $e'),
+                      backgroundColor: Colors.red.shade700,
+                    ));
+                  }
+                }
+              },
+              child: Text('Add ${newTotal - currentTotal} GO(s)'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showDrawingNoPrompt(
     BuildContext context, {
     required String title,
@@ -912,7 +1021,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         comments: comments,
         partNo: 1,
         totalParts: totalParts,
-        partLabel: isMultiGo ? 'Part 1' : 'Single',
+        partLabel: isMultiGo ? 'GO 1' : 'GO 1',
         documentType: 'FLOOR_RFI',
         vendorId: vendorId,
         vendorName: vendorName,
@@ -1185,7 +1294,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
               if (_rfiMode == 'MULTI_GO') ...[
                 const SizedBox(height: 10),
                 Row(children: [
-                  const Text('Number of parts:',
+                  const Text('Total GOs:',
                       style: TextStyle(fontSize: 13)),
                   const SizedBox(width: 8),
                   SizedBox(
@@ -1207,7 +1316,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                 ]),
                 const SizedBox(height: 4),
                 Text(
-                  'Part 1 is raised now. Raise Parts 2–$_rfiParts after Part 1 is approved.',
+                  'GO 1 is raised now. Use "Add GO" on the activity card to raise GOs 2–$_rfiParts.',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
               ],
