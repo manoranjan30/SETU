@@ -9,9 +9,12 @@ class ActivityCard extends StatefulWidget {
   final ActivityRow row;
   final VoidCallback? onRaiseRfi;
 
-  /// Called when the user taps "Raise Part X" in the multi-go progress section.
-  /// [partNo] is the part number to raise, [totalParts] is the total.
+  /// Called when the user taps "Raise GO X" in the multi-go progress section.
+  /// [partNo] is the GO number to raise, [totalParts] is the total.
   final void Function(int partNo, int totalParts)? onRaisePart;
+
+  /// Called when the user taps "+ Add GO" to expand the series.
+  final VoidCallback? onExpandGo;
 
   /// Called when the user taps a unit chip or "Raise All" in unit-wise mode.
   /// [unitId] is the qualityUnitId, [unitName] is the display label.
@@ -28,6 +31,7 @@ class ActivityCard extends StatefulWidget {
     this.onRaisePart,
     this.onRaiseUnit,
     this.onViewApproval,
+    this.onExpandGo,
   });
 
   @override
@@ -156,12 +160,15 @@ class _ActivityCardState extends State<ActivityCard> {
                 ],
 
                 // ── Multi-Go progress ──────────────────────────────────
+                // Show for any FLOOR-level activity that has at least one
+                // raised inspection — whether single-GO or multi-GO.
                 if (!locked &&
                     activity.applicabilityLevel != 'UNIT' &&
-                    widget.row.allInspections.any((i) => i.totalParts > 1))
+                    widget.row.allInspections.isNotEmpty)
                   _MultiGoProgress(
                     allInspections: widget.row.allInspections,
                     onRaisePart: widget.onRaisePart,
+                    onExpandGo: widget.onExpandGo,
                   ),
 
                 // ── Unit-Wise progress ─────────────────────────────────
@@ -391,10 +398,12 @@ class _PointChip extends StatelessWidget {
 class _MultiGoProgress extends StatelessWidget {
   final List<QualityInspection> allInspections;
   final void Function(int partNo, int totalParts)? onRaisePart;
+  final VoidCallback? onExpandGo;
 
   const _MultiGoProgress({
     required this.allInspections,
     this.onRaisePart,
+    this.onExpandGo,
   });
 
   @override
@@ -423,32 +432,66 @@ class _MultiGoProgress extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header label
+          // Header row: label + "Add GO" button
           Row(
             children: [
               Icon(Icons.layers_outlined,
                   size: 13, color: Colors.blue.shade700),
               const SizedBox(width: 4),
-              Text(
-                'Multi-Go Progress ($raisedCount/$totalParts)',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue.shade700,
+              Expanded(
+                child: Text(
+                  'GO Progress ($raisedCount/$totalParts)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue.shade700,
+                  ),
                 ),
               ),
+              // "+ Add GO" expands the series total
+              if (onExpandGo != null)
+                GestureDetector(
+                  onTap: onExpandGo,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade700,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add, size: 11, color: Colors.white),
+                        const SizedBox(width: 3),
+                        const Text('Add GO',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            )),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 6),
-          // Part chips
+          // GO chips
           Wrap(
             spacing: 6,
             runSpacing: 4,
             children: List.generate(totalParts, (i) {
               final partNo = i + 1;
               final isRaised = raisedPartNos.contains(partNo);
+              // Use goLabel from the matching inspection if available
+              final matches = allInspections.where((insp) => insp.partNo == partNo);
+              final matchInsp = matches.isEmpty ? null : matches.first;
+              final goLabel = matchInsp?.goLabel ??
+                  (matchInsp?.partLabel?.isNotEmpty == true
+                      ? matchInsp!.partLabel!
+                      : 'GO $partNo');
               if (isRaised) {
-                // Already raised — show greyed label
+                // Already raised — green chip
                 return Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 4),
@@ -464,7 +507,7 @@ class _MultiGoProgress extends StatelessWidget {
                           size: 12, color: Colors.green.shade700),
                       const SizedBox(width: 3),
                       Text(
-                        'Part $partNo Raised',
+                        '$goLabel Raised',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.green.shade700,
@@ -475,7 +518,7 @@ class _MultiGoProgress extends StatelessWidget {
                   ),
                 );
               } else {
-                // Not yet raised — show action button
+                // Not yet raised — blue action chip
                 return GestureDetector(
                   onTap: onRaisePart != null
                       ? () => onRaisePart!(partNo, totalParts)
@@ -501,7 +544,7 @@ class _MultiGoProgress extends StatelessWidget {
                                 : theme.disabledColor),
                         const SizedBox(width: 3),
                         Text(
-                          'Raise Part $partNo',
+                          'Raise $goLabel',
                           style: TextStyle(
                             fontSize: 11,
                             color: onRaisePart != null

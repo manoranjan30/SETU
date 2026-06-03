@@ -1010,18 +1010,24 @@ class SetuApiClient {
     return list.cast<Map<String, dynamic>>();
   }
 
-  /// Expands an existing single-GO floor RFI into a multi-part series.
-  /// Creates Parts 2 … [newTotalParts] and returns the new inspection records.
-  Future<List<Map<String, dynamic>>> expandGoSeries({
-    required int inspectionId,
+  /// Expands an existing floor RFI series to a higher total-part count.
+  /// Backend expects projectId/epsNodeId/activityId — NOT inspectionId.
+  Future<Map<String, dynamic>> expandGoSeries({
+    required int projectId,
+    required int epsNodeId,
+    required int activityId,
     required int newTotalParts,
   }) async {
     final response = await _dio.post(
       ApiEndpoints.expandGoSeries,
-      data: {'inspectionId': inspectionId, 'newTotalParts': newTotalParts},
+      data: {
+        'projectId': projectId,
+        'epsNodeId': epsNodeId,
+        'activityId': activityId,
+        'newTotalParts': newTotalParts,
+      },
     );
-    final list = response.data as List<dynamic>? ?? [];
-    return list.whereType<Map<String, dynamic>>().toList();
+    return response.data as Map<String, dynamic>? ?? {};
   }
 
   // ==================== LABOR ====================

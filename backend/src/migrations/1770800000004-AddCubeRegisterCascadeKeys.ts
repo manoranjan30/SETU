@@ -11,6 +11,24 @@ export class AddCubeRegisterCascadeKeys1770800000004
     }
 
     await queryRunner.query(`
+      DELETE FROM "quality_cube_test_register" cube
+      WHERE cube."inspectionId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "quality_inspections" inspection
+          WHERE inspection."id" = cube."inspectionId"
+        )
+    `);
+    await queryRunner.query(`
+      DELETE FROM "quality_cube_test_register" cube
+      WHERE cube."pourCardId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "quality_pour_cards" pour_card
+          WHERE pour_card."id" = cube."pourCardId"
+        )
+    `);
+    await queryRunner.query(`
       ALTER TABLE "quality_cube_test_register"
       DROP CONSTRAINT IF EXISTS "FK_quality_cube_register_inspection"
     `);

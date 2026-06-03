@@ -204,14 +204,20 @@ class ReverseWorkflowStep extends QualityApprovalEvent {
   List<Object?> get props => [reason];
 }
 
-/// Expand a single-GO floor RFI into a multi-part series (Part 2, Part 3 …).
-/// Only valid when the inspection is a single-part (totalParts == 1) FLOOR RFI.
+/// Expand an existing floor RFI series to a higher total-part count.
 class ExpandGoSeries extends QualityApprovalEvent {
-  final int inspectionId;
+  final int projectId;
+  final int epsNodeId;
+  final int activityId;
   final int newTotalParts;
-  const ExpandGoSeries({required this.inspectionId, required this.newTotalParts});
+  const ExpandGoSeries({
+    required this.projectId,
+    required this.epsNodeId,
+    required this.activityId,
+    required this.newTotalParts,
+  });
   @override
-  List<Object?> get props => [inspectionId, newTotalParts];
+  List<Object?> get props => [projectId, epsNodeId, activityId, newTotalParts];
 }
 
 /// Load only inspections where MY approval is currently pending.
@@ -896,7 +902,9 @@ class QualityApprovalBloc
     emit(QualityApprovalLoading());
     try {
       await _apiClient.expandGoSeries(
-        inspectionId: event.inspectionId,
+        projectId: event.projectId,
+        epsNodeId: event.epsNodeId,
+        activityId: event.activityId,
         newTotalParts: event.newTotalParts,
       );
       emit(ApprovalActionQueued(
