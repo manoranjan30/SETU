@@ -58,6 +58,14 @@ class UpdateAttachment extends ClearanceCardEvent {
   List<Object?> get props => [key, value];
 }
 
+class UpdateAttachmentChecklistSelection extends ClearanceCardEvent {
+  final String key;
+  final List<int> selectedIds;
+  const UpdateAttachmentChecklistSelection(this.key, this.selectedIds);
+  @override
+  List<Object?> get props => [key, selectedIds];
+}
+
 class AddSignoff extends ClearanceCardEvent {
   final String department;
   final String? designation;
@@ -77,7 +85,9 @@ class UpdateSignoffPerson extends ClearanceCardEvent {
 
 class MarkSignoffSigned extends ClearanceCardEvent {
   final int index;
-  const MarkSignoffSigned(this.index);
+  final String signatureData;
+  final String signedByName;
+  const MarkSignoffSigned(this.index, this.signatureData, this.signedByName);
   @override
   List<Object?> get props => [index];
 }
@@ -174,6 +184,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     on<LoadClearanceCard>(_onLoad);
     on<UpdateClearanceHeader>(_onUpdateHeader);
     on<UpdateAttachment>(_onUpdateAttachment);
+    on<UpdateAttachmentChecklistSelection>(_onUpdateAttachmentChecklistSelection);
     on<AddSignoff>(_onAddSignoff);
     on<UpdateSignoffPerson>(_onUpdateSignoffPerson);
     on<MarkSignoffSigned>(_onMarkSigned);
@@ -225,6 +236,15 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     emit(ClearanceCardLoaded(_card!));
   }
 
+  void _onUpdateAttachmentChecklistSelection(
+      UpdateAttachmentChecklistSelection event, Emitter<ClearanceCardState> emit) {
+    if (_card == null) return;
+    final selections = Map<String, List<int>>.from(_card!.attachmentChecklistSelections)
+      ..[event.key] = List<int>.from(event.selectedIds);
+    _card = _card!.copyWith(attachmentChecklistSelections: selections);
+    emit(ClearanceCardLoaded(_card!));
+  }
+
   void _onAddSignoff(AddSignoff event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     final signoffs = List<ClearanceSignoff>.from(_card!.signoffs)
@@ -256,6 +276,9 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       signoffs[event.index] = signoffs[event.index].copyWith(
         status: ClearanceSignoffStatus.signed,
         signedDate: DateTime.now().toIso8601String(),
+        signatureData: event.signatureData,
+        signatureMode: 'DRAWN_NOW',
+        signedByName: event.signedByName,
       );
     }
     _card = _card!.copyWith(signoffs: signoffs);

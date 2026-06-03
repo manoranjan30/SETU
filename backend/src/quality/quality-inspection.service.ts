@@ -71,6 +71,8 @@ export interface CreateInspectionDto {
   elementName?: string;
   goNo?: number;
   goLabel?: string;
+  goDetails?: string;
+  relatedChecklistInspectionIds?: number[];
   contractorName?: string;
   processCode?: string;
   documentType?: string;
@@ -351,7 +353,7 @@ export class QualityInspectionService {
       viewerUserId,
       viewerIsAdmin,
     );
-    return withWorkflow;
+    return this.attachRelatedChecklistSummaries(withWorkflow);
   }
 
   async getApprovalDashboard(projectId: number, userId: number) {
@@ -663,6 +665,8 @@ export class QualityInspectionService {
     const processCode = this.deriveInspectionProcessCode(dto);
     const documentType = this.deriveInspectionDocumentType(dto, applicability);
     const { goNo, goLabel } = this.deriveGoFields(dto, applicability);
+    const relatedChecklistInspectionIds =
+      await this.validateRelatedChecklistInspectionIds(dto);
 
     // 7. Create Inspection
     const inspection = this.inspectionRepo.create({
@@ -680,6 +684,8 @@ export class QualityInspectionService {
         ((dto.totalParts || 1) > 1 ? `GO ${dto.partNo || 1}` : null),
       goNo,
       goLabel,
+      goDetails: dto.goDetails?.trim() || null,
+      relatedChecklistInspectionIds,
       comments: dto.comments,
       requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
       status: InspectionStatus.PENDING,
@@ -1144,6 +1150,122 @@ export class QualityInspectionService {
       throw new NotFoundException('Workflow is not configured for this inspection');
     }
 
+    const sortedSteps = [...(run.steps || [])].sort(
+      (a, b) => a.stepOrder - b.stepOrder,
+    );
+    if (sortedSteps.length === 0) {
+      const existingLegacyApproval = this.getActiveStageApprovalSignatures(
+        stage,
+      ).find((signature: any) => signature.approvalLevelOrder == null);
+      if (existingLegacyApproval || stage.status === StageStatus.APPROVED) {
+        throw new BadRequestException('Stage is already approved');
+      }
+
+      const signer = await this.getApproverSnapshot(
+        stage.inspection.projectId,
+        userId,
+      );
+      const now = new Date();
+      stage.completedAt = now;
+      stage.completedBy = String(userId);
+
+      const fingerprint = this.complianceService.generateFingerprint({
+        stageId,
+        items: stage.items || [],
+        metadata: { timestamp: now, user: String(userId) },
+      });
+      const approvalEntity = this.signatureRepo.create({
+          stageId,
+          inspectionId,
+          workflowStepId: undefined,
+          approvalLevelOrder: undefined,
+          approvalLevelName: 'Direct Stage Approval',
+          approvalAssignedUserId: undefined,
+          approvalAssignedRoleId: undefined,
+          isAutoInherited: false,
+          inheritedFromStepOrder: undefined,
+          userId,
+          signedByUserId: userId,
+          actionType: 'STAGE_APPROVE',
+          role: signer.roleLabel || (isAdmin ? 'Admin' : 'Approver'),
+          signedBy: String(userId),
+          signerDisplayName: signer.displayName,
+          signerCompany: signer.companyLabel,
+          signerRoleLabel: signer.roleLabel || (isAdmin ? 'Admin' : 'Approver'),
+          sourceType: signer.sourceType,
+          signatureData,
+          lockHash: fingerprint,
+          metadata: {
+            timestamp: now,
+            ...(signatureEvidence || {}),
+            identityBound: true,
+            signatureMode:
+              (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
+            directStageApproval: true,
+          } as any,
+        });
+      const approval = await this.signatureRepo.save(approvalEntity);
+
+      stage.signatures = [...(stage.signatures || []), approval];
+      stage.status = StageStatus.APPROVED;
+      stage.isLocked = true;
+      stage.lockedAt = now;
+      stage.lockedByUserId = userId;
+      await this.stageRepo.save(stage);
+
+      const inspection = await this.inspectionRepo.findOne({
+        where: { id: inspectionId },
+        relations: ['stages', 'stages.signatures'],
+      });
+      if (!inspection) throw new NotFoundException('Inspection not found');
+
+      const totalStages = inspection.stages.length;
+      const approvedStages = inspection.stages.filter((inspectionStage: any) =>
+        this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
+      ).length;
+
+      if (approvedStages > 0 && approvedStages < totalStages) {
+        inspection.status = InspectionStatus.PARTIALLY_APPROVED;
+        inspection.isLocked = false;
+        inspection.lockedAt = null;
+        inspection.lockedByUserId = null;
+      } else if (approvedStages === totalStages && totalStages > 0) {
+        inspection.status = InspectionStatus.APPROVED;
+        inspection.isLocked = true;
+        inspection.lockedAt = now;
+        inspection.lockedByUserId = userId;
+        inspection.inspectionDate = now.toISOString().split('T')[0];
+        inspection.inspectedBy = signer.displayName;
+      }
+      await this.inspectionRepo.save(inspection);
+
+      await this.auditService.log(
+        userId,
+        'QUALITY',
+        'STAGE_APPROVE',
+        String(inspectionId),
+        inspection.epsNodeId,
+        {
+          stageId,
+          stageName: stage.stageTemplate?.name,
+          comments,
+          signer: signer.displayName,
+          company: signer.companyLabel,
+          role: signer.roleLabel,
+          directStageApproval: true,
+        },
+      );
+
+      return {
+        success: true,
+        approvedStages,
+        totalStages,
+        inspectionStatus: inspection.status,
+        signer,
+        stageApproval: this.buildStageApprovalDetails(stage, run),
+      };
+    }
+
     const eligibleSteps =
       await this.inspectionWorkflowService.getEligibleApprovalStepsForUser(
         inspectionId,
@@ -1156,9 +1278,6 @@ export class QualityInspectionService {
       );
     }
 
-    const sortedSteps = [...(run.steps || [])].sort(
-      (a, b) => a.stepOrder - b.stepOrder,
-    );
     const highestEligibleStep = eligibleSteps[eligibleSteps.length - 1];
     const candidateSteps = sortedSteps.filter(
       (step) => step.stepOrder <= highestEligibleStep.stepOrder,
@@ -1672,6 +1791,75 @@ export class QualityInspectionService {
         },
       },
     });
+  }
+
+  private normalizeRelatedChecklistInspectionIds(input?: number[]) {
+    if (!Array.isArray(input)) {
+      return [];
+    }
+    return Array.from(
+      new Set(
+        input
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    );
+  }
+
+  private async validateRelatedChecklistInspectionIds(dto: CreateInspectionDto) {
+    const ids = this.normalizeRelatedChecklistInspectionIds(
+      dto.relatedChecklistInspectionIds,
+    );
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const related = await this.inspectionRepo.find({
+      where: { id: In(ids), projectId: dto.projectId },
+    });
+    const foundIds = new Set(related.map((inspection) => inspection.id));
+    const missingIds = ids.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new BadRequestException(
+        `Related checklist RFI(s) not found in this project: ${missingIds.join(', ')}.`,
+      );
+    }
+    return ids;
+  }
+
+  private async attachRelatedChecklistSummaries(inspection: any) {
+    const ids = this.normalizeRelatedChecklistInspectionIds(
+      inspection.relatedChecklistInspectionIds,
+    );
+    if (ids.length === 0) {
+      return { ...inspection, relatedChecklistInspections: [] };
+    }
+
+    const related = await this.inspectionRepo.find({
+      where: { id: In(ids) },
+      relations: ['activity'],
+    });
+    const relatedById = new Map(related.map((item) => [item.id, item]));
+
+    return {
+      ...inspection,
+      relatedChecklistInspections: ids
+        .map((id) => relatedById.get(id))
+        .filter(Boolean)
+        .map((item: any) => ({
+          id: item.id,
+          activityId: item.activityId,
+          activityName: item.activity?.activityName || `RFI #${item.id}`,
+          status: item.status,
+          requestDate: item.requestDate,
+          goNo: item.goNo,
+          goLabel: item.goLabel,
+          partNo: item.partNo,
+          partLabel: item.partLabel,
+          drawingNo: item.drawingNo,
+          elementName: item.elementName,
+        })),
+    };
   }
 
   private getEffectiveChecklistIdsForActivity(activity?: {

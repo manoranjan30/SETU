@@ -499,6 +499,9 @@ class SetuApiClient {
     int? qualityUnitId,
     int? vendorId,
     String? vendorName,
+    String? elementName,
+    String? goDetails,
+    List<int>? relatedChecklistInspectionIds,
   }) async {
     final response = await _dio.post(
       ApiEndpoints.raiseRfi,
@@ -517,6 +520,10 @@ class SetuApiClient {
         if (qualityUnitId != null) 'qualityUnitId': qualityUnitId,
         if (vendorId != null) 'vendorId': vendorId,
         if (vendorName != null && vendorName.isNotEmpty) 'vendorName': vendorName,
+        if (elementName != null && elementName.isNotEmpty) 'elementName': elementName,
+        if (goDetails != null && goDetails.isNotEmpty) 'goDetails': goDetails,
+        if (relatedChecklistInspectionIds != null && relatedChecklistInspectionIds.isNotEmpty)
+          'relatedChecklistInspectionIds': relatedChecklistInspectionIds,
       },
     );
     return response.data;
@@ -990,6 +997,31 @@ class SetuApiClient {
     // Cast elements individually; a direct `.cast<>()` on a JSON list is safe here.
     final list = response.data as List<dynamic>? ?? [];
     return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Returns the list of users eligible to approve inspections in [projectId].
+  /// Used to populate the delegation picker in the inspection detail page.
+  Future<List<Map<String, dynamic>>> getEligibleApprovers(int projectId) async {
+    final response = await _dio.get(
+      ApiEndpoints.eligibleApprovers,
+      queryParameters: {'projectId': projectId},
+    );
+    final list = response.data as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Expands an existing single-GO floor RFI into a multi-part series.
+  /// Creates Parts 2 … [newTotalParts] and returns the new inspection records.
+  Future<List<Map<String, dynamic>>> expandGoSeries({
+    required int inspectionId,
+    required int newTotalParts,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.expandGoSeries,
+      data: {'inspectionId': inspectionId, 'newTotalParts': newTotalParts},
+    );
+    final list = response.data as List<dynamic>? ?? [];
+    return list.whereType<Map<String, dynamic>>().toList();
   }
 
   // ==================== LABOR ====================

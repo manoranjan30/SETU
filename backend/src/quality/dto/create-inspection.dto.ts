@@ -1,4 +1,10 @@
-import { IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateInspectionDto {
   @IsInt()
@@ -79,6 +85,16 @@ export class CreateInspectionDto {
   @IsString()
   @MaxLength(100)
   goLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  goDetails?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  relatedChecklistInspectionIds?: number[];
 
   @IsOptional()
   @IsString()

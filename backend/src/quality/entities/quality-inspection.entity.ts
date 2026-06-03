@@ -106,6 +106,16 @@ export class QualityInspection {
   @Column({ type: 'varchar', name: 'go_label', length: 100, nullable: true })
   goLabel: string | null;
 
+  @Column({ type: 'text', name: 'go_details', nullable: true })
+  goDetails: string | null;
+
+  @Column({
+    type: 'jsonb',
+    name: 'related_checklist_inspection_ids',
+    default: () => "'[]'::jsonb",
+  })
+  relatedChecklistInspectionIds: number[];
+
   @Column({ type: 'varchar', name: 'drawing_no', length: 100, nullable: true })
   drawingNo: string | null;
 

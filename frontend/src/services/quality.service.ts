@@ -17,6 +17,7 @@ import type {
   QualityMaterialReceipt,
   QualityMaterialTestObligation,
   QualityMaterialTestResult,
+  QualityCubeTestRegister,
 } from "../types/quality";
 
 const BASE_URL = "/quality";
@@ -469,6 +470,21 @@ export const qualityService = {
     projectId: number,
   ): Promise<QualityMaterialTestResult[]> => {
     const res = await api.get(`${BASE_URL}/${projectId}/material-test-results`);
+    return res.data;
+  },
+
+  getCubeTestRegister: async (
+    projectId: number,
+  ): Promise<QualityCubeTestRegister[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/cube-test-register`);
+    return res.data;
+  },
+
+  updateCubeTestRegister: async (
+    id: number,
+    data: Partial<QualityCubeTestRegister>,
+  ): Promise<QualityCubeTestRegister> => {
+    const res = await api.put(`${BASE_URL}/cube-test-register/${id}`, data);
     return res.data;
   },
 

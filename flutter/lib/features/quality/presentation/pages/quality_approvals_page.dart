@@ -249,7 +249,7 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
   }
 }
 
-class _InspectionList extends StatelessWidget {
+class _InspectionList extends StatefulWidget {
   final String title;
   final List<QualityInspection> inspections;
   final VoidCallback onRefresh;
@@ -263,50 +263,172 @@ class _InspectionList extends StatelessWidget {
   });
 
   @override
+  State<_InspectionList> createState() => _InspectionListState();
+}
+
+class _InspectionListState extends State<_InspectionList> {
+  String _floorFilter = '';
+  String _goFilter = '';
+  String _sortBy = 'newest';
+
+  List<QualityInspection> get _filtered {
+    var list = widget.inspections;
+
+    if (_floorFilter.isNotEmpty) {
+      final q = _floorFilter.toLowerCase();
+      list = list.where((i) =>
+          (i.floorName?.toLowerCase().contains(q) ?? false) ||
+          i.locationDisplay.toLowerCase().contains(q)).toList();
+    }
+    if (_goFilter.isNotEmpty) {
+      final q = _goFilter.toLowerCase();
+      list = list.where((i) =>
+          (i.goLabel?.toLowerCase().contains(q) ?? false) ||
+          (i.goNo?.toString() == _goFilter)).toList();
+    }
+
+    final sorted = List<QualityInspection>.from(list);
+    switch (_sortBy) {
+      case 'oldest':
+        sorted.sort((a, b) => a.requestDate.compareTo(b.requestDate));
+      case 'overdue':
+        sorted.sort((a, b) {
+          final aDate = a.slaDueAt ?? DateTime(9999);
+          final bDate = b.slaDueAt ?? DateTime(9999);
+          return aDate.compareTo(bDate); // earliest due first = most overdue
+        });
+      case 'obs':
+        sorted.sort((a, b) => b.pendingObservationCount.compareTo(a.pendingObservationCount));
+      default: // newest
+        sorted.sort((a, b) => b.requestDate.compareTo(a.requestDate));
+    }
+    return sorted;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final pending = inspections.where(_isPendingStatus).length;
-    final approved = inspections
+    final list = _filtered;
+    final all = widget.inspections;
+    final pending = all.where(_isPendingStatus).length;
+    final approved = all
         .where((i) =>
             i.status == InspectionStatus.approved ||
             i.status == InspectionStatus.provisionallyApproved)
         .length;
     final rejected =
-        inspections.where((i) => i.status == InspectionStatus.rejected).length;
+        all.where((i) => i.status == InspectionStatus.rejected).length;
 
-    return RefreshIndicator(
-      onRefresh: () async => onRefresh(),
-      child: inspections.isEmpty
-          ? ListView(children: const [
-              SizedBox(height: 180),
-              Center(child: Text('No inspections found'))
-            ])
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: inspections.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return Card(
-                    elevation: 0,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest
-                        .withValues(alpha: 0.4),
-                    child: ListTile(
-                      title: Text(title),
-                      subtitle: Text(
-                          'Total ${inspections.length}  Pending $pending  Approved $approved  Rejected $rejected'),
+    return Column(
+      children: [
+        // ── Filter & sort bar ──────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Floor…',
+                    prefixIcon: const Icon(Icons.search, size: 16),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                  ),
+                  onChanged: (v) => setState(() => _floorFilter = v),
+                ),
+              ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 70,
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'GO',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                  ),
+                  onChanged: (v) => setState(() => _goFilter = v),
+                ),
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(
+                  Icons.sort,
+                  size: 20,
+                  color: _sortBy == 'newest' ? null : Theme.of(context).colorScheme.primary,
+                ),
+                tooltip: 'Sort',
+                onSelected: (v) => setState(() => _sortBy = v),
+                itemBuilder: (_) => [
+                  _sortMenuItem('newest', 'Newest First', _sortBy),
+                  _sortMenuItem('oldest', 'Oldest First', _sortBy),
+                  _sortMenuItem('overdue', 'Most Overdue First', _sortBy),
+                  _sortMenuItem('obs', 'Most Open Observations', _sortBy),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // ── List ────────────────────────────────────────────────────
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async => widget.onRefresh(),
+            child: list.isEmpty
+                ? ListView(children: [
+                    const SizedBox(height: 180),
+                    Center(
+                      child: Text(_floorFilter.isNotEmpty || _goFilter.isNotEmpty
+                          ? 'No inspections match your filter'
+                          : 'No inspections found'),
                     ),
-                  );
-                }
-                final inspection = inspections[i - 1];
-                return _InspectionCard(
-                    inspection: inspection,
-                    onTap: () => onInspectionTap(inspection));
-              },
-            ),
+                  ])
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    itemCount: list.length + 1,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      if (i == 0) {
+                        return Card(
+                          elevation: 0,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 0.4),
+                          child: ListTile(
+                            dense: true,
+                            title: Text(widget.title),
+                            subtitle: Text(
+                                'Showing ${list.length}/${all.length}  Pending $pending  Approved $approved  Rejected $rejected'),
+                          ),
+                        );
+                      }
+                      final inspection = list[i - 1];
+                      return _InspectionCard(
+                          inspection: inspection,
+                          onTap: () => widget.onInspectionTap(inspection));
+                    },
+                  ),
+          ),
+        ),
+      ],
     );
   }
+
+  PopupMenuItem<String> _sortMenuItem(String value, String label, String current) =>
+      PopupMenuItem<String>(
+        value: value,
+        child: Row(children: [
+          if (current == value)
+            const Icon(Icons.check, size: 16)
+          else
+            const SizedBox(width: 16),
+          const SizedBox(width: 8),
+          Text(label),
+        ]),
+      );
 }
 
 class _InspectionCard extends StatelessWidget {
@@ -411,6 +533,24 @@ class _InspectionCard extends StatelessWidget {
                   '${inspection.completedStages}/${inspection.totalStages} stages completed',
                   style: Theme.of(context).textTheme.bodySmall),
             ],
+            // Pour card / clearance status indicators
+            if (inspection.requiresPourCard || inspection.requiresPourClearanceCard) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                if (inspection.requiresPourCard)
+                  _CardStatusChip(
+                    label: 'Pour Card',
+                    status: inspection.pourCardStatus,
+                    approved: inspection.pourCardApproved,
+                  ),
+                if (inspection.requiresPourClearanceCard)
+                  _CardStatusChip(
+                    label: 'Clearance',
+                    status: inspection.prePourClearanceStatus,
+                    approved: inspection.prePourClearanceApproved,
+                  ),
+              ]),
+            ],
           ]),
         ),
       ),
@@ -443,6 +583,60 @@ class _MiniChip extends StatelessWidget {
                 .textTheme
                 .labelSmall
                 ?.copyWith(color: chipColor)),
+      ]),
+    );
+  }
+}
+
+/// Compact status chip showing the state of a Pour Card or Pre-Pour Clearance Card.
+/// Shows a green tick when approved, orange warning when draft/submitted, grey when absent.
+class _CardStatusChip extends StatelessWidget {
+  final String label;
+  final String? status;
+  final bool approved;
+
+  const _CardStatusChip({required this.label, this.status, required this.approved});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    final IconData icon;
+    final String text;
+
+    if (approved) {
+      color = Colors.green.shade700;
+      icon = Icons.check_circle_outline;
+      text = label;
+    } else if (status == null || status == 'DRAFT') {
+      color = Colors.grey.shade500;
+      icon = Icons.radio_button_unchecked;
+      text = '$label: Draft';
+    } else if (status == 'SUBMITTED') {
+      color = Colors.orange.shade700;
+      icon = Icons.pending_outlined;
+      text = '$label: Pending';
+    } else if (status == 'REJECTED') {
+      color = Colors.red.shade700;
+      icon = Icons.cancel_outlined;
+      text = '$label: Rejected';
+    } else {
+      color = Colors.blue.shade700;
+      icon = Icons.info_outline;
+      text = '$label: $status';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 3),
+        Text(text,
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
       ]),
     );
   }

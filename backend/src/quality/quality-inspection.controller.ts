@@ -45,6 +45,17 @@ export class QualityInspectionController {
     };
   }
 
+  private isAdminRequest(req: any) {
+    const roles = Array.isArray(req?.user?.roles) ? req.user.roles : [];
+    return (
+      roles.some((role: any) =>
+        String(typeof role === 'string' ? role : role?.name || '')
+          .trim()
+          .toLowerCase() === 'admin',
+      ) || String(req?.user?.role || '').trim().toLowerCase() === 'admin'
+    );
+  }
+
   @Get()
   @Permissions('QUALITY.INSPECTION.READ')
   getInspections(
@@ -59,7 +70,7 @@ export class QualityInspectionController {
       epsNodeId,
       listId,
       req?.user?.userId || req?.user?.id,
-      req?.user?.role === 'Admin' || req?.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 
@@ -107,7 +118,7 @@ export class QualityInspectionController {
     return this.service.getInspectionDetails(
       id,
       req?.user?.userId || req?.user?.id,
-      req?.user?.role === 'Admin' || req?.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 
@@ -161,7 +172,7 @@ export class QualityInspectionController {
     return this.service.updateStageStatus(stageId, {
       ...data,
       userId: req.user?.userId || req.user?.id,
-      isAdmin: req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      isAdmin: this.isAdminRequest(req),
     });
   }
 
@@ -175,7 +186,7 @@ export class QualityInspectionController {
     return this.service.updateStageStatus(stageId, {
       ...data,
       userId: req.user?.userId || req.user?.id,
-      isAdmin: req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      isAdmin: this.isAdminRequest(req),
     });
   }
 
@@ -189,7 +200,7 @@ export class QualityInspectionController {
     return this.service.updateStageStatus(stageId, {
       ...data,
       userId: req.user?.userId || req.user?.id,
-      isAdmin: req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      isAdmin: this.isAdminRequest(req),
     });
   }
 
@@ -227,7 +238,7 @@ export class QualityInspectionController {
       body.signedBy,
       body.comments,
       body.signatureData,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 
@@ -242,7 +253,7 @@ export class QualityInspectionController {
       id,
       req.user?.userId || req.user?.id,
       body.comments,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 
@@ -258,7 +269,7 @@ export class QualityInspectionController {
       id,
       req.user?.userId || req.user?.id,
       body.reason,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 
@@ -274,7 +285,7 @@ export class QualityInspectionController {
       req.user?.userId || req.user?.id,
       body.targetUserId,
       body.comments,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 
@@ -302,7 +313,7 @@ export class QualityInspectionController {
       req.user?.userId || req.user?.id,
       body.signatureData,
       body.comments,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
       {
         ...(body.signatureEvidence || {}),
         ...this.getSignatureRequestMeta(req),
@@ -328,7 +339,7 @@ export class QualityInspectionController {
       req.user?.userId || req.user?.id,
       body.signatureData,
       body.comments,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
       {
         ...(body.signatureEvidence || {}),
         ...this.getSignatureRequestMeta(req),
@@ -350,7 +361,7 @@ export class QualityInspectionController {
       stageId,
       req.user?.userId || req.user?.id,
       body.reason,
-      req.user?.role === 'Admin' || req.user?.roles?.includes('Admin'),
+      this.isAdminRequest(req),
     );
   }
 

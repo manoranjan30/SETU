@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import api from "../../api/axios";
 import { apiBaseUrl } from "../../api/baseUrl";
 import {
   Settings,
@@ -9,6 +10,10 @@ import {
   FlaskConical,
   Layout,
   FileText,
+  Smartphone,
+  Upload,
+  QrCode,
+  Download,
 } from "lucide-react";
 
 interface SystemSetting {
@@ -19,10 +24,25 @@ interface SystemSetting {
   group: string;
 }
 
+interface MobileAppInfo {
+  platform: string;
+  latestVersion?: string;
+  downloadUrl?: string | null;
+  qrCodeDataUrl?: string | null;
+  apkOriginalName?: string | null;
+  apkFileSize?: number | string | null;
+  apkUploadedAt?: string | null;
+}
+
 const SystemSettings = () => {
   const [settings, setSettings] = useState<SystemSetting[]>([]);
+  const [mobileAppInfo, setMobileAppInfo] = useState<MobileAppInfo | null>(
+    null,
+  );
+  const [apkFile, setApkFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [apkUploading, setApkUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -32,8 +52,15 @@ const SystemSettings = () => {
 
   const fetchSettings = async () => {
     try {
-      const response = await axios.get(`${apiBaseUrl}/admin/settings`);
-      setSettings(response.data);
+      const [settingsResponse, mobileAppResponse] = await Promise.all([
+        axios.get(`${apiBaseUrl}/admin/settings`),
+        api.get("/app/mobile-app", {
+          params: { platform: "android" },
+          headers: { "X-Setu-Silent-Loader": "true" },
+        }),
+      ]);
+      setSettings(settingsResponse.data);
+      setMobileAppInfo(mobileAppResponse.data);
       setLoading(false);
     } catch (e) {
       setError("Failed to load settings");
@@ -61,6 +88,41 @@ const SystemSettings = () => {
     } finally {
       setSaving(null);
     }
+  };
+
+  const handleApkUpload = async () => {
+    if (!apkFile) {
+      setError("Please select an APK file to upload");
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", apkFile);
+    setApkUploading(true);
+
+    try {
+      const response = await api.post("/app/mobile-app/apk", formData, {
+        params: { platform: "android" },
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setMobileAppInfo(response.data);
+      setApkFile(null);
+      setSuccess("Mobile APK uploaded successfully");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "APK upload failed");
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setApkUploading(false);
+    }
+  };
+
+  const formatFileSize = (value?: number | string | null) => {
+    const size = Number(value || 0);
+    if (!size) return "Not available";
+    if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+    return `${Math.ceil(size / 1024)} KB`;
   };
 
   if (loading)
@@ -102,6 +164,115 @@ const SystemSettings = () => {
       )}
 
       <div className="space-y-8">
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Smartphone className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold text-text-secondary">
+              Mobile App Distribution
+            </h2>
+          </div>
+          <div className="bg-surface-card rounded-xl shadow-sm border border-border-default p-5">
+            <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-text-secondary">
+                    Android APK
+                  </label>
+                  <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="file"
+                      accept=".apk,application/vnd.android.package-archive"
+                      onChange={(event) =>
+                        setApkFile(event.target.files?.[0] || null)
+                      }
+                      className="block w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm text-text-secondary file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApkUpload}
+                      disabled={apkUploading || !apkFile}
+                      className="inline-flex min-w-[130px] items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Upload size={16} />
+                      {apkUploading ? "Uploading" : "Upload APK"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border-default bg-surface-base p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-text-secondary">
+                    <Download size={16} />
+                    Download URL
+                  </div>
+                  {mobileAppInfo?.downloadUrl ? (
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        readOnly
+                        value={mobileAppInfo.downloadUrl}
+                        className="min-w-0 flex-1 rounded-md border border-border-default bg-white px-3 py-2 text-sm text-text-secondary"
+                      />
+                      <a
+                        href={mobileAppInfo.downloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-border-default px-3 py-2 text-sm font-medium text-primary transition hover:bg-info-muted"
+                      >
+                        <Download size={16} />
+                        Open
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-text-muted">
+                      Upload an APK to generate the shared download URL and QR code.
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-3 text-sm text-text-muted sm:grid-cols-3">
+                  <div>
+                    <span className="block font-medium text-text-secondary">
+                      File
+                    </span>
+                    {mobileAppInfo?.apkOriginalName || "Not uploaded"}
+                  </div>
+                  <div>
+                    <span className="block font-medium text-text-secondary">
+                      Size
+                    </span>
+                    {formatFileSize(mobileAppInfo?.apkFileSize)}
+                  </div>
+                  <div>
+                    <span className="block font-medium text-text-secondary">
+                      Uploaded
+                    </span>
+                    {mobileAppInfo?.apkUploadedAt
+                      ? new Date(mobileAppInfo.apkUploadedAt).toLocaleString()
+                      : "Not available"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-default bg-surface-base p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-secondary">
+                  <QrCode size={16} />
+                  QR Code
+                </div>
+                {mobileAppInfo?.qrCodeDataUrl ? (
+                  <img
+                    src={mobileAppInfo.qrCodeDataUrl}
+                    alt="Mobile app download QR code"
+                    className="h-40 w-40 rounded-md bg-white p-2"
+                  />
+                ) : (
+                  <div className="flex h-40 w-40 items-center justify-center rounded-md bg-white text-center text-xs text-text-muted">
+                    No QR yet
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Design & CAD Section */}
         <section>
           <div className="flex items-center gap-2 mb-4">

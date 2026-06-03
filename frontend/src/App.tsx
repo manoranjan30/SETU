@@ -42,6 +42,7 @@ const WorkflowDesignerPage = lazy(
   () => import("./views/quality/workflow/WorkflowDesignerPage"),
 );
 const UserProfilePage = lazy(() => import("./pages/UserProfilePage"));
+const MobileAppDownloadPage = lazy(() => import("./pages/MobileAppDownloadPage"));
 const VendorAccessTemplatesPage = lazy(() =>
   import("./pages/admin/VendorAccessTemplatesPage").then((module) => ({
     default: module.VendorAccessTemplatesPage,
@@ -286,6 +287,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <UserProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="mobile-app"
+          element={
+            <ProtectedRoute>
+              <MobileAppDownloadPage />
             </ProtectedRoute>
           }
         />

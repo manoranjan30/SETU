@@ -5,8 +5,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'dart:convert';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/clearance_card_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 
 /// The 7 attachment types used on the pre-pour clearance card.
 const _kAttachmentKeys = [
@@ -33,12 +35,16 @@ class PrePourClearancePage extends StatelessWidget {
   final int inspectionId;
   final String? activityName;
   final String? locationLabel;
+  final int? projectId;
+  final int? epsNodeId;
 
   const PrePourClearancePage({
     super.key,
     required this.inspectionId,
     this.activityName,
     this.locationLabel,
+    this.projectId,
+    this.epsNodeId,
   });
 
   @override
@@ -50,6 +56,8 @@ class PrePourClearancePage extends StatelessWidget {
         inspectionId: inspectionId,
         activityName: activityName,
         locationLabel: locationLabel,
+        projectId: projectId,
+        epsNodeId: epsNodeId,
       ),
     );
   }
@@ -59,11 +67,15 @@ class _ClearanceView extends StatefulWidget {
   final int inspectionId;
   final String? activityName;
   final String? locationLabel;
+  final int? projectId;
+  final int? epsNodeId;
 
   const _ClearanceView({
     required this.inspectionId,
     this.activityName,
     this.locationLabel,
+    this.projectId,
+    this.epsNodeId,
   });
 
   @override
@@ -72,6 +84,36 @@ class _ClearanceView extends StatefulWidget {
 
 class _ClearanceViewState extends State<_ClearanceView> {
   bool _isPdfDownloading = false;
+
+  // Approved floor inspections for the attachment checklist selector
+  List<QualityInspection> _floorInspections = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.projectId != null && widget.epsNodeId != null) {
+      _loadFloorInspections();
+    }
+  }
+
+  Future<void> _loadFloorInspections() async {
+    try {
+      final raw = await sl<SetuApiClient>().getQualityInspections(
+        projectId: widget.projectId!,
+        epsNodeId: widget.epsNodeId!,
+      );
+      if (!mounted) return;
+      setState(() {
+        _floorInspections = raw
+            .whereType<Map<String, dynamic>>()
+            .map(QualityInspection.fromJson)
+            .where((i) =>
+                i.status == InspectionStatus.approved ||
+                i.status == InspectionStatus.partiallyApproved)
+            .toList();
+      });
+    } catch (_) {}
+  }
 
   Future<void> _downloadPdf(BuildContext context, int inspectionId) async {
     setState(() => _isPdfDownloading = true);
@@ -315,11 +357,18 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                   children: _kAttachmentKeys.map((key) {
                     final label = _kAttachmentLabels[key] ?? key;
                     final current = card.attachments[key] ?? 'NO';
+                    final selectedIds = card.attachmentChecklistSelections[key] ?? [];
                     return _AttachmentRow(
                       label: label,
                       value: current,
                       enabled: isEditable,
+                      availableInspections: _floorInspections,
+                      selectedChecklistIds: selectedIds,
                       onChanged: (v) => context.read<ClearanceCardBloc>().add(UpdateAttachment(key, v)),
+                      onChecklistSelectionChanged: isEditable
+                          ? (ids) => context.read<ClearanceCardBloc>()
+                              .add(UpdateAttachmentChecklistSelection(key, ids))
+                          : null,
                     );
                   }).toList(),
                 ),
@@ -349,7 +398,20 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                               signoff: card.signoffs[i],
                               isEditable: isEditable,
                               onSign: isEditable
-                                  ? () => context.read<ClearanceCardBloc>().add(MarkSignoffSigned(i))
+                                  ? () {
+                                      final signoff = card.signoffs[i];
+                                      SignatureApprovalSheet.showForSignoff(
+                                        context,
+                                        department: signoff.department,
+                                        personName: signoff.personName,
+                                      ).then((result) {
+                                        if (result != null && context.mounted) {
+                                          context.read<ClearanceCardBloc>().add(
+                                            MarkSignoffSigned(i, result.$1, result.$2),
+                                          );
+                                        }
+                                      });
+                                    }
                                   : null,
                               onWaive: isEditable
                                   ? () => context.read<ClearanceCardBloc>().add(MarkSignoffWaived(i))
@@ -685,44 +747,142 @@ class _AttachmentRow extends StatelessWidget {
   final String value;
   final bool enabled;
   final ValueChanged<String> onChanged;
+  final List<QualityInspection> availableInspections;
+  final List<int> selectedChecklistIds;
+  final void Function(List<int>)? onChecklistSelectionChanged;
 
   const _AttachmentRow({
     required this.label,
     required this.value,
     required this.enabled,
     required this.onChanged,
+    this.availableInspections = const [],
+    this.selectedChecklistIds = const [],
+    this.onChecklistSelectionChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          _ToggleChip(
-            label: 'YES',
-            selected: value == 'YES',
-            color: Colors.green,
-            enabled: enabled,
-            onTap: enabled ? () => onChanged('YES') : null,
+          Row(
+            children: [
+              Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+              _ToggleChip(
+                label: 'YES',
+                selected: value == 'YES',
+                color: Colors.green,
+                enabled: enabled,
+                onTap: enabled ? () => onChanged('YES') : null,
+              ),
+              const SizedBox(width: 4),
+              _ToggleChip(
+                label: 'NO',
+                selected: value == 'NO',
+                color: Colors.red,
+                enabled: enabled,
+                onTap: enabled ? () => onChanged('NO') : null,
+              ),
+              const SizedBox(width: 4),
+              _ToggleChip(
+                label: 'N/A',
+                selected: value == 'NA',
+                color: Colors.grey,
+                enabled: enabled,
+                onTap: enabled ? () => onChanged('NA') : null,
+              ),
+            ],
           ),
-          const SizedBox(width: 4),
-          _ToggleChip(
-            label: 'NO',
-            selected: value == 'NO',
-            color: Colors.red,
-            enabled: enabled,
-            onTap: enabled ? () => onChanged('NO') : null,
-          ),
-          const SizedBox(width: 4),
-          _ToggleChip(
-            label: 'N/A',
-            selected: value == 'NA',
-            color: Colors.grey,
-            enabled: enabled,
-            onTap: enabled ? () => onChanged('NA') : null,
-          ),
+          // When YES, show related inspection multi-select
+          if (value == 'YES' && availableInspections.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Select related checklist RFIs',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.green.shade800),
+                  ),
+                  const SizedBox(height: 4),
+                  ...availableInspections.map((insp) {
+                    final isSelected = selectedChecklistIds.contains(insp.id);
+                    final displayLabel = [
+                      if (insp.goLabel != null) insp.goLabel!,
+                      if (insp.activityName != null) insp.activityName!,
+                      'RFI #${insp.id}',
+                    ].join(' · ');
+                    return InkWell(
+                      onTap: onChecklistSelectionChanged == null ? null : () {
+                        final updated = List<int>.from(selectedChecklistIds);
+                        if (isSelected) {
+                          updated.remove(insp.id);
+                        } else {
+                          updated.add(insp.id);
+                        }
+                        onChecklistSelectionChanged!(updated);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 20, height: 20,
+                              child: Checkbox(
+                                value: isSelected,
+                                visualDensity: VisualDensity.compact,
+                                onChanged: onChecklistSelectionChanged == null ? null : (v) {
+                                  final updated = List<int>.from(selectedChecklistIds);
+                                  if (v == true) updated.add(insp.id); else updated.remove(insp.id);
+                                  onChecklistSelectionChanged!(updated);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(displayLabel,
+                                  style: const TextStyle(fontSize: 11),
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: insp.status.color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(insp.status.label,
+                                  style: TextStyle(fontSize: 9, color: insp.status.color,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ] else if (value == 'YES' && selectedChecklistIds.isNotEmpty) ...[
+            // Read-only display of previously selected IDs when no floor inspections loaded
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              children: selectedChecklistIds.map((id) => Chip(
+                label: Text('RFI #$id', style: const TextStyle(fontSize: 10)),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+              )).toList(),
+            ),
+          ],
         ],
       ),
     );
@@ -826,6 +986,38 @@ class _SignoffRow extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Signature thumbnail — shown when this row has been digitally signed
+                if (signoff.signatureData != null) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 48,
+                    width: 120,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(4),
+                      color: Colors.white,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.memory(
+                        () {
+                          final s = signoff.signatureData!;
+                          final b64 = s.contains(',') ? s.split(',').last : s;
+                          return base64Decode(b64);
+                        }(),
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  if (signoff.signedByName != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        signoff.signedByName!,
+                        style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),

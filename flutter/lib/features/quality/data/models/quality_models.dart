@@ -503,6 +503,20 @@ class QualityInspection extends Equatable {
   /// Whether this inspection's activity requires a Pre-Pour Clearance Card.
   final bool requiresPourClearanceCard;
 
+  // Card document statuses (from cardSummary in API response)
+  final String? pourCardStatus;           // DRAFT | SUBMITTED | APPROVED | REJECTED | LOCKED
+  final bool pourCardApproved;
+  final String? prePourClearanceStatus;   // same enum values
+  final bool prePourClearanceApproved;
+
+  // GO series fields (concrete pour tracking)
+  final int? goNo;
+  final String? goLabel;
+  final String? goDetails;
+
+  /// IDs of related checklist inspections linked to this RFI (e.g. for pre-pour clearance attachment tracking).
+  final List<int> relatedChecklistInspectionIds;
+
   const QualityInspection({
     required this.id,
     required this.activityId,
@@ -536,6 +550,14 @@ class QualityInspection extends Equatable {
     this.pendingApprovalLabel,
     this.requiresPourCard = false,
     this.requiresPourClearanceCard = false,
+    this.pourCardStatus,
+    this.pourCardApproved = false,
+    this.prePourClearanceStatus,
+    this.prePourClearanceApproved = false,
+    this.goNo,
+    this.goLabel,
+    this.goDetails,
+    this.relatedChecklistInspectionIds = const [],
   });
 
   factory QualityInspection.fromJson(Map<String, dynamic> json) {
@@ -636,6 +658,17 @@ class QualityInspection extends Equatable {
       pendingApprovalLabel: json['pendingApprovalLabel'] as String?,
       requiresPourCard: activity?['requiresPourCard'] as bool? ?? false,
       requiresPourClearanceCard: activity?['requiresPourClearanceCard'] as bool? ?? false,
+      pourCardStatus: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardStatus'] as String?,
+      pourCardApproved: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardApproved'] as bool? ?? false,
+      prePourClearanceStatus: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceStatus'] as String?,
+      prePourClearanceApproved: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceApproved'] as bool? ?? false,
+      goNo: json['goNo'] as int?,
+      goLabel: json['goLabel'] as String?,
+      goDetails: json['goDetails'] as String?,
+      relatedChecklistInspectionIds: (json['relatedChecklistInspectionIds'] as List<dynamic>?)
+              ?.whereType<int>()
+              .toList() ??
+          [],
     );
   }
 
@@ -722,6 +755,11 @@ class QualityInspection extends Equatable {
         pendingApprovalLabel,
         requiresPourCard,
         requiresPourClearanceCard,
+        pourCardApproved,
+        prePourClearanceApproved,
+        goNo,
+        goLabel,
+        relatedChecklistInspectionIds,
       ];
 }
 
@@ -1745,6 +1783,11 @@ class ClearanceSignoff extends Equatable {
   final String? personName;
   final String? signedDate;
   final ClearanceSignoffStatus status;
+  // Digital signature fields
+  final String? signatureData;   // base64 PNG data URI
+  final String? signatureMode;   // DRAWN_NOW | SAVED_PROFILE
+  final String? signedByName;
+  final int? signedByUserId;
 
   const ClearanceSignoff({
     this.id,
@@ -1754,6 +1797,10 @@ class ClearanceSignoff extends Equatable {
     this.personName,
     this.signedDate,
     this.status = ClearanceSignoffStatus.pending,
+    this.signatureData,
+    this.signatureMode,
+    this.signedByName,
+    this.signedByUserId,
   });
 
   factory ClearanceSignoff.fromJson(Map<String, dynamic> j) => ClearanceSignoff(
@@ -1764,6 +1811,10 @@ class ClearanceSignoff extends Equatable {
     personName: j['personName'] as String?,
     signedDate: j['signedDate'] as String?,
     status: ClearanceSignoffStatus.fromString(j['status'] as String? ?? 'PENDING'),
+    signatureData: j['signatureData'] as String?,
+    signatureMode: j['signatureMode'] as String?,
+    signedByName: j['signedByName'] as String? ?? j['signerDisplayName'] as String?,
+    signedByUserId: j['signedByUserId'] as int?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -1774,11 +1825,17 @@ class ClearanceSignoff extends Equatable {
     'personName': personName,
     'signedDate': signedDate,
     'status': status.name.toUpperCase(),
+    if (signatureData != null) 'signatureData': signatureData,
+    if (signatureMode != null) 'signatureMode': signatureMode,
+    if (signedByName != null) 'signedByName': signedByName,
+    if (signedByUserId != null) 'signedByUserId': signedByUserId,
   };
 
   ClearanceSignoff copyWith({
     String? department, String? designation, bool? isActive,
     String? personName, String? signedDate, ClearanceSignoffStatus? status,
+    String? signatureData, String? signatureMode,
+    String? signedByName, int? signedByUserId,
   }) => ClearanceSignoff(
     id: id,
     department: department ?? this.department,
@@ -1787,10 +1844,14 @@ class ClearanceSignoff extends Equatable {
     personName: personName ?? this.personName,
     signedDate: signedDate ?? this.signedDate,
     status: status ?? this.status,
+    signatureData: signatureData ?? this.signatureData,
+    signatureMode: signatureMode ?? this.signatureMode,
+    signedByName: signedByName ?? this.signedByName,
+    signedByUserId: signedByUserId ?? this.signedByUserId,
   );
 
   @override
-  List<Object?> get props => [id, department, isActive, status];
+  List<Object?> get props => [id, department, isActive, status, signatureData];
 }
 
 class QualityPrePourClearanceCard extends Equatable {
@@ -1820,6 +1881,7 @@ class QualityPrePourClearanceCard extends Equatable {
   final String formatNo;
   final String? revisionNo;
   final Map<String, String> attachments;
+  final Map<String, List<int>> attachmentChecklistSelections;
   final List<ClearanceSignoff> signoffs;
   final String? approvalRemarks;
   final String? rejectionRemarks;
@@ -1854,6 +1916,7 @@ class QualityPrePourClearanceCard extends Equatable {
     this.formatNo = 'F/QA/20',
     this.revisionNo,
     this.attachments = const {},
+    this.attachmentChecklistSelections = const {},
     this.signoffs = const [],
     this.approvalRemarks,
     this.rejectionRemarks,
@@ -1897,6 +1960,13 @@ class QualityPrePourClearanceCard extends Equatable {
       formatNo: j['formatNo'] as String? ?? 'F/QA/20',
       revisionNo: j['revisionNo'] as String?,
       attachments: attachments,
+      attachmentChecklistSelections: (() {
+        final raw = j['attachmentChecklistSelections'] as Map<String, dynamic>? ?? {};
+        return raw.map((k, v) => MapEntry(
+          k,
+          (v as List<dynamic>? ?? []).whereType<int>().toList(),
+        ));
+      })(),
       signoffs: (j['signoffs'] as List<dynamic>?)
               ?.map((e) => ClearanceSignoff.fromJson(e as Map<String, dynamic>))
               .toList() ?? [],
@@ -1929,6 +1999,7 @@ class QualityPrePourClearanceCard extends Equatable {
     'formatNo': formatNo,
     'revisionNo': revisionNo,
     'attachments': attachments,
+    'attachmentChecklistSelections': attachmentChecklistSelections,
     'signoffs': signoffs.map((s) => s.toJson()).toList(),
   };
 
@@ -1940,7 +2011,9 @@ class QualityPrePourClearanceCard extends Equatable {
     String? gradeOfConcrete, String? placementMethod, String? concreteSupplier,
     double? estimatedConcreteQty, double? actualConcreteQty,
     int? cubeMouldCount, String? targetSlump, int? vibratorCount,
-    Map<String, String>? attachments, List<ClearanceSignoff>? signoffs,
+    Map<String, String>? attachments,
+    Map<String, List<int>>? attachmentChecklistSelections,
+    List<ClearanceSignoff>? signoffs,
   }) => QualityPrePourClearanceCard(
     id: id, inspectionId: inspectionId,
     status: status ?? this.status,
@@ -1965,6 +2038,7 @@ class QualityPrePourClearanceCard extends Equatable {
     vibratorCount: vibratorCount ?? this.vibratorCount,
     formatNo: formatNo, revisionNo: revisionNo,
     attachments: attachments ?? this.attachments,
+    attachmentChecklistSelections: attachmentChecklistSelections ?? this.attachmentChecklistSelections,
     signoffs: signoffs ?? this.signoffs,
     approvalRemarks: approvalRemarks, rejectionRemarks: rejectionRemarks,
     submittedAt: submittedAt, approvedAt: approvedAt, rejectedAt: rejectedAt,

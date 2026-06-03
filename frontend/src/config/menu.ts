@@ -6,6 +6,7 @@ import {
   ClipboardList,
   ExternalLink,
   Brain,
+  Smartphone,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -38,6 +39,11 @@ export const MENU_CONFIG: MenuItem[] = [
     permission: PermissionCode.EXECUTION_READ,
   },
   {
+    label: "Mobile App",
+    path: "/dashboard/mobile-app",
+    icon: Smartphone,
+  },
+  {
     label: "Admin",
     path: "/dashboard/admin", // Dummy parent path
     icon: Settings,
@@ -57,6 +63,11 @@ export const MENU_CONFIG: MenuItem[] = [
         label: "System Permissions",
         path: "/dashboard/permissions",
         permission: PermissionCode.MANAGE_ROLES,
+      },
+      {
+        label: "System Settings",
+        path: "/dashboard/admin/settings",
+        permission: PermissionCode.MANAGE_USERS,
       },
       {
         label: "System Logs",

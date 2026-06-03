@@ -20,6 +20,7 @@ import type {
   QualityMaterialReceipt,
   QualityMaterialTestObligation,
   QualityMaterialTestResult,
+  QualityCubeTestRegister,
 } from "../../../types/quality";
 
 interface Props {
@@ -27,7 +28,13 @@ interface Props {
 }
 
 type ModalMode = "itp" | "receipt" | "result" | null;
-type TabKey = "itps" | "approvals" | "receipts" | "obligations" | "results";
+type TabKey =
+  | "itps"
+  | "approvals"
+  | "receipts"
+  | "obligations"
+  | "results"
+  | "cubes";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -54,6 +61,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
   const [receipts, setReceipts] = useState<QualityMaterialReceipt[]>([]);
   const [obligations, setObligations] = useState<QualityMaterialTestObligation[]>([]);
   const [results, setResults] = useState<QualityMaterialTestResult[]>([]);
+  const [cubeRegister, setCubeRegister] = useState<QualityCubeTestRegister[]>([]);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedObligation, setSelectedObligation] =
     useState<QualityMaterialTestObligation | null>(null);
@@ -112,13 +120,18 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     const resultApprovals = results.filter(
       (item) => item.approvalRun?.status === "IN_PROGRESS",
     ).length;
+    const dueCubes = cubeRegister.filter((item) =>
+      ["PENDING", "DUE_TODAY", "OVERDUE"].includes(item.status),
+    ).length;
     return {
       activeItps: activeTemplates.length,
-      pendingTests: due.length,
-      overdue: obligations.filter((item) => item.status === "OVERDUE").length,
+      pendingTests: due.length + dueCubes,
+      overdue:
+        obligations.filter((item) => item.status === "OVERDUE").length +
+        cubeRegister.filter((item) => item.status === "OVERDUE").length,
       approvals: templateApprovals + resultApprovals,
     };
-  }, [activeTemplates.length, obligations, results, templates]);
+  }, [activeTemplates.length, cubeRegister, obligations, results, templates]);
 
   const approvalItems = useMemo(
     () => [
@@ -150,17 +163,25 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     setLoading(true);
     setError(null);
     try {
-      const [nextTemplates, nextReceipts, nextObligations, nextResults] =
+      const [
+        nextTemplates,
+        nextReceipts,
+        nextObligations,
+        nextResults,
+        nextCubeRegister,
+      ] =
         await Promise.all([
           qualityService.getMaterialItps(projectId),
           qualityService.getMaterialReceipts(projectId),
           qualityService.getMaterialTestObligations(projectId),
           qualityService.getMaterialTestResults(projectId),
+          qualityService.getCubeTestRegister(projectId),
         ]);
       setTemplates(nextTemplates);
       setReceipts(nextReceipts);
       setObligations(nextObligations);
       setResults(nextResults);
+      setCubeRegister(nextCubeRegister);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to load material ITP data");
     } finally {
@@ -263,6 +284,33 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     }));
   };
 
+  const updateCubeDraft = (
+    id: number,
+    patch: Partial<QualityCubeTestRegister>,
+  ) => {
+    setCubeRegister((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  };
+
+  const saveCubeResult = async (
+    cube: QualityCubeTestRegister,
+    approve = false,
+  ) => {
+    const updated = await qualityService.updateCubeTestRegister(cube.id, {
+      specimenSize: cube.specimenSize || "150 x 150 x 150 mm",
+      loadKn: cube.loadKn,
+      requiredStrengthMpa: cube.requiredStrengthMpa,
+      testedByName: cube.testedByName,
+      testedDate: cube.testedDate || today(),
+      remarks: cube.remarks,
+      status: approve ? "APPROVED" : "TESTED",
+    });
+    setCubeRegister((current) =>
+      current.map((item) => (item.id === cube.id ? updated : item)),
+    );
+  };
+
   const closeModal = () => {
     setModalMode(null);
     setSelectedObligation(null);
@@ -324,6 +372,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
           ["receipts", "Material Receipts"],
           ["obligations", "Due Tests"],
           ["results", "Test Results"],
+          ["cubes", "Cube Test Register"],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -465,6 +514,134 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {activeTab === "cubes" && (
+        <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Stat
+              label="Pending for Testing"
+              value={cubeRegister.filter((item) => item.status === "PENDING").length}
+              icon={<Beaker />}
+            />
+            <Stat
+              label="Due Today"
+              value={cubeRegister.filter((item) => item.status === "DUE_TODAY").length}
+              icon={<AlertTriangle />}
+            />
+            <Stat
+              label="7 / 28 Day Tests"
+              value={cubeRegister.length}
+              icon={<ClipboardCheck />}
+            />
+          </div>
+          {cubeRegister.map((cube) => (
+            <div
+              key={cube.id}
+              className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-sm"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-bold text-text-primary">{cube.cubeId}</h4>
+                    <StatusBadge value={cube.testAge.replace("_", " ")} />
+                    <StatusBadge value={cube.status} />
+                  </div>
+                  <p className="mt-1 text-sm text-text-muted">
+                    {cube.locationText || "-"} | {cube.elementName || "-"} |{" "}
+                    {cube.goLabel || "-"} | RFI #{cube.inspectionId}
+                  </p>
+                  {cube.goDetails && (
+                    <p className="mt-1 text-xs text-text-muted">{cube.goDetails}</p>
+                  )}
+                  <p className="mt-1 text-xs font-semibold text-text-disabled">
+                    Cast {cube.castDate} | Due {cube.dueDate} | Grade{" "}
+                    {cube.mixIdOrGrade || "-"} | Truck {cube.truckNo || "-"}
+                  </p>
+                </div>
+                <div className="text-xs font-semibold text-text-muted">
+                  {cube.deliveryChallanNo || "No challan"}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-6">
+                <TextInput
+                  label="Specimen"
+                  value={cube.specimenSize || "150 x 150 x 150 mm"}
+                  onChange={(value) => updateCubeDraft(cube.id, { specimenSize: value })}
+                />
+                <TextInput
+                  label="Load kN"
+                  type="number"
+                  value={cube.loadKn || ""}
+                  onChange={(value) => updateCubeDraft(cube.id, { loadKn: value })}
+                />
+                <TextInput
+                  label="Required MPa"
+                  type="number"
+                  value={cube.requiredStrengthMpa || ""}
+                  onChange={(value) =>
+                    updateCubeDraft(cube.id, { requiredStrengthMpa: value })
+                  }
+                />
+                <TextInput
+                  label="Tested Date"
+                  type="date"
+                  value={cube.testedDate || today()}
+                  onChange={(value) => updateCubeDraft(cube.id, { testedDate: value })}
+                />
+                <TextInput
+                  label="Tested By"
+                  value={cube.testedByName || ""}
+                  onChange={(value) => updateCubeDraft(cube.id, { testedByName: value })}
+                />
+                <div className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2">
+                  <div className="text-xs font-semibold text-text-muted">
+                    Strength MPa
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-text-primary">
+                    {cube.compressiveStrengthMpa || "Auto"}
+                  </div>
+                </div>
+              </div>
+              <textarea
+                value={cube.remarks || ""}
+                onChange={(event) =>
+                  updateCubeDraft(cube.id, { remarks: event.target.value })
+                }
+                placeholder="Testing remarks, failure notes, retest reference, lab observations"
+                className="mt-3 min-h-[64px] w-full rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
+              />
+              {cube.calculationDetails && (
+                <div className="mt-2 rounded-lg bg-surface-base px-3 py-2 text-xs text-text-muted">
+                  Formula: Compressive strength = load kN x 1000 / loaded area
+                  mm2. For 150 mm cube, loaded area is 22500 mm2.
+                </div>
+              )}
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => saveCubeResult(cube)}
+                  className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700"
+                >
+                  Save Test Result
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveCubeResult(cube, true)}
+                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                >
+                  Approve Result
+                </button>
+              </div>
+            </div>
+          ))}
+          {!cubeRegister.length && (
+            <div className="rounded-lg border border-dashed border-border-subtle bg-surface-card p-5 text-sm text-text-muted">
+              No cube tests are registered yet. Approved pour cards with cube counts
+              will populate this register automatically.
+            </div>
+          )}
         </div>
       )}
 

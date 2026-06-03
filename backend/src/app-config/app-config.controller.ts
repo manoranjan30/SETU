@@ -1,8 +1,51 @@
-import { Controller, Get, Put, Query, Body, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Put,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AppConfigService } from './app-config.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { mkdirSync } from 'fs';
+
+const getRequestOrigin = (req: any) => {
+  const proto =
+    req?.headers?.['x-forwarded-proto'] ||
+    req?.protocol ||
+    (req?.secure ? 'https' : 'http');
+  const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host;
+  return host ? `${String(proto).split(',')[0]}://${String(host).split(',')[0]}` : '';
+};
+
+const apkUploadStorage = diskStorage({
+  destination: (req, _file, cb) => {
+    const platform = String(req?.query?.platform || 'android')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '');
+    const destination = `./uploads/mobile-app/${platform || 'android'}`;
+    mkdirSync(destination, { recursive: true });
+    cb(null, destination);
+  },
+  filename: (_req, file, cb) => {
+    const safeBase = file.originalname
+      .replace(extname(file.originalname), '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .slice(0, 80);
+    cb(null, `${Date.now()}-${safeBase || 'setu-mobile-app'}.apk`);
+  },
+});
 
 @Controller('app')
 export class AppConfigController {
@@ -10,12 +53,17 @@ export class AppConfigController {
 
   /**
    * GET /app/config?platform=android
-   * Public — called by the Flutter app before login to check for updates.
+   * Public: called by the Flutter app before login to check for updates.
    * No auth guard: the app may not have a token yet on first launch.
    */
   @Get('config')
   getConfig(@Query('platform') platform = 'android') {
     return this.service.getConfig(platform);
+  }
+
+  @Get('mobile-app')
+  getMobileAppDownload(@Query('platform') platform = 'android', @Req() req) {
+    return this.service.getDownloadInfo(platform, getRequestOrigin(req));
   }
 
   /**
@@ -37,5 +85,35 @@ export class AppConfigController {
     },
   ) {
     return this.service.updateConfig(platform, body);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  @Post('mobile-app/apk')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: apkUploadStorage,
+      limits: { fileSize: 250 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (
+          file.originalname.toLowerCase().endsWith('.apk') ||
+          file.mimetype === 'application/vnd.android.package-archive'
+        ) {
+          cb(null, true);
+          return;
+        }
+        cb(new BadRequestException('Only Android APK files are allowed.'), false);
+      },
+    }),
+  )
+  uploadApk(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('platform') platform = 'android',
+    @Req() req,
+  ) {
+    if (!file) {
+      throw new BadRequestException('APK file is required.');
+    }
+    return this.service.updateApk(platform, file, getRequestOrigin(req));
   }
 }

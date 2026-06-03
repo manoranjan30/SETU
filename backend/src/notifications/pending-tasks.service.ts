@@ -16,6 +16,10 @@ import {
 import { QualityMaterialApprovalStep } from '../quality/entities/quality-material-approval-step.entity';
 import { QualityMaterialTestObligation } from '../quality/entities/quality-material-test-obligation.entity';
 import {
+  QualityCubeTestRegister,
+  QualityCubeTestStatus,
+} from '../quality/entities/quality-cube-test-register.entity';
+import {
   AssignmentStatus,
   UserProjectAssignment,
 } from '../projects/entities/user-project-assignment.entity';
@@ -34,6 +38,8 @@ export class PendingTasksService {
     private readonly materialApprovalStepRepo: Repository<QualityMaterialApprovalStep>,
     @InjectRepository(QualityMaterialTestObligation)
     private readonly materialObligationRepo: Repository<QualityMaterialTestObligation>,
+    @InjectRepository(QualityCubeTestRegister)
+    private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
     @InjectRepository(UserProjectAssignment)
     private readonly assignmentRepo: Repository<UserProjectAssignment>,
     @InjectRepository(TempUser)
@@ -126,6 +132,20 @@ export class PendingTasksService {
       relations: ['checkpoint', 'receipt'],
       order: { dueDate: 'ASC' },
     });
+    const today = new Date().toISOString().slice(0, 10);
+    const cubeTestAlerts = (
+      await this.cubeRegisterRepo.find({
+        where: {
+          status: In([
+            QualityCubeTestStatus.PENDING,
+            QualityCubeTestStatus.DUE_TODAY,
+            QualityCubeTestStatus.OVERDUE,
+          ]),
+          ...(projectId ? { projectId } : {}),
+        },
+        order: { dueDate: 'ASC' },
+      })
+    ).filter((cube) => cube.dueDate <= today);
 
     const items = [
       ...pendingRFIs.map((s) => ({
@@ -180,6 +200,23 @@ export class PendingTasksService {
           obligation.checkpoint?.characteristic || obligation.materialName,
         date: obligation.dueDate || obligation.createdAt,
       })),
+      ...cubeTestAlerts.map((cube) => ({
+        type: 'CUBE_TEST_DUE',
+        id: cube.id,
+        title:
+          cube.dueDate < today
+            ? `${cube.testAge.replace('_', ' ')} Cube Test Overdue`
+            : `${cube.testAge.replace('_', ' ')} Cube Test Due Today`,
+        subtitle: [
+          cube.cubeId,
+          cube.locationText,
+          cube.goLabel,
+          cube.mixIdOrGrade,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        date: cube.dueDate,
+      })),
     ];
 
     return {
@@ -188,7 +225,8 @@ export class PendingTasksService {
       obsToCloseCount: observationsToClose.length,
       vendorObsCount: vendorObservations.length,
       materialApprovalCount: materialApprovalSteps.length,
-      materialTestAlertCount: materialTestAlerts.length,
+      materialTestAlertCount: materialTestAlerts.length + cubeTestAlerts.length,
+      cubeTestAlertCount: cubeTestAlerts.length,
       totalCount: items.length,
       items: items.sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),

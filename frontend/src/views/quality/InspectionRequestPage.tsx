@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ClipboardCheck,
@@ -62,6 +62,7 @@ interface ActivityObservation {
 interface QualityInspection {
   id: number;
   activityId: number;
+  epsNodeId: number;
   status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
   requestDate: string;
   inspectionDate?: string;
@@ -74,6 +75,8 @@ interface QualityInspection {
   partLabel?: string;
   goNo?: number;
   goLabel?: string;
+  goDetails?: string | null;
+  relatedChecklistInspectionIds?: number[];
   unitName?: string | null;
   roomName?: string | null;
   drawingNo?: string;
@@ -182,6 +185,9 @@ export default function InspectionRequestPage() {
   const [rfiParts, setRfiParts] = useState(2);
   const [drawingNo, setDrawingNo] = useState("");
   const [elementName, setElementName] = useState("");
+  const [goDetails, setGoDetails] = useState("");
+  const [relatedChecklistInspectionIds, setRelatedChecklistInspectionIds] =
+    useState<number[]>([]);
   const [qualityUnits, setQualityUnits] = useState<QualityUnitNode[]>([]);
   const [selectedUnitIds, setSelectedUnitIds] = useState<number[]>([]);
   const [raisingBatch, setRaisingBatch] = useState(false);
@@ -335,16 +341,31 @@ export default function InspectionRequestPage() {
         const activityName =
           activities.find((activity) => activity.id === inspection.activityId)
             ?.activityName || `Checklist RFI #${inspection.id}`;
+        const goName =
+          inspection.goLabel ||
+          inspection.partLabel?.replace(/^Part/i, "GO") ||
+          (inspection.goNo ? `GO ${inspection.goNo}` : "");
+        const elementLabel = inspection.elementName
+          ? `Element ${inspection.elementName}`
+          : "";
         const scopeBits = [
-          inspection.goLabel || (inspection.goNo ? `GO ${inspection.goNo}` : ""),
+          goName,
           inspection.unitName,
           inspection.roomName,
           inspection.drawingNo ? `Dwg ${inspection.drawingNo}` : "",
-          inspection.elementName ? `Element ${inspection.elementName}` : "",
+          elementLabel,
+        ].filter(Boolean);
+        const descriptionBits = [
+          activityName,
+          inspection.goDetails,
+          inspection.drawingNo ? `Drawing ${inspection.drawingNo}` : "",
+          `RFI #${inspection.id}`,
         ].filter(Boolean);
         return {
           id: inspection.id,
-          label: activityName,
+          label: [goName, elementLabel, `RFI #${inspection.id}`]
+            .filter(Boolean)
+            .join(" · "),
           status:
             inspection.status === "APPROVED"
               ? "Approved"
@@ -355,6 +376,7 @@ export default function InspectionRequestPage() {
                     : ""
                 }`,
           scope: scopeBits.join(" · "),
+          tooltip: descriptionBits.join(" · "),
         };
       });
   }, [activeCardInspection, activities, inspections]);
@@ -390,6 +412,11 @@ export default function InspectionRequestPage() {
     setSavingCardModal(true);
     try {
       if (activeCardKind === "CLEARANCE") {
+        const draft = await qualityService.savePrePourClearanceCard(
+          activeCardInspection.id,
+          prePourClearanceCard,
+        );
+        setPrePourClearanceCard(draft);
         const saved = await qualityService.submitPrePourClearanceCard(
           activeCardInspection.id,
         );
@@ -676,7 +703,7 @@ export default function InspectionRequestPage() {
     ].filter(Boolean);
 
     if (bits.length > 0) {
-      return bits.join(" • ");
+      return bits.join(" â€¢ ");
     }
 
     return `RFI #${inspection.id}`;
@@ -743,6 +770,53 @@ export default function InspectionRequestPage() {
     return map;
   }, [inspections]);
 
+  const relatedChecklistOptions = useMemo(() => {
+    return inspections
+      .filter(
+        (inspection) =>
+          inspection.epsNodeId === selectedNodeId &&
+          inspection.status !== "CANCELED" &&
+          inspection.status !== "REJECTED",
+      )
+      .map((inspection) => {
+        const activityName =
+          activities.find((activity) => activity.id === inspection.activityId)
+            ?.activityName || `RFI #${inspection.id}`;
+        const goName =
+          inspection.goLabel ||
+          inspection.partLabel?.replace(/^Part/i, "GO") ||
+          (inspection.goNo ? `GO ${inspection.goNo}` : "");
+        const elementLabel = inspection.elementName
+          ? `Element ${inspection.elementName}`
+          : "";
+        const scope = [
+          goName,
+          inspection.unitName,
+          inspection.roomName,
+          elementLabel,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return {
+          id: inspection.id,
+          label: [goName, elementLabel, `RFI #${inspection.id}`]
+            .filter(Boolean)
+            .join(" · "),
+          meta: [scope, activityName, inspection.status]
+            .filter(Boolean)
+            .join(" · "),
+          tooltip: [
+            activityName,
+            inspection.goDetails,
+            inspection.drawingNo ? `Drawing ${inspection.drawingNo}` : "",
+            `RFI #${inspection.id}`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        };
+      });
+  }, [activities, inspections, selectedNodeId]);
+
   const buildInspectionRequestPayload = (
     activity: QualityActivity,
     extra: Record<string, unknown> = {},
@@ -760,6 +834,8 @@ export default function InspectionRequestPage() {
         : activity.applicabilityLevel === "UNIT"
           ? "UNIT_RFI"
           : "FLOOR_RFI",
+    goDetails: goDetails.trim() || undefined,
+    relatedChecklistInspectionIds,
     ...extra,
   });
 
@@ -961,6 +1037,8 @@ export default function InspectionRequestPage() {
     }
     setDrawingNo("");
     setElementName("");
+    setGoDetails("");
+    setRelatedChecklistInspectionIds([]);
     setQuickRaiseConfig(quickConfig || { mode: "NONE" });
     setRfiModalActivity(activity);
   };
@@ -1081,6 +1159,8 @@ export default function InspectionRequestPage() {
 
       setRfiModalActivity(null);
       setQuickRaiseConfig({ mode: "NONE" });
+      setGoDetails("");
+      setRelatedChecklistInspectionIds([]);
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to raise RFI");
@@ -1431,6 +1511,25 @@ export default function InspectionRequestPage() {
                                   </span>
                                 </div>
                               )}
+                              {item.inspection.goDetails && (
+                                <div className="col-span-2 text-text-muted border-t pt-2 mt-1">
+                                  GO Details:{" "}
+                                  <span className="text-text-secondary">
+                                    {item.inspection.goDetails}
+                                  </span>
+                                </div>
+                              )}
+                              {item.inspection.relatedChecklistInspectionIds
+                                ?.length ? (
+                                <div className="col-span-2 text-text-muted">
+                                  Linked Checklists:{" "}
+                                  <span className="text-text-primary font-medium">
+                                    {item.inspection.relatedChecklistInspectionIds
+                                      .map((id) => `RFI #${id}`)
+                                      .join(", ")}
+                                  </span>
+                                </div>
+                              ) : null}
                             </div>
                             {(item.requiresPourClearanceCard ||
                               item.requiresPourCard) && (
@@ -1661,7 +1760,7 @@ export default function InspectionRequestPage() {
                                             <div className="mt-1 text-xs text-text-muted">
                                               RFI #{group.inspection.id}
                                               {group.inspection.requestDate
-                                                ? ` • Raised ${new Date(
+                                                ? ` â€¢ Raised ${new Date(
                                                     group.inspection.requestDate,
                                                   ).toLocaleDateString()}`
                                                 : ""}
@@ -1760,7 +1859,7 @@ export default function InspectionRequestPage() {
                                                       }
                                                       className="shrink-0 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
                                                     >
-                                                      Open in Approvals →
+                                                      Open in Approvals â†’
                                                     </button>
                                                   )}
                                                 </div>
@@ -1773,7 +1872,7 @@ export default function InspectionRequestPage() {
                                                       </div>
                                                       <p className="mt-1 text-sm text-blue-800">
                                                         {obs.closureText ||
-                                                          "Rectification submitted — QC needs to verify and close."}
+                                                          "Rectification submitted â€” QC needs to verify and close."}
                                                       </p>
                                                       {obs.closureEvidence &&
                                                         obs.closureEvidence.length >
@@ -1808,7 +1907,7 @@ export default function InspectionRequestPage() {
                                                         }
                                                         className="shrink-0 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
                                                       >
-                                                        Close in Approvals →
+                                                        Close in Approvals â†’
                                                       </button>
                                                     )}
                                                   </div>
@@ -1859,12 +1958,12 @@ export default function InspectionRequestPage() {
                     : "Concrete Pour Card"}
                 </h3>
                 <p className="text-sm text-text-muted">
-                  RFI #{activeCardInspection.id} · GO{" "}
+                  RFI #{activeCardInspection.id} Â· GO{" "}
                   {activeCardInspection.goLabel ||
                     activeCardInspection.partLabel ||
                     activeCardInspection.goNo ||
                     "-"}{" "}
-                  · Element {activeCardInspection.elementName || "-"}
+                  Â· Element {activeCardInspection.elementName || "-"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2029,6 +2128,7 @@ export default function InspectionRequestPage() {
                                       return (
                                         <label
                                           key={`${key}-${option.id}`}
+                                          title={option.tooltip || option.scope}
                                           className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2"
                                         >
                                           <input
@@ -2153,14 +2253,34 @@ export default function InspectionRequestPage() {
                                 ),
                               )}
                               <select
-                                value={signoff.status || "PENDING"}
+                                value={
+                                  signoff.status === "SIGNED"
+                                    ? "SIGNED"
+                                    : signoff.status || "PENDING"
+                                }
                                 onChange={(event) =>
                                   updatePrePourClearanceCard((prev) => ({
                                     ...prev,
                                     signoffs: (prev.signoffs || []).map(
                                       (row: any, rowIndex: number) =>
                                         rowIndex === index
-                                          ? { ...row, status: event.target.value }
+                                          ? {
+                                              ...row,
+                                              status: event.target.value,
+                                              ...(event.target.value !== "SIGNED"
+                                                ? {
+                                                    signatureData: null,
+                                                    signedDate: "",
+                                                    signedAt: null,
+                                                    signedByUserId: null,
+                                                    signerUsername: null,
+                                                    signerDisplayName: null,
+                                                    signerRoles: [],
+                                                    signatureMode: null,
+                                                    signatureEvidence: null,
+                                                  }
+                                                : {}),
+                                            }
                                           : row,
                                     ),
                                   }))
@@ -2168,7 +2288,9 @@ export default function InspectionRequestPage() {
                                 className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
                               >
                                 <option value="PENDING">Pending</option>
-                                <option value="SIGNED">Signed</option>
+                                {signoff.status === "SIGNED" ? (
+                                  <option value="SIGNED">Signed</option>
+                                ) : null}
                                 <option value="WAIVED">Waived</option>
                               </select>
                             </div>
@@ -2182,8 +2304,8 @@ export default function InspectionRequestPage() {
                                 className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                               >
                                 {signoff.signatureData
-                                  ? "Update Signature"
-                                  : "Sign with Identity"}
+                                  ? "Update identity signature"
+                                  : "Sign with identity"}
                               </button>
                               {signoff.signatureData ? (
                                 <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
@@ -2461,6 +2583,68 @@ export default function InspectionRequestPage() {
                 )}
               </div>
 
+              {rfiModalActivity.applicabilityLevel === "FLOOR" && (
+                <div>
+                  <label className="text-xs font-semibold text-text-secondary">
+                    GO Details
+                  </label>
+                  <textarea
+                    value={goDetails}
+                    onChange={(e) => setGoDetails(e.target.value)}
+                    placeholder="Describe the inspection scope for this GO"
+                    rows={3}
+                    className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-semibold text-text-secondary">
+                  Link Previous Checklist RFIs
+                </label>
+                <div className="mt-1 max-h-44 overflow-auto rounded-lg border border-border-default p-2">
+                  {relatedChecklistOptions.length === 0 ? (
+                    <div className="p-2 text-xs text-text-disabled">
+                      No previous checklist RFIs are available for this
+                      location yet.
+                    </div>
+                  ) : (
+                    relatedChecklistOptions.map((option) => (
+                      <label
+                        key={option.id}
+                        title={option.tooltip || option.meta}
+                        className="flex items-start gap-2 rounded p-1.5 text-sm hover:bg-surface-base"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={relatedChecklistInspectionIds.includes(
+                            option.id,
+                          )}
+                          onChange={(e) => {
+                            setRelatedChecklistInspectionIds((prev) =>
+                              e.target.checked
+                                ? [...prev, option.id]
+                                : prev.filter((id) => id !== option.id),
+                            );
+                          }}
+                        />
+                        <span>
+                          <span className="block font-medium text-text-primary">
+                            {option.label}
+                          </span>
+                          {option.meta ? (
+                            <span className="block text-xs text-text-muted">
+                              {option.meta}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+
               {rfiModalActivity.applicabilityLevel === "UNIT" && (
                 <div>
                   <label className="text-sm font-medium text-text-secondary">
@@ -2507,6 +2691,8 @@ export default function InspectionRequestPage() {
                 onClick={() => {
                   setRfiModalActivity(null);
                   setQuickRaiseConfig({ mode: "NONE" });
+                  setGoDetails("");
+                  setRelatedChecklistInspectionIds([]);
                 }}
                 className="px-4 py-2 text-sm rounded-lg hover:bg-surface-raised"
               >
@@ -2537,3 +2723,5 @@ export default function InspectionRequestPage() {
     </div>
   );
 }
+
+

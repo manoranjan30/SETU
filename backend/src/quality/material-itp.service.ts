@@ -25,6 +25,10 @@ import { QualityMaterialTestResult } from './entities/quality-material-test-resu
 import { QualityMaterialEvidenceFile } from './entities/quality-material-evidence-file.entity';
 import { QualityMaterialApprovalRun } from './entities/quality-material-approval-run.entity';
 import { QualityMaterialApprovalStep } from './entities/quality-material-approval-step.entity';
+import {
+  QualityCubeTestRegister,
+  QualityCubeTestStatus,
+} from './entities/quality-cube-test-register.entity';
 import { User } from '../users/user.entity';
 
 const ITP_DOCUMENT_TYPE = 'MATERIAL_ITP_TEMPLATE';
@@ -51,6 +55,8 @@ export class MaterialItpService {
     private readonly runRepo: Repository<QualityMaterialApprovalRun>,
     @InjectRepository(QualityMaterialApprovalStep)
     private readonly stepRepo: Repository<QualityMaterialApprovalStep>,
+    @InjectRepository(QualityCubeTestRegister)
+    private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly releaseStrategyService: ReleaseStrategyService,
@@ -206,6 +212,112 @@ export class MaterialItpService {
       relations: ['itpTemplate', 'obligations', 'obligations.checkpoint'],
       order: { receivedDate: 'DESC', id: 'DESC' },
     });
+  }
+
+  async listCubeTestRegister(projectId: number) {
+    const rows = await this.cubeRegisterRepo.find({
+      where: { projectId },
+      order: { dueDate: 'ASC', cubeId: 'ASC' },
+    });
+    return rows.map((row) => this.withLiveCubeStatus(row));
+  }
+
+  async updateCubeTestRegister(
+    id: number,
+    dto: Partial<QualityCubeTestRegister>,
+    userId?: number,
+  ) {
+    const row = await this.cubeRegisterRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Cube test register row not found');
+
+    const loadKn =
+      dto.loadKn === undefined || dto.loadKn === null || dto.loadKn === ''
+        ? row.loadKn
+        : String(dto.loadKn);
+    const specimenSize = dto.specimenSize || row.specimenSize || '150 x 150 x 150 mm';
+    const loadedAreaMm2 = this.getCubeLoadedAreaMm2(specimenSize);
+    const compressiveStrengthMpa =
+      loadKn && loadedAreaMm2
+        ? ((Number(loadKn) * 1000) / loadedAreaMm2).toFixed(3)
+        : dto.compressiveStrengthMpa === undefined ||
+            dto.compressiveStrengthMpa === null
+          ? row.compressiveStrengthMpa
+          : String(dto.compressiveStrengthMpa);
+    const requiredStrengthMpa =
+      dto.requiredStrengthMpa === undefined || dto.requiredStrengthMpa === null
+        ? row.requiredStrengthMpa
+        : String(dto.requiredStrengthMpa);
+    const passed =
+      compressiveStrengthMpa && requiredStrengthMpa
+        ? Number(compressiveStrengthMpa) >= Number(requiredStrengthMpa)
+        : null;
+
+    Object.assign(row, {
+      specimenSize,
+      loadKn,
+      compressiveStrengthMpa,
+      averageStrengthMpa:
+        dto.averageStrengthMpa === undefined || dto.averageStrengthMpa === null
+          ? row.averageStrengthMpa
+          : String(dto.averageStrengthMpa),
+      requiredStrengthMpa,
+      testedByName: dto.testedByName ?? row.testedByName,
+      testedDate: dto.testedDate ?? row.testedDate ?? this.today(),
+      remarks: dto.remarks ?? row.remarks,
+      calculationDetails: {
+        ...(row.calculationDetails || {}),
+        loadedAreaMm2,
+        loadKn,
+        formula:
+          'Compressive strength (MPa) = failure load (kN) x 1000 / loaded area (mm2)',
+        compressiveStrengthMpa,
+        requiredStrengthMpa,
+        passed,
+      },
+      status:
+        passed === false
+          ? QualityCubeTestStatus.FAILED
+          : dto.status === QualityCubeTestStatus.APPROVED
+            ? QualityCubeTestStatus.APPROVED
+            : QualityCubeTestStatus.TESTED,
+      approvedAt:
+        dto.status === QualityCubeTestStatus.APPROVED
+          ? new Date()
+          : row.approvedAt,
+      approvedByUserId:
+        dto.status === QualityCubeTestStatus.APPROVED
+          ? userId ?? row.approvedByUserId
+          : row.approvedByUserId,
+    });
+
+    const saved = await this.cubeRegisterRepo.save(row);
+    return this.withLiveCubeStatus(saved);
+  }
+
+  private withLiveCubeStatus(row: QualityCubeTestRegister) {
+    if (
+      [
+        QualityCubeTestStatus.TESTED,
+        QualityCubeTestStatus.APPROVED,
+        QualityCubeTestStatus.FAILED,
+      ].includes(row.status)
+    ) {
+      return row;
+    }
+    const today = this.today();
+    if (row.dueDate === today) {
+      return { ...row, status: QualityCubeTestStatus.DUE_TODAY };
+    }
+    if (row.dueDate < today) {
+      return { ...row, status: QualityCubeTestStatus.OVERDUE };
+    }
+    return row;
+  }
+
+  private getCubeLoadedAreaMm2(specimenSize?: string | null) {
+    const size = String(specimenSize || '').match(/(\d{2,3})/);
+    const sideMm = size ? Number(size[1]) : 150;
+    return sideMm * sideMm;
   }
 
   async createReceipt(projectId: number, dto: CreateMaterialReceiptDto) {

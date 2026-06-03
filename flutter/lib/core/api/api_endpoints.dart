@@ -478,6 +478,15 @@ class ApiEndpoints {
   /// Used to populate the vendor filter in the approvals dashboard.
   static const String activeVendors = '/quality/inspections/active-vendors';
 
+  /// GET /quality/inspections/eligible-approvers/list?projectId=X
+  /// Returns users who can approve inspections in the project (for delegation picker).
+  static const String eligibleApprovers =
+      '/quality/inspections/eligible-approvers/list';
+
+  /// POST /quality/inspections/expand-go
+  /// Expands a single-GO floor RFI into a multi-part series (Part 1, Part 2 …).
+  static const String expandGoSeries = '/quality/inspections/expand-go';
+
   // ==================== USER PROFILE ENDPOINTS ====================
 
   /// GET/PUT /users/me
