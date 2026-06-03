@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -176,13 +177,19 @@ export class MaterialItpController {
   }
 
   @Get(':projectId/cube-test-register')
-  @Permissions('QUALITY.MATERIAL_TEST.READ')
+  @Permissions('QUALITY.CUBE_TEST.READ')
   listCubeTestRegister(@Param('projectId') projectId: number) {
     return this.materialItpService.listCubeTestRegister(Number(projectId));
   }
 
+  @Post(':projectId/cube-test-register')
+  @Permissions('QUALITY.CUBE_TEST.SAVE')
+  createCubeTestRegister(@Param('projectId') projectId: number, @Body() body: any) {
+    return this.materialItpService.createCubeTestRegister(Number(projectId), body);
+  }
+
   @Put('cube-test-register/:id')
-  @Permissions('QUALITY.MATERIAL_TEST.LOG')
+  @Permissions('QUALITY.CUBE_TEST.SAVE')
   updateCubeTestRegister(
     @Param('id') id: number,
     @Body() body: any,
@@ -193,6 +200,26 @@ export class MaterialItpController {
       body,
       this.getUserId(req),
     );
+  }
+
+  @Post('cube-test-register/:id/approve')
+  @Permissions('QUALITY.CUBE_TEST.APPROVE')
+  approveCubeTestRegister(
+    @Param('id') id: number,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    return this.materialItpService.updateCubeTestRegister(
+      Number(id),
+      { ...body, status: 'APPROVED' },
+      this.getUserId(req),
+    );
+  }
+
+  @Delete('cube-test-register/:id')
+  @Permissions('QUALITY.CUBE_TEST.DELETE')
+  deleteCubeTestRegister(@Param('id') id: number) {
+    return this.materialItpService.deleteCubeTestRegister(Number(id));
   }
 
   @Post('material-test-results/:id/submit-approval')

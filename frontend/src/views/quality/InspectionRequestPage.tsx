@@ -2419,7 +2419,9 @@ export default function InspectionRequestPage() {
                                   <td key={key} className="px-2 py-2">
                                     <input
                                       type={
-                                        ["quantityM3", "slumpMm", "noOfCubesTaken"].includes(key)
+                                        key === "pourDate"
+                                          ? "date"
+                                          : ["quantityM3", "slumpMm", "noOfCubesTaken"].includes(key)
                                           ? "number"
                                           : "text"
                                       }

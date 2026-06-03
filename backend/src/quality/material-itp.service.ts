@@ -222,6 +222,30 @@ export class MaterialItpService {
     return rows.map((row) => this.withLiveCubeStatus(row));
   }
 
+  async createCubeTestRegister(
+    projectId: number,
+    dto: Partial<QualityCubeTestRegister>,
+  ) {
+    const castDate = dto.castDate || this.today();
+    const testAge = dto.testAge || ('7_DAY' as any);
+    const dueDays = testAge === '28_DAY' ? 28 : 7;
+    const cubeId =
+      dto.cubeId?.trim() ||
+      `CUBE-P${projectId}-MANUAL-${Date.now()}-${testAge === '28_DAY' ? '28D' : '7D'}`;
+    const row = this.cubeRegisterRepo.create({
+      ...dto,
+      projectId,
+      cubeId,
+      testAge,
+      castDate,
+      dueDate: dto.dueDate || this.addDays(castDate, dueDays),
+      status: dto.status || QualityCubeTestStatus.PENDING,
+      specimenSize: dto.specimenSize || '150 x 150 x 150 mm',
+    });
+    const saved = await this.cubeRegisterRepo.save(row);
+    return this.withLiveCubeStatus(saved);
+  }
+
   async updateCubeTestRegister(
     id: number,
     dto: Partial<QualityCubeTestRegister>,
@@ -292,6 +316,13 @@ export class MaterialItpService {
 
     const saved = await this.cubeRegisterRepo.save(row);
     return this.withLiveCubeStatus(saved);
+  }
+
+  async deleteCubeTestRegister(id: number) {
+    const row = await this.cubeRegisterRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Cube test register row not found');
+    await this.cubeRegisterRepo.delete(id);
+    return { success: true };
   }
 
   private withLiveCubeStatus(row: QualityCubeTestRegister) {

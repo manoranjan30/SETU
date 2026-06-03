@@ -12,7 +12,7 @@ import { join } from 'path';
 import { json, urlencoded } from 'express';
 import * as express from 'express';
 
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 
 @Catch(NotFoundException)
 export class SpaFallbackFilter implements ExceptionFilter {
@@ -82,7 +82,9 @@ async function bootstrap() {
   app.useGlobalFilters(new SpaFallbackFilter());
 
   // Serve uploads statically bypassing NestJS routing prefix logic entirely
-  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+  const uploadRoot = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
+  mkdirSync(uploadRoot, { recursive: true });
+  app.use('/uploads', express.static(uploadRoot));
 
   await app.listen(3000, '0.0.0.0');
 }

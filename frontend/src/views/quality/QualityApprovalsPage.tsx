@@ -1521,11 +1521,17 @@ export default function QualityApprovalsPage() {
   const openInspectionDetail = (inspectionId: number | null) => {
     if (!inspectionId) return;
     setSelectedInspectionId(inspectionId);
+    if (
+      workspaceRef.current &&
+      document.fullscreenElement !== workspaceRef.current
+    ) {
+      void workspaceRef.current.requestFullscreen().catch(() => undefined);
+    }
   };
 
   const jumpToConcreteCardsForInspection = (inspectionId: number) => {
     setJumpToConcreteCards(true);
-    setSelectedInspectionId(inspectionId);
+    openInspectionDetail(inspectionId);
   };
 
   const openConcreteCards = (

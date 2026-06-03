@@ -32,6 +32,8 @@ services:
       FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
       RUN_DB_MIGRATIONS: "true"
       DB_MIGRATION_SCRIPT: migration:run:dist
+      UPLOAD_DIR: /usr/src/app/uploads
+      APK_UPLOAD_MAX_MB: 500
     volumes:
       - ./backend/uploads:/usr/src/app/uploads
 

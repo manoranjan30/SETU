@@ -720,6 +720,12 @@ class SyncService {
               qualityUnitId: payload['qualityUnitId'] as int?,
               vendorId: payload['vendorId'] as int?,
               vendorName: payload['vendorName'] as String?,
+              elementName: payload['elementName'] as String?,
+              goDetails: payload['goDetails'] as String?,
+              relatedChecklistInspectionIds:
+                  (payload['relatedChecklistInspectionIds'] as List<dynamic>?)
+                      ?.whereType<int>()
+                      .toList(),
             );
             break;
 

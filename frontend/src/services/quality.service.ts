@@ -480,11 +480,32 @@ export const qualityService = {
     return res.data;
   },
 
+  createCubeTestRegister: async (
+    projectId: number,
+    data: Partial<QualityCubeTestRegister>,
+  ): Promise<QualityCubeTestRegister> => {
+    const res = await api.post(`${BASE_URL}/${projectId}/cube-test-register`, data);
+    return res.data;
+  },
+
   updateCubeTestRegister: async (
     id: number,
     data: Partial<QualityCubeTestRegister>,
   ): Promise<QualityCubeTestRegister> => {
     const res = await api.put(`${BASE_URL}/cube-test-register/${id}`, data);
+    return res.data;
+  },
+
+  approveCubeTestRegister: async (
+    id: number,
+    data: Partial<QualityCubeTestRegister>,
+  ): Promise<QualityCubeTestRegister> => {
+    const res = await api.post(`${BASE_URL}/cube-test-register/${id}/approve`, data);
+    return res.data;
+  },
+
+  deleteCubeTestRegister: async (id: number) => {
+    const res = await api.delete(`${BASE_URL}/cube-test-register/${id}`);
     return res.data;
   },
 

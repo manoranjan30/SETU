@@ -390,8 +390,8 @@ export interface QualityMaterialTestResult {
 export interface QualityCubeTestRegister {
   id: number;
   projectId: number;
-  inspectionId: number;
-  pourCardId: number;
+  inspectionId?: number | null;
+  pourCardId?: number | null;
   pourEntryIndex?: number | null;
   cubeId: string;
   testAge: "7_DAY" | "28_DAY";

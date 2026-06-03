@@ -93,7 +93,7 @@ const SystemSettings = () => {
   const handleApkUpload = async () => {
     if (!apkFile) {
       setError("Please select an APK file to upload");
-      setTimeout(() => setError(null), 3000);
+      setTimeout(() => setError(null), 8000);
       return;
     }
 
@@ -105,13 +105,27 @@ const SystemSettings = () => {
       const response = await api.post("/app/mobile-app/apk", formData, {
         params: { platform: "android" },
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: 10 * 60 * 1000,
       });
       setMobileAppInfo(response.data);
       setApkFile(null);
       setSuccess("Mobile APK uploaded successfully");
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
-      setError(e?.response?.data?.message || "APK upload failed");
+      const status = e?.response?.status;
+      const serverMessage = e?.response?.data?.message;
+      const message = Array.isArray(serverMessage)
+        ? serverMessage.join(", ")
+        : serverMessage;
+      setError(
+        status === 413
+          ? "APK upload failed because the server/proxy upload size limit is too low."
+          : e?.code === "ECONNABORTED"
+            ? "APK upload timed out. Please retry on a stable connection."
+            : status === 401 || status === 403
+              ? "APK upload failed because your session does not have admin permission."
+              : message || "APK upload failed. Check server upload path and proxy limits.",
+      );
       setTimeout(() => setError(null), 3000);
     } finally {
       setApkUploading(false);
