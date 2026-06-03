@@ -536,7 +536,7 @@ class _PourCardPanel extends StatelessWidget {
                   style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
                 ),
               ],
-              const SizedBox(height: 8);
+              const SizedBox(height: 8),
               Row(
                 children: [
                   if (inspection.requiresPourCard)

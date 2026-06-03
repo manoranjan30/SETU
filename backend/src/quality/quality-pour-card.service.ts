@@ -21,6 +21,7 @@ import {
 } from './entities/quality-cube-test-register.entity';
 import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
+import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 
 const DEFAULT_CLEARANCE_SIGNOFFS = [
   'Surveyor',
@@ -92,6 +93,7 @@ export class QualityPourCardService {
     private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
+    private readonly approvalRuntimeService: ApprovalRuntimeService,
   ) {}
 
   private async getInspectionOrThrow(inspectionId: number) {
@@ -236,6 +238,23 @@ export class QualityPourCardService {
     const serial = String(cubeSerial).padStart(3, '0');
     const ageCode = age === QualityCubeTestAge.SEVEN_DAY ? '7D' : '28D';
     return `CUBE-P${card.projectId}-RFI${card.inspectionId}-E${entryIndex + 1}-${serial}-${ageCode}`;
+  }
+
+  private async assertQaQcApprover(
+    projectId: number,
+    userId?: number,
+    isAdmin = false,
+  ) {
+    if (!userId || isAdmin) return;
+    const actor = await this.approvalRuntimeService.getProjectActor(
+      projectId,
+      userId,
+    );
+    if (!actor) {
+      throw new BadRequestException(
+        'Only project QA/QC release strategy approvers can approve this card.',
+      );
+    }
   }
 
   private buildPdfBuffer(
@@ -872,6 +891,7 @@ export class QualityPourCardService {
     inspectionId: number,
     userId?: number,
     remarks?: string,
+    isAdmin = false,
   ) {
     const card = await this.getPourCard(inspectionId);
     if (card.status === QualityCardStatus.LOCKED) return card;
@@ -880,6 +900,7 @@ export class QualityPourCardService {
         'Pour card must be submitted before it can be approved.',
       );
     }
+    await this.assertQaQcApprover(card.projectId, userId, isAdmin);
     this.validatePourCardForSubmission(card);
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
@@ -1238,6 +1259,7 @@ export class QualityPourCardService {
     inspectionId: number,
     userId?: number,
     remarks?: string,
+    isAdmin = false,
   ) {
     const card = await this.getPrePourClearanceCard(inspectionId);
     if (card.status === QualityCardStatus.LOCKED) return card;
@@ -1246,6 +1268,7 @@ export class QualityPourCardService {
         'Pre-pour clearance must be submitted before it can be approved.',
       );
     }
+    await this.assertQaQcApprover(card.projectId, userId, isAdmin);
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;

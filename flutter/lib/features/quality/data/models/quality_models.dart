@@ -356,6 +356,8 @@ class QualityActivity extends Equatable {
   final int? previousActivityId;
   final List<IncomingEdge> incomingEdges;
   final String? applicabilityLevel; // 'FLOOR' | 'UNIT' | 'ROOM' | null
+  final bool requiresPourCard;
+  final bool requiresPourClearanceCard;
 
   const QualityActivity({
     required this.id,
@@ -370,6 +372,8 @@ class QualityActivity extends Equatable {
     this.previousActivityId,
     this.incomingEdges = const [],
     this.applicabilityLevel,
+    this.requiresPourCard = false,
+    this.requiresPourClearanceCard = false,
   });
 
   factory QualityActivity.fromJson(Map<String, dynamic> json) {
@@ -389,6 +393,8 @@ class QualityActivity extends Equatable {
               .toList() ??
           [],
       applicabilityLevel: json['applicabilityLevel'] as String?,
+      requiresPourCard: json['requiresPourCard'] as bool? ?? false,
+      requiresPourClearanceCard: json['requiresPourClearanceCard'] as bool? ?? false,
     );
   }
 

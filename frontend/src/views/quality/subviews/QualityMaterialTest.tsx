@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle,
+  ArrowUpDown,
   Beaker,
   ClipboardCheck,
   FileUp,
@@ -11,6 +12,7 @@ import {
   RefreshCcw,
   Send,
   ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import { qualityService } from "../../../services/quality.service";
@@ -62,6 +64,13 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
   const [obligations, setObligations] = useState<QualityMaterialTestObligation[]>([]);
   const [results, setResults] = useState<QualityMaterialTestResult[]>([]);
   const [cubeRegister, setCubeRegister] = useState<QualityCubeTestRegister[]>([]);
+  const [cubeSearch, setCubeSearch] = useState("");
+  const [cubeStatusFilter, setCubeStatusFilter] = useState("ALL");
+  const [cubeAgeFilter, setCubeAgeFilter] = useState("ALL");
+  const [cubeSort, setCubeSort] = useState<{
+    key: keyof QualityCubeTestRegister;
+    direction: "asc" | "desc";
+  }>({ key: "dueDate", direction: "asc" });
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedObligation, setSelectedObligation] =
     useState<QualityMaterialTestObligation | null>(null);
@@ -158,6 +167,39 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     ],
     [templates, results],
   );
+
+  const filteredCubeRegister = useMemo(() => {
+    const query = cubeSearch.trim().toLowerCase();
+    const rows = cubeRegister.filter((cube) => {
+      const matchesStatus =
+        cubeStatusFilter === "ALL" || cube.status === cubeStatusFilter;
+      const matchesAge = cubeAgeFilter === "ALL" || cube.testAge === cubeAgeFilter;
+      const haystack = [
+        cube.cubeId,
+        cube.locationText,
+        cube.elementName,
+        cube.goLabel,
+        cube.goDetails,
+        cube.mixIdOrGrade,
+        cube.truckNo,
+        cube.deliveryChallanNo,
+        cube.inspectionId,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return matchesStatus && matchesAge && (!query || haystack.includes(query));
+    });
+    return [...rows].sort((left, right) => {
+      const leftValue = left[cubeSort.key] ?? "";
+      const rightValue = right[cubeSort.key] ?? "";
+      const comparison = String(leftValue).localeCompare(String(rightValue), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+      return cubeSort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [cubeAgeFilter, cubeRegister, cubeSearch, cubeSort, cubeStatusFilter]);
 
   const refresh = async () => {
     setLoading(true);
@@ -297,7 +339,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     cube: QualityCubeTestRegister,
     approve = false,
   ) => {
-    const updated = await qualityService.updateCubeTestRegister(cube.id, {
+    const payload = {
       specimenSize: cube.specimenSize || "150 x 150 x 150 mm",
       loadKn: cube.loadKn,
       requiredStrengthMpa: cube.requiredStrengthMpa,
@@ -305,10 +347,39 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
       testedDate: cube.testedDate || today(),
       remarks: cube.remarks,
       status: approve ? "APPROVED" : "TESTED",
-    });
+    } as Partial<QualityCubeTestRegister>;
+    const updated = approve
+      ? await qualityService.approveCubeTestRegister(cube.id, payload)
+      : await qualityService.updateCubeTestRegister(cube.id, payload);
     setCubeRegister((current) =>
       current.map((item) => (item.id === cube.id ? updated : item)),
     );
+  };
+
+  const deleteCubeResult = async (cubeId: number) => {
+    if (!confirm("Delete this cube test register row?")) return;
+    await qualityService.deleteCubeTestRegister(cubeId);
+    setCubeRegister((current) => current.filter((item) => item.id !== cubeId));
+  };
+
+  const addManualCubeRow = async () => {
+    const created = await qualityService.createCubeTestRegister(projectId, {
+      testAge: "7_DAY",
+      castDate: today(),
+      dueDate: today(),
+      specimenSize: "150 x 150 x 150 mm",
+      status: "PENDING",
+    });
+    setCubeRegister((current) => [created, ...current]);
+    setActiveTab("cubes");
+  };
+
+  const sortCubeColumn = (key: keyof QualityCubeTestRegister) => {
+    setCubeSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
   };
 
   const closeModal = () => {
@@ -536,110 +607,172 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
               icon={<ClipboardCheck />}
             />
           </div>
-          {cubeRegister.map((cube) => (
-            <div
-              key={cube.id}
-              className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-sm"
-            >
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="font-bold text-text-primary">{cube.cubeId}</h4>
-                    <StatusBadge value={cube.testAge.replace("_", " ")} />
-                    <StatusBadge value={cube.status} />
-                  </div>
-                  <p className="mt-1 text-sm text-text-muted">
-                    {cube.locationText || "-"} | {cube.elementName || "-"} |{" "}
-                    {cube.goLabel || "-"} | RFI #{cube.inspectionId}
-                  </p>
-                  {cube.goDetails && (
-                    <p className="mt-1 text-xs text-text-muted">{cube.goDetails}</p>
-                  )}
-                  <p className="mt-1 text-xs font-semibold text-text-disabled">
-                    Cast {cube.castDate} | Due {cube.dueDate} | Grade{" "}
-                    {cube.mixIdOrGrade || "-"} | Truck {cube.truckNo || "-"}
-                  </p>
-                </div>
-                <div className="text-xs font-semibold text-text-muted">
-                  {cube.deliveryChallanNo || "No challan"}
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-6">
-                <TextInput
-                  label="Specimen"
-                  value={cube.specimenSize || "150 x 150 x 150 mm"}
-                  onChange={(value) => updateCubeDraft(cube.id, { specimenSize: value })}
+          <div className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-sm">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="grid flex-1 gap-2 md:grid-cols-[minmax(220px,1fr)_160px_140px]">
+                <input
+                  value={cubeSearch}
+                  onChange={(event) => setCubeSearch(event.target.value)}
+                  placeholder="Search cube, RFI, GO, location, grade, truck, challan"
+                  className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
                 />
-                <TextInput
-                  label="Load kN"
-                  type="number"
-                  value={cube.loadKn || ""}
-                  onChange={(value) => updateCubeDraft(cube.id, { loadKn: value })}
-                />
-                <TextInput
-                  label="Required MPa"
-                  type="number"
-                  value={cube.requiredStrengthMpa || ""}
-                  onChange={(value) =>
-                    updateCubeDraft(cube.id, { requiredStrengthMpa: value })
-                  }
-                />
-                <TextInput
-                  label="Tested Date"
-                  type="date"
-                  value={cube.testedDate || today()}
-                  onChange={(value) => updateCubeDraft(cube.id, { testedDate: value })}
-                />
-                <TextInput
-                  label="Tested By"
-                  value={cube.testedByName || ""}
-                  onChange={(value) => updateCubeDraft(cube.id, { testedByName: value })}
-                />
-                <div className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2">
-                  <div className="text-xs font-semibold text-text-muted">
-                    Strength MPa
-                  </div>
-                  <div className="mt-1 text-sm font-bold text-text-primary">
-                    {cube.compressiveStrengthMpa || "Auto"}
-                  </div>
-                </div>
-              </div>
-              <textarea
-                value={cube.remarks || ""}
-                onChange={(event) =>
-                  updateCubeDraft(cube.id, { remarks: event.target.value })
-                }
-                placeholder="Testing remarks, failure notes, retest reference, lab observations"
-                className="mt-3 min-h-[64px] w-full rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
-              />
-              {cube.calculationDetails && (
-                <div className="mt-2 rounded-lg bg-surface-base px-3 py-2 text-xs text-text-muted">
-                  Formula: Compressive strength = load kN x 1000 / loaded area
-                  mm2. For 150 mm cube, loaded area is 22500 mm2.
-                </div>
-              )}
-              <div className="mt-3 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => saveCubeResult(cube)}
-                  className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700"
+                <select
+                  value={cubeStatusFilter}
+                  onChange={(event) => setCubeStatusFilter(event.target.value)}
+                  className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
                 >
-                  Save Test Result
-                </button>
-                <button
-                  type="button"
-                  onClick={() => saveCubeResult(cube, true)}
-                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                  {["ALL", "PENDING", "DUE_TODAY", "OVERDUE", "TESTED", "APPROVED", "FAILED"].map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <select
+                  value={cubeAgeFilter}
+                  onChange={(event) => setCubeAgeFilter(event.target.value)}
+                  className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
                 >
-                  Approve Result
-                </button>
+                  <option value="ALL">All Ages</option>
+                  <option value="7_DAY">7 Day</option>
+                  <option value="28_DAY">28 Day</option>
+                </select>
               </div>
+              <button
+                type="button"
+                onClick={addManualCubeRow}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+              >
+                <Plus className="h-4 w-4" />
+                Manual Cube
+              </button>
             </div>
-          ))}
-          {!cubeRegister.length && (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[1540px] text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border-subtle text-text-muted">
+                    {[
+                      ["cubeId", "Cube ID"],
+                      ["status", "Status"],
+                      ["testAge", "Age"],
+                      ["dueDate", "Due"],
+                      ["castDate", "Cast"],
+                      ["locationText", "Location / Trace"],
+                      ["mixIdOrGrade", "Grade"],
+                      ["loadKn", "Load kN"],
+                      ["compressiveStrengthMpa", "MPa"],
+                      ["requiredStrengthMpa", "Req MPa"],
+                      ["testedDate", "Tested"],
+                    ].map(([key, label]) => (
+                      <th key={key} className="px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => sortCubeColumn(key as keyof QualityCubeTestRegister)}
+                          className="inline-flex items-center gap-1 font-bold"
+                        >
+                          {label}
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    ))}
+                    <th className="px-2 py-2">Tested By</th>
+                    <th className="px-2 py-2">Remarks</th>
+                    <th className="px-2 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCubeRegister.map((cube) => (
+                    <tr key={cube.id} className="border-b border-border-subtle align-top hover:bg-surface-base">
+                      <td className="px-2 py-2 font-bold text-text-primary">{cube.cubeId}</td>
+                      <td className="px-2 py-2"><StatusBadge value={cube.status} /></td>
+                      <td className="px-2 py-2">{cube.testAge.replace("_", " ")}</td>
+                      <td className="px-2 py-2">{cube.dueDate}</td>
+                      <td className="px-2 py-2">{cube.castDate}</td>
+                      <td className="px-2 py-2">
+                        <div className="font-semibold text-text-primary">
+                          {cube.locationText || "-"}
+                        </div>
+                        <div className="text-text-muted">
+                          {cube.elementName || "-"} | {cube.goLabel || "-"} | RFI #{cube.inspectionId || "-"}
+                        </div>
+                        {cube.goDetails && <div className="mt-1 text-text-disabled">{cube.goDetails}</div>}
+                      </td>
+                      <td className="px-2 py-2">
+                        <div>{cube.mixIdOrGrade || "-"}</div>
+                        <div className="text-text-muted">Truck {cube.truckNo || "-"} | Challan {cube.deliveryChallanNo || "-"}</div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          type="number"
+                          value={cube.loadKn || ""}
+                          onChange={(event) => updateCubeDraft(cube.id, { loadKn: event.target.value })}
+                          className="w-24 rounded border border-border-subtle bg-surface-base px-2 py-1"
+                        />
+                      </td>
+                      <td className="px-2 py-2 font-bold">{cube.compressiveStrengthMpa || "Auto"}</td>
+                      <td className="px-2 py-2">
+                        <input
+                          type="number"
+                          value={cube.requiredStrengthMpa || ""}
+                          onChange={(event) => updateCubeDraft(cube.id, { requiredStrengthMpa: event.target.value })}
+                          className="w-24 rounded border border-border-subtle bg-surface-base px-2 py-1"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          type="date"
+                          value={cube.testedDate || today()}
+                          onChange={(event) => updateCubeDraft(cube.id, { testedDate: event.target.value })}
+                          className="w-32 rounded border border-border-subtle bg-surface-base px-2 py-1"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={cube.testedByName || ""}
+                          onChange={(event) => updateCubeDraft(cube.id, { testedByName: event.target.value })}
+                          className="w-32 rounded border border-border-subtle bg-surface-base px-2 py-1"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={cube.remarks || ""}
+                          onChange={(event) => updateCubeDraft(cube.id, { remarks: event.target.value })}
+                          className="w-48 rounded border border-border-subtle bg-surface-base px-2 py-1"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => saveCubeResult(cube)}
+                            className="rounded bg-orange-600 px-2 py-1 font-bold text-white hover:bg-orange-700"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveCubeResult(cube, true)}
+                            className="rounded bg-emerald-600 px-2 py-1 font-bold text-white hover:bg-emerald-700"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteCubeResult(cube.id)}
+                            className="rounded border border-red-200 bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100"
+                            title="Delete cube row"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {!filteredCubeRegister.length && (
             <div className="rounded-lg border border-dashed border-border-subtle bg-surface-card p-5 text-sm text-text-muted">
-              No cube tests are registered yet. Approved pour cards with cube counts
-              will populate this register automatically.
+              No cube tests match the current filters. Approved pour cards with
+              cube counts populate this register automatically.
             </div>
           )}
         </div>

@@ -200,7 +200,11 @@ class _ClearanceViewState extends State<_ClearanceView> {
                   ? _ErrorView(inspectionId: widget.inspectionId)
                   : Stack(
                       children: [
-                        _ClearanceBody(card: card, inspectionId: widget.inspectionId),
+                        _ClearanceBody(
+                          card: card,
+                          inspectionId: widget.inspectionId,
+                          floorInspections: _floorInspections,
+                        ),
                         if (isSaving)
                           const Positioned(top: 0, left: 0, right: 0, child: LinearProgressIndicator()),
                       ],
@@ -239,8 +243,13 @@ class _ErrorView extends StatelessWidget {
 class _ClearanceBody extends StatefulWidget {
   final QualityPrePourClearanceCard card;
   final int inspectionId;
+  final List<QualityInspection> floorInspections;
 
-  const _ClearanceBody({required this.card, required this.inspectionId});
+  const _ClearanceBody({
+    required this.card,
+    required this.inspectionId,
+    this.floorInspections = const [],
+  });
 
   @override
   State<_ClearanceBody> createState() => _ClearanceBodyState();
@@ -362,7 +371,7 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                       label: label,
                       value: current,
                       enabled: isEditable,
-                      availableInspections: _floorInspections,
+                      availableInspections: widget.floorInspections,
                       selectedChecklistIds: selectedIds,
                       onChanged: (v) => context.read<ClearanceCardBloc>().add(UpdateAttachment(key, v)),
                       onChecklistSelectionChanged: isEditable

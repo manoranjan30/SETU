@@ -17,8 +17,12 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join, resolve } from 'path';
 import { mkdirSync } from 'fs';
+
+const uploadRoot = resolve(process.env.UPLOAD_DIR || join(process.cwd(), 'uploads'));
+const apkUploadMaxBytes =
+  Number(process.env.APK_UPLOAD_MAX_MB || 500) * 1024 * 1024;
 
 const getRequestOrigin = (req: any) => {
   const proto =
@@ -34,9 +38,13 @@ const apkUploadStorage = diskStorage({
     const platform = String(req?.query?.platform || 'android')
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/g, '');
-    const destination = `./uploads/mobile-app/${platform || 'android'}`;
-    mkdirSync(destination, { recursive: true });
-    cb(null, destination);
+    const destination = join(uploadRoot, 'mobile-app', platform || 'android');
+    try {
+      mkdirSync(destination, { recursive: true });
+      cb(null, destination);
+    } catch (error) {
+      cb(error as Error, destination);
+    }
   },
   filename: (_req, file, cb) => {
     const safeBase = file.originalname
@@ -93,7 +101,7 @@ export class AppConfigController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: apkUploadStorage,
-      limits: { fileSize: 250 * 1024 * 1024 },
+      limits: { fileSize: apkUploadMaxBytes },
       fileFilter: (_req, file, cb) => {
         if (
           file.originalname.toLowerCase().endsWith('.apk') ||

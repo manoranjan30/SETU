@@ -31,6 +31,14 @@ export class QualityPourCardController {
     };
   }
 
+  private isAdminRequest(req: any) {
+    return (
+      req?.user?.roles?.includes?.('Admin') ||
+      req?.user?.role === 'Admin' ||
+      req?.user?.isAdmin === true
+    );
+  }
+
   @Get(':inspectionId/pour-card')
   @Permissions('QUALITY.INSPECTION.READ')
   getPourCard(@Param('inspectionId', ParseIntPipe) inspectionId: number) {
@@ -74,6 +82,7 @@ export class QualityPourCardController {
       inspectionId,
       req.user?.userId || req.user?.id,
       body?.remarks,
+      this.isAdminRequest(req),
     );
   }
 
@@ -152,6 +161,7 @@ export class QualityPourCardController {
       inspectionId,
       req.user?.userId || req.user?.id,
       body?.remarks,
+      this.isAdminRequest(req),
     );
   }
 

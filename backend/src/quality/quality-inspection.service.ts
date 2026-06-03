@@ -40,6 +40,7 @@ import {
   QualityPourCard,
 } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
+import { QualityCubeTestRegister } from './entities/quality-cube-test-register.entity';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceService } from './compliance.service';
 import { InspectionWorkflowService } from './inspection-workflow.service';
@@ -139,6 +140,8 @@ export class QualityInspectionService {
     private readonly pourCardRepo: Repository<QualityPourCard>,
     @InjectRepository(QualityPrePourClearanceCard)
     private readonly prePourClearanceRepo: Repository<QualityPrePourClearanceCard>,
+    @InjectRepository(QualityCubeTestRegister)
+    private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
     private readonly complianceService: ComplianceService,
     private readonly auditService: AuditService,
     private readonly inspectionWorkflowService: InspectionWorkflowService,
@@ -2736,6 +2739,9 @@ export class QualityInspectionService {
         `No observations to cascade delete for inspection #${id}`,
       );
     }
+
+    await this.cubeRegisterRepo.delete({ inspectionId: id });
+    this.logger.log(`Cascade deleted cube test register rows for inspection #${id}`);
 
     await this.inspectionRepo.remove(inspection);
 

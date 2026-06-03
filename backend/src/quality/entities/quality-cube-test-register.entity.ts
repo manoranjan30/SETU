@@ -32,11 +32,11 @@ export class QualityCubeTestRegister {
   @Column()
   projectId: number;
 
-  @Column()
-  inspectionId: number;
+  @Column({ type: 'int', nullable: true })
+  inspectionId: number | null;
 
-  @Column()
-  pourCardId: number;
+  @Column({ type: 'int', nullable: true })
+  pourCardId: number | null;
 
   @Column({ type: 'int', nullable: true })
   pourEntryIndex: number | null;
