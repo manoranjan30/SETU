@@ -325,28 +325,27 @@ class _ActivityListBody extends StatelessWidget {
     );
   }
 
-  /// Shows a compact drawing-number prompt then raises a specific part of
-  /// a multi-go RFI. Reuses the vendor from the existing inspection.
+  /// Opens the full RFI dialog to raise a specific part of a multi-GO series.
+  /// Shows the same fields as the first GO (drawing no, element name, GO details,
+  /// vendor, comments) with the GO mode selector hidden since partNo is fixed.
   void _raiseRfiPart(
       BuildContext context, ActivityRow row, int partNo, int totalParts) {
-    _showDrawingNoPrompt(
-      context,
-      title: 'Raise GO $partNo of $totalParts',
-      onConfirm: (drawingNo) {
-        context.read<QualityRequestBloc>().add(RaiseRfi(
-              projectId: projectId,
-              epsNodeId: epsNodeId,
-              listId: listId,
-              activity: row.activity,
-              drawingNo: drawingNo,
-              partNo: partNo,
-              totalParts: totalParts,
-              partLabel: 'GO $partNo',
-              documentType: 'FLOOR_RFI',
-              vendorId: row.inspection?.vendorId,
-              vendorName: row.inspection?.vendorName,
-            ));
-      },
+    final authState = context.read<AuthBloc>().state;
+    final currentUser = authState is AuthAuthenticated ? authState.user : null;
+    showDialog(
+      context: context,
+      builder: (ctx) => _RaiseRfiDialog(
+        activity: row.activity,
+        projectId: projectId,
+        epsNodeId: epsNodeId,
+        listId: listId,
+        bloc: context.read<QualityRequestBloc>(),
+        currentUser: currentUser,
+        partNo: partNo,
+        totalParts: totalParts,
+        initialVendorId: row.inspection?.vendorId,
+        initialVendorName: row.inspection?.vendorName,
+      ),
     );
   }
 
@@ -829,6 +828,14 @@ class _RaiseRfiDialog extends StatefulWidget {
   /// instead of showing the picker.
   final User? currentUser;
 
+  /// When set, the dialog is in "additional GO" mode — raises a specific
+  /// part of an existing multi-GO series. Hides the GO mode selector and
+  /// pre-populates the vendor from the existing inspection.
+  final int? partNo;
+  final int? totalParts;
+  final int? initialVendorId;
+  final String? initialVendorName;
+
   const _RaiseRfiDialog({
     required this.activity,
     required this.projectId,
@@ -836,6 +843,10 @@ class _RaiseRfiDialog extends StatefulWidget {
     required this.listId,
     required this.bloc,
     this.currentUser,
+    this.partNo,
+    this.totalParts,
+    this.initialVendorId,
+    this.initialVendorName,
   });
 
   @override
@@ -870,6 +881,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
 
   bool get _isUnit => widget.activity.applicabilityLevel == 'UNIT';
   bool get _isFloor => !_isUnit;
+  bool get _isAdditionalGo => widget.partNo != null;
   bool get _requiresElement =>
       widget.activity.requiresPourCard || widget.activity.requiresPourClearanceCard;
 
@@ -937,7 +949,13 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
       setState(() {
         _vendors = vendors;
         _vendorLoading = false;
-        if (vendors.length == 1) _selectedVendor = vendors.first;
+        if (widget.initialVendorId != null) {
+          // For additional GOs, pre-select the vendor from the existing inspection
+          _selectedVendor = vendors.where((v) => v['id'] == widget.initialVendorId).firstOrNull
+              ?? (vendors.length == 1 ? vendors.first : null);
+        } else if (vendors.length == 1) {
+          _selectedVendor = vendors.first;
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -1009,9 +1027,12 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         ));
       }
     } else {
-      // FLOOR / null applicabilityLevel — One Go or Multi Go
-      final isMultiGo = _rfiMode == 'MULTI_GO';
-      final totalParts = isMultiGo ? _rfiParts.clamp(2, 20) : 1;
+      // Additional GO mode: partNo/totalParts are fixed from the existing series
+      // First GO mode: derive from the selected inspection type
+      final partNo = _isAdditionalGo ? widget.partNo! : 1;
+      final totalParts = _isAdditionalGo
+          ? widget.totalParts!
+          : (_rfiMode == 'MULTI_GO' ? _rfiParts.clamp(2, 20) : 1);
       widget.bloc.add(RaiseRfi(
         projectId: widget.projectId,
         epsNodeId: widget.epsNodeId,
@@ -1019,9 +1040,9 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         activity: widget.activity,
         drawingNo: drawingNo,
         comments: comments,
-        partNo: 1,
+        partNo: partNo,
         totalParts: totalParts,
-        partLabel: isMultiGo ? 'GO 1' : 'GO 1',
+        partLabel: 'GO $partNo',
         documentType: 'FLOOR_RFI',
         vendorId: vendorId,
         vendorName: vendorName,
@@ -1038,7 +1059,9 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     final theme = Theme.of(context);
 
     return AlertDialog(
-      title: const Text('Raise RFI'),
+      title: Text(_isAdditionalGo
+          ? 'Raise GO ${widget.partNo} of ${widget.totalParts}'
+          : 'Raise RFI'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1269,8 +1292,8 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
             ],
             const SizedBox(height: 16),
 
-            // ── Inspection mode selector (FLOOR activities) ──────────────
-            if (!_isUnit) ...[
+            // ── Inspection mode selector (FLOOR activities, first GO only) ─
+            if (!_isUnit && !_isAdditionalGo) ...[
               const Text('Inspection Type',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 6),
@@ -1386,9 +1409,11 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         ),
         FilledButton(
           onPressed: _canSubmit ? _submit : null,
-          child: Text(_isUnit && _selectedUnitIds.length > 1
-              ? 'Raise ${_selectedUnitIds.length} RFIs'
-              : 'Raise RFI'),
+          child: Text(_isAdditionalGo
+              ? 'Raise GO ${widget.partNo}'
+              : (_isUnit && _selectedUnitIds.length > 1
+                  ? 'Raise ${_selectedUnitIds.length} RFIs'
+                  : 'Raise RFI')),
         ),
       ],
     );

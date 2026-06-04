@@ -19,6 +19,7 @@ import {
   QualityCubeTestRegister,
   QualityCubeTestStatus,
 } from './entities/quality-cube-test-register.entity';
+import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
 import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
@@ -91,6 +92,8 @@ export class QualityPourCardService {
     private readonly clearanceRepo: Repository<QualityPrePourClearanceCard>,
     @InjectRepository(QualityCubeTestRegister)
     private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
+    @InjectRepository(QualityConcreteGrade)
+    private readonly concreteGradeRepo: Repository<QualityConcreteGrade>,
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
@@ -229,15 +232,26 @@ export class QualityPourCardService {
     return match ? Number(match[1]).toFixed(3) : null;
   }
 
+  private normalizeGradeKey(value?: string | null) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+  }
+
   private buildCubeId(
-    card: QualityPourCard,
-    entryIndex: number,
     cubeSerial: number,
-    age: QualityCubeTestAge,
   ) {
-    const serial = String(cubeSerial).padStart(3, '0');
-    const ageCode = age === QualityCubeTestAge.SEVEN_DAY ? '7D' : '28D';
-    return `CUBE-P${card.projectId}-RFI${card.inspectionId}-E${entryIndex + 1}-${serial}-${ageCode}`;
+    return `C${String(cubeSerial).padStart(5, '0')}`;
+  }
+
+  private parseCubeSerial(cubeId?: string | null) {
+    const match = String(cubeId || '').match(/C(\d{4,5})$/i);
+    return match ? Number(match[1]) : 0;
+  }
+
+  private getCubeTestAge(cubeIndex: number, cubeCount: number) {
+    const sevenDayCount = Math.ceil(cubeCount / 2);
+    return cubeIndex < sevenDayCount
+      ? QualityCubeTestAge.SEVEN_DAY
+      : QualityCubeTestAge.TWENTY_EIGHT_DAY;
   }
 
   private async assertQaQcApprover(
@@ -255,6 +269,55 @@ export class QualityPourCardService {
         'Only project QA/QC release strategy approvers can approve this card.',
       );
     }
+  }
+
+  private async getNextCubeSerial(projectId: number) {
+    const [cubeRows, pourCards] = await Promise.all([
+      this.cubeRegisterRepo.find({
+        where: { projectId },
+        select: ['cubeId'],
+      }),
+      this.pourCardRepo.find({
+        where: { projectId },
+        select: ['entries'],
+      }),
+    ]);
+
+    const maxRegistered = cubeRows.reduce(
+      (max, row) => Math.max(max, this.parseCubeSerial(row.cubeId)),
+      0,
+    );
+    const maxDraft = pourCards.reduce((max, card) => {
+      const ids = (card.entries || []).flatMap((entry) => entry.cubeIds || []);
+      return Math.max(
+        max,
+        ...ids.map((cubeId) => this.parseCubeSerial(cubeId)),
+      );
+    }, 0);
+
+    return Math.max(maxRegistered, maxDraft) + 1;
+  }
+
+  private async assignDraftCubeIds(card: QualityPourCard) {
+    if (!Array.isArray(card.entries)) {
+      card.entries = [];
+      return card;
+    }
+
+    let nextSerial = await this.getNextCubeSerial(card.projectId);
+    card.entries = card.entries.map((entry) => {
+      const cubeCount = Math.max(0, Number(entry.noOfCubesTaken || 0));
+      const existingIds = Array.isArray(entry.cubeIds)
+        ? entry.cubeIds.filter(Boolean)
+        : [];
+      const cubeIds = existingIds.slice(0, cubeCount);
+      while (cubeIds.length < cubeCount) {
+        cubeIds.push(this.buildCubeId(nextSerial));
+        nextSerial += 1;
+      }
+      return { ...entry, cubeIds };
+    });
+    return card;
   }
 
   private buildPdfBuffer(
@@ -582,8 +645,34 @@ export class QualityPourCardService {
         signatureData: null,
         signatureHash: null,
         signatureEvidence: null,
-        status: 'PENDING' as const,
+          status: 'PENDING' as const,
       }));
+  }
+
+  private mergeClearanceSignoffsWithTemplate(
+    inspection: ClearanceInspectionContext,
+    signoffs?: unknown,
+  ): ClearanceSignoffRow[] {
+    const currentTemplateRows = this.buildDefaultClearanceSignoffs(inspection);
+    const existingRows = this.normalizeSignoffRows(signoffs);
+    const byId = new Map(existingRows.map((row) => [row.id, row]));
+    const byDepartment = new Map(
+      existingRows.map((row) => [row.department.trim().toLowerCase(), row]),
+    );
+
+    return currentTemplateRows.map((templateRow) => {
+      const existing =
+        byId.get(templateRow.id) ||
+        byDepartment.get(templateRow.department.trim().toLowerCase());
+      if (!existing) return templateRow;
+      return {
+        ...existing,
+        id: templateRow.id,
+        department: templateRow.department,
+        designation: templateRow.designation,
+        isActive: templateRow.isActive,
+      };
+    });
   }
 
   private getClearanceActivationMeta(
@@ -748,6 +837,7 @@ export class QualityPourCardService {
           : existing.rejectionRemarks,
     });
 
+    await this.assignDraftCubeIds(existing);
     return this.pourCardRepo.save(existing);
   }
 
@@ -826,22 +916,29 @@ export class QualityPourCardService {
 
     const goLabel = this.resolveGoLabel(inspection);
     const rows: QualityCubeTestRegister[] = [];
-    let cubeSerial = 1;
+    await this.assignDraftCubeIds(card);
+    const gradeRows = await this.concreteGradeRepo.find({
+      where: { projectId: card.projectId, isActive: true },
+    });
+    const gradeByKey = new Map(
+      gradeRows.map((grade) => [this.normalizeGradeKey(grade.grade), grade]),
+    );
 
     for (const [entryIndex, entry] of (card.entries || []).entries()) {
       const cubeCount = Math.max(0, Number(entry.noOfCubesTaken || 0));
       const castDate = this.normalizeDateOnly(entry.pourDate);
       if (!cubeCount || !castDate) continue;
 
-      for (let cubeNo = 1; cubeNo <= cubeCount; cubeNo += 1) {
-        for (const age of [
-          QualityCubeTestAge.SEVEN_DAY,
-          QualityCubeTestAge.TWENTY_EIGHT_DAY,
-        ]) {
+      const cubeIds = entry.cubeIds || [];
+      for (let cubeIndex = 0; cubeIndex < cubeCount; cubeIndex += 1) {
+          const age = this.getCubeTestAge(cubeIndex, cubeCount);
           const dueDays = age === QualityCubeTestAge.SEVEN_DAY ? 7 : 28;
-          const requiredStrength = this.inferRequiredStrengthMpa(
-            entry.mixIdOrGrade,
+          const concreteGrade = gradeByKey.get(
+            this.normalizeGradeKey(entry.mixIdOrGrade),
           );
+          const requiredStrength =
+            concreteGrade?.targetMeanStrengthMpa ||
+            this.inferRequiredStrengthMpa(entry.mixIdOrGrade);
           const dueDate = this.addDays(castDate, dueDays);
           if (!dueDate) continue;
           rows.push(
@@ -850,7 +947,7 @@ export class QualityPourCardService {
               inspectionId: card.inspectionId,
               pourCardId: card.id,
               pourEntryIndex: entryIndex,
-              cubeId: this.buildCubeId(card, entryIndex, cubeSerial, age),
+              cubeId: cubeIds[cubeIndex] || this.buildCubeId(cubeIndex + 1),
               testAge: age,
               castDate,
               dueDate,
@@ -875,16 +972,21 @@ export class QualityPourCardService {
                 castDate,
                 dueDays,
                 requiredStrengthMpa: requiredStrength,
+                characteristicStrengthMpa:
+                  concreteGrade?.characteristicStrengthMpa || null,
+                mixRatio: concreteGrade?.mixRatio || null,
+                slumpRangeMm: concreteGrade?.slumpRangeMm || null,
               },
               status: QualityCubeTestStatus.PENDING,
             }),
           );
-        }
-        cubeSerial += 1;
       }
     }
 
-    return rows.length ? this.cubeRegisterRepo.save(rows) : [];
+    if (!rows.length) return [];
+    const savedRows = await this.cubeRegisterRepo.save(rows);
+    await this.pourCardRepo.save(card);
+    return savedRows;
   }
 
   async approvePourCard(
@@ -1076,7 +1178,16 @@ export class QualityPourCardService {
       this.normalizeAttachmentChecklistSelections(
         card.attachmentChecklistSelections,
       );
-    card.signoffs = this.normalizeSignoffRows(card.signoffs);
+    const mergedSignoffs = this.mergeClearanceSignoffsWithTemplate(
+      inspection,
+      card.signoffs,
+    );
+    if (JSON.stringify(card.signoffs || []) !== JSON.stringify(mergedSignoffs)) {
+      card.signoffs = mergedSignoffs;
+      defaultsChanged = true;
+    } else {
+      card.signoffs = mergedSignoffs;
+    }
     if (defaultsChanged) {
       card = await this.clearanceRepo.save(card);
     }
@@ -1090,6 +1201,18 @@ export class QualityPourCardService {
     requestMeta?: SignatureRequestMeta,
   ) {
     const existing = await this.getPrePourClearanceCard(inspectionId);
+    const inspection = await this.getInspectionWithClearanceContextOrThrow(
+      inspectionId,
+    );
+    const nextSignoffs = Array.isArray(payload.signoffs)
+      ? this.mergeClearanceSignoffsWithTemplate(
+          inspection,
+          this.normalizeSignoffRows(payload.signoffs, userId, requestMeta),
+        )
+      : this.mergeClearanceSignoffsWithTemplate(
+          inspection,
+          this.normalizeSignoffRows(existing.signoffs, userId, requestMeta),
+        );
     if (
       [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(
         existing.status,
@@ -1144,9 +1267,7 @@ export class QualityPourCardService {
           : this.normalizeAttachmentChecklistSelections(
               existing.attachmentChecklistSelections,
             ),
-      signoffs: Array.isArray(payload.signoffs)
-        ? this.normalizeSignoffRows(payload.signoffs, userId, requestMeta)
-        : this.normalizeSignoffRows(existing.signoffs, userId, requestMeta),
+      signoffs: nextSignoffs,
       status:
         existing.status === QualityCardStatus.REJECTED
           ? QualityCardStatus.DRAFT
@@ -1366,7 +1487,9 @@ export class QualityPourCardService {
           .filter((signoff) => signoff?.isActive !== false)
           .map((signoff, index) => [
             index + 1,
-            signoff.department,
+            [signoff.department, signoff.designation]
+              .filter(Boolean)
+              .join(' - '),
             signoff.personName,
             signoff.status || 'PENDING',
             signoff.signerDisplayName ||

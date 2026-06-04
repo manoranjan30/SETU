@@ -92,6 +92,7 @@ import { QualityMaterialApprovalStep } from './entities/quality-material-approva
 import { QualityPourCard } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
 import { QualityCubeTestRegister } from './entities/quality-cube-test-register.entity';
+import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
 import { QualityPourCardService } from './quality-pour-card.service';
 import { QualityPourCardController } from './quality-pour-card.controller';
 
@@ -151,6 +152,7 @@ import { QualityPourCardController } from './quality-pour-card.controller';
       QualityPourCard,
       QualityPrePourClearanceCard,
       QualityCubeTestRegister,
+      QualityConcreteGrade,
       TempUser,
       User,
       Vendor,

@@ -413,10 +413,34 @@ export interface QualityCubeTestRegister {
   averageStrengthMpa?: string | null;
   requiredStrengthMpa?: string | null;
   calculationDetails?: Record<string, unknown> | null;
-  status: "PENDING" | "DUE_TODAY" | "OVERDUE" | "TESTED" | "APPROVED" | "FAILED";
-  testedByName?: string | null;
-  testedDate?: string | null;
+    status:
+      | "PENDING"
+      | "DUE_TODAY"
+      | "OVERDUE"
+      | "TESTED"
+      | "PASSED"
+      | "NEEDS_ATTENTION"
+      | "APPROVED"
+      | "FAILED";
+    testedByName?: string | null;
+    witnessedByName?: string | null;
+    testedDate?: string | null;
+    remarks?: string | null;
+  }
+
+export interface QualityConcreteGrade {
+  id: number;
+  projectId: number;
+  grade: string;
+  targetMeanStrengthMpa?: string | null;
+  characteristicStrengthMpa?: string | null;
+  mixRatio?: string | null;
+  slumpRangeMm?: string | null;
+  waterCementRatio?: string | null;
+  cementContentKgM3?: string | null;
   remarks?: string | null;
+  propertyDetails?: Record<string, unknown> | null;
+  isActive: boolean;
 }
 
 export interface QualityMaterialEvidenceFile {

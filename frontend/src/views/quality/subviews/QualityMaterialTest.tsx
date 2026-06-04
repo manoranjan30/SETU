@@ -5,8 +5,11 @@ import {
   ArrowUpDown,
   Beaker,
   ClipboardCheck,
+  Download,
   FileUp,
   Layers3,
+  Maximize2,
+  Minimize2,
   PackagePlus,
   Plus,
   RefreshCcw,
@@ -16,13 +19,17 @@ import {
   X,
 } from "lucide-react";
 import { qualityService } from "../../../services/quality.service";
+import { getPublicFileUrl } from "../../../api/baseUrl";
+import { exportUtils } from "../../../utils/export.utils";
 import type {
+  QualityMaterialEvidenceFile,
   QualityMaterialItpCheckpoint,
   QualityMaterialItpTemplate,
   QualityMaterialReceipt,
   QualityMaterialTestObligation,
   QualityMaterialTestResult,
   QualityCubeTestRegister,
+  QualityConcreteGrade,
 } from "../../../types/quality";
 
 interface Props {
@@ -64,6 +71,13 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
   const [obligations, setObligations] = useState<QualityMaterialTestObligation[]>([]);
   const [results, setResults] = useState<QualityMaterialTestResult[]>([]);
   const [cubeRegister, setCubeRegister] = useState<QualityCubeTestRegister[]>([]);
+  const [cubeEvidence, setCubeEvidence] = useState<Record<number, QualityMaterialEvidenceFile[]>>({});
+  const [concreteGrades, setConcreteGrades] = useState<QualityConcreteGrade[]>([]);
+  const [gradeSettingsOpen, setGradeSettingsOpen] = useState(false);
+  const [cubeFullscreen, setCubeFullscreen] = useState(false);
+  const [uploadingCubeEvidenceId, setUploadingCubeEvidenceId] = useState<number | null>(null);
+  const [cubeDateFrom, setCubeDateFrom] = useState("");
+  const [cubeDateTo, setCubeDateTo] = useState("");
   const [cubeSearch, setCubeSearch] = useState("");
   const [cubeStatusFilter, setCubeStatusFilter] = useState("ALL");
   const [cubeAgeFilter, setCubeAgeFilter] = useState("ALL");
@@ -111,6 +125,17 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     numericValue: "",
     textValue: "",
     result: "PENDING_REVIEW",
+    remarks: "",
+  });
+
+  const [gradeForm, setGradeForm] = useState({
+    grade: "",
+    targetMeanStrengthMpa: "",
+    characteristicStrengthMpa: "",
+    mixRatio: "",
+    slumpRangeMm: "",
+    waterCementRatio: "",
+    cementContentKgM3: "",
     remarks: "",
   });
 
@@ -172,8 +197,14 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     const query = cubeSearch.trim().toLowerCase();
     const rows = cubeRegister.filter((cube) => {
       const matchesStatus =
-        cubeStatusFilter === "ALL" || cube.status === cubeStatusFilter;
+        cubeStatusFilter === "ALL" ||
+        (cubeStatusFilter === "DUE_FOR_TESTING"
+          ? ["PENDING", "DUE_TODAY", "OVERDUE"].includes(cube.status) &&
+            cube.dueDate <= today()
+          : cube.status === cubeStatusFilter);
       const matchesAge = cubeAgeFilter === "ALL" || cube.testAge === cubeAgeFilter;
+      const matchesDateFrom = !cubeDateFrom || cube.dueDate >= cubeDateFrom;
+      const matchesDateTo = !cubeDateTo || cube.dueDate <= cubeDateTo;
       const haystack = [
         cube.cubeId,
         cube.locationText,
@@ -188,7 +219,13 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return matchesStatus && matchesAge && (!query || haystack.includes(query));
+      return (
+        matchesStatus &&
+        matchesAge &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        (!query || haystack.includes(query))
+      );
     });
     return [...rows].sort((left, right) => {
       const leftValue = left[cubeSort.key] ?? "";
@@ -199,7 +236,15 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
       });
       return cubeSort.direction === "asc" ? comparison : -comparison;
     });
-  }, [cubeAgeFilter, cubeRegister, cubeSearch, cubeSort, cubeStatusFilter]);
+  }, [
+    cubeAgeFilter,
+    cubeDateFrom,
+    cubeDateTo,
+    cubeRegister,
+    cubeSearch,
+    cubeSort,
+    cubeStatusFilter,
+  ]);
 
   const refresh = async () => {
     setLoading(true);
@@ -211,6 +256,8 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
         nextObligations,
         nextResults,
         nextCubeRegister,
+        nextConcreteGrades,
+        nextCubeEvidence,
       ] =
         await Promise.all([
           qualityService.getMaterialItps(projectId),
@@ -218,12 +265,23 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
           qualityService.getMaterialTestObligations(projectId),
           qualityService.getMaterialTestResults(projectId),
           qualityService.getCubeTestRegister(projectId),
+          qualityService.getConcreteGrades(projectId),
+          qualityService.getMaterialEvidence(projectId, "CUBE_TEST"),
         ]);
       setTemplates(nextTemplates);
       setReceipts(nextReceipts);
       setObligations(nextObligations);
       setResults(nextResults);
       setCubeRegister(nextCubeRegister);
+      setCubeEvidence(
+        nextCubeEvidence.reduce<Record<number, QualityMaterialEvidenceFile[]>>((acc, item) => {
+          const ownerId = Number(item.ownerId);
+          if (!ownerId) return acc;
+          acc[ownerId] = [...(acc[ownerId] || []), item];
+          return acc;
+        }, {}),
+      );
+      setConcreteGrades(nextConcreteGrades);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to load material ITP data");
     } finally {
@@ -343,7 +401,6 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
       specimenSize: cube.specimenSize || "150 x 150 x 150 mm",
       loadKn: cube.loadKn,
       requiredStrengthMpa: cube.requiredStrengthMpa,
-      testedByName: cube.testedByName,
       testedDate: cube.testedDate || today(),
       remarks: cube.remarks,
       status: approve ? "APPROVED" : "TESTED",
@@ -360,6 +417,122 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
     if (!confirm("Delete this cube test register row?")) return;
     await qualityService.deleteCubeTestRegister(cubeId);
     setCubeRegister((current) => current.filter((item) => item.id !== cubeId));
+  };
+
+  const uploadCubeEvidence = async (
+    cube: QualityCubeTestRegister,
+    file?: File | null,
+  ) => {
+    if (!file) return;
+    setUploadingCubeEvidenceId(cube.id);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("ownerType", "CUBE_TEST");
+      formData.append("ownerId", String(cube.id));
+      formData.append("evidenceType", file.type.startsWith("image/") ? "PHOTO" : "LAB_REPORT");
+      formData.append("description", `Cube failure evidence for ${cube.cubeId}`);
+      const uploaded = await qualityService.uploadMaterialEvidence(projectId, formData);
+      setCubeEvidence((current) => ({
+        ...current,
+        [cube.id]: [uploaded, ...(current[cube.id] || [])],
+      }));
+    } finally {
+      setUploadingCubeEvidenceId(null);
+    }
+  };
+
+  const showDueForTesting = () => {
+    setActiveTab("cubes");
+    setCubeStatusFilter("DUE_FOR_TESTING");
+    setCubeAgeFilter("ALL");
+    setCubeDateFrom("");
+    setCubeDateTo(today());
+  };
+
+  const saveConcreteGrade = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const created = await qualityService.createConcreteGrade(projectId, {
+      ...gradeForm,
+      isActive: true,
+    } as any);
+    setConcreteGrades((current) => [...current, created].sort((a, b) => a.grade.localeCompare(b.grade, undefined, { numeric: true })));
+    setGradeForm({
+      grade: "",
+      targetMeanStrengthMpa: "",
+      characteristicStrengthMpa: "",
+      mixRatio: "",
+      slumpRangeMm: "",
+      waterCementRatio: "",
+      cementContentKgM3: "",
+      remarks: "",
+    });
+  };
+
+  const toggleConcreteGrade = async (grade: QualityConcreteGrade) => {
+    const updated = await qualityService.updateConcreteGrade(grade.id, {
+      isActive: !grade.isActive,
+    });
+    setConcreteGrades((current) =>
+      current.map((item) => (item.id === grade.id ? updated : item)),
+    );
+  };
+
+  const deleteConcreteGrade = async (id: number) => {
+    if (!confirm("Delete this concrete grade setting?")) return;
+    await qualityService.deleteConcreteGrade(id);
+    setConcreteGrades((current) => current.filter((item) => item.id !== id));
+  };
+
+  const exportCubeRegister = () => {
+    exportUtils.toExcel(
+      filteredCubeRegister.map((cube) => ({
+        cubeId: cube.cubeId,
+        status: cube.status,
+        testAge: cube.testAge,
+        castDate: cube.castDate,
+        dueDate: cube.dueDate,
+        inspectionId: cube.inspectionId,
+        goLabel: cube.goLabel,
+        locationText: cube.locationText,
+        elementName: cube.elementName,
+        mixIdOrGrade: cube.mixIdOrGrade,
+        truckNo: cube.truckNo,
+        deliveryChallanNo: cube.deliveryChallanNo,
+        loadKn: cube.loadKn,
+        compressiveStrengthMpa: cube.compressiveStrengthMpa,
+        requiredStrengthMpa: cube.requiredStrengthMpa,
+        testedDate: cube.testedDate,
+        testedByName: cube.testedByName,
+        witnessedByName: cube.witnessedByName,
+        remarks: cube.remarks,
+      })),
+      `cube-test-register-${cubeDateFrom || "all"}-${cubeDateTo || "all"}`,
+      {
+        sheetName: "Cube Test Register",
+        columns: [
+          { key: "cubeId", label: "Cube ID" },
+          { key: "status", label: "Status" },
+          { key: "testAge", label: "Age" },
+          { key: "castDate", label: "Cast Date" },
+          { key: "dueDate", label: "Due Date" },
+          { key: "inspectionId", label: "RFI" },
+          { key: "goLabel", label: "GO" },
+          { key: "locationText", label: "Location" },
+          { key: "elementName", label: "Element" },
+          { key: "mixIdOrGrade", label: "Grade" },
+          { key: "truckNo", label: "Truck" },
+          { key: "deliveryChallanNo", label: "Challan" },
+          { key: "loadKn", label: "Load kN" },
+          { key: "compressiveStrengthMpa", label: "Compressive Strength MPa" },
+          { key: "requiredStrengthMpa", label: "Required MPa" },
+          { key: "testedDate", label: "Tested Date" },
+          { key: "testedByName", label: "Tested By" },
+          { key: "witnessedByName", label: "Witnessed By" },
+          { key: "remarks", label: "Remarks" },
+        ],
+      },
+    );
   };
 
   const addManualCubeRow = async () => {
@@ -404,6 +577,13 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
           >
             <RefreshCcw className="h-4 w-4" />
             Refresh
+          </button>
+          <button
+            onClick={showDueForTesting}
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+          >
+            <AlertTriangle className="h-4 w-4" />
+            Due for Testing
           </button>
           <button
             onClick={() => setModalMode("receipt")}
@@ -589,7 +769,33 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
       )}
 
       {activeTab === "cubes" && (
-        <div className="space-y-3">
+        <div
+          className={
+            cubeFullscreen
+              ? "fixed inset-0 z-[9999] isolate overflow-auto bg-white p-4 text-text-primary shadow-2xl"
+              : "space-y-3"
+          }
+        >
+          {cubeFullscreen && (
+            <div className="sticky top-0 z-30 mb-4 flex items-center justify-between border-b border-border-subtle bg-white px-1 py-3">
+              <div>
+                <div className="text-lg font-bold text-text-primary">
+                  Cube Test Register
+                </div>
+                <div className="text-xs text-text-muted">
+                  Fullscreen testing workspace
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCubeFullscreen(false)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm font-bold text-text-secondary shadow-sm hover:bg-surface-raised"
+              >
+                <Minimize2 className="h-4 w-4" />
+                Exit Fullscreen
+              </button>
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-3">
             <Stat
               label="Pending for Testing"
@@ -609,7 +815,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
           </div>
           <div className="rounded-lg border border-border-subtle bg-surface-card p-4 shadow-sm">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="grid flex-1 gap-2 md:grid-cols-[minmax(220px,1fr)_160px_140px]">
+              <div className="grid flex-1 gap-2 md:grid-cols-[minmax(220px,1fr)_160px_140px_140px_140px]">
                 <input
                   value={cubeSearch}
                   onChange={(event) => setCubeSearch(event.target.value)}
@@ -621,7 +827,18 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                   onChange={(event) => setCubeStatusFilter(event.target.value)}
                   className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
                 >
-                  {["ALL", "PENDING", "DUE_TODAY", "OVERDUE", "TESTED", "APPROVED", "FAILED"].map((status) => (
+                  {[
+                    "ALL",
+                    "DUE_FOR_TESTING",
+                    "PENDING",
+                    "DUE_TODAY",
+                    "OVERDUE",
+                    "TESTED",
+                    "PASSED",
+                    "NEEDS_ATTENTION",
+                    "APPROVED",
+                    "FAILED",
+                  ].map((status) => (
                     <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
@@ -634,18 +851,143 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                   <option value="7_DAY">7 Day</option>
                   <option value="28_DAY">28 Day</option>
                 </select>
+                <input
+                  type="date"
+                  value={cubeDateFrom}
+                  onChange={(event) => setCubeDateFrom(event.target.value)}
+                  className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
+                  title="Due date from"
+                />
+                <input
+                  type="date"
+                  value={cubeDateTo}
+                  onChange={(event) => setCubeDateTo(event.target.value)}
+                  className="rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
+                  title="Due date to"
+                />
               </div>
-              <button
-                type="button"
-                onClick={addManualCubeRow}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
-              >
-                <Plus className="h-4 w-4" />
-                Manual Cube
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGradeSettingsOpen((current) => !current)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Grade Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={exportCubeRegister}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+                >
+                  <Download className="h-4 w-4" />
+                  Export
+                </button>
+                <button
+                  type="button"
+                  onClick={addManualCubeRow}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+                >
+                  <Plus className="h-4 w-4" />
+                  Manual Cube
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCubeFullscreen((current) => !current)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+                >
+                  {cubeFullscreen ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                  {cubeFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                </button>
+              </div>
             </div>
+            {gradeSettingsOpen && (
+              <div className="mt-4 rounded-lg border border-border-subtle bg-surface-base p-3">
+                <form onSubmit={saveConcreteGrade} className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
+                  <input
+                    required
+                    value={gradeForm.grade}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, grade: event.target.value }))}
+                    placeholder="Grade M25"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="number"
+                    value={gradeForm.targetMeanStrengthMpa}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, targetMeanStrengthMpa: event.target.value }))}
+                    placeholder="Target MPa"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="number"
+                    value={gradeForm.characteristicStrengthMpa}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, characteristicStrengthMpa: event.target.value }))}
+                    placeholder="Char. MPa"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <input
+                    value={gradeForm.mixRatio}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, mixRatio: event.target.value }))}
+                    placeholder="Mix ratio"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <input
+                    value={gradeForm.slumpRangeMm}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, slumpRangeMm: event.target.value }))}
+                    placeholder="Slump mm"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="number"
+                    value={gradeForm.waterCementRatio}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, waterCementRatio: event.target.value }))}
+                    placeholder="W/C"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <input
+                    type="number"
+                    value={gradeForm.cementContentKgM3}
+                    onChange={(event) => setGradeForm((current) => ({ ...current, cementContentKgM3: event.target.value }))}
+                    placeholder="Cement kg/m3"
+                    className="rounded border border-border-subtle bg-surface-card px-2 py-1 text-xs"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded bg-orange-600 px-3 py-1 text-xs font-bold text-white hover:bg-orange-700"
+                  >
+                    Add Grade
+                  </button>
+                </form>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {concreteGrades.map((grade) => (
+                    <span
+                      key={grade.id}
+                      className={`inline-flex items-center gap-2 rounded border px-2 py-1 text-xs ${
+                        grade.isActive
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-border-subtle bg-surface-card text-text-muted"
+                      }`}
+                    >
+                      <strong>{grade.grade}</strong>
+                      {grade.targetMeanStrengthMpa && <span>TMS {grade.targetMeanStrengthMpa} MPa</span>}
+                      {grade.mixRatio && <span>{grade.mixRatio}</span>}
+                      <button type="button" onClick={() => toggleConcreteGrade(grade)} className="font-bold">
+                        {grade.isActive ? "Disable" : "Enable"}
+                      </button>
+                      <button type="button" onClick={() => deleteConcreteGrade(grade.id)} className="text-red-700">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[1540px] text-left text-xs">
+              <table className="w-full min-w-[1720px] text-left text-xs">
                 <thead>
                   <tr className="border-b border-border-subtle text-text-muted">
                     {[
@@ -672,9 +1014,11 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                         </button>
                       </th>
                     ))}
-                    <th className="px-2 py-2">Tested By</th>
-                    <th className="px-2 py-2">Remarks</th>
                     <th className="px-2 py-2 text-right">Actions</th>
+                    <th className="px-2 py-2">Tested By</th>
+                    <th className="px-2 py-2">Witnessed By</th>
+                    <th className="px-2 py-2">Remarks</th>
+                    <th className="px-2 py-2">Evidence</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -724,20 +1068,6 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                         />
                       </td>
                       <td className="px-2 py-2">
-                        <input
-                          value={cube.testedByName || ""}
-                          onChange={(event) => updateCubeDraft(cube.id, { testedByName: event.target.value })}
-                          className="w-32 rounded border border-border-subtle bg-surface-base px-2 py-1"
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          value={cube.remarks || ""}
-                          onChange={(event) => updateCubeDraft(cube.id, { remarks: event.target.value })}
-                          className="w-48 rounded border border-border-subtle bg-surface-base px-2 py-1"
-                        />
-                      </td>
-                      <td className="px-2 py-2">
                         <div className="flex justify-end gap-1">
                           <button
                             type="button"
@@ -749,9 +1079,14 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                           <button
                             type="button"
                             onClick={() => saveCubeResult(cube, true)}
-                            className="rounded bg-emerald-600 px-2 py-1 font-bold text-white hover:bg-emerald-700"
+                            disabled={cube.status === "APPROVED"}
+                            className={`rounded px-2 py-1 font-bold ${
+                              cube.status === "APPROVED"
+                                ? "cursor-not-allowed bg-gray-300 text-gray-600"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            }`}
                           >
-                            Approve
+                            {cube.status === "APPROVED" ? "Approved" : "Approve"}
                           </button>
                           <button
                             type="button"
@@ -761,6 +1096,51 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="w-32 rounded border border-border-subtle bg-surface-raised px-2 py-1 text-text-muted">
+                          {cube.testedByName || "Auto on save"}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="w-32 rounded border border-border-subtle bg-surface-raised px-2 py-1 text-text-muted">
+                          {cube.witnessedByName || "Auto on approve"}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={cube.remarks || ""}
+                          onChange={(event) => updateCubeDraft(cube.id, { remarks: event.target.value })}
+                          className="w-48 rounded border border-border-subtle bg-surface-base px-2 py-1"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="w-40 space-y-1">
+                          {(cubeEvidence[cube.id] || []).length > 0 && (
+                            <a
+                              href={getPublicFileUrl((cubeEvidence[cube.id] || [])[0].relativeUrl)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block text-xs font-semibold text-secondary hover:underline"
+                            >
+                              Evidence {(cubeEvidence[cube.id] || []).length}
+                            </a>
+                          )}
+                          {cube.status === "FAILED" && (
+                            <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100">
+                              <FileUp className="h-3.5 w-3.5" />
+                              {uploadingCubeEvidenceId === cube.id ? "Uploading" : "Upload"}
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(event) => {
+                                  uploadCubeEvidence(cube, event.target.files?.[0] || null);
+                                  event.currentTarget.value = "";
+                                }}
+                              />
+                            </label>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1064,10 +1444,14 @@ const ApprovalPanel = ({
 
 const StatusBadge = ({ value }: { value: string }) => {
   const tone =
-    value === "ACTIVE" || value === "APPROVED" || value === "PASS" || value === "COMPLETED"
+    value === "ACTIVE" ||
+    value === "APPROVED" ||
+    value === "PASSED" ||
+    value === "PASS" ||
+    value === "COMPLETED"
       ? "bg-emerald-100 text-emerald-700"
-      : value === "OVERDUE" || value === "FAIL" || value === "REJECTED"
-        ? "bg-red-100 text-red-700"
+    : value === "OVERDUE" || value === "FAIL" || value === "FAILED" || value === "REJECTED"
+      ? "bg-red-100 text-red-700"
         : "bg-amber-100 text-amber-700";
   return <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{value}</span>;
 };

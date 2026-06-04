@@ -17,6 +17,8 @@ export enum QualityCubeTestStatus {
   DUE_TODAY = 'DUE_TODAY',
   OVERDUE = 'OVERDUE',
   TESTED = 'TESTED',
+  PASSED = 'PASSED',
+  NEEDS_ATTENTION = 'NEEDS_ATTENTION',
   APPROVED = 'APPROVED',
   FAILED = 'FAILED',
 }
@@ -122,6 +124,9 @@ export class QualityCubeTestRegister {
 
   @Column({ type: 'int', nullable: true })
   approvedByUserId: number | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  witnessedByName: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

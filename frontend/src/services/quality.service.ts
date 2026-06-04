@@ -18,6 +18,7 @@ import type {
   QualityMaterialTestObligation,
   QualityMaterialTestResult,
   QualityCubeTestRegister,
+  QualityConcreteGrade,
 } from "../types/quality";
 
 const BASE_URL = "/quality";
@@ -480,6 +481,32 @@ export const qualityService = {
     return res.data;
   },
 
+  getConcreteGrades: async (projectId: number): Promise<QualityConcreteGrade[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/concrete-grades`);
+    return res.data;
+  },
+
+  createConcreteGrade: async (
+    projectId: number,
+    data: Partial<QualityConcreteGrade>,
+  ): Promise<QualityConcreteGrade> => {
+    const res = await api.post(`${BASE_URL}/${projectId}/concrete-grades`, data);
+    return res.data;
+  },
+
+  updateConcreteGrade: async (
+    id: number,
+    data: Partial<QualityConcreteGrade>,
+  ): Promise<QualityConcreteGrade> => {
+    const res = await api.put(`${BASE_URL}/concrete-grades/${id}`, data);
+    return res.data;
+  },
+
+  deleteConcreteGrade: async (id: number) => {
+    const res = await api.delete(`${BASE_URL}/concrete-grades/${id}`);
+    return res.data;
+  },
+
   createCubeTestRegister: async (
     projectId: number,
     data: Partial<QualityCubeTestRegister>,
@@ -557,6 +584,17 @@ export const qualityService = {
   ): Promise<QualityMaterialEvidenceFile> => {
     const res = await api.post(`${BASE_URL}/${projectId}/material-evidence`, data, {
       headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
+  getMaterialEvidence: async (
+    projectId: number,
+    ownerType?: string,
+    ownerId?: number,
+  ): Promise<QualityMaterialEvidenceFile[]> => {
+    const res = await api.get(`${BASE_URL}/${projectId}/material-evidence`, {
+      params: { ownerType, ownerId },
     });
     return res.data;
   },

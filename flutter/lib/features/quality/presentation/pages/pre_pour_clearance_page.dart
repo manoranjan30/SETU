@@ -91,7 +91,7 @@ class _ClearanceViewState extends State<_ClearanceView> {
   @override
   void initState() {
     super.initState();
-    if (widget.projectId != null && widget.epsNodeId != null) {
+    if (widget.projectId != null) {
       _loadFloorInspections();
     }
   }
@@ -100,7 +100,7 @@ class _ClearanceViewState extends State<_ClearanceView> {
     try {
       final raw = await sl<SetuApiClient>().getQualityInspections(
         projectId: widget.projectId!,
-        epsNodeId: widget.epsNodeId!,
+        epsNodeId: widget.epsNodeId,
       );
       if (!mounted) return;
       setState(() {
@@ -108,8 +108,8 @@ class _ClearanceViewState extends State<_ClearanceView> {
             .whereType<Map<String, dynamic>>()
             .map(QualityInspection.fromJson)
             .where((i) =>
-                i.status == InspectionStatus.approved ||
-                i.status == InspectionStatus.partiallyApproved)
+                i.status != InspectionStatus.canceled &&
+                i.status != InspectionStatus.reversed)
             .toList();
       });
     } catch (_) {}

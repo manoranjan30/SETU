@@ -182,14 +182,38 @@ export class MaterialItpController {
     return this.materialItpService.listCubeTestRegister(Number(projectId));
   }
 
-  @Post(':projectId/cube-test-register')
+  @Get(':projectId/concrete-grades')
+  @Permissions('QUALITY.CUBE_TEST.READ')
+  listConcreteGrades(@Param('projectId') projectId: number) {
+    return this.materialItpService.listConcreteGrades(Number(projectId));
+  }
+
+  @Post(':projectId/concrete-grades')
   @Permissions('QUALITY.CUBE_TEST.SAVE')
+  createConcreteGrade(@Param('projectId') projectId: number, @Body() body: any) {
+    return this.materialItpService.createConcreteGrade(Number(projectId), body);
+  }
+
+  @Put('concrete-grades/:id')
+  @Permissions('QUALITY.CUBE_TEST.SAVE')
+  updateConcreteGrade(@Param('id') id: number, @Body() body: any) {
+    return this.materialItpService.updateConcreteGrade(Number(id), body);
+  }
+
+  @Delete('concrete-grades/:id')
+  @Permissions('QUALITY.CUBE_TEST.DELETE')
+  deleteConcreteGrade(@Param('id') id: number) {
+    return this.materialItpService.deleteConcreteGrade(Number(id));
+  }
+
+  @Post(':projectId/cube-test-register')
+  @Permissions('QUALITY.CUBE_TEST.CREATE')
   createCubeTestRegister(@Param('projectId') projectId: number, @Body() body: any) {
     return this.materialItpService.createCubeTestRegister(Number(projectId), body);
   }
 
   @Put('cube-test-register/:id')
-  @Permissions('QUALITY.CUBE_TEST.SAVE')
+  @Permissions('QUALITY.CUBE_TEST.UPDATE')
   updateCubeTestRegister(
     @Param('id') id: number,
     @Body() body: any,

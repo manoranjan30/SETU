@@ -29,6 +29,7 @@ import {
   QualityCubeTestRegister,
   QualityCubeTestStatus,
 } from './entities/quality-cube-test-register.entity';
+import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
 import { User } from '../users/user.entity';
 
 const ITP_DOCUMENT_TYPE = 'MATERIAL_ITP_TEMPLATE';
@@ -57,6 +58,8 @@ export class MaterialItpService {
     private readonly stepRepo: Repository<QualityMaterialApprovalStep>,
     @InjectRepository(QualityCubeTestRegister)
     private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
+    @InjectRepository(QualityConcreteGrade)
+    private readonly concreteGradeRepo: Repository<QualityConcreteGrade>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly releaseStrategyService: ReleaseStrategyService,
@@ -222,6 +225,71 @@ export class MaterialItpService {
     return rows.map((row) => this.withLiveCubeStatus(row));
   }
 
+  listConcreteGrades(projectId: number) {
+    return this.concreteGradeRepo.find({
+      where: { projectId },
+      order: { grade: 'ASC' },
+    });
+  }
+
+  async createConcreteGrade(projectId: number, dto: Partial<QualityConcreteGrade>) {
+    const grade = dto.grade?.trim();
+    if (!grade) throw new BadRequestException('Concrete grade is required');
+    const row = this.concreteGradeRepo.create({
+      projectId,
+      grade,
+      targetMeanStrengthMpa: this.toNullableNumberText(dto.targetMeanStrengthMpa),
+      characteristicStrengthMpa: this.toNullableNumberText(
+        dto.characteristicStrengthMpa,
+      ),
+      mixRatio: dto.mixRatio?.trim() || null,
+      slumpRangeMm: dto.slumpRangeMm?.trim() || null,
+      waterCementRatio: this.toNullableNumberText(dto.waterCementRatio),
+      cementContentKgM3: this.toNullableNumberText(dto.cementContentKgM3),
+      remarks: dto.remarks?.trim() || null,
+      propertyDetails: dto.propertyDetails || null,
+      isActive: dto.isActive ?? true,
+    });
+    return this.concreteGradeRepo.save(row);
+  }
+
+  async updateConcreteGrade(id: number, dto: Partial<QualityConcreteGrade>) {
+    const row = await this.concreteGradeRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Concrete grade not found');
+    Object.assign(row, {
+      grade: dto.grade?.trim() || row.grade,
+      targetMeanStrengthMpa:
+        dto.targetMeanStrengthMpa === undefined
+          ? row.targetMeanStrengthMpa
+          : this.toNullableNumberText(dto.targetMeanStrengthMpa),
+      characteristicStrengthMpa:
+        dto.characteristicStrengthMpa === undefined
+          ? row.characteristicStrengthMpa
+          : this.toNullableNumberText(dto.characteristicStrengthMpa),
+      mixRatio: dto.mixRatio === undefined ? row.mixRatio : dto.mixRatio?.trim() || null,
+      slumpRangeMm:
+        dto.slumpRangeMm === undefined ? row.slumpRangeMm : dto.slumpRangeMm?.trim() || null,
+      waterCementRatio:
+        dto.waterCementRatio === undefined
+          ? row.waterCementRatio
+          : this.toNullableNumberText(dto.waterCementRatio),
+      cementContentKgM3:
+        dto.cementContentKgM3 === undefined
+          ? row.cementContentKgM3
+          : this.toNullableNumberText(dto.cementContentKgM3),
+      remarks: dto.remarks === undefined ? row.remarks : dto.remarks?.trim() || null,
+      propertyDetails:
+        dto.propertyDetails === undefined ? row.propertyDetails : dto.propertyDetails || null,
+      isActive: dto.isActive ?? row.isActive,
+    });
+    return this.concreteGradeRepo.save(row);
+  }
+
+  async deleteConcreteGrade(id: number) {
+    await this.concreteGradeRepo.delete(id);
+    return { success: true };
+  }
+
   async createCubeTestRegister(
     projectId: number,
     dto: Partial<QualityCubeTestRegister>,
@@ -229,9 +297,7 @@ export class MaterialItpService {
     const castDate = dto.castDate || this.today();
     const testAge = dto.testAge || ('7_DAY' as any);
     const dueDays = testAge === '28_DAY' ? 28 : 7;
-    const cubeId =
-      dto.cubeId?.trim() ||
-      `CUBE-P${projectId}-MANUAL-${Date.now()}-${testAge === '28_DAY' ? '28D' : '7D'}`;
+    const cubeId = dto.cubeId?.trim() || (await this.getNextCubeId(projectId));
     const row = this.cubeRegisterRepo.create({
       ...dto,
       projectId,
@@ -253,6 +319,8 @@ export class MaterialItpService {
   ) {
     const row = await this.cubeRegisterRepo.findOne({ where: { id } });
     if (!row) throw new NotFoundException('Cube test register row not found');
+    const actorName = await this.getUserDisplayName(userId);
+    const isApproval = dto.status === QualityCubeTestStatus.APPROVED;
 
     const loadKn =
       dto.loadKn === undefined || dto.loadKn === null || dto.loadKn === ''
@@ -271,10 +339,20 @@ export class MaterialItpService {
       dto.requiredStrengthMpa === undefined || dto.requiredStrengthMpa === null
         ? row.requiredStrengthMpa
         : String(dto.requiredStrengthMpa);
-    const passed =
-      compressiveStrengthMpa && requiredStrengthMpa
-        ? Number(compressiveStrengthMpa) >= Number(requiredStrengthMpa)
-        : null;
+    const characteristicStrengthMpa = this.resolveCharacteristicStrengthMpa(
+      row,
+      dto,
+    );
+    const targetMeanStrengthMpa =
+      requiredStrengthMpa ||
+      this.resolveCalculationNumber(row.calculationDetails, 'targetMeanStrengthMpa') ||
+      characteristicStrengthMpa;
+    const evaluation = this.evaluateCubeStrength({
+      age: dto.testAge || row.testAge,
+      compressiveStrengthMpa,
+      characteristicStrengthMpa,
+      targetMeanStrengthMpa,
+    });
 
     Object.assign(row, {
       specimenSize,
@@ -285,7 +363,9 @@ export class MaterialItpService {
           ? row.averageStrengthMpa
           : String(dto.averageStrengthMpa),
       requiredStrengthMpa,
-      testedByName: dto.testedByName ?? row.testedByName,
+      testedByName: isApproval
+        ? row.testedByName || dto.testedByName || actorName
+        : actorName || dto.testedByName || row.testedByName,
       testedDate: dto.testedDate ?? row.testedDate ?? this.today(),
       remarks: dto.remarks ?? row.remarks,
       calculationDetails: {
@@ -295,23 +375,24 @@ export class MaterialItpService {
         formula:
           'Compressive strength (MPa) = failure load (kN) x 1000 / loaded area (mm2)',
         compressiveStrengthMpa,
+        characteristicStrengthMpa,
+        targetMeanStrengthMpa,
         requiredStrengthMpa,
-        passed,
+        strengthStatus: evaluation.status,
+        strengthMessage: evaluation.message,
       },
-      status:
-        passed === false
-          ? QualityCubeTestStatus.FAILED
-          : dto.status === QualityCubeTestStatus.APPROVED
-            ? QualityCubeTestStatus.APPROVED
-            : QualityCubeTestStatus.TESTED,
+      status: isApproval ? QualityCubeTestStatus.APPROVED : evaluation.status,
       approvedAt:
-        dto.status === QualityCubeTestStatus.APPROVED
+        isApproval
           ? new Date()
           : row.approvedAt,
       approvedByUserId:
-        dto.status === QualityCubeTestStatus.APPROVED
+        isApproval
           ? userId ?? row.approvedByUserId
           : row.approvedByUserId,
+      witnessedByName: isApproval
+        ? actorName || row.witnessedByName
+        : row.witnessedByName,
     });
 
     const saved = await this.cubeRegisterRepo.save(row);
@@ -329,6 +410,8 @@ export class MaterialItpService {
     if (
       [
         QualityCubeTestStatus.TESTED,
+        QualityCubeTestStatus.PASSED,
+        QualityCubeTestStatus.NEEDS_ATTENTION,
         QualityCubeTestStatus.APPROVED,
         QualityCubeTestStatus.FAILED,
       ].includes(row.status)
@@ -349,6 +432,110 @@ export class MaterialItpService {
     const size = String(specimenSize || '').match(/(\d{2,3})/);
     const sideMm = size ? Number(size[1]) : 150;
     return sideMm * sideMm;
+  }
+
+  private toNullableNumberText(value: unknown) {
+    if (value === undefined || value === null || value === '') return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(3) : null;
+  }
+
+  private resolveCalculationNumber(
+    calculationDetails: Record<string, unknown> | null | undefined,
+    key: string,
+  ) {
+    const numeric = Number(calculationDetails?.[key]);
+    return Number.isFinite(numeric) ? numeric.toFixed(3) : null;
+  }
+
+  private resolveCharacteristicStrengthMpa(
+    row: QualityCubeTestRegister,
+    dto: Partial<QualityCubeTestRegister>,
+  ) {
+    const configured = this.resolveCalculationNumber(
+      row.calculationDetails,
+      'characteristicStrengthMpa',
+    );
+    if (configured) return configured;
+    const required = Number(dto.requiredStrengthMpa ?? row.requiredStrengthMpa);
+    const inferred = String(row.mixIdOrGrade || '').match(/M\s?(\d{2,3})/i);
+    if (inferred) return Number(inferred[1]).toFixed(3);
+    return Number.isFinite(required) ? required.toFixed(3) : null;
+  }
+
+  private evaluateCubeStrength(input: {
+    age: QualityCubeTestRegister['testAge'];
+    compressiveStrengthMpa: string | null;
+    characteristicStrengthMpa: string | null;
+    targetMeanStrengthMpa: string | null;
+  }) {
+    const strength = Number(input.compressiveStrengthMpa);
+    const characteristic = Number(input.characteristicStrengthMpa);
+    const target = Number(input.targetMeanStrengthMpa);
+    if (!Number.isFinite(strength)) {
+      return {
+        status: QualityCubeTestStatus.TESTED,
+        message: 'Load/MPa pending for evaluation',
+      };
+    }
+    if (!Number.isFinite(characteristic)) {
+      return {
+        status: QualityCubeTestStatus.TESTED,
+        message: 'Characteristic strength unavailable',
+      };
+    }
+    if (input.age === '7_DAY') {
+      const threshold = characteristic * 0.65;
+      return strength >= threshold
+        ? {
+            status: QualityCubeTestStatus.PASSED,
+            message: `7-day strength is at least 65% of characteristic MPa (${threshold.toFixed(3)}).`,
+          }
+        : {
+            status: QualityCubeTestStatus.NEEDS_ATTENTION,
+            message: `7-day strength is below 65% of characteristic MPa (${threshold.toFixed(3)}).`,
+          };
+    }
+
+    if (strength < characteristic) {
+      return {
+        status: QualityCubeTestStatus.FAILED,
+        message: '28-day strength is below characteristic MPa.',
+      };
+    }
+    if (Number.isFinite(target) && strength < target) {
+      return {
+        status: QualityCubeTestStatus.NEEDS_ATTENTION,
+        message: '28-day strength is between characteristic MPa and target mean strength.',
+      };
+    }
+    return {
+      status: QualityCubeTestStatus.PASSED,
+      message: '28-day strength meets or exceeds target mean strength.',
+    };
+  }
+
+  private async getUserDisplayName(userId?: number) {
+    if (!userId) return null;
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    return user?.username || user?.displayName || null;
+  }
+
+  private parseCubeSerial(cubeId?: string | null) {
+    const match = String(cubeId || '').match(/C(\d{4,5})$/i);
+    return match ? Number(match[1]) : 0;
+  }
+
+  private async getNextCubeId(projectId: number) {
+    const rows = await this.cubeRegisterRepo.find({
+      where: { projectId },
+      select: ['cubeId'],
+    });
+    const maxSerial = rows.reduce(
+      (max, row) => Math.max(max, this.parseCubeSerial(row.cubeId)),
+      0,
+    );
+    return `C${String(maxSerial + 1).padStart(5, '0')}`;
   }
 
   async createReceipt(projectId: number, dto: CreateMaterialReceiptDto) {

@@ -88,6 +88,7 @@ export class QualityPourCard {
     slumpMm?: number | null;
     concreteTemperature?: number | null;
     noOfCubesTaken?: number | null;
+    cubeIds?: string[];
     supplierRepresentative?: string | null;
     contractorRepresentative?: string | null;
     clientRepresentative?: string | null;

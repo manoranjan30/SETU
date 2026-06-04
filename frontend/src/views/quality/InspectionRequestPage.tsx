@@ -207,6 +207,7 @@ export default function InspectionRequestPage() {
     "CLEARANCE" | "POUR_CARD" | null
   >(null);
   const [pourCard, setPourCard] = useState<any>(null);
+  const [concreteGrades, setConcreteGrades] = useState<any[]>([]);
   const [prePourClearanceCard, setPrePourClearanceCard] = useState<any>(null);
   const [loadingCardModal, setLoadingCardModal] = useState(false);
   const [savingCardModal, setSavingCardModal] = useState(false);
@@ -223,6 +224,14 @@ export default function InspectionRequestPage() {
         .then((res) => setVendors(res.data));
     }
   }, [projectId, user]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    qualityService
+      .getConcreteGrades(Number(projectId))
+      .then((grades) => setConcreteGrades(grades.filter((grade: any) => grade.isActive)))
+      .catch(() => setConcreteGrades([]));
+  }, [projectId]);
 
   // Helper for correct image URLs.
   // Strips the /api suffix from VITE_API_URL so uploads (served at the server
@@ -2400,6 +2409,7 @@ export default function InspectionRequestPage() {
                             <th className="px-2 py-2">Slump</th>
                             <th className="px-2 py-2">Cubes</th>
                             <th className="px-2 py-2">Remarks</th>
+                            <th className="px-2 py-2">Cube IDs</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2417,41 +2427,82 @@ export default function InspectionRequestPage() {
                                   "remarks",
                                 ].map((key) => (
                                   <td key={key} className="px-2 py-2">
-                                    <input
-                                      type={
-                                        key === "pourDate"
-                                          ? "date"
-                                          : ["quantityM3", "slumpMm", "noOfCubesTaken"].includes(key)
-                                          ? "number"
-                                          : "text"
-                                      }
-                                      value={entry[key] ?? ""}
-                                      onChange={(event) =>
-                                        setPourCard((prev: any) => ({
-                                          ...prev,
-                                          entries: (prev.entries || []).map(
-                                            (row: any, rowIndex: number) =>
-                                              rowIndex === index
-                                                ? {
-                                                    ...row,
-                                                    [key]: [
-                                                      "quantityM3",
-                                                      "slumpMm",
-                                                      "noOfCubesTaken",
-                                                    ].includes(key)
-                                                      ? event.target.value
-                                                        ? Number(event.target.value)
-                                                        : null
-                                                      : event.target.value,
-                                                  }
-                                                : row,
-                                          ),
-                                        }))
-                                      }
-                                      className="w-full rounded border border-border-default bg-surface-base px-2 py-1.5 text-sm"
-                                    />
+                                    {key === "mixIdOrGrade" ? (
+                                      <select
+                                        value={entry.mixIdOrGrade || ""}
+                                        onChange={(event) =>
+                                          setPourCard((prev: any) => ({
+                                            ...prev,
+                                            entries: (prev.entries || []).map(
+                                              (row: any, rowIndex: number) =>
+                                                rowIndex === index
+                                                  ? { ...row, mixIdOrGrade: event.target.value }
+                                                  : row,
+                                            ),
+                                          }))
+                                        }
+                                        className="w-full rounded border border-border-default bg-surface-base px-2 py-1.5 text-sm"
+                                      >
+                                        <option value="">Select grade</option>
+                                        {entry.mixIdOrGrade &&
+                                          !concreteGrades.some((grade) => grade.grade === entry.mixIdOrGrade) && (
+                                            <option value={entry.mixIdOrGrade}>{entry.mixIdOrGrade}</option>
+                                          )}
+                                        {concreteGrades.map((grade) => (
+                                          <option key={grade.id} value={grade.grade}>
+                                            {grade.grade}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type={
+                                          key === "pourDate"
+                                            ? "date"
+                                            : ["quantityM3", "slumpMm", "noOfCubesTaken"].includes(key)
+                                            ? "number"
+                                            : "text"
+                                        }
+                                        value={entry[key] ?? ""}
+                                        onChange={(event) =>
+                                          setPourCard((prev: any) => ({
+                                            ...prev,
+                                            entries: (prev.entries || []).map(
+                                              (row: any, rowIndex: number) =>
+                                                rowIndex === index
+                                                  ? {
+                                                      ...row,
+                                                      [key]: [
+                                                        "quantityM3",
+                                                        "slumpMm",
+                                                        "noOfCubesTaken",
+                                                      ].includes(key)
+                                                        ? event.target.value
+                                                          ? Number(event.target.value)
+                                                          : null
+                                                        : event.target.value,
+                                                    }
+                                                  : row,
+                                            ),
+                                          }))
+                                        }
+                                        className="w-full rounded border border-border-default bg-surface-base px-2 py-1.5 text-sm"
+                                      />
+                                    )}
                                   </td>
                                 ))}
+                                <td className="px-2 py-2">
+                                  <div className="flex min-w-[120px] flex-wrap gap-1">
+                                    {(entry.cubeIds || []).map((cubeId: string) => (
+                                      <span
+                                        key={cubeId}
+                                        className="rounded bg-orange-50 px-1.5 py-0.5 text-[11px] font-bold text-orange-700"
+                                      >
+                                        {cubeId}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
                               </tr>
                             ),
                           )}

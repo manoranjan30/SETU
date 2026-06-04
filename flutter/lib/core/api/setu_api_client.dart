@@ -1242,6 +1242,37 @@ class SetuApiClient {
 
   // ==================== QUALITY SNAGS ====================
 
+  // ==================== CONCRETE GRADES ====================
+
+  Future<List<Map<String, dynamic>>> getConcreteGrades(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.concreteGrades(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  // ==================== CUBE TEST REGISTER ====================
+
+  Future<List<Map<String, dynamic>>> getCubeTestRegister(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.cubeTestRegister(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<Map<String, dynamic>> updateCubeTestRecord(
+      int id, Map<String, dynamic> data) async {
+    final response = await _dio.put(ApiEndpoints.cubeTestRecord(id), data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> approveCubeTestRecord(int id) async {
+    final response = await _dio.post(ApiEndpoints.cubeTestApprove(id));
+    return response.data as Map<String, dynamic>;
+  }
+
+  // ==================== SNAGS ====================
+
   Future<List<Map<String, dynamic>>> getSnags(int projectId) async {
     final response = await _dio.get(ApiEndpoints.snags(projectId));
     final data = response.data;
