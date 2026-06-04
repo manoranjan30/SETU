@@ -1615,25 +1615,30 @@ export class QualityInspectionService {
     if (comments) inspection.comments = comments;
     await this.inspectionRepo.save(inspection);
 
-    // Audit
-    await this.auditService.log(
-      userId,
-      'QUALITY',
-      'FINAL_APPROVE_RFI',
-      String(inspectionId),
-      inspection.epsNodeId,
-      {
-        comments,
-        signer: signer.displayName,
-        company: signer.companyLabel,
-        role: signer.roleLabel,
-      },
-    );
+    // Keep approval response fast; post-commit audit/notification work is non-blocking.
+    void this.auditService
+      .log(
+        userId,
+        'QUALITY',
+        'FINAL_APPROVE_RFI',
+        String(inspectionId),
+        inspection.epsNodeId,
+        {
+          comments,
+          signer: signer.displayName,
+          company: signer.companyLabel,
+          role: signer.roleLabel,
+        },
+      )
+      .catch(() => {
+        /* non-fatal */
+      });
 
     // Notify the RFI raiser
     if (inspection.requestedById) {
-      const notification =
-        await this.notificationComposer.composeInspectionDecision({
+      void (async () => {
+        const notification =
+          await this.notificationComposer.composeInspectionDecision({
           projectId: inspection.projectId,
           epsNodeId: inspection.epsNodeId,
           activityId: inspection.activityId,
@@ -1641,20 +1646,19 @@ export class QualityInspectionService {
           decisionLabel: 'RFI Approved',
           comments: comments || undefined,
         });
-      this.pushService
-        .sendToUsers(
-          [inspection.requestedById],
-          notification.title,
-          notification.body,
-          {
-            inspectionId: String(inspectionId),
-            type: 'APPROVED',
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
+        await this.pushService.sendToUsers(
+            [inspection.requestedById],
+            notification.title,
+            notification.body,
+            {
+              inspectionId: String(inspectionId),
+              type: 'APPROVED',
+              ...notification.data,
+            },
+          );
+      })().catch(() => {
+        /* non-fatal */
+      });
     }
 
     return { success: true, status: 'APPROVED' };

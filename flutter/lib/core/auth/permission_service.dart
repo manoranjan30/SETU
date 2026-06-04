@@ -128,6 +128,11 @@ class PermissionService {
   /// Whether this user may delete activity-level observations.
   bool get canDeleteActivityObs   => can('QUALITY.OBSERVATION.DELETE');
 
+  // ── Cube Test Register ────────────────────────────────────────────────────
+  bool get canReadCubeTest      => can('QUALITY.CUBE_TEST.READ');
+  bool get canSaveCubeTest      => can('QUALITY.CUBE_TEST.SAVE');
+  bool get canApproveCubeTest   => can('QUALITY.CUBE_TEST.APPROVE');
+
   // ── EHS ──────────────────────────────────────────────────────────────────
   // EHS (Environment, Health & Safety) permissions mirror the quality
   // observation lifecycle but for safety-related findings on site.

@@ -11,6 +11,7 @@ import {
   Lock,
 } from "lucide-react";
 import api from "../api/axios";
+import { getPublicFileUrl } from "../api/baseUrl";
 import SignatureCanvas from "react-signature-canvas";
 import { ThemePicker } from "../components/common/ThemePicker";
 import { useTheme } from "../context/ThemeContext";
@@ -31,6 +32,18 @@ function getApiErrorMessage(error: unknown, fallback: string) {
     return error.message;
   }
   return fallback;
+}
+
+function normalizeSignatureSource(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (/^data:image\//i.test(text)) return text;
+  if (/^https?:\/\//i.test(text)) return text;
+  if (/^\/?uploads\//i.test(text)) return getPublicFileUrl(text);
+  if (/^[A-Za-z0-9+/=\s]+$/.test(text) && text.length > 100) {
+    return `data:image/png;base64,${text.replace(/\s+/g, "")}`;
+  }
+  return text;
 }
 
 interface UserProfile {
@@ -93,6 +106,7 @@ export default function UserProfilePage() {
 
   // Signature state
   const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [signatureImageUrl, setSignatureImageUrl] = useState<string | null>(null);
   const [signatureUpdatedAt, setSignatureUpdatedAt] = useState<string | null>(
     null,
   );
@@ -106,8 +120,11 @@ export default function UserProfilePage() {
           api.get("/users/me/signature"),
         ]);
         setProfile(profRes.data);
-        if (sigRes.data?.signatureData) {
-          setSignatureData(sigRes.data.signatureData);
+        if (sigRes.data?.signatureData || sigRes.data?.signatureImageUrl) {
+          setSignatureData(normalizeSignatureSource(sigRes.data.signatureData));
+          setSignatureImageUrl(
+            normalizeSignatureSource(sigRes.data.signatureImageUrl),
+          );
           setSignatureUpdatedAt(sigRes.data.signatureUpdatedAt);
         }
       } catch (error) {
@@ -186,6 +203,7 @@ export default function UserProfilePage() {
       const dataUrl = trimCanvasToDataUrl(sigCanvas.current.getCanvas());
       await api.put("/users/me/signature", { signatureData: dataUrl });
       setSignatureData(dataUrl);
+      setSignatureImageUrl(null);
       setSignatureUpdatedAt(new Date().toISOString());
       sigCanvas.current.clear();
       alert("Digital signature stored securely.");
@@ -205,6 +223,10 @@ export default function UserProfilePage() {
       setSaving(false);
     }
   };
+
+  const currentSignatureSource =
+    normalizeSignatureSource(signatureData) ||
+    normalizeSignatureSource(signatureImageUrl);
 
   const clearCanvas = () => {
     sigCanvas.current?.clear();
@@ -403,14 +425,14 @@ export default function UserProfilePage() {
               </div>
             </div>
 
-            {signatureData && (
+            {currentSignatureSource && (
               <div className="w-1/3">
                 <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
                   Current Signature
                 </label>
                 <div className="border border-border-default rounded-xl p-4 bg-surface-base flex flex-col items-center justify-center h-40">
                   <img
-                    src={signatureData}
+                    src={currentSignatureSource}
                     alt="Current Signature"
                     className="max-h-full max-w-full object-contain mix-blend-multiply"
                   />

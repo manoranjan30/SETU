@@ -1545,6 +1545,7 @@ class PourCardEntry extends Equatable {
   final double? slumpMm;
   final double? concreteTemperature;
   final int? noOfCubesTaken;
+  final List<String> cubeIds;
   final String? supplierRepresentative;
   final String? contractorRepresentative;
   final String? clientRepresentative;
@@ -1564,6 +1565,7 @@ class PourCardEntry extends Equatable {
     this.slumpMm,
     this.concreteTemperature,
     this.noOfCubesTaken,
+    this.cubeIds = const [],
     this.supplierRepresentative,
     this.contractorRepresentative,
     this.clientRepresentative,
@@ -1587,6 +1589,10 @@ class PourCardEntry extends Equatable {
       slumpMm: d(j['slumpMm']),
       concreteTemperature: d(j['concreteTemperature']),
       noOfCubesTaken: i(j['noOfCubesTaken']),
+      cubeIds: (j['cubeIds'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          [],
       supplierRepresentative: j['supplierRepresentative'] as String?,
       contractorRepresentative: j['contractorRepresentative'] as String?,
       clientRepresentative: j['clientRepresentative'] as String?,
@@ -1608,6 +1614,7 @@ class PourCardEntry extends Equatable {
     'slumpMm': slumpMm,
     'concreteTemperature': concreteTemperature,
     'noOfCubesTaken': noOfCubesTaken,
+    if (cubeIds.isNotEmpty) 'cubeIds': cubeIds,
     'supplierRepresentative': supplierRepresentative,
     'contractorRepresentative': contractorRepresentative,
     'clientRepresentative': clientRepresentative,
@@ -2051,7 +2058,7 @@ class QualityPrePourClearanceCard extends Equatable {
   );
 
   @override
-  List<Object?> get props => [id, inspectionId, status, isActivated, signoffs];
+  List<Object?> get props => [id, inspectionId, status, isActivated, attachments, attachmentChecklistSelections, signoffs];
 }
 
 // ============================================================

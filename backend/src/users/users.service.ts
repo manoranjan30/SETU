@@ -212,8 +212,11 @@ export class UsersService {
   async getSignature(id: number): Promise<any> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) throw new ForbiddenException('User not found');
+    const signatureData = this.normalizeSignatureImageSource(
+      user.signatureData || user.signatureImageUrl,
+    );
     return {
-      signatureData: user.signatureData,
+      signatureData,
       signatureImageUrl: user.signatureImageUrl,
       signatureUpdatedAt: user.signatureUpdatedAt,
     };
@@ -234,13 +237,18 @@ export class UsersService {
 
       // Use update() to perform a partial update directly in the database
       // This is safer than save() as it ignores relationships and missing fields
+      const normalizedSignatureData = this.normalizeSignatureImageSource(
+        signatureData || signatureImageUrl,
+      );
       const updateData: any = {
-        signatureData: signatureData,
+        signatureData: normalizedSignatureData,
         signatureUpdatedAt: new Date(),
       };
 
       if (signatureImageUrl !== undefined) {
-        updateData.signatureImageUrl = signatureImageUrl;
+        updateData.signatureImageUrl = this.normalizeSignatureImageSource(
+          signatureImageUrl,
+        );
       }
 
       const updateResult = await this.usersRepository.update(id, updateData);
@@ -256,6 +264,18 @@ export class UsersService {
       );
       throw error;
     }
+  }
+
+  private normalizeSignatureImageSource(value?: string | null) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+    if (/^data:image\//i.test(text)) return text;
+    if (/^https?:\/\//i.test(text)) return text;
+    if (/^\/?uploads\//i.test(text)) return text.startsWith('/') ? text : `/${text}`;
+    if (/^[A-Za-z0-9+/=\s]+$/.test(text) && text.length > 100) {
+      return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
+    }
+    return text;
   }
 
   // ============================

@@ -563,6 +563,7 @@ export default function QualityApprovalsPage() {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const concreteCardsRef = useRef<HTMLDivElement | null>(null);
   const [inspections, setInspections] = useState<QualityInspection[]>([]);
+  const [concreteGrades, setConcreteGrades] = useState<any[]>([]);
   const [selectedInspectionId, setSelectedInspectionId] = useState<
     number | null
   >(null);
@@ -799,6 +800,14 @@ export default function QualityApprovalsPage() {
         .finally(() => setLoadingList(false));
     }
   }, [projectId, refreshKey]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    qualityService
+      .getConcreteGrades(Number(projectId))
+      .then((grades) => setConcreteGrades(grades.filter((grade: any) => grade.isActive)))
+      .catch(() => setConcreteGrades([]));
+  }, [projectId]);
 
   useEffect(() => {
     if (selectedInspectionId) {
@@ -4878,8 +4887,7 @@ export default function QualityApprovalsPage() {
                                           placeholder="Delivery challan no"
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
-                                        <input
-                                          list="pour-history-mixIdOrGrade"
+                                        <select
                                           value={entry.mixIdOrGrade || ""}
                                           onChange={(e) =>
                                             setPourCard((prev: any) => ({
@@ -4891,9 +4899,19 @@ export default function QualityApprovalsPage() {
                                               ),
                                             }))
                                           }
-                                          placeholder="Mix / Grade"
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
-                                        />
+                                        >
+                                          <option value="">Select grade</option>
+                                          {entry.mixIdOrGrade &&
+                                            !concreteGrades.some((grade) => grade.grade === entry.mixIdOrGrade) && (
+                                              <option value={entry.mixIdOrGrade}>{entry.mixIdOrGrade}</option>
+                                            )}
+                                          {concreteGrades.map((grade) => (
+                                            <option key={grade.id} value={grade.grade}>
+                                              {grade.grade}
+                                            </option>
+                                          ))}
+                                        </select>
                                         <input
                                           value={entry.quantityM3 ?? ""}
                                           onChange={(e) =>
@@ -5117,6 +5135,19 @@ export default function QualityApprovalsPage() {
                                           placeholder="Entry remarks"
                                           className="mt-2 min-h-[70px] w-full rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
+                                        {(entry.cubeIds || []).length > 0 && (
+                                          <div className="mt-2 flex flex-wrap items-center gap-1 text-xs text-text-muted">
+                                            <span className="font-semibold">Cube IDs</span>
+                                            {(entry.cubeIds || []).map((cubeId: string) => (
+                                              <span
+                                                key={cubeId}
+                                                className="rounded bg-orange-50 px-1.5 py-0.5 font-bold text-orange-700"
+                                              >
+                                                {cubeId}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     ))}
                                   </div>

@@ -590,6 +590,28 @@ class ApiEndpoints {
   static String clearanceCardPdf(int inspectionId) =>
       '/quality/inspections/$inspectionId/pre-pour-clearance/pdf';
 
+  // ==================== CONCRETE GRADES ENDPOINTS ====================
+
+  /// GET/POST /quality/:projectId/concrete-grades
+  static String concreteGrades(int projectId) =>
+      '/quality/$projectId/concrete-grades';
+
+  /// PUT /quality/concrete-grades/:id
+  static String concreteGrade(int id) => '/quality/concrete-grades/$id';
+
+  // ==================== CUBE TEST REGISTER ENDPOINTS ====================
+
+  /// GET/POST /quality/:projectId/cube-test-register
+  static String cubeTestRegister(int projectId) =>
+      '/quality/$projectId/cube-test-register';
+
+  /// PUT /quality/cube-test-register/:id
+  static String cubeTestRecord(int id) => '/quality/cube-test-register/$id';
+
+  /// POST /quality/cube-test-register/:id/approve
+  static String cubeTestApprove(int id) =>
+      '/quality/cube-test-register/$id/approve';
+
   // ==================== QUALITY SNAG ENDPOINTS ====================
 
   /// GET /quality/:projectId/snags

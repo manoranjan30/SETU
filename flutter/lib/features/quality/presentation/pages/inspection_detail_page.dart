@@ -16,6 +16,7 @@ import 'package:setu_mobile/features/quality/presentation/widgets/observation_ca
 import 'package:setu_mobile/features/quality/presentation/widgets/raise_observation_sheet.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 import 'package:setu_mobile/shared/widgets/rectify_sheet.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/cube_register_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/pour_card_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/pre_pour_clearance_page.dart';
 
@@ -549,6 +550,7 @@ class _PourCardPanel extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (_) => PourCardPage(
                               inspectionId: inspection.id,
+                              projectId: inspection.projectId,
                               activityName: inspection.activityName,
                               locationLabel: inspection.locationDisplay,
                             ),
@@ -591,6 +593,31 @@ class _PourCardPanel extends StatelessWidget {
                     ),
                 ],
               ),
+              // Cube Register — always shown for pour card activities (read-only link)
+              if (inspection.requiresPourCard && inspection.projectId != null) ...[
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CubeRegisterPage(
+                          projectId: inspection.projectId!,
+                          projectName: inspection.locationDisplay,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.science_outlined, size: 14),
+                    label: const Text('Cube Register'),
+                    style: OutlinedButton.styleFrom(
+                      textStyle: const TextStyle(fontSize: 12),
+                      foregroundColor: Colors.deepPurple.shade700,
+                      side: BorderSide(color: Colors.deepPurple.shade300),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

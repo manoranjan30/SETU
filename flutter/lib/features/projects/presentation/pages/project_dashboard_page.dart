@@ -26,6 +26,7 @@ import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboar
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/snag_list_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/materials_testing_page.dart';
 import 'package:setu_mobile/features/ehs/presentation/pages/ehs_hub_page.dart';
 import 'package:setu_mobile/features/design/presentation/pages/design_register_page.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/pages/tower_lens_page.dart';
@@ -704,6 +705,14 @@ class _ModuleGrid extends StatelessWidget {
           color: const Color(0xFFB91C1C),
           onTap: () => _goEhsIncidents(context),
         ),
+      // Materials Testing — concrete cube tests and future materials modules
+      if (ps.canReadCubeTest)
+        _ModuleDef(
+          icon: Icons.science_outlined,
+          label: 'Materials\nTesting',
+          color: const Color(0xFF6D28D9),
+          onTap: () => _goMaterialsTesting(context),
+        ),
       // EHS Hub — full dashboard (manhours, training, legal, machinery, vehicles)
       if (ps.canReadEhsDashboard)
         _ModuleDef(
@@ -953,6 +962,18 @@ class _ModuleGrid extends StatelessWidget {
       context,
       FadeSlideRoute(
         child: SnagListPage(
+          projectId: project.id,
+          projectName: project.name,
+        ),
+      ),
+    );
+  }
+
+  void _goMaterialsTesting(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(
+        child: MaterialsTestingPage(
           projectId: project.id,
           projectName: project.name,
         ),

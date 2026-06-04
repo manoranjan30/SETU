@@ -5,17 +5,20 @@ import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/pour_card_bloc.dart';
 
 class PourCardPage extends StatelessWidget {
   final int inspectionId;
+  final int? projectId;
   final String? activityName;
   final String? locationLabel;
 
   const PourCardPage({
     super.key,
     required this.inspectionId,
+    this.projectId,
     this.activityName,
     this.locationLabel,
   });
@@ -27,6 +30,7 @@ class PourCardPage extends StatelessWidget {
         ..add(LoadPourCard(inspectionId)),
       child: _PourCardView(
         inspectionId: inspectionId,
+        projectId: projectId,
         activityName: activityName,
         locationLabel: locationLabel,
       ),
@@ -36,11 +40,13 @@ class PourCardPage extends StatelessWidget {
 
 class _PourCardView extends StatefulWidget {
   final int inspectionId;
+  final int? projectId;
   final String? activityName;
   final String? locationLabel;
 
   const _PourCardView({
     required this.inspectionId,
+    this.projectId,
     this.activityName,
     this.locationLabel,
   });
@@ -51,6 +57,30 @@ class _PourCardView extends StatefulWidget {
 
 class _PourCardViewState extends State<_PourCardView> {
   bool _isPdfDownloading = false;
+  List<ConcreteGrade> _grades = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.projectId != null) {
+      _loadGrades();
+    }
+  }
+
+  Future<void> _loadGrades() async {
+    try {
+      final raw = await sl<SetuApiClient>().getConcreteGrades(widget.projectId!);
+      if (mounted) {
+        setState(() {
+          _grades = raw
+              .whereType<Map<String, dynamic>>()
+              .map(ConcreteGrade.fromJson)
+              .where((g) => g.isActive)
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
 
   Future<void> _downloadPdf(BuildContext context, int inspectionId) async {
     setState(() => _isPdfDownloading = true);
@@ -144,7 +174,11 @@ class _PourCardViewState extends State<_PourCardView> {
                   ? _ErrorView(inspectionId: widget.inspectionId)
                   : Stack(
                       children: [
-                        _PourCardBody(card: card, inspectionId: widget.inspectionId),
+                        _PourCardBody(
+                          card: card,
+                          inspectionId: widget.inspectionId,
+                          concreteGrades: _grades,
+                        ),
                         if (isSaving)
                           const Positioned(
                             top: 0, left: 0, right: 0,
@@ -189,8 +223,13 @@ class _ErrorView extends StatelessWidget {
 class _PourCardBody extends StatefulWidget {
   final QualityPourCard card;
   final int inspectionId;
+  final List<ConcreteGrade> concreteGrades;
 
-  const _PourCardBody({required this.card, required this.inspectionId});
+  const _PourCardBody({
+    required this.card,
+    required this.inspectionId,
+    this.concreteGrades = const [],
+  });
 
   @override
   State<_PourCardBody> createState() => _PourCardBodyState();
@@ -295,6 +334,7 @@ class _PourCardBodyState extends State<_PourCardBody> {
                               index: i,
                               entry: card.entries[i],
                               isEditable: isEditable,
+                              concreteGrades: widget.concreteGrades,
                               onDelete: isEditable
                                   ? () => context.read<PourCardBloc>().add(RemovePourEntry(i))
                                   : null,
@@ -579,6 +619,7 @@ class _PourEntryRow extends StatefulWidget {
   final int index;
   final PourCardEntry entry;
   final bool isEditable;
+  final List<ConcreteGrade> concreteGrades;
   final VoidCallback? onDelete;
   final ValueChanged<PourCardEntry> onUpdate;
 
@@ -586,6 +627,7 @@ class _PourEntryRow extends StatefulWidget {
     required this.index,
     required this.entry,
     required this.isEditable,
+    this.concreteGrades = const [],
     this.onDelete,
     required this.onUpdate,
   });
@@ -673,7 +715,20 @@ class _PourEntryRowState extends State<_PourEntryRow> {
           _RowField('Pour Date', _pourDateCtrl, widget.isEditable, _push, hint: 'DD/MM/YYYY'),
           _RowField('Truck No.', _truckNoCtrl, widget.isEditable, _push),
           _RowField('Delivery Challan No.', _challanCtrl, widget.isEditable, _push),
-          _RowField('Mix ID / Grade', _gradeCtrl, widget.isEditable, _push),
+          // Grade — dropdown when grades are available, text field otherwise
+          if (widget.concreteGrades.isNotEmpty)
+            _GradeDropdownField(
+              label: 'Mix ID / Grade',
+              currentValue: _gradeCtrl.text.isEmpty ? null : _gradeCtrl.text,
+              grades: widget.concreteGrades,
+              enabled: widget.isEditable,
+              onChanged: (v) {
+                _gradeCtrl.text = v ?? '';
+                _push();
+              },
+            )
+          else
+            _RowField('Mix ID / Grade', _gradeCtrl, widget.isEditable, _push),
           _RowField('Quantity (m³)', _qtyCtrl, widget.isEditable, _push,
               keyboardType: TextInputType.number),
           _RowField('Slump (mm)', _slumpCtrl, widget.isEditable, _push,
@@ -682,6 +737,41 @@ class _PourEntryRowState extends State<_PourEntryRow> {
               keyboardType: TextInputType.number),
           _RowField('No. of Cubes', _cubesCtrl, widget.isEditable, _push,
               keyboardType: TextInputType.number),
+          // Cube IDs — shown after pour card is approved
+          if (widget.entry.cubeIds.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 140,
+                  child: Text('Cube IDs',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                ),
+                Expanded(
+                  child: Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: widget.entry.cubeIds
+                        .map((id) => Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.indigo.shade200),
+                              ),
+                              child: Text(id,
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.indigo.shade700)),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -728,6 +818,68 @@ class _RowField extends StatelessWidget {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 isDense: true,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dropdown field for selecting a concrete grade from the master list.
+/// Falls back gracefully: if [grades] is empty it will never be shown
+/// (the caller switches to _RowField instead).
+class _GradeDropdownField extends StatelessWidget {
+  final String label;
+  final String? currentValue;
+  final List<ConcreteGrade> grades;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  const _GradeDropdownField({
+    required this.label,
+    required this.currentValue,
+    required this.grades,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Ensure the current value is in the list; if not, treat as null so the
+    // dropdown doesn't crash with an out-of-range assertion.
+    final validValue =
+        grades.any((g) => g.grade == currentValue) ? currentValue : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(label,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+          ),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: validValue,
+              isExpanded: true,
+              isDense: true,
+              hint: const Text('Select grade', style: TextStyle(fontSize: 12)),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                isDense: true,
+              ),
+              items: grades
+                  .map((g) => DropdownMenuItem(
+                        value: g.grade,
+                        child: Text(g.grade,
+                            style: const TextStyle(fontSize: 12)),
+                      ))
+                  .toList(),
+              onChanged: enabled ? onChanged : null,
             ),
           ),
         ],

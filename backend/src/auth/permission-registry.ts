@@ -400,6 +400,8 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     S,
   ),
   perm('QUALITY.CUBE_TEST.READ', 'View Cube Test Register', 'QUALITY', R),
+  perm('QUALITY.CUBE_TEST.CREATE', 'Create Cube Test Result', 'QUALITY', C),
+  perm('QUALITY.CUBE_TEST.UPDATE', 'Update Cube Test Result', 'QUALITY', U),
   perm('QUALITY.CUBE_TEST.SAVE', 'Save Cube Test Result', 'QUALITY', U),
   perm('QUALITY.CUBE_TEST.APPROVE', 'Approve Cube Test Result', 'QUALITY', S),
   perm('QUALITY.CUBE_TEST.DELETE', 'Delete Cube Test Register Row', 'QUALITY', D),
