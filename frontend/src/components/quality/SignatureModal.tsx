@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import SignatureCanvas from "react-signature-canvas";
 import { X, CheckCircle, RotateCcw, ShieldCheck } from "lucide-react";
 import api from "../../api/axios";
@@ -87,7 +88,12 @@ export default function SignatureModal({
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  const portalTarget =
+    typeof document !== "undefined"
+      ? document.fullscreenElement || document.body
+      : null;
+
+  if (!isOpen || !portalTarget) return null;
 
   const clear = () => {
     sigCanvas.current?.clear();
@@ -116,7 +122,7 @@ export default function SignatureModal({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[10000] animate-in fade-in duration-200">
       <div className="bg-surface-card rounded-2xl w-full max-w-md overflow-hidden shadow-xl border border-border-default">
         <div className="flex justify-between items-center p-4 border-b border-border-subtle bg-surface-base/50">
@@ -235,6 +241,7 @@ export default function SignatureModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    portalTarget,
   );
 }

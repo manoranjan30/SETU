@@ -1104,6 +1104,60 @@ export class QualityInspectionService {
 
   // ─── Stage-wise Approval Pipeline ─────────────────────────────────────────
 
+  private async assertPourCardApprovedBeforeFurtherStageApproval(
+    stage: QualityInspectionStage,
+  ): Promise<void> {
+    const activity = (stage.inspection as any)?.activity;
+    const triggerStageTemplateId = Number(
+      activity?.pourClearanceTriggerStageTemplateId,
+    );
+    const hasPourClearanceGate = Boolean(
+      triggerStageTemplateId &&
+        (activity?.requiresPourCard || activity?.requiresPourClearanceCard),
+    );
+
+    if (!hasPourClearanceGate) {
+      return;
+    }
+
+    if (Number(stage.stageTemplateId) === triggerStageTemplateId) {
+      return;
+    }
+
+    const stages = await this.stageRepo.find({
+      where: { inspectionId: stage.inspectionId },
+      relations: ['stageTemplate'],
+    });
+    const triggerStage = stages.find(
+      (inspectionStage) =>
+        Number(inspectionStage.stageTemplateId) === triggerStageTemplateId,
+    );
+    const currentSequence = Number(stage.stageTemplate?.sequence);
+    const triggerSequence = Number(triggerStage?.stageTemplate?.sequence);
+    const isFurtherStage =
+      Number.isFinite(currentSequence) && Number.isFinite(triggerSequence)
+        ? currentSequence > triggerSequence
+        : Number(stage.stageTemplateId) !== triggerStageTemplateId;
+
+    if (!isFurtherStage) {
+      return;
+    }
+
+    const pourCard = await this.pourCardRepo.findOne({
+      where: { inspectionId: stage.inspectionId },
+    });
+    const pourCardApproved = Boolean(
+      pourCard &&
+        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+          pourCard.status,
+        ),
+    );
+
+    if (!pourCardApproved) {
+      throw new BadRequestException('Pour card is not yet approved.');
+    }
+  }
+
   async approveStage(
     inspectionId: number,
     stageId: number,
@@ -1115,7 +1169,13 @@ export class QualityInspectionService {
   ) {
     const stage = await this.stageRepo.findOne({
       where: { id: stageId, inspectionId },
-      relations: ['inspection', 'stageTemplate', 'items', 'signatures'],
+      relations: [
+        'inspection',
+        'inspection.activity',
+        'stageTemplate',
+        'items',
+        'signatures',
+      ],
     });
     if (!stage)
       throw new NotFoundException('Stage not found for this inspection');
@@ -1144,6 +1204,8 @@ export class QualityInspectionService {
       stageId,
       'Close all observations linked to this stage before approving it.',
     );
+
+    await this.assertPourCardApprovedBeforeFurtherStageApproval(stage);
 
     const run = await this.inspectionWorkflowService.getOrStartWorkflowState(
       inspectionId,
