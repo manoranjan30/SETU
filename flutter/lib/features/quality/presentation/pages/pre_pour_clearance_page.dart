@@ -12,25 +12,25 @@ import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/clearance_card_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 
-/// The 7 attachment types used on the pre-pour clearance card.
+/// The 7 attachment keys — must match the backend's CLEARANCE_ATTACHMENT_KEYS.
 const _kAttachmentKeys = [
-  'mixDesignApproval',
-  'preInspectionClearance',
-  'rfaApproval',
-  'shopDrawings',
-  'materialApproval',
-  'pour_plan',
-  'castingRecord',
+  'checklistPccAttached',
+  'checklistWaterproofingAttached',
+  'checklistFormworkAttached',
+  'checklistReinforcementAttached',
+  'checklistMepAttached',
+  'checklistConcretingAttached',
+  'concretePourCardAttached',
 ];
 
 const _kAttachmentLabels = {
-  'mixDesignApproval': 'Mix Design Approval',
-  'preInspectionClearance': 'Pre-Inspection Clearance',
-  'rfaApproval': 'RFA Approval',
-  'shopDrawings': 'Shop Drawings',
-  'materialApproval': 'Material Approval',
-  'pour_plan': 'Pour Plan',
-  'castingRecord': 'Casting Record',
+  'checklistPccAttached': 'PCC Checklist',
+  'checklistWaterproofingAttached': 'Waterproofing Checklist',
+  'checklistFormworkAttached': 'Formwork Checklist',
+  'checklistReinforcementAttached': 'Reinforcement Checklist',
+  'checklistMepAttached': 'MEP Checklist',
+  'checklistConcretingAttached': 'Concreting Checklist',
+  'concretePourCardAttached': 'Concrete Pour Card',
 };
 
 class PrePourClearancePage extends StatelessWidget {

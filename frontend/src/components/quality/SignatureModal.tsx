@@ -107,6 +107,7 @@ export default function SignatureModal({
       signedByUserId: user?.id ?? null,
       signerUsername: user?.username ?? null,
       signerDisplayName: user?.displayName || user?.username || null,
+      signerDesignation: user?.designation || null,
       signerRoles: user?.roles || [],
       source: "SETU_WEB_SIGNATURE_MODAL",
     };

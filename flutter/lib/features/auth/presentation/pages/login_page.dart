@@ -4,6 +4,7 @@ import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:setu_mobile/features/auth/presentation/pages/otp_verification_page.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/projects_list_page.dart';
 import 'package:setu_mobile/features/server_setup/presentation/pages/server_setup_page.dart';
 
@@ -126,6 +127,19 @@ class _LoginPageState extends State<LoginPage> {
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (_) => const ProjectsListPage()),
               (route) => false,
+            );
+          } else if (state is AuthOtpChallenge) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => BlocProvider.value(
+                  value: context.read<AuthBloc>(),
+                  child: OtpVerificationPage(
+                    challengeId: state.challengeId,
+                    destinationMasked: state.destinationMasked,
+                    expiresInSeconds: state.expiresInSeconds,
+                  ),
+                ),
+              ),
             );
           } else if (state is AuthError) {
             _showErrorDialog(context, state.message);

@@ -30,6 +30,55 @@ export class SystemSettingsService implements OnApplicationBootstrap {
           'Maximum CAD file size allowed for browser preview to prevent memory issues.',
         group: 'DESIGN',
       },
+      {
+        key: 'AUTH_EMAIL_OTP_ENABLED',
+        value: 'false',
+        description:
+          'Require email OTP after password login for non-admin users.',
+        group: 'SECURITY',
+      },
+      {
+        key: 'AUTH_EMAIL_OTP_TTL_MINUTES',
+        value: '5',
+        description: 'Validity duration for login email OTP challenges.',
+        group: 'SECURITY',
+      },
+      {
+        key: 'SMTP_HOST',
+        value: '',
+        description: 'SMTP host used for login OTP email delivery.',
+        group: 'MAIL',
+      },
+      {
+        key: 'SMTP_PORT',
+        value: '587',
+        description: 'SMTP port used for login OTP email delivery.',
+        group: 'MAIL',
+      },
+      {
+        key: 'SMTP_SECURE',
+        value: 'false',
+        description: 'Use TLS from connection start for SMTP.',
+        group: 'MAIL',
+      },
+      {
+        key: 'SMTP_USER',
+        value: '',
+        description: 'SMTP username. Leave blank if the server does not require auth.',
+        group: 'MAIL',
+      },
+      {
+        key: 'SMTP_PASS',
+        value: '',
+        description: 'SMTP password or app password.',
+        group: 'MAIL',
+      },
+      {
+        key: 'SMTP_FROM',
+        value: '',
+        description: 'From email address for system OTP emails.',
+        group: 'MAIL',
+      },
     ];
 
     for (const setting of defaultSettings) {

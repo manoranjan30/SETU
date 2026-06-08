@@ -42,6 +42,7 @@ import { MeasurementProgress } from './boq/entities/measurement-progress.entity'
 import { BoqSubItem } from './boq/entities/boq-sub-item.entity';
 import { TableViewConfig } from './common/entities/table-view-config.entity';
 import { SystemSetting } from './common/entities/system-setting.entity';
+import { AuthOtpChallenge } from './auth/entities/auth-otp-challenge.entity';
 import { PlanningModule } from './planning/planning.module';
 import { WoActivityPlan } from './planning/entities/wo-activity-plan.entity';
 import { RecoveryPlan } from './planning/entities/recovery-plan.entity';
@@ -137,6 +138,7 @@ import { QualityPourCard } from './quality/entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './quality/entities/quality-pre-pour-clearance-card.entity';
 import { QualityCubeTestRegister } from './quality/entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './quality/entities/quality-concrete-grade.entity';
+import { QualitySignatureQrSession } from './quality/entities/quality-signature-qr-session.entity';
 
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
@@ -293,6 +295,7 @@ import { NotificationLog } from './notifications/notification-log.entity';
         QualityMaterialApprovalStep,
         QualityCubeTestRegister,
         QualityConcreteGrade,
+        QualitySignatureQrSession,
         QualityObservationNcr,
         QualityChecklist,
         QualityItem,
@@ -340,6 +343,7 @@ import { NotificationLog } from './notifications/notification-log.entity';
         DrawingRevision,
         DrawingOpenReceipt,
         SystemSetting,
+        AuthOtpChallenge,
         // WorkDoc
         Vendor,
         WorkOrder,

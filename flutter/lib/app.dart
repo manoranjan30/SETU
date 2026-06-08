@@ -1,16 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/core/navigation/deep_link_service.dart';
+import 'package:setu_mobile/core/navigation/pending_qr_service.dart';
 import 'package:setu_mobile/core/notifications/notification_service.dart';
 import 'package:setu_mobile/core/theme/app_theme.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/pages/projects_list_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/qr_signature_confirmation_page.dart';
 import 'package:setu_mobile/features/server_setup/presentation/pages/server_setup_page.dart';
 import 'package:setu_mobile/core/media/photo_cache_manager.dart';
 import 'package:setu_mobile/core/update/app_update_service.dart';
@@ -41,9 +45,8 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
   // is set in initState, before any context is available).
   final _navigatorKey = GlobalKey<NavigatorState>();
 
-  // Cached once in initState so that repeated auth-state rebuilds do not
-  // restart the SharedPreferences lookup and flash a loading spinner each time.
   late final Future<bool> _isServerConfigured;
+  StreamSubscription<Uri>? _deepLinkSub;
 
   @override
   void initState() {
@@ -51,6 +54,56 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
     _isServerConfigured = ServerConfigService.instance.isConfigured();
     sl<NotificationService>().onNotificationTap = _handleNotificationTap;
     _checkForUpdate();
+    _initDeepLinks();
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    super.dispose();
+  }
+
+  void _initDeepLinks() {
+    final appLinks = AppLinks();
+    // Handle links received while the app is already running.
+    _deepLinkSub = appLinks.uriLinkStream.listen(
+      _handleIncomingLink,
+      onError: (_) {},
+    );
+    // Handle the initial link used to cold-start the app.
+    appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleIncomingLink(uri);
+    }).catchError((_) {});
+  }
+
+  /// Routes an incoming URI. Only `setu://signature/confirm?token=…` is
+  /// currently handled; all other schemes/paths are silently ignored.
+  void _handleIncomingLink(Uri uri) {
+    if (uri.scheme != 'setu') return;
+    if (uri.host != 'signature' ||
+        uri.pathSegments.firstOrNull != 'confirm') return;
+
+    final token = uri.queryParameters['token'];
+    if (token == null || token.isEmpty) return;
+
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    final authState = ctx.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      _openQrConfirmation(token);
+    } else {
+      // Not logged in — store token, consume after successful login.
+      PendingQrService.instance.setPending(token);
+    }
+  }
+
+  void _openQrConfirmation(String token) {
+    final nav = _navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(
+      builder: (_) => QrSignatureConfirmationPage(token: token),
+    ));
   }
 
   /// Checks the backend for a newer or mandatory app version.
@@ -349,9 +402,15 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
       child: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, authState) {
           if (authState is AuthAuthenticated) {
-            // Register FCM token with SETU backend after each login
-            // so push notifications are routed to this device+user pair.
             sl<NotificationService>().registerToken(sl<SetuApiClient>());
+            // If the user landed here via a QR deep link while unauthenticated,
+            // open the signature confirmation now that they are logged in.
+            final pendingQr = PendingQrService.instance.consume();
+            if (pendingQr != null) {
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => _openQrConfirmation(pendingQr),
+              );
+            }
           } else if (authState is AuthUnauthenticated) {
             // Clear photo cache on logout — frees ~150 MB of device storage
             // that accumulated from viewing site photos during the session.

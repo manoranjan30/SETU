@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
 import api from "../../api/axios";
-import { apiBaseUrl } from "../../api/baseUrl";
 import {
   Settings,
   AlertCircle,
@@ -14,6 +12,8 @@ import {
   Upload,
   QrCode,
   Download,
+  ShieldCheck,
+  Mail,
 } from "lucide-react";
 
 interface SystemSetting {
@@ -53,7 +53,9 @@ const SystemSettings = () => {
   const fetchSettings = async () => {
     try {
       const [settingsResponse, mobileAppResponse] = await Promise.all([
-        axios.get(`${apiBaseUrl}/admin/settings`),
+        api.get("/admin/settings", {
+          headers: { "X-Setu-Silent-Loader": "true" },
+        }),
         api.get("/app/mobile-app", {
           params: { platform: "android" },
           headers: { "X-Setu-Silent-Loader": "true" },
@@ -76,7 +78,7 @@ const SystemSettings = () => {
   const updateSetting = async (key: string, value: string) => {
     setSaving(key);
     try {
-      await axios.post(`${apiBaseUrl}/admin/settings/${key}`, { value });
+      await api.post(`/admin/settings/${key}`, { value });
       setSettings((prev) =>
         prev.map((s) => (s.key === key ? { ...s, value } : s)),
       );
@@ -148,6 +150,8 @@ const SystemSettings = () => {
 
   const designSettings = settings.filter((s) => s.group === "DESIGN");
   const generalSettings = settings.filter((s) => s.group === "GENERAL");
+  const securitySettings = settings.filter((s) => s.group === "SECURITY");
+  const mailSettings = settings.filter((s) => s.group === "MAIL");
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -288,6 +292,50 @@ const SystemSettings = () => {
         </section>
 
         {/* Design & CAD Section */}
+        {securitySettings.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold text-text-secondary">
+                Login Security
+              </h2>
+            </div>
+            <div className="bg-surface-card rounded-xl shadow-sm border border-border-default overflow-hidden">
+              {securitySettings.map((setting) => (
+                <SettingItem
+                  key={setting.id}
+                  setting={setting}
+                  saving={saving === setting.key}
+                  onToggle={handleToggle}
+                  onUpdate={updateSetting}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {mailSettings.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Mail className="w-5 h-5 text-cyan-700" />
+              <h2 className="text-lg font-semibold text-text-secondary">
+                Mail Server
+              </h2>
+            </div>
+            <div className="bg-surface-card rounded-xl shadow-sm border border-border-default overflow-hidden">
+              {mailSettings.map((setting) => (
+                <SettingItem
+                  key={setting.id}
+                  setting={setting}
+                  saving={saving === setting.key}
+                  onToggle={handleToggle}
+                  onUpdate={updateSetting}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         <section>
           <div className="flex items-center gap-2 mb-4">
             <FlaskConical className="w-5 h-5 text-purple-600" />
@@ -386,10 +434,10 @@ const SettingItem = ({ setting, saving, onToggle, onUpdate }: any) => (
           </button>
         ) : (
           <input
-            type="text"
+            type={setting.key === "SMTP_PASS" ? "password" : "text"}
             defaultValue={setting.value}
             onBlur={(e) => onUpdate(setting.key, e.target.value)}
-            className="w-20 px-2 py-1 text-sm border rounded bg-surface-base font-mono text-center"
+            className="w-64 max-w-[45vw] px-2 py-1 text-sm border rounded bg-surface-base font-mono"
           />
         )}
         {saving && (

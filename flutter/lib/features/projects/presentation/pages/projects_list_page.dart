@@ -10,6 +10,7 @@ import 'package:setu_mobile/features/projects/presentation/pages/project_dashboa
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:setu_mobile/features/profile/presentation/pages/user_profile_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/signature_qr_scanner_page.dart';
 import 'package:setu_mobile/features/settings/offline_data_page.dart';
 import 'package:setu_mobile/features/sync/presentation/pages/sync_log_page.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -111,6 +112,17 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ],
         ),
         actions: [
+          // QR scanner for signing Pre-Pour Clearance cards
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_outlined),
+            tooltip: 'Scan Signature QR',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SignatureQrScannerPage(),
+              ),
+            ),
+          ),
           // Navigate to the user's own profile page
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),

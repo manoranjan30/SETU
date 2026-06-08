@@ -40,6 +40,15 @@ class Logout extends AuthEvent {}
 /// Only fires if already authenticated — does not navigate away on failure.
 class RefreshProfile extends AuthEvent {}
 
+/// Submit the OTP entered by the user to complete an email OTP login.
+class VerifyOtp extends AuthEvent {
+  final String challengeId;
+  final String otp;
+  const VerifyOtp({required this.challengeId, required this.otp});
+  @override
+  List<Object?> get props => [challengeId, otp];
+}
+
 // ==================== STATES ====================
 
 /// Base class for all authentication states.
@@ -91,6 +100,47 @@ class AuthError extends AuthState {
   List<Object?> get props => [message];
 }
 
+/// Emitted when the backend requires OTP verification before issuing a JWT.
+/// The OTP screen stays live; retry re-dispatches [VerifyOtp].
+class AuthOtpChallenge extends AuthState {
+  final String challengeId;
+  final String deliveryChannel;
+  final String destinationMasked;
+  final String expiresAt;
+  final int expiresInSeconds;
+
+  const AuthOtpChallenge({
+    required this.challengeId,
+    required this.deliveryChannel,
+    required this.destinationMasked,
+    required this.expiresAt,
+    required this.expiresInSeconds,
+  });
+
+  @override
+  List<Object?> get props =>
+      [challengeId, deliveryChannel, destinationMasked, expiresAt, expiresInSeconds];
+}
+
+/// Emitted when [VerifyOtp] fails (wrong code, expired).
+/// Keeps the challenge details so the user can retry on the OTP screen.
+class AuthOtpError extends AuthState {
+  final String challengeId;
+  final String destinationMasked;
+  final int expiresInSeconds;
+  final String message;
+
+  const AuthOtpError({
+    required this.challengeId,
+    required this.destinationMasked,
+    required this.expiresInSeconds,
+    required this.message,
+  });
+
+  @override
+  List<Object?> get props => [challengeId, message];
+}
+
 // ==================== BLOC ====================
 
 /// Manages the authentication lifecycle for the entire app.
@@ -109,6 +159,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         super(AuthInitial()) {
     on<CheckAuthStatus>(_onCheckAuthStatus);
     on<Login>(_onLogin);
+    on<VerifyOtp>(_onVerifyOtp);
     on<Logout>(_onLogout);
     on<RefreshProfile>(_onRefreshProfile);
   }
@@ -141,7 +192,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   /// Sends credentials to [AuthService.login] and emits the result.
-  /// On failure, delegates to [_parseError] to produce a user-friendly string.
+  /// If the server returns an OTP challenge, emits [AuthOtpChallenge] instead
+  /// of an error so the UI can present the OTP entry screen.
   Future<void> _onLogin(
     Login event,
     Emitter<AuthState> emit,
@@ -153,12 +205,57 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         username: event.username,
         password: event.password,
       );
-      // Login succeeded — navigate away from login page.
+      emit(AuthAuthenticated(user));
+    } on OtpRequiredException catch (e) {
+      emit(AuthOtpChallenge(
+        challengeId: e.challengeId,
+        deliveryChannel: e.deliveryChannel,
+        destinationMasked: e.destinationMasked,
+        expiresAt: e.expiresAt,
+        expiresInSeconds: e.expiresInSeconds,
+      ));
+    } catch (e) {
+      emit(AuthError(_parseError(e)));
+    }
+  }
+
+  /// Verifies the user-entered OTP against the active challenge.
+  /// Success → [AuthAuthenticated]. Wrong code / expired → [AuthOtpError]
+  /// so the OTP screen can show an inline error and let the user retry.
+  Future<void> _onVerifyOtp(
+    VerifyOtp event,
+    Emitter<AuthState> emit,
+  ) async {
+    // Snapshot the current challenge details so we can restore them on failure.
+    final currentState = state;
+    final challenge = currentState is AuthOtpChallenge
+        ? currentState
+        : currentState is AuthOtpError
+            ? AuthOtpChallenge(
+                challengeId: currentState.challengeId,
+                deliveryChannel: 'EMAIL',
+                destinationMasked: currentState.destinationMasked,
+                expiresAt: '',
+                expiresInSeconds: currentState.expiresInSeconds,
+              )
+            : null;
+
+    emit(AuthLoading());
+
+    try {
+      final user = await _authService.verifyOtp(
+        challengeId: event.challengeId,
+        otp: event.otp,
+      );
       emit(AuthAuthenticated(user));
     } catch (e) {
-      // Map the raw exception to a readable message before showing it.
-      final errorMessage = _parseError(e);
-      emit(AuthError(errorMessage));
+      final msg = _parseOtpError(e);
+      emit(AuthOtpError(
+        challengeId: event.challengeId,
+        destinationMasked: challenge?.destinationMasked ?? '',
+        expiresInSeconds: challenge?.expiresInSeconds ?? 300,
+        message: msg,
+      ));
     }
   }
 
@@ -214,6 +311,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
     // Default: strip Dio/Exception prefixes and show the remaining message.
     return 'Login failed: ${e.toString().replaceAll('Exception: ', '').replaceAll('DioException: ', '')}';
+  }
+
+  String _parseOtpError(dynamic e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('expired')) return 'OTP has expired. Please log in again.';
+    if (s.contains('invalid') || s.contains('incorrect') || s.contains('wrong')) {
+      return 'Incorrect OTP. Please check the code and try again.';
+    }
+    if (s.contains('429') || s.contains('too many')) {
+      return 'Too many attempts. Please wait before trying again.';
+    }
+    if (s.contains('connection') || s.contains('socket')) {
+      return 'No connection. Check your network and try again.';
+    }
+    return 'OTP verification failed. Please try again.';
   }
 
   /// Clears the session token from secure storage.

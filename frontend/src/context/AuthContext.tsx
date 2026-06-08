@@ -4,6 +4,7 @@ interface User {
   id: number;
   username: string;
   displayName?: string;
+  designation?: string | null;
   roles: string[];
   permissions: string[];
   project_ids?: number[];
