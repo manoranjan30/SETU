@@ -590,6 +590,14 @@ class ApiEndpoints {
   static String clearanceCardPdf(int inspectionId) =>
       '/quality/inspections/$inspectionId/pre-pour-clearance/pdf';
 
+  /// POST /quality/inspections/:id/pre-pour-clearance/attachments  (multipart)
+  static String clearanceCardAttachments(int inspectionId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/attachments';
+
+  /// DELETE /quality/inspections/:id/pre-pour-clearance/attachments/:attachmentId
+  static String clearanceCardAttachment(int inspectionId, String attachmentId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/attachments/$attachmentId';
+
   // ==================== CONCRETE GRADES ENDPOINTS ====================
 
   /// GET/POST /quality/:projectId/concrete-grades

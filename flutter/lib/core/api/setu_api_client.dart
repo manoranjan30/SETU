@@ -1240,6 +1240,49 @@ class SetuApiClient {
         ApiEndpoints.clearanceCardPdf(inspectionId), savePath);
   }
 
+  /// Downloads any file by URL to [savePath].
+  /// Resolves relative paths against the server origin before downloading.
+  Future<void> downloadFile(String url, String savePath) async {
+    final fullUrl = ApiEndpoints.resolveUrl(url);
+    await _dio.download(fullUrl, savePath);
+  }
+
+  /// Uploads a supporting document for a clearance attachment line.
+  /// Returns the newly created [ClearanceAttachmentDocument] JSON.
+  Future<Map<String, dynamic>> uploadClearanceAttachment({
+    required int inspectionId,
+    required String lineKey,
+    required String filePath,
+    required String fileName,
+    required String mimeType,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      'lineKey': lineKey,
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+    // Do NOT set a custom Content-Type — Dio sets multipart/form-data with
+    // the correct boundary automatically when data is a FormData object.
+    final response = await _dio.post(
+      ApiEndpoints.clearanceCardAttachments(inspectionId),
+      data: formData,
+      onSendProgress: onProgress,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Deletes a supporting document from a clearance attachment line.
+  Future<void> deleteClearanceAttachment({
+    required int inspectionId,
+    required String attachmentId,
+    required String lineKey,
+  }) async {
+    await _dio.delete(
+      ApiEndpoints.clearanceCardAttachment(inspectionId, attachmentId),
+      queryParameters: {'lineKey': lineKey},
+    );
+  }
+
   // ==================== QUALITY SNAGS ====================
 
   // ==================== CONCRETE GRADES ====================
