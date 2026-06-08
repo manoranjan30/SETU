@@ -93,8 +93,15 @@ class ApiEndpoints {
 
   // ==================== AUTH ENDPOINTS ====================
   static const String login = '/auth/login';
+  static const String loginVerifyOtp = '/auth/login/verify-otp';
   static const String profile = '/auth/profile';
   static const String refreshToken = '/auth/refresh';
+
+  // ==================== QR SIGNATURE SESSION ENDPOINTS ====================
+  static String mobileSignatureSession(String token) =>
+      '/quality/inspections/mobile-signature-sessions/$token';
+  static String mobileSignatureSessionConfirm(String token) =>
+      '/quality/inspections/mobile-signature-sessions/$token/confirm';
 
   // ==================== EPS/PROJECT ENDPOINTS ====================
   // Get all EPS nodes for user (same as web uses)

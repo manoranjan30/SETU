@@ -93,6 +93,7 @@ import { QualityPourCard } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
 import { QualityCubeTestRegister } from './entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
+import { QualitySignatureQrSession } from './entities/quality-signature-qr-session.entity';
 import { QualityPourCardService } from './quality-pour-card.service';
 import { QualityPourCardController } from './quality-pour-card.controller';
 
@@ -153,6 +154,7 @@ import { QualityPourCardController } from './quality-pour-card.controller';
       QualityPrePourClearanceCard,
       QualityCubeTestRegister,
       QualityConcreteGrade,
+      QualitySignatureQrSession,
       TempUser,
       User,
       Vendor,

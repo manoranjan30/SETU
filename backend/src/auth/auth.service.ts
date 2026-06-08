@@ -1,13 +1,21 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 import { expandPermissions } from './permission-config';
 import { ProjectAssignmentService } from '../projects/project-assignment.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TempUser } from '../temp-user/entities/temp-user.entity';
 import { Role } from '../roles/role.entity';
+import { AuthOtpChallenge } from './entities/auth-otp-challenge.entity';
+import { SystemSettingsService } from '../common/system-settings.service';
+import { EmailDeliveryService } from './email-delivery.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +27,10 @@ export class AuthService {
     private readonly tempUserRepo: Repository<TempUser>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    @InjectRepository(AuthOtpChallenge)
+    private readonly otpRepo: Repository<AuthOtpChallenge>,
+    private readonly settingsService: SystemSettingsService,
+    private readonly emailDeliveryService: EmailDeliveryService,
   ) {}
 
   async validateUser(username: string, pass: string): Promise<any> {
@@ -51,7 +63,112 @@ export class AuthService {
     return null;
   }
 
-  async login(user: any) {
+  private isAdminUser(user: any) {
+    return (
+      user?.username === 'admin' ||
+      user?.roles?.some?.((role: any) => role?.name === 'Admin') ||
+      user?.roles?.includes?.('Admin')
+    );
+  }
+
+  private maskEmail(email: string) {
+    const [name, domain] = email.split('@');
+    if (!domain) return 'configured email';
+    const visible = name.slice(0, 2);
+    return `${visible}${'*'.repeat(Math.max(2, name.length - 2))}@${domain}`;
+  }
+
+  async login(
+    user: any,
+    requestMeta?: { ipAddress?: string | null; userAgent?: string | null },
+  ) {
+    const otpEnabled = await this.settingsService.getSettingBool(
+      'AUTH_EMAIL_OTP_ENABLED',
+    );
+    if (otpEnabled && !this.isAdminUser(user)) {
+      return this.createEmailOtpChallenge(user, requestMeta);
+    }
+
+    return this.issueLoginToken(user);
+  }
+
+  private async createEmailOtpChallenge(
+    user: any,
+    requestMeta?: { ipAddress?: string | null; userAgent?: string | null },
+  ) {
+    const email = String(user.email || '').trim();
+    if (!email) {
+      throw new BadRequestException(
+        'Email OTP is enabled but this user does not have an email address. Contact admin.',
+      );
+    }
+
+    const ttlMinutes = Math.max(
+      1,
+      Math.min(
+        15,
+        Number((await this.settingsService.getSetting('AUTH_EMAIL_OTP_TTL_MINUTES')) || 5),
+      ),
+    );
+    const otp = String(randomInt(0, 1000000)).padStart(6, '0');
+    const otpHash = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+
+    const challenge = await this.otpRepo.save(
+      this.otpRepo.create({
+        userId: user.id,
+        deliveryChannel: 'EMAIL',
+        destination: email,
+        otpHash,
+        expiresAt,
+        consumedAt: null,
+        attemptCount: 0,
+        requestIp: requestMeta?.ipAddress || null,
+        userAgent: requestMeta?.userAgent || null,
+      }),
+    );
+
+    await this.emailDeliveryService.sendLoginOtp(email, otp, ttlMinutes);
+
+    return {
+      otpRequired: true,
+      challengeId: challenge.id,
+      deliveryChannel: 'EMAIL',
+      destinationMasked: this.maskEmail(email),
+      expiresAt,
+      expiresInSeconds: ttlMinutes * 60,
+    };
+  }
+
+  async verifyEmailOtp(challengeId: string, otp: string) {
+    const challenge = await this.otpRepo.findOne({
+      where: { id: challengeId },
+      relations: ['user', 'user.roles', 'user.roles.permissions', 'user.permissions'],
+    });
+    if (!challenge || challenge.consumedAt) {
+      throw new UnauthorizedException('Invalid or already used OTP challenge.');
+    }
+    if (new Date() > new Date(challenge.expiresAt)) {
+      throw new UnauthorizedException('OTP expired. Please login again.');
+    }
+    if (challenge.attemptCount >= 5) {
+      throw new UnauthorizedException('Too many OTP attempts. Please login again.');
+    }
+
+    const matches = await bcrypt.compare(String(otp || '').trim(), challenge.otpHash);
+    challenge.attemptCount += 1;
+    if (!matches) {
+      await this.otpRepo.save(challenge);
+      throw new UnauthorizedException('Invalid OTP.');
+    }
+
+    challenge.consumedAt = new Date();
+    await this.otpRepo.save(challenge);
+    const { passwordHash, ...user } = challenge.user as any;
+    return this.issueLoginToken(user);
+  }
+
+  private async issueLoginToken(user: any) {
     // Flatten permissions from all roles
     const rawPermissions = new Set<string>();
     if (user.permissions) {
@@ -130,6 +247,7 @@ export class AuthService {
         id: user.id,
         username: user.username,
         displayName: user.displayName,
+        designation: user.designation,
         roles: payload.roles,
         permissions: payload.permissions,
         project_ids: assignedProjectIds,

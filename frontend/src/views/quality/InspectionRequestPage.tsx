@@ -9,6 +9,8 @@ import {
   ShieldAlert,
   AlertTriangle,
   MessageSquareWarning,
+  QrCode,
+  X,
 } from "lucide-react";
 import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
@@ -64,7 +66,12 @@ interface QualityInspection {
   id: number;
   activityId: number;
   epsNodeId: number;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
+  status:
+    | "PENDING"
+    | "PARTIALLY_APPROVED"
+    | "APPROVED"
+    | "REJECTED"
+    | "CANCELED";
   requestDate: string;
   inspectionDate?: string;
   comments?: string;
@@ -130,6 +137,68 @@ const CLEARANCE_ATTACHMENT_OPTIONS: Array<{
   { key: "concretePourCardAttached", label: "Concrete Pour Card" },
 ];
 
+type GoApprovalState =
+  | "NOT_STARTED"
+  | "RAISED"
+  | "PARTIALLY_APPROVED"
+  | "FULLY_APPROVED"
+  | "REJECTED";
+
+const getGoNumber = (inspection?: QualityInspection | null) =>
+  inspection?.goNo || inspection?.partNo || 1;
+
+const getGoApprovalState = (
+  inspection?: QualityInspection | null,
+): GoApprovalState => {
+  if (!inspection) return "NOT_STARTED";
+  if (inspection.status === "APPROVED") return "FULLY_APPROVED";
+  if (inspection.status === "REJECTED" || inspection.status === "CANCELED") {
+    return "REJECTED";
+  }
+  if (
+    inspection.status === "PARTIALLY_APPROVED" ||
+    Number(inspection.stageApprovalSummary?.approvedStages || 0) > 0
+  ) {
+    return "PARTIALLY_APPROVED";
+  }
+  return "RAISED";
+};
+
+const GO_STATE_CONFIG: Record<
+  GoApprovalState,
+  { label: string; className: string; dotClassName: string }
+> = {
+  NOT_STARTED: {
+    label: "Not started",
+    className:
+      "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+    dotClassName: "bg-slate-300",
+  },
+  RAISED: {
+    label: "Raised",
+    className:
+      "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100",
+    dotClassName: "bg-blue-500",
+  },
+  PARTIALLY_APPROVED: {
+    label: "Partially approved",
+    className:
+      "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+    dotClassName: "bg-amber-500",
+  },
+  FULLY_APPROVED: {
+    label: "Fully approved",
+    className:
+      "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+    dotClassName: "bg-emerald-500",
+  },
+  REJECTED: {
+    label: "Rejected",
+    className: "border-red-200 bg-red-50 text-red-800 hover:bg-red-100",
+    dotClassName: "bg-red-500",
+  },
+};
+
 interface ActivityList {
   id: number;
   name: string;
@@ -193,6 +262,9 @@ export default function InspectionRequestPage() {
   const [selectedUnitIds, setSelectedUnitIds] = useState<number[]>([]);
   const [raisingBatch, setRaisingBatch] = useState(false);
   const [expandingGoActivityId, setExpandingGoActivityId] = useState<number | null>(null);
+  const [selectedGoByActivity, setSelectedGoByActivity] = useState<
+    Record<number, number>
+  >({});
   const [quickRaiseConfig, setQuickRaiseConfig] = useState<{
     mode: "NONE" | "GO_SINGLE" | "UNIT_SINGLE" | "UNIT_BATCH";
     partNo?: number;
@@ -216,6 +288,9 @@ export default function InspectionRequestPage() {
     useState<number | null>(null);
   const [showClearanceSignatureModal, setShowClearanceSignatureModal] =
     useState(false);
+  const [signatureQrSession, setSignatureQrSession] = useState<any>(null);
+  const [generatingSignatureQrIndex, setGeneratingSignatureQrIndex] =
+    useState<number | null>(null);
 
   // Load active vendors for internal users
   useEffect(() => {
@@ -309,12 +384,14 @@ export default function InspectionRequestPage() {
               signedByUserId: user?.id ?? null,
               signerUsername: user?.username ?? null,
               signerDisplayName: user?.displayName || user?.username || null,
+              signerDesignation: user?.designation || null,
               signerRoles: user?.roles || [],
               personName:
                 row.personName || user?.displayName || user?.username || null,
               signatureEvidence: {
                 ...(evidence || {}),
                 signedAt,
+                signerDesignation: user?.designation || null,
                 meaning:
                   "I have reviewed and signed this pre-pour clearance responsibility.",
               },
@@ -325,6 +402,47 @@ export default function InspectionRequestPage() {
     setShowClearanceSignatureModal(false);
     setActiveClearanceSignoffIndex(null);
   };
+
+  const generateClearanceSignoffQr = async (idx: number) => {
+    if (!activeCardInspection?.id || !prePourClearanceCard) return;
+    const signoff = prePourClearanceCard.signoffs?.[idx];
+    if (!signoff?.id) {
+      alert("Save the pour clearance card before generating QR.");
+      return;
+    }
+    setGeneratingSignatureQrIndex(idx);
+    try {
+      const session = await qualityService.createPrePourClearanceSignatureQr(
+        activeCardInspection.id,
+        signoff.id,
+      );
+      setSignatureQrSession({ ...session, signoffIndex: idx });
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to generate signature QR.");
+    } finally {
+      setGeneratingSignatureQrIndex(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!signatureQrSession || !activeCardInspection?.id) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const latest = await qualityService.getPrePourClearanceCard(
+          activeCardInspection.id,
+        );
+        const row = latest.signoffs?.[signatureQrSession.signoffIndex];
+        setPrePourClearanceCard(latest);
+        if (row?.status === "SIGNED" && row?.signatureData) {
+          setSignatureQrSession(null);
+          alert("Mobile signature captured.");
+        }
+      } catch {
+        // Keep the QR visible until the user closes it or the session expires.
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [signatureQrSession, activeCardInspection?.id]);
 
   const floorChecklistAttachmentOptions = useMemo(() => {
     const active = activeCardInspection;
@@ -624,18 +742,25 @@ export default function InspectionRequestPage() {
 
   // Logic to determine status of each activity
   const activityRows = useMemo(() => {
-    // Map inspections by activityId (get latest)
-    const inspMap = new Map<number, QualityInspection>();
+    // Map inspections by activityId and selected GO. Inspections are ordered
+    // latest-first by backend, so the first row remains the fallback.
+    const inspMap = new Map<number, QualityInspection[]>();
     const activityMap = new Map(activities.map((activity) => [activity.id, activity]));
     const visibleActivityIds = new Set(visibleActivities.map((activity) => activity.id));
     // Inspections are ordered by date desc from backend, so first one is latest
     inspections.forEach((i) => {
-      if (!inspMap.has(i.activityId)) inspMap.set(i.activityId, i);
+      inspMap.set(i.activityId, [...(inspMap.get(i.activityId) || []), i]);
     });
 
     // Compute status
     return visibleActivities.map((act) => {
-      const insp = inspMap.get(act.id);
+      const activityInspections = inspMap.get(act.id) || [];
+      const selectedGoNo = selectedGoByActivity[act.id];
+      const insp = selectedGoNo
+        ? activityInspections.find(
+            (inspection) => getGoNumber(inspection) === selectedGoNo,
+          ) || activityInspections[0]
+        : activityInspections[0];
       const hasUnresolvedObservations =
         (observationsMap[act.id] || []).some((obs) => obs.status !== "CLOSED") ||
         inspections.some(
@@ -659,7 +784,7 @@ export default function InspectionRequestPage() {
           if (!visibleActivityIds.has(edge.sourceId)) {
             continue;
           }
-          const prevInsp = inspMap.get(edge.sourceId);
+          const prevInsp = inspMap.get(edge.sourceId)?.[0];
           if (!prevInsp || prevInsp.status !== "APPROVED") {
             predecessorDone = false;
             break;
@@ -676,7 +801,7 @@ export default function InspectionRequestPage() {
             selectedFloorScope,
           );
         if (previousVisible) {
-          const prevInsp = inspMap.get(act.previousActivityId);
+          const prevInsp = inspMap.get(act.previousActivityId)?.[0];
           if (!prevInsp || prevInsp.status !== "APPROVED") {
             predecessorDone = false;
           }
@@ -694,7 +819,14 @@ export default function InspectionRequestPage() {
 
       return { ...act, inspection: insp, statusState: state, predecessorDone };
     });
-  }, [activities, visibleActivities, inspections, observationsMap, selectedFloorScope]);
+  }, [
+    activities,
+    visibleActivities,
+    inspections,
+    observationsMap,
+    selectedFloorScope,
+    selectedGoByActivity,
+  ]);
 
   const inspectionsById = useMemo(
     () => new Map(inspections.map((inspection) => [inspection.id, inspection])),
@@ -1621,6 +1753,26 @@ export default function InspectionRequestPage() {
                                     : "Add GO"}
                                 </button>
                               </div>
+                              <div className="mb-2 flex flex-wrap gap-2 text-[11px] text-text-muted">
+                                {(
+                                  [
+                                    "NOT_STARTED",
+                                    "RAISED",
+                                    "PARTIALLY_APPROVED",
+                                    "FULLY_APPROVED",
+                                  ] as GoApprovalState[]
+                                ).map((state) => (
+                                  <span
+                                    key={state}
+                                    className="inline-flex items-center gap-1"
+                                  >
+                                    <span
+                                      className={`h-2 w-2 rounded-full ${GO_STATE_CONFIG[state].dotClassName}`}
+                                    />
+                                    {GO_STATE_CONFIG[state].label}
+                                  </span>
+                                ))}
+                              </div>
                               <div className="flex flex-wrap gap-2">
                                 {Array.from(
                                   {
@@ -1630,32 +1782,77 @@ export default function InspectionRequestPage() {
                                   },
                                   (_, idx) => idx + 1,
                                 ).map((p) => {
+                                  const goInspection = inspections.find(
+                                    (inspection) =>
+                                      inspection.activityId === item.id &&
+                                      getGoNumber(inspection) === p,
+                                  );
                                   const exists =
                                     partProgressByActivity[
                                       item.id
                                     ].existingPartNos.includes(p);
+                                  const goState =
+                                    getGoApprovalState(goInspection);
+                                  const stateConfig =
+                                    GO_STATE_CONFIG[goState];
+                                  const selectedGoNo =
+                                    selectedGoByActivity[item.id] ||
+                                    getGoNumber(item.inspection);
+                                  const isSelected = selectedGoNo === p;
                                   return exists ? (
-                                    <span
+                                    <button
                                       key={p}
-                                      className="px-2 py-1 rounded border bg-success-muted border-green-200 text-green-700 font-medium"
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedGoByActivity((prev) => ({
+                                          ...prev,
+                                          [item.id]: p,
+                                        }))
+                                      }
+                                      title={[
+                                        goInspection?.goDetails || null,
+                                        goInspection
+                                          ? `RFI #${goInspection.id}`
+                                          : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" | ")}
+                                      className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1.5 font-medium transition ${stateConfig.className} ${
+                                        isSelected
+                                          ? "ring-2 ring-secondary ring-offset-1"
+                                          : ""
+                                      }`}
                                     >
-                                      GO {p} Raised
-                                    </span>
+                                      <span
+                                        className={`h-2 w-2 rounded-full ${stateConfig.dotClassName}`}
+                                      />
+                                      GO {p}
+                                      <span className="text-[10px] opacity-80">
+                                        {stateConfig.label}
+                                      </span>
+                                    </button>
                                   ) : (
                                     <button
                                       key={p}
+                                      type="button"
                                       onClick={() =>
                                         openRaiseRfiFlow(item, {
                                           mode: "GO_SINGLE",
                                           partNo: p,
                                           totalParts:
                                             partProgressByActivity[item.id]
-                                              .totalParts,
+                                            .totalParts,
                                         })
                                       }
-                                      className="px-2 py-1 rounded border bg-surface-card border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-medium"
+                                      className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1.5 font-medium transition ${GO_STATE_CONFIG.NOT_STARTED.className}`}
                                     >
-                                      Raise GO {p}
+                                      <span
+                                        className={`h-2 w-2 rounded-full ${GO_STATE_CONFIG.NOT_STARTED.dotClassName}`}
+                                      />
+                                      GO {p}
+                                      <span className="text-[10px] opacity-80">
+                                        Raise
+                                      </span>
                                     </button>
                                   );
                                 })}
@@ -2306,6 +2503,7 @@ export default function InspectionRequestPage() {
                                                     signedByUserId: null,
                                                     signerUsername: null,
                                                     signerDisplayName: null,
+                                                    signerDesignation: null,
                                                     signerRoles: [],
                                                     signatureMode: null,
                                                     signatureEvidence: null,
@@ -2338,6 +2536,23 @@ export default function InspectionRequestPage() {
                                   ? "Update identity signature"
                                   : "Sign with identity"}
                               </button>
+                              {!signoff.signatureData ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void generateClearanceSignoffQr(index)
+                                  }
+                                  disabled={
+                                    generatingSignatureQrIndex === index
+                                  }
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                                >
+                                  <QrCode className="h-3.5 w-3.5" />
+                                  {generatingSignatureQrIndex === index
+                                    ? "Generating..."
+                                    : "Generate mobile QR"}
+                                </button>
+                              ) : null}
                               {signoff.signatureData ? (
                                 <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
                                   Signed by{" "}
@@ -2784,6 +2999,50 @@ export default function InspectionRequestPage() {
           </div>
         </div>
       )}
+      {signatureQrSession ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  Mobile Signature QR
+                </h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  Scan from SETU mobile app and confirm signing within 5
+                  minutes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSignatureQrSession(null)}
+                className="rounded-full p-2 text-text-muted hover:bg-surface-raised"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col items-center rounded-xl border border-border-subtle bg-white p-4">
+              <img
+                src={signatureQrSession.qrCodeDataUrl}
+                alt="Mobile signature QR"
+                className="h-64 w-64"
+              />
+              <div className="mt-3 text-center text-sm font-semibold text-text-primary">
+                {signatureQrSession.signoff?.department ||
+                  signatureQrSession.signoff?.personName ||
+                  "Pour clearance signatory"}
+              </div>
+              <div className="mt-1 text-center text-xs text-text-muted">
+                Expires at{" "}
+                {new Date(signatureQrSession.expiresAt).toLocaleTimeString()}
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              This QR is one-time use. Once the mobile signature is confirmed,
+              this dialog will close and the row will show as signed.
+            </div>
+          </div>
+        </div>
+      ) : null}
       <SignatureModal
         isOpen={showClearanceSignatureModal}
         onClose={() => {

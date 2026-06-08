@@ -26,6 +26,7 @@ import {
   Layers,
   Home,
   Siren,
+  QrCode,
 } from "lucide-react";
 import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
@@ -705,6 +706,9 @@ export default function QualityApprovalsPage() {
     useState<number | null>(null);
   const [showClearanceSignoffSignature, setShowClearanceSignoffSignature] =
     useState(false);
+  const [signatureQrSession, setSignatureQrSession] = useState<any>(null);
+  const [generatingSignatureQrIndex, setGeneratingSignatureQrIndex] =
+    useState<number | null>(null);
 
   const applyFullscreenThemeVars = () => {
     const host = workspaceRef.current;
@@ -1175,11 +1179,13 @@ export default function QualityApprovalsPage() {
               signedByUserId: user?.id ?? null,
               signerUsername: user?.username ?? null,
               signerDisplayName: user?.displayName || user?.username || null,
+              signerDesignation: user?.designation || null,
               signerRoles: user?.roles || [],
               status: "SIGNED",
               signatureEvidence: {
                 ...(evidence || {}),
                 signedAt,
+                signerDesignation: user?.designation || null,
                 meaning:
                   "I have reviewed and signed this pre-pour clearance responsibility.",
               },
@@ -1190,6 +1196,47 @@ export default function QualityApprovalsPage() {
     setShowClearanceSignoffSignature(false);
     setActiveClearanceSignoffIndex(null);
   };
+
+  const generateClearanceSignoffQr = async (idx: number) => {
+    if (!inspectionDetail?.id || !prePourClearanceCard) return;
+    const signoff = prePourClearanceCard.signoffs?.[idx];
+    if (!signoff?.id) {
+      alert("Save the pre-pour clearance card before generating QR.");
+      return;
+    }
+    setGeneratingSignatureQrIndex(idx);
+    try {
+      const session = await qualityService.createPrePourClearanceSignatureQr(
+        inspectionDetail.id,
+        signoff.id,
+      );
+      setSignatureQrSession({ ...session, signoffIndex: idx });
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to generate signature QR."));
+    } finally {
+      setGeneratingSignatureQrIndex(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!signatureQrSession || !inspectionDetail?.id) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const latest = await qualityService.getPrePourClearanceCard(
+          inspectionDetail.id,
+        );
+        const row = latest.signoffs?.[signatureQrSession.signoffIndex];
+        setPrePourClearanceCard(latest);
+        if (row?.status === "SIGNED" && row?.signatureData) {
+          setSignatureQrSession(null);
+          alert("Mobile signature captured.");
+        }
+      } catch {
+        // Keep QR visible; user can refresh/close manually.
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [signatureQrSession, inspectionDetail?.id]);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -5891,6 +5938,8 @@ export default function QualityApprovalsPage() {
                                                                       null,
                                                                     signerDisplayName:
                                                                       null,
+                                                                    signerDesignation:
+                                                                      null,
                                                                     signerRoles:
                                                                       [],
                                                                     signatureMode:
@@ -5962,6 +6011,27 @@ export default function QualityApprovalsPage() {
                                                   ? "Update identity signature"
                                                   : "Sign with identity"}
                                               </button>
+                                              {!signoff.signatureData ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    void generateClearanceSignoffQr(
+                                                      idx,
+                                                    )
+                                                  }
+                                                  disabled={
+                                                    generatingSignatureQrIndex ===
+                                                    idx
+                                                  }
+                                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                                                >
+                                                  <QrCode className="h-3.5 w-3.5" />
+                                                  {generatingSignatureQrIndex ===
+                                                  idx
+                                                    ? "Generating..."
+                                                    : "Generate mobile QR"}
+                                                </button>
+                                              ) : null}
                                               {signoff.signatureData ? (
                                                 <button
                                                   type="button"
@@ -5984,6 +6054,8 @@ export default function QualityApprovalsPage() {
                                                                 signerUsername:
                                                                   null,
                                                                 signerDisplayName:
+                                                                  null,
+                                                                signerDesignation:
                                                                   null,
                                                                 signerRoles: [],
                                                                 signatureMode:
@@ -7333,6 +7405,47 @@ export default function QualityApprovalsPage() {
           </div>
         </div>
       )}
+      {signatureQrSession ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  Mobile Signature QR
+                </h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  Scan from SETU mobile app and confirm signing within 5 minutes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSignatureQrSession(null)}
+                className="rounded-full p-2 text-text-muted hover:bg-surface-raised"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col items-center rounded-xl border border-border-subtle bg-white p-4">
+              <img
+                src={signatureQrSession.qrCodeDataUrl}
+                alt="Mobile signature QR"
+                className="h-64 w-64"
+              />
+              <div className="mt-3 text-center text-sm font-semibold text-text-primary">
+                {signatureQrSession.signoff?.department}
+              </div>
+              <div className="mt-1 text-center text-xs text-text-muted">
+                Expires at{" "}
+                {new Date(signatureQrSession.expiresAt).toLocaleTimeString()}
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              This QR is one-time use. Once the mobile signature is confirmed,
+              this dialog will close and the row will show as signed.
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* Signature Modals */}
       <SignatureModal
         isOpen={showFinalApproveSig}

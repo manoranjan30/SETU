@@ -100,12 +100,47 @@ class SetuApiClient {
     return response.data;
   }
 
+  /// Verifies an email OTP challenge returned by [login].
+  /// On success returns the same shape as a normal login response
+  /// (access_token, user, etc.).
+  Future<Map<String, dynamic>> verifyOtp({
+    required String challengeId,
+    required String otp,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.loginVerifyOtp,
+      data: {'challengeId': challengeId, 'otp': otp},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Fetches the authenticated user's profile from the server.
-  ///
-  /// Typically called right after login to populate the local user model.
   Future<Map<String, dynamic>> getProfile() async {
     final response = await _dio.get(ApiEndpoints.profile);
     return response.data;
+  }
+
+  // ==================== QR SIGNATURE SESSIONS ====================
+
+  /// Fetches the context for a QR-based signature session.
+  Future<Map<String, dynamic>> getMobileSignatureSession(String token) async {
+    final response = await _dio.get(ApiEndpoints.mobileSignatureSession(token));
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Confirms a QR signature session. [signatureData] is an optional base64
+  /// data URI; omit it when the user has a saved profile signature on the server.
+  Future<Map<String, dynamic>> confirmMobileSignatureSession({
+    required String token,
+    String? signatureData,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.mobileSignatureSessionConfirm(token),
+      data: {
+        if (signatureData != null) 'signatureData': signatureData,
+      },
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   // ==================== PROJECT ENDPOINTS ====================

@@ -64,6 +64,15 @@ const clearanceAttachmentUploadOptions = {
   },
 };
 
+const getRequestOrigin = (req: any) => {
+  const proto =
+    req?.headers?.['x-forwarded-proto'] ||
+    req?.protocol ||
+    (req?.secure ? 'https' : 'http');
+  const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host;
+  return host ? `${String(proto).split(',')[0]}://${String(host).split(',')[0]}` : '';
+};
+
 @Controller('quality/inspections')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class QualityPourCardController {
@@ -187,6 +196,21 @@ export class QualityPourCardController {
     );
   }
 
+  @Post(':inspectionId/pre-pour-clearance/signoffs/:signoffId/qr')
+  @Permissions('QUALITY.INSPECTION.READ')
+  createPrePourClearanceSignatureQr(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Param('signoffId') signoffId: string,
+    @Request() req,
+  ) {
+    return this.service.createPrePourClearanceSignatureQr(
+      inspectionId,
+      signoffId,
+      req.user?.userId || req.user?.id,
+      getRequestOrigin(req),
+    );
+  }
+
   @Post(':inspectionId/pre-pour-clearance/attachments')
   @Permissions('QUALITY.INSPECTION.READ')
   @UseInterceptors(
@@ -258,6 +282,27 @@ export class QualityPourCardController {
       inspectionId,
       req.user?.userId || req.user?.id,
       body?.remarks,
+    );
+  }
+
+  @Get('mobile-signature-sessions/:token')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getMobileSignatureSession(@Param('token') token: string) {
+    return this.service.getMobileSignatureSession(token);
+  }
+
+  @Post('mobile-signature-sessions/:token/confirm')
+  @Permissions('QUALITY.INSPECTION.READ')
+  confirmMobileSignatureSession(
+    @Param('token') token: string,
+    @Body() body: { signatureData?: string | null },
+    @Request() req,
+  ) {
+    return this.service.confirmMobileSignatureSession(
+      token,
+      req.user?.userId || req.user?.id,
+      body,
+      this.getRequestSignatureMeta(req),
     );
   }
 

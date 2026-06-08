@@ -2,6 +2,24 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/token_manager.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
 
+/// Thrown when the backend requires OTP verification before issuing a JWT.
+/// Carry the challenge details so the bloc can emit the right state.
+class OtpRequiredException implements Exception {
+  final String challengeId;
+  final String deliveryChannel;
+  final String destinationMasked;
+  final String expiresAt;
+  final int expiresInSeconds;
+
+  const OtpRequiredException({
+    required this.challengeId,
+    required this.deliveryChannel,
+    required this.destinationMasked,
+    required this.expiresAt,
+    required this.expiresInSeconds,
+  });
+}
+
 /// Orchestrates login, logout, and session checking for the SETU app.
 ///
 /// This service sits between the API layer and the token storage layer:
@@ -39,13 +57,22 @@ class AuthService {
       print('[AuthService] Login response: $response');
 
       // Parse the response
+      // OTP challenge — server wants a second factor before issuing a token.
+      if (response['otpRequired'] == true) {
+        throw OtpRequiredException(
+          challengeId: response['challengeId'] as String? ?? '',
+          deliveryChannel: response['deliveryChannel'] as String? ?? 'EMAIL',
+          destinationMasked: response['destinationMasked'] as String? ?? '',
+          expiresAt: response['expiresAt'] as String? ?? '',
+          expiresInSeconds: response['expiresInSeconds'] as int? ?? 300,
+        );
+      }
+
       final accessToken = response['access_token'] as String?;
       final refreshToken = response['refresh_token'] as String?;
       final expiresIn = response['expires_in'] as int?;
       print('[AuthService] Access token: ${accessToken != null ? "received" : "null"}');
 
-      // A missing access token indicates an unexpected backend response
-      // (e.g. the server returned 200 but with an error body).
       if (accessToken == null) {
         throw Exception('Invalid login response: missing access token');
       }
@@ -83,6 +110,34 @@ class AuthService {
       print('[AuthService] Login error: $e');
       rethrow;
     }
+  }
+
+  /// Completes an OTP challenge and returns the authenticated [User].
+  /// Saves tokens exactly like a successful password login.
+  Future<User> verifyOtp({
+    required String challengeId,
+    required String otp,
+  }) async {
+    final response = await _apiClient.verifyOtp(
+      challengeId: challengeId,
+      otp: otp,
+    );
+
+    final accessToken = response['access_token'] as String?;
+    if (accessToken == null) {
+      throw Exception('OTP verification failed: missing access token');
+    }
+
+    final userJson = response['user'] as Map<String, dynamic>?;
+    await _tokenManager.saveTokens(
+      accessToken: accessToken,
+      refreshToken: response['refresh_token'] as String? ?? '',
+      expiresIn: response['expires_in'] as int? ?? 28800,
+      userId: userJson?['id'] as int? ?? 0,
+    );
+
+    if (userJson != null) return User.fromJson(userJson);
+    return await getProfile();
   }
 
   /// Fetches the profile of the currently authenticated user.

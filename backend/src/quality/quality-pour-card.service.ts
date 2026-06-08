@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'stream';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { readFile, unlink } from 'fs/promises';
 import { resolve, sep } from 'path';
 import { QualityInspection } from './entities/quality-inspection.entity';
@@ -22,9 +22,15 @@ import {
   QualityCubeTestStatus,
 } from './entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
+import {
+  QualitySignatureQrSession,
+  QualitySignatureQrSessionStatus,
+} from './entities/quality-signature-qr-session.entity';
 import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
+import { User } from '../users/user.entity';
+import QRCode from 'qrcode';
 
 const DEFAULT_CLEARANCE_SIGNOFFS = [
   'Surveyor',
@@ -98,6 +104,10 @@ export class QualityPourCardService {
     private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
     @InjectRepository(QualityConcreteGrade)
     private readonly concreteGradeRepo: Repository<QualityConcreteGrade>,
+    @InjectRepository(QualitySignatureQrSession)
+    private readonly signatureQrRepo: Repository<QualitySignatureQrSession>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
@@ -658,6 +668,226 @@ export class QualityPourCardService {
     return { success: true, attachmentId };
   }
 
+  private hashQrToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private findClearanceSignoffOrThrow(
+    card: QualityPrePourClearanceCard,
+    signoffId: string,
+  ) {
+    const signoffs = this.normalizeSignoffRows(card.signoffs);
+    const signoff = signoffs.find((row) => row.id === signoffId);
+    if (!signoff) {
+      throw new NotFoundException('Pre-pour clearance signoff row not found.');
+    }
+    return { signoffs, signoff };
+  }
+
+  async createPrePourClearanceSignatureQr(
+    inspectionId: number,
+    signoffId: string,
+    requestedByUserId?: number,
+    origin?: string,
+  ) {
+    const card = await this.getPrePourClearanceCard(inspectionId);
+    if (
+      [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(card.status)
+    ) {
+      throw new BadRequestException('Locked pre-pour clearance cards cannot be edited.');
+    }
+
+    const { signoff } = this.findClearanceSignoffOrThrow(card, signoffId);
+    if (signoff.status === 'SIGNED' && signoff.signatureData) {
+      throw new BadRequestException(
+        'This signoff row is already signed. Clear the signature before generating a new QR.',
+      );
+    }
+
+    await this.signatureQrRepo.update(
+      {
+        clearanceCardId: card.id,
+        signoffId,
+        status: QualitySignatureQrSessionStatus.ACTIVE,
+      },
+      { status: QualitySignatureQrSessionStatus.REVOKED },
+    );
+
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const session = await this.signatureQrRepo.save(
+      this.signatureQrRepo.create({
+        tokenHash: this.hashQrToken(token),
+        inspectionId,
+        clearanceCardId: card.id,
+        signoffId,
+        signoffDepartment: signoff.department,
+        requestedByUserId: requestedByUserId ?? null,
+        consumedByUserId: null,
+        status: QualitySignatureQrSessionStatus.ACTIVE,
+        expiresAt,
+        consumedAt: null,
+        metadata: {
+          cardType: 'PRE_POUR_CLEARANCE',
+          signoffDesignation: signoff.designation || null,
+        },
+      }),
+    );
+
+    const deepLink = `setu://signature/confirm?token=${encodeURIComponent(token)}`;
+    const webLink = origin
+      ? `${origin.replace(/\/+$/, '')}/mobile/signature/confirm?token=${encodeURIComponent(token)}`
+      : deepLink;
+    const qrPayload = deepLink;
+    const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 280,
+    });
+
+    return {
+      sessionId: session.id,
+      token,
+      deepLink,
+      webLink,
+      qrCodeDataUrl,
+      expiresAt,
+      expiresInSeconds: 300,
+      signoff: {
+        id: signoff.id,
+        department: signoff.department,
+        designation: signoff.designation || null,
+      },
+    };
+  }
+
+  async getMobileSignatureSession(token: string) {
+    const session = await this.signatureQrRepo.findOne({
+      where: { tokenHash: this.hashQrToken(token) },
+      relations: ['clearanceCard'],
+    });
+    if (!session || session.status !== QualitySignatureQrSessionStatus.ACTIVE) {
+      throw new NotFoundException('Signature QR session is not available.');
+    }
+    if (new Date() > new Date(session.expiresAt)) {
+      session.status = QualitySignatureQrSessionStatus.EXPIRED;
+      await this.signatureQrRepo.save(session);
+      throw new BadRequestException('Signature QR session has expired.');
+    }
+    const card = await this.getPrePourClearanceCard(session.inspectionId);
+    const { signoff } = this.findClearanceSignoffOrThrow(card, session.signoffId);
+    if (signoff.status === 'SIGNED' && signoff.signatureData) {
+      throw new BadRequestException('This signoff row is already signed.');
+    }
+
+    return {
+      sessionId: session.id,
+      inspectionId: session.inspectionId,
+      cardType: 'PRE_POUR_CLEARANCE',
+      expiresAt: session.expiresAt,
+      signoff: {
+        id: signoff.id,
+        department: signoff.department,
+        designation: signoff.designation || null,
+      },
+      card: {
+        projectNameSnapshot: card.projectNameSnapshot,
+        elementName: card.elementName,
+        pourLocation: card.pourLocation,
+        gradeOfConcrete: card.gradeOfConcrete,
+        status: card.status,
+      },
+    };
+  }
+
+  async confirmMobileSignatureSession(
+    token: string,
+    userId: number,
+    payload?: { signatureData?: string | null },
+    requestMeta?: SignatureRequestMeta,
+  ) {
+    const session = await this.signatureQrRepo.findOne({
+      where: { tokenHash: this.hashQrToken(token) },
+    });
+    if (!session || session.status !== QualitySignatureQrSessionStatus.ACTIVE) {
+      throw new NotFoundException('Signature QR session is not available.');
+    }
+    if (new Date() > new Date(session.expiresAt)) {
+      session.status = QualitySignatureQrSessionStatus.EXPIRED;
+      await this.signatureQrRepo.save(session);
+      throw new BadRequestException('Signature QR session has expired.');
+    }
+
+    const card = await this.getPrePourClearanceCard(session.inspectionId);
+    if (
+      [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(card.status)
+    ) {
+      throw new BadRequestException('Locked pre-pour clearance cards cannot be edited.');
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      throw new BadRequestException('Signing user is not active.');
+    }
+    const signatureData =
+      payload?.signatureData?.trim() ||
+      user.signatureData ||
+      user.signatureImageUrl ||
+      null;
+    if (!signatureData) {
+      throw new BadRequestException(
+        'No saved signature found. Add a profile signature or provide signatureData from the mobile app.',
+      );
+    }
+
+    const { signoffs, signoff } = this.findClearanceSignoffOrThrow(
+      card,
+      session.signoffId,
+    );
+    if (signoff.status === 'SIGNED' && signoff.signatureData) {
+      throw new BadRequestException('This signoff row is already signed.');
+    }
+
+    const signedAt = new Date().toISOString();
+    const signedRows = signoffs.map((row) =>
+      row.id === session.signoffId
+        ? ({
+            ...row,
+            personName: row.personName || user.displayName || user.username,
+            signedDate: signedAt.slice(0, 10),
+            signedAt,
+            signedByUserId: user.id,
+            signerUsername: user.username,
+            signerDisplayName: user.displayName || user.username,
+            signerDesignation: user.designation || null,
+            signerRoles: [],
+            signatureMode: payload?.signatureData ? 'MOBILE_DRAWN_NOW' : 'MOBILE_PROFILE',
+            signatureData,
+            status: 'SIGNED',
+            signatureEvidence: {
+              source: 'SETU_MOBILE_QR_SIGNATURE',
+              qrSessionId: session.id,
+              signedAt,
+              signedByUserId: user.id,
+              signerUsername: user.username,
+              signerDesignation: user.designation || null,
+              ipAddress: requestMeta?.ipAddress ?? null,
+              userAgent: requestMeta?.userAgent ?? null,
+              meaning:
+                'I have reviewed and signed this pre-pour clearance responsibility.',
+            },
+          } satisfies ClearanceSignoffRow)
+        : row,
+    );
+
+    card.signoffs = this.normalizeSignoffRows(signedRows, user.id, requestMeta);
+    session.status = QualitySignatureQrSessionStatus.CONSUMED;
+    session.consumedAt = new Date();
+    session.consumedByUserId = user.id;
+    await this.signatureQrRepo.save(session);
+    return this.clearanceRepo.save(card);
+  }
+
   private normalizeSignoffRows(
     signoffs?: unknown,
     signerUserId?: number,
@@ -745,6 +975,10 @@ export class QualityPourCardService {
             typeof row.signerDisplayName === 'string'
               ? row.signerDisplayName.trim() || null
               : null,
+          signerDesignation:
+            typeof row.signerDesignation === 'string'
+              ? row.signerDesignation.trim() || null
+              : null,
           signerRoles: Array.isArray(row.signerRoles)
             ? row.signerRoles
                 .map((role) => String(role).trim())
@@ -764,6 +998,10 @@ export class QualityPourCardService {
               : {}),
             signedAt,
             signedByUserId,
+            signerDesignation:
+              typeof row.signerDesignation === 'string'
+                ? row.signerDesignation.trim() || null
+                : null,
             ipAddress: requestMeta?.ipAddress ?? null,
             userAgent: requestMeta?.userAgent ?? null,
           },
@@ -796,6 +1034,7 @@ export class QualityPourCardService {
         signedByUserId: null,
         signerUsername: null,
         signerDisplayName: null,
+        signerDesignation: null,
         signerRoles: [],
         signatureMode: null,
         signatureData: null,
@@ -1667,8 +1906,13 @@ export class QualityPourCardService {
               .join(' - '),
             signoff.personName,
             signoff.status || 'PENDING',
-            signoff.signerDisplayName ||
-              (signoff.signedByUserId ? `User #${signoff.signedByUserId}` : ''),
+            [
+              signoff.signerDisplayName ||
+                (signoff.signedByUserId ? `User #${signoff.signedByUserId}` : ''),
+              signoff.signerDesignation,
+            ]
+              .filter(Boolean)
+              .join(' - '),
             signoff.status === 'SIGNED'
               ? [
                   signoff.signedDate || signoff.signedAt || '',

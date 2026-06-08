@@ -144,6 +144,7 @@ export class QualityPrePourClearanceCard {
     signedByUserId?: number | null;
     signerUsername?: string | null;
     signerDisplayName?: string | null;
+    signerDesignation?: string | null;
     signerRoles?: string[];
     signatureMode?: 'DRAWN_NOW' | 'SAVED_PROFILE' | string | null;
     signatureData?: string | null;

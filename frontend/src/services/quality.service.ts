@@ -239,6 +239,16 @@ export const qualityService = {
     return res.data;
   },
 
+  createPrePourClearanceSignatureQr: async (
+    inspectionId: number,
+    signoffId: string,
+  ) => {
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/signoffs/${encodeURIComponent(signoffId)}/qr`,
+    );
+    return res.data;
+  },
+
   uploadPrePourClearanceAttachment: async (
     inspectionId: number,
     lineKey: string,
