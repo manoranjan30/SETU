@@ -1,19 +1,68 @@
 import {
   Body,
+  BadRequestException,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
   Post,
   Put,
+  Query,
   Res,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomUUID } from 'crypto';
+import { extname, resolve } from 'path';
+import { mkdirSync } from 'fs';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { QualityPourCardService } from './quality-pour-card.service';
+
+const clearanceUploadRoot = resolve(
+  process.env.UPLOAD_DIR || resolve(process.cwd(), 'uploads'),
+  'quality-pour-clearance',
+);
+
+const clearanceAttachmentUploadOptions = {
+  storage: diskStorage({
+    destination: (_req, _file, callback) => {
+      mkdirSync(clearanceUploadRoot, { recursive: true });
+      callback(null, clearanceUploadRoot);
+    },
+    filename: (_req, file, callback) => {
+      callback(null, `${randomUUID()}${extname(file.originalname).toLowerCase()}`);
+    },
+  }),
+  fileFilter: (_req: any, file: Express.Multer.File, callback: any) => {
+    const allowedMimeTypes = new Set([
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ]);
+    const allowedExtensions = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.webp']);
+    if (
+      !allowedMimeTypes.has(file.mimetype.toLowerCase()) ||
+      !allowedExtensions.has(extname(file.originalname).toLowerCase())
+    ) {
+      return callback(
+        new BadRequestException('Only PDF, JPG, PNG, and WEBP files are allowed.'),
+        false,
+      );
+    }
+    callback(null, true);
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+};
 
 @Controller('quality/inspections')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -135,6 +184,39 @@ export class QualityPourCardController {
       body,
       req.user?.userId || req.user?.id,
       this.getRequestSignatureMeta(req),
+    );
+  }
+
+  @Post(':inspectionId/pre-pour-clearance/attachments')
+  @Permissions('QUALITY.INSPECTION.READ')
+  @UseInterceptors(
+    FileInterceptor('file', clearanceAttachmentUploadOptions),
+  )
+  uploadPrePourClearanceAttachment(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Body('lineKey') lineKey: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req,
+  ) {
+    return this.service.uploadPrePourClearanceAttachment(
+      inspectionId,
+      lineKey,
+      file,
+      req.user?.userId || req.user?.id,
+    );
+  }
+
+  @Delete(':inspectionId/pre-pour-clearance/attachments/:attachmentId')
+  @Permissions('QUALITY.INSPECTION.READ')
+  deletePrePourClearanceAttachment(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Param('attachmentId') attachmentId: string,
+    @Query('lineKey') lineKey: string,
+  ) {
+    return this.service.deletePrePourClearanceAttachment(
+      inspectionId,
+      lineKey,
+      attachmentId,
     );
   }
 

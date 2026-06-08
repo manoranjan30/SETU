@@ -8,6 +8,8 @@ import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'stream';
 import { createHash } from 'crypto';
+import { readFile, unlink } from 'fs/promises';
+import { resolve, sep } from 'path';
 import { QualityInspection } from './entities/quality-inspection.entity';
 import {
   QualityCardStatus,
@@ -54,6 +56,8 @@ const CLEARANCE_ATTACHMENT_KEYS = [
 ] as const;
 
 type ClearanceAttachmentKey = (typeof CLEARANCE_ATTACHMENT_KEYS)[number];
+type ClearanceAttachmentDocument =
+  QualityPrePourClearanceCard['attachmentDocuments'][string][number];
 
 type ClearanceSignoffRow = NonNullable<
   QualityPrePourClearanceCard['signoffs']
@@ -500,6 +504,158 @@ export class QualityPourCardService {
       },
       {} as Record<ClearanceAttachmentKey, number[]>,
     );
+  }
+
+  private isClearanceAttachmentKey(value: string): value is ClearanceAttachmentKey {
+    return CLEARANCE_ATTACHMENT_KEYS.includes(value as ClearanceAttachmentKey);
+  }
+
+  private normalizeAttachmentDocuments(
+    documents?: Record<string, unknown> | null,
+  ): Record<ClearanceAttachmentKey, ClearanceAttachmentDocument[]> {
+    const source = documents || {};
+    return CLEARANCE_ATTACHMENT_KEYS.reduce(
+      (acc, key) => {
+        const raw = source[key];
+        acc[key] = Array.isArray(raw)
+          ? raw
+              .filter(
+                (item): item is ClearanceAttachmentDocument =>
+                  Boolean(
+                    item &&
+                      typeof item === 'object' &&
+                      typeof (item as ClearanceAttachmentDocument).id === 'string' &&
+                      typeof (item as ClearanceAttachmentDocument).url === 'string',
+                  ),
+              )
+              .slice(0, 5)
+          : [];
+        return acc;
+      },
+      {} as Record<ClearanceAttachmentKey, ClearanceAttachmentDocument[]>,
+    );
+  }
+
+  private async removeClearanceAttachmentFile(filePath?: string | null) {
+    if (!filePath) return;
+    const uploadRoot = resolve(process.env.UPLOAD_DIR || resolve(process.cwd(), 'uploads'));
+    const resolvedPath = resolve(filePath);
+    if (
+      resolvedPath !== uploadRoot &&
+      !resolvedPath.startsWith(`${uploadRoot}${sep}`)
+    ) {
+      return;
+    }
+    await unlink(resolvedPath).catch(() => undefined);
+  }
+
+  private async assertClearanceAttachmentContent(file: Express.Multer.File) {
+    const bytes = await readFile(file.path);
+    const isPdf = bytes.subarray(0, 4).toString('ascii') === '%PDF';
+    const isJpeg =
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff;
+    const isPng =
+      bytes.length >= 8 &&
+      bytes.subarray(0, 8).equals(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+    const isWebp =
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+
+    if (!(isPdf || isJpeg || isPng || isWebp)) {
+      throw new BadRequestException(
+        'The uploaded file content is not a valid PDF, JPG, PNG, or WEBP document.',
+      );
+    }
+  }
+
+  async uploadPrePourClearanceAttachment(
+    inspectionId: number,
+    lineKey: string,
+    file: Express.Multer.File | undefined,
+    userId?: number,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Select an image or PDF document to upload.');
+    }
+
+    try {
+      if (!this.isClearanceAttachmentKey(lineKey)) {
+        throw new BadRequestException('Invalid pour clearance attachment line.');
+      }
+      await this.assertClearanceAttachmentContent(file);
+      const card = await this.getPrePourClearanceCard(inspectionId);
+      if (
+        [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(card.status)
+      ) {
+        throw new BadRequestException(
+          'Locked pre-pour clearance cards cannot be edited.',
+        );
+      }
+
+      const documents = this.normalizeAttachmentDocuments(card.attachmentDocuments);
+      if (documents[lineKey].length >= 5) {
+        throw new BadRequestException(
+          'A maximum of 5 documents can be uploaded for each clearance line.',
+        );
+      }
+
+      const attachment: ClearanceAttachmentDocument = {
+        id: file.filename.replace(/\.[^.]+$/, ''),
+        originalName: file.originalname,
+        storedName: file.filename,
+        url: `/uploads/quality-pour-clearance/${file.filename}`,
+        mimeType: file.mimetype,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        uploadedByUserId: userId ?? null,
+      };
+      documents[lineKey] = [...documents[lineKey], attachment];
+      card.attachmentDocuments = documents;
+      card.createdByUserId = card.createdByUserId ?? userId ?? null;
+      await this.clearanceRepo.save(card);
+      return attachment;
+    } catch (error) {
+      await this.removeClearanceAttachmentFile(file.path);
+      throw error;
+    }
+  }
+
+  async deletePrePourClearanceAttachment(
+    inspectionId: number,
+    lineKey: string,
+    attachmentId: string,
+  ) {
+    if (!this.isClearanceAttachmentKey(lineKey)) {
+      throw new BadRequestException('Invalid pour clearance attachment line.');
+    }
+    const card = await this.getPrePourClearanceCard(inspectionId);
+    if (
+      [QualityCardStatus.LOCKED, QualityCardStatus.APPROVED].includes(card.status)
+    ) {
+      throw new BadRequestException('Locked pre-pour clearance cards cannot be edited.');
+    }
+
+    const documents = this.normalizeAttachmentDocuments(card.attachmentDocuments);
+    const attachment = documents[lineKey].find((item) => item.id === attachmentId);
+    if (!attachment) {
+      throw new NotFoundException('Attachment not found on this clearance line.');
+    }
+    documents[lineKey] = documents[lineKey].filter(
+      (item) => item.id !== attachmentId,
+    );
+    card.attachmentDocuments = documents;
+    await this.clearanceRepo.save(card);
+
+    const relativePath = attachment.url.replace(/^\/uploads\//, '');
+    const uploadRoot = resolve(process.env.UPLOAD_DIR || resolve(process.cwd(), 'uploads'));
+    await this.removeClearanceAttachmentFile(resolve(uploadRoot, relativePath));
+    return { success: true, attachmentId };
   }
 
   private normalizeSignoffRows(
@@ -1146,6 +1302,7 @@ export class QualityPourCardService {
         },
         attachmentChecklistSelections:
           this.normalizeAttachmentChecklistSelections(null),
+        attachmentDocuments: this.normalizeAttachmentDocuments(null),
         signoffs: this.buildDefaultClearanceSignoffs(inspection),
         status: QualityCardStatus.DRAFT,
       });
@@ -1178,6 +1335,9 @@ export class QualityPourCardService {
       this.normalizeAttachmentChecklistSelections(
         card.attachmentChecklistSelections,
       );
+    card.attachmentDocuments = this.normalizeAttachmentDocuments(
+      card.attachmentDocuments,
+    );
     const mergedSignoffs = this.mergeClearanceSignoffsWithTemplate(
       inspection,
       card.signoffs,
@@ -1267,6 +1427,9 @@ export class QualityPourCardService {
           : this.normalizeAttachmentChecklistSelections(
               existing.attachmentChecklistSelections,
             ),
+      attachmentDocuments: this.normalizeAttachmentDocuments(
+        existing.attachmentDocuments,
+      ),
       signoffs: nextSignoffs,
       status:
         existing.status === QualityCardStatus.REJECTED
@@ -1343,9 +1506,10 @@ export class QualityPourCardService {
     for (const key of CLEARANCE_ATTACHMENT_KEYS) {
       if (card.attachments?.[key] === 'YES') {
         const selected = card.attachmentChecklistSelections?.[key] || [];
-        if (!selected.length) {
+        const documents = card.attachmentDocuments?.[key] || [];
+        if (!selected.length && !documents.length) {
           throw new BadRequestException(
-            `Select at least one related checklist for ${key} before submitting the pre-pour clearance card.`,
+            `Select a related checklist or upload a document for ${key} before submitting the pre-pour clearance card.`,
           );
         }
       }
@@ -1464,7 +1628,15 @@ export class QualityPourCardService {
       };
       this.writePdfTable(
         doc,
-        ['Sl No', 'Description', 'Yes', 'No', 'NA', 'Related Checklist IDs'],
+        [
+          'Sl No',
+          'Description',
+          'Yes',
+          'No',
+          'NA',
+          'Related Checklist IDs',
+          'Uploaded Documents',
+        ],
         CLEARANCE_ATTACHMENT_KEYS.map((key, index) => {
           const value = card.attachments?.[key] || 'NO';
           return [
@@ -1474,9 +1646,12 @@ export class QualityPourCardService {
             value === 'NO' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
             value === 'NA' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
             (card.attachmentChecklistSelections?.[key] || []).join(', '),
+            (card.attachmentDocuments?.[key] || [])
+              .map((attachment) => attachment.originalName)
+              .join(', '),
           ];
         }),
-        [38, 220, 42, 42, 42, 130],
+        [32, 155, 36, 36, 36, 95, 120],
       );
 
       this.writePdfSectionTitle(doc, 'Signoff Parties');

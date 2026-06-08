@@ -1867,6 +1867,59 @@ class ClearanceSignoff extends Equatable {
   List<Object?> get props => [id, department, isActive, status, signatureData];
 }
 
+/// A supporting document file attached to one clearance attachment line
+/// (e.g. Mix Design Approval → uploaded PDF).
+class ClearanceAttachmentDocument extends Equatable {
+  final String id;
+  final String originalName;
+  final String storedName;
+  final String url;
+  final String mimeType;
+  final int size;
+  final String uploadedAt;
+  final int? uploadedByUserId;
+
+  const ClearanceAttachmentDocument({
+    required this.id,
+    required this.originalName,
+    required this.storedName,
+    required this.url,
+    required this.mimeType,
+    required this.size,
+    required this.uploadedAt,
+    this.uploadedByUserId,
+  });
+
+  factory ClearanceAttachmentDocument.fromJson(Map<String, dynamic> j) =>
+      ClearanceAttachmentDocument(
+        id: j['id']?.toString() ?? '',
+        originalName: j['originalName'] as String? ?? '',
+        storedName: j['storedName'] as String? ?? '',
+        url: j['url'] as String? ?? '',
+        mimeType: j['mimeType'] as String? ?? 'application/octet-stream',
+        size: (j['size'] as num?)?.toInt() ?? 0,
+        uploadedAt: j['uploadedAt'] as String? ?? '',
+        uploadedByUserId: j['uploadedByUserId'] as int?,
+      );
+
+  bool get isImage =>
+      mimeType.startsWith('image/') ||
+      originalName.toLowerCase().endsWith('.jpg') ||
+      originalName.toLowerCase().endsWith('.jpeg') ||
+      originalName.toLowerCase().endsWith('.png') ||
+      originalName.toLowerCase().endsWith('.webp');
+
+  /// Human-readable file size (e.g. "2.4 MB").
+  String get sizeLabel {
+    if (size < 1024) return '${size} B';
+    if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
+    return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  @override
+  List<Object?> get props => [id, originalName, url];
+}
+
 class QualityPrePourClearanceCard extends Equatable {
   final int id;
   final int inspectionId;
@@ -1895,6 +1948,7 @@ class QualityPrePourClearanceCard extends Equatable {
   final String? revisionNo;
   final Map<String, String> attachments;
   final Map<String, List<int>> attachmentChecklistSelections;
+  final Map<String, List<ClearanceAttachmentDocument>> attachmentDocuments;
   final List<ClearanceSignoff> signoffs;
   final String? approvalRemarks;
   final String? rejectionRemarks;
@@ -1930,6 +1984,7 @@ class QualityPrePourClearanceCard extends Equatable {
     this.revisionNo,
     this.attachments = const {},
     this.attachmentChecklistSelections = const {},
+    this.attachmentDocuments = const {},
     this.signoffs = const [],
     this.approvalRemarks,
     this.rejectionRemarks,
@@ -1980,6 +2035,16 @@ class QualityPrePourClearanceCard extends Equatable {
           (v as List<dynamic>? ?? []).whereType<int>().toList(),
         ));
       })(),
+      attachmentDocuments: (() {
+        final raw = j['attachmentDocuments'] as Map<String, dynamic>? ?? {};
+        return raw.map((k, v) => MapEntry(
+          k,
+          (v as List<dynamic>? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .map(ClearanceAttachmentDocument.fromJson)
+              .toList(),
+        ));
+      })(),
       signoffs: (j['signoffs'] as List<dynamic>?)
               ?.map((e) => ClearanceSignoff.fromJson(e as Map<String, dynamic>))
               .toList() ?? [],
@@ -2026,6 +2091,7 @@ class QualityPrePourClearanceCard extends Equatable {
     int? cubeMouldCount, String? targetSlump, int? vibratorCount,
     Map<String, String>? attachments,
     Map<String, List<int>>? attachmentChecklistSelections,
+    Map<String, List<ClearanceAttachmentDocument>>? attachmentDocuments,
     List<ClearanceSignoff>? signoffs,
   }) => QualityPrePourClearanceCard(
     id: id, inspectionId: inspectionId,
@@ -2052,13 +2118,14 @@ class QualityPrePourClearanceCard extends Equatable {
     formatNo: formatNo, revisionNo: revisionNo,
     attachments: attachments ?? this.attachments,
     attachmentChecklistSelections: attachmentChecklistSelections ?? this.attachmentChecklistSelections,
+    attachmentDocuments: attachmentDocuments ?? this.attachmentDocuments,
     signoffs: signoffs ?? this.signoffs,
     approvalRemarks: approvalRemarks, rejectionRemarks: rejectionRemarks,
     submittedAt: submittedAt, approvedAt: approvedAt, rejectedAt: rejectedAt,
   );
 
   @override
-  List<Object?> get props => [id, inspectionId, status, isActivated, attachments, attachmentChecklistSelections, signoffs];
+  List<Object?> get props => [id, inspectionId, status, isActivated, attachments, attachmentChecklistSelections, attachmentDocuments, signoffs];
 }
 
 // ============================================================

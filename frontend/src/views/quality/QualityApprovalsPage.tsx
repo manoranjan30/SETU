@@ -30,6 +30,7 @@ import {
 import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
 import SignatureModal from "../../components/quality/SignatureModal";
+import ClearanceDocumentAttachments from "../../components/quality/ClearanceDocumentAttachments";
 import { qualityService } from "../../services/quality.service";
 
 interface QualityInspection {
@@ -5691,6 +5692,36 @@ export default function QualityApprovalsPage() {
                                                     )
                                                   )}
                                                 </div>
+                                                <ClearanceDocumentAttachments
+                                                  inspectionId={
+                                                    inspectionDetail.id
+                                                  }
+                                                  lineKey={key}
+                                                  documents={
+                                                    prePourClearanceCard
+                                                      .attachmentDocuments?.[
+                                                      key
+                                                    ] || []
+                                                  }
+                                                  disabled={[
+                                                    "APPROVED",
+                                                    "LOCKED",
+                                                  ].includes(
+                                                    prePourClearanceCard.status,
+                                                  )}
+                                                  onChange={(documents) =>
+                                                    updatePrePourClearanceCard(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        attachmentDocuments: {
+                                                          ...(prev.attachmentDocuments ||
+                                                            {}),
+                                                          [key]: documents,
+                                                        },
+                                                      }),
+                                                    )
+                                                  }
+                                                />
                                               </div>
                                             ) : null}
                                           </div>

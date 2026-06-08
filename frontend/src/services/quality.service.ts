@@ -239,6 +239,34 @@ export const qualityService = {
     return res.data;
   },
 
+  uploadPrePourClearanceAttachment: async (
+    inspectionId: number,
+    lineKey: string,
+    file: File,
+  ) => {
+    const formData = new FormData();
+    formData.append("lineKey", lineKey);
+    formData.append("file", file);
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/attachments`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
+  },
+
+  deletePrePourClearanceAttachment: async (
+    inspectionId: number,
+    lineKey: string,
+    attachmentId: string,
+  ) => {
+    const res = await api.delete(
+      `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/attachments/${encodeURIComponent(attachmentId)}`,
+      { params: { lineKey } },
+    );
+    return res.data;
+  },
+
   submitPrePourClearanceCard: async (inspectionId: number) => {
     const res = await api.post(
       `${BASE_URL}/inspections/${inspectionId}/pre-pour-clearance/submit`,

@@ -117,6 +117,21 @@ export class QualityPrePourClearanceCard {
   @Column({ type: 'jsonb', default: () => "'{}'" })
   attachmentChecklistSelections: Record<string, number[]>;
 
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  attachmentDocuments: Record<
+    string,
+    Array<{
+      id: string;
+      originalName: string;
+      storedName: string;
+      url: string;
+      mimeType: string;
+      size: number;
+      uploadedAt: string;
+      uploadedByUserId: number | null;
+    }>
+  >;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   signoffs: Array<{
     id?: string;

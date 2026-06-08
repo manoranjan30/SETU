@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -368,11 +370,14 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                     final current = card.attachments[key] ?? 'NO';
                     final selectedIds = card.attachmentChecklistSelections[key] ?? [];
                     return _AttachmentRow(
+                      lineKey: key,
                       label: label,
                       value: current,
                       enabled: isEditable,
+                      inspectionId: widget.inspectionId,
                       availableInspections: widget.floorInspections,
                       selectedChecklistIds: selectedIds,
+                      documents: card.attachmentDocuments[key] ?? [],
                       onChanged: (v) => context.read<ClearanceCardBloc>().add(UpdateAttachment(key, v)),
                       onChecklistSelectionChanged: isEditable
                           ? (ids) => context.read<ClearanceCardBloc>()
@@ -751,7 +756,8 @@ class _FormField extends StatelessWidget {
   }
 }
 
-class _AttachmentRow extends StatelessWidget {
+class _AttachmentRow extends StatefulWidget {
+  final String lineKey;
   final String label;
   final String value;
   final bool enabled;
@@ -759,137 +765,398 @@ class _AttachmentRow extends StatelessWidget {
   final List<QualityInspection> availableInspections;
   final List<int> selectedChecklistIds;
   final void Function(List<int>)? onChecklistSelectionChanged;
+  final List<ClearanceAttachmentDocument> documents;
+  final int inspectionId;
 
   const _AttachmentRow({
+    required this.lineKey,
     required this.label,
     required this.value,
     required this.enabled,
     required this.onChanged,
+    required this.inspectionId,
     this.availableInspections = const [],
     this.selectedChecklistIds = const [],
     this.onChecklistSelectionChanged,
+    this.documents = const [],
   });
 
   @override
+  State<_AttachmentRow> createState() => _AttachmentRowState();
+}
+
+class _AttachmentRowState extends State<_AttachmentRow> {
+  bool _isUploading = false;
+  String? _uploadError;
+
+  static const int _maxDocs = 5;
+  static const int _maxBytes = 10 * 1024 * 1024; // 10 MB
+
+  String _mimeType(String fileName) {
+    switch (fileName.toLowerCase().split('.').last) {
+      case 'pdf': return 'application/pdf';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'webp': return 'image/webp';
+      default: return 'application/octet-stream';
+    }
+  }
+
+  Future<void> _pickAndUpload() async {
+    if (widget.documents.length >= _maxDocs) {
+      setState(() => _uploadError = 'Maximum $_maxDocs documents per line');
+      return;
+    }
+
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo Gallery'),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('Choose File (PDF / Image)'),
+              onTap: () => Navigator.pop(ctx, 'file'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    XFile? file;
+    try {
+      if (source == 'camera') {
+        file = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 80);
+      } else if (source == 'gallery') {
+        file = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+          withData: false,
+        );
+        if (result?.files.isNotEmpty == true && result!.files.first.path != null) {
+          file = XFile(result.files.first.path!);
+        }
+      }
+    } catch (_) {}
+    if (file == null) return;
+
+    final size = await file.length();
+    if (size > _maxBytes) {
+      setState(() => _uploadError = 'File exceeds 10 MB limit');
+      return;
+    }
+
+    setState(() { _isUploading = true; _uploadError = null; });
+    try {
+      final data = await sl<SetuApiClient>().uploadClearanceAttachment(
+        inspectionId: widget.inspectionId,
+        lineKey: widget.lineKey,
+        filePath: file.path,
+        fileName: file.name,
+        mimeType: _mimeType(file.name),
+      );
+      if (!mounted) return;
+      context.read<ClearanceCardBloc>().add(
+        AddClearanceDocument(
+          widget.lineKey,
+          ClearanceAttachmentDocument.fromJson(data),
+        ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => _uploadError = 'Upload failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _openDocument(ClearanceAttachmentDocument doc) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final ext = doc.originalName.contains('.')
+          ? doc.originalName.split('.').last
+          : 'bin';
+      final savePath = '${dir.path}/clearance_doc_${doc.id}.$ext';
+      await sl<SetuApiClient>().downloadFile(doc.url, savePath);
+      await OpenFile.open(savePath);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open document')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final value = widget.value;
+    final enabled = widget.enabled;
+    final docs = widget.documents;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── YES / NO / N/A toggle row ──────────────────────────────────
           Row(
             children: [
-              Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+              Expanded(child: Text(widget.label, style: const TextStyle(fontSize: 12))),
               _ToggleChip(
-                label: 'YES',
-                selected: value == 'YES',
-                color: Colors.green,
-                enabled: enabled,
-                onTap: enabled ? () => onChanged('YES') : null,
+                label: 'YES', selected: value == 'YES',
+                color: Colors.green, enabled: enabled,
+                onTap: enabled ? () => widget.onChanged('YES') : null,
               ),
               const SizedBox(width: 4),
               _ToggleChip(
-                label: 'NO',
-                selected: value == 'NO',
-                color: Colors.red,
-                enabled: enabled,
-                onTap: enabled ? () => onChanged('NO') : null,
+                label: 'NO', selected: value == 'NO',
+                color: Colors.red, enabled: enabled,
+                onTap: enabled ? () => widget.onChanged('NO') : null,
               ),
               const SizedBox(width: 4),
               _ToggleChip(
-                label: 'N/A',
-                selected: value == 'NA',
-                color: Colors.grey,
-                enabled: enabled,
-                onTap: enabled ? () => onChanged('NA') : null,
+                label: 'N/A', selected: value == 'NA',
+                color: Colors.grey, enabled: enabled,
+                onTap: enabled ? () => widget.onChanged('NA') : null,
               ),
             ],
           ),
-          // When YES, show related inspection multi-select
-          if (value == 'YES' && availableInspections.isNotEmpty) ...[
+
+          // ── Panel shown only when YES ──────────────────────────────────
+          if (value == 'YES') ...[
             const SizedBox(height: 6),
+
+            // Related checklist RFI selector
+            if (widget.availableInspections.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Select related checklist RFIs',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                          color: Colors.green.shade800),
+                    ),
+                    const SizedBox(height: 4),
+                    ...widget.availableInspections.map((insp) {
+                      final isSelected = widget.selectedChecklistIds.contains(insp.id);
+                      final displayLabel = [
+                        if (insp.goLabel != null) insp.goLabel!,
+                        if (insp.activityName != null) insp.activityName!,
+                        'RFI #${insp.id}',
+                      ].join(' · ');
+                      return InkWell(
+                        onTap: widget.onChecklistSelectionChanged == null ? null : () {
+                          final updated = List<int>.from(widget.selectedChecklistIds);
+                          if (isSelected) updated.remove(insp.id); else updated.add(insp.id);
+                          widget.onChecklistSelectionChanged!(updated);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 20, height: 20,
+                                child: Checkbox(
+                                  value: isSelected,
+                                  visualDensity: VisualDensity.compact,
+                                  onChanged: widget.onChecklistSelectionChanged == null ? null : (v) {
+                                    final updated = List<int>.from(widget.selectedChecklistIds);
+                                    if (v == true) updated.add(insp.id); else updated.remove(insp.id);
+                                    widget.onChecklistSelectionChanged!(updated);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(displayLabel,
+                                    style: const TextStyle(fontSize: 11),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: insp.status.color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(insp.status.label,
+                                    style: TextStyle(fontSize: 9, color: insp.status.color,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+            ] else if (widget.selectedChecklistIds.isNotEmpty) ...[
+              // Read-only chips when no floor inspections loaded yet
+              Wrap(
+                spacing: 4,
+                children: widget.selectedChecklistIds.map((id) => Chip(
+                  label: Text('RFI #$id', style: const TextStyle(fontSize: 10)),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                )).toList(),
+              ),
+              const SizedBox(height: 6),
+            ],
+
+            // ── Supporting Documents panel ─────────────────────────────
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
+                color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.green.shade200),
+                border: Border.all(color: Colors.blue.shade200),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Select related checklist RFIs',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.green.shade800),
+                    'Supporting Documents',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                        color: Colors.blue.shade800),
                   ),
-                  const SizedBox(height: 4),
-                  ...availableInspections.map((insp) {
-                    final isSelected = selectedChecklistIds.contains(insp.id);
-                    final displayLabel = [
-                      if (insp.goLabel != null) insp.goLabel!,
-                      if (insp.activityName != null) insp.activityName!,
-                      'RFI #${insp.id}',
-                    ].join(' · ');
-                    return InkWell(
-                      onTap: onChecklistSelectionChanged == null ? null : () {
-                        final updated = List<int>.from(selectedChecklistIds);
-                        if (isSelected) {
-                          updated.remove(insp.id);
-                        } else {
-                          updated.add(insp.id);
-                        }
-                        onChecklistSelectionChanged!(updated);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 20, height: 20,
-                              child: Checkbox(
-                                value: isSelected,
-                                visualDensity: VisualDensity.compact,
-                                onChanged: onChecklistSelectionChanged == null ? null : (v) {
-                                  final updated = List<int>.from(selectedChecklistIds);
-                                  if (v == true) updated.add(insp.id); else updated.remove(insp.id);
-                                  onChecklistSelectionChanged!(updated);
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(displayLabel,
-                                  style: const TextStyle(fontSize: 11),
-                                  overflow: TextOverflow.ellipsis),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: insp.status.color.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                              child: Text(insp.status.label,
-                                  style: TextStyle(fontSize: 9, color: insp.status.color,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                          ],
-                        ),
+                  if (docs.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    ...docs.map((doc) => _DocumentTile(
+                      doc: doc,
+                      canDelete: enabled,
+                      onOpen: () => _openDocument(doc),
+                      onDelete: enabled
+                          ? () => context.read<ClearanceCardBloc>().add(
+                                DeleteClearanceDocument(widget.lineKey, doc.id))
+                          : null,
+                    )),
+                  ],
+                  if (_isUploading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: LinearProgressIndicator(),
+                    ),
+                  if (_uploadError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        _uploadError!,
+                        style: TextStyle(fontSize: 10, color: Colors.red.shade700),
                       ),
-                    );
-                  }),
+                    ),
+                  if (enabled && docs.length < _maxDocs && !_isUploading) ...[
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: _pickAndUpload,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_circle_outline,
+                              size: 14, color: Colors.blue.shade700),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Add document (${docs.length}/$_maxDocs)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-          ] else if (value == 'YES' && selectedChecklistIds.isNotEmpty) ...[
-            // Read-only display of previously selected IDs when no floor inspections loaded
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 4,
-              children: selectedChecklistIds.map((id) => Chip(
-                label: Text('RFI #$id', style: const TextStyle(fontSize: 10)),
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-              )).toList(),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DocumentTile extends StatelessWidget {
+  final ClearanceAttachmentDocument doc;
+  final bool canDelete;
+  final VoidCallback onOpen;
+  final VoidCallback? onDelete;
+
+  const _DocumentTile({
+    required this.doc,
+    required this.canDelete,
+    required this.onOpen,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            doc.isImage ? Icons.image_outlined : Icons.picture_as_pdf_outlined,
+            size: 18,
+            color: doc.isImage ? Colors.blue.shade600 : Colors.red.shade600,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  doc.originalName,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  doc.sizeLabel,
+                  style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.open_in_new_outlined,
+                size: 16, color: Colors.blue.shade600),
+            tooltip: 'Open',
+            onPressed: onOpen,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          if (canDelete) ...[
+            const SizedBox(width: 2),
+            IconButton(
+              icon: Icon(Icons.delete_outline,
+                  size: 16, color: Colors.red.shade400),
+              tooltip: 'Delete',
+              onPressed: onDelete,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
             ),
           ],
         ],

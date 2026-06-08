@@ -15,6 +15,7 @@ import { getPublicFileUrl } from "../../api/baseUrl";
 import { useAuth } from "../../context/AuthContext";
 import { qualityService } from "../../services/quality.service";
 import SignatureModal from "../../components/quality/SignatureModal";
+import ClearanceDocumentAttachments from "../../components/quality/ClearanceDocumentAttachments";
 import type { QualityUnitNode } from "../../types/quality";
 import {
   isActivityVisibleForFloorScope,
@@ -2195,6 +2196,27 @@ export default function InspectionRequestPage() {
                                   )
                                 )}
                               </div>
+                              <ClearanceDocumentAttachments
+                                inspectionId={activeCardInspection.id}
+                                lineKey={key}
+                                documents={
+                                  prePourClearanceCard.attachmentDocuments?.[
+                                    key
+                                  ] || []
+                                }
+                                disabled={["APPROVED", "LOCKED"].includes(
+                                  prePourClearanceCard.status,
+                                )}
+                                onChange={(documents) =>
+                                  updatePrePourClearanceCard((prev) => ({
+                                    ...prev,
+                                    attachmentDocuments: {
+                                      ...(prev.attachmentDocuments || {}),
+                                      [key]: documents,
+                                    },
+                                  }))
+                                }
+                              />
                             </div>
                           ) : null}
                         </div>

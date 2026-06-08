@@ -128,6 +128,25 @@ class RejectClearanceCard extends ClearanceCardEvent {
   List<Object?> get props => [reason];
 }
 
+/// Adds an already-uploaded [ClearanceAttachmentDocument] to the card's local state.
+/// Dispatched by the UI after a successful multipart upload.
+class AddClearanceDocument extends ClearanceCardEvent {
+  final String lineKey;
+  final ClearanceAttachmentDocument document;
+  const AddClearanceDocument(this.lineKey, this.document);
+  @override
+  List<Object?> get props => [lineKey, document.id];
+}
+
+/// Calls the delete API, then removes the document from the card's local state.
+class DeleteClearanceDocument extends ClearanceCardEvent {
+  final String lineKey;
+  final String documentId;
+  const DeleteClearanceDocument(this.lineKey, this.documentId);
+  @override
+  List<Object?> get props => [lineKey, documentId];
+}
+
 // ==================== STATES ====================
 
 abstract class ClearanceCardState extends Equatable {
@@ -194,6 +213,8 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     on<SubmitClearanceCard>(_onSubmit);
     on<ApproveClearanceCard>(_onApprove);
     on<RejectClearanceCard>(_onReject);
+    on<AddClearanceDocument>(_onAddDocument);
+    on<DeleteClearanceDocument>(_onDeleteDocument);
   }
 
   QualityPrePourClearanceCard? _card;
@@ -309,13 +330,25 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
 
   Future<void> _onSave(SaveClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
+    // Snapshot attachment state before the API call — restored if the backend
+    // save response omits the attachments map (returns {}).
+    final savedAttachments = Map<String, String>.from(_card!.attachments);
+    final savedSelections = Map<String, List<int>>.from(
+      _card!.attachmentChecklistSelections.map((k, v) => MapEntry(k, List<int>.from(v))),
+    );
     emit(ClearanceCardSaving(_card!));
     try {
       final data = await _api.saveClearanceCard(
         _card!.inspectionId,
         _card!.toSaveJson(),
       );
-      _card = QualityPrePourClearanceCard.fromJson(data);
+      final returned = QualityPrePourClearanceCard.fromJson(data);
+      // The save endpoint does not reliably echo back attachment selections —
+      // always preserve what the user set locally so nothing is reset to NO.
+      _card = returned.copyWith(
+        attachments: savedAttachments,
+        attachmentChecklistSelections: savedSelections,
+      );
       emit(ClearanceCardActionSuccess(message: 'Clearance card saved', card: _card!));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
@@ -359,6 +392,41 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       );
       _card = QualityPrePourClearanceCard.fromJson(data);
       emit(ClearanceCardActionSuccess(message: 'Clearance card rejected', card: _card!));
+    } catch (e) {
+      emit(ClearanceCardError(_friendlyError(e)));
+    }
+  }
+
+  void _onAddDocument(AddClearanceDocument event, Emitter<ClearanceCardState> emit) {
+    if (_card == null) return;
+    final current = List<ClearanceAttachmentDocument>.from(
+      _card!.attachmentDocuments[event.lineKey] ?? [],
+    );
+    current.add(event.document);
+    final updated = Map<String, List<ClearanceAttachmentDocument>>.from(
+      _card!.attachmentDocuments,
+    )..[event.lineKey] = current;
+    _card = _card!.copyWith(attachmentDocuments: updated);
+    emit(ClearanceCardLoaded(_card!));
+  }
+
+  Future<void> _onDeleteDocument(
+      DeleteClearanceDocument event, Emitter<ClearanceCardState> emit) async {
+    if (_card == null) return;
+    try {
+      await _api.deleteClearanceAttachment(
+        inspectionId: _card!.inspectionId,
+        attachmentId: event.documentId,
+        lineKey: event.lineKey,
+      );
+      final current = List<ClearanceAttachmentDocument>.from(
+        _card!.attachmentDocuments[event.lineKey] ?? [],
+      )..removeWhere((d) => d.id == event.documentId);
+      final updated = Map<String, List<ClearanceAttachmentDocument>>.from(
+        _card!.attachmentDocuments,
+      )..[event.lineKey] = current;
+      _card = _card!.copyWith(attachmentDocuments: updated);
+      emit(ClearanceCardLoaded(_card!));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
     }
