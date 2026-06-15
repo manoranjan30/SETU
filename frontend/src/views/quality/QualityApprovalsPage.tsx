@@ -664,8 +664,32 @@ export default function QualityApprovalsPage() {
   // User info
   const { hasPermission, user } = useAuth();
   const isAdmin = hasPermission(PermissionCode.QUALITY_INSPECTION_DELETE);
-  const canApproveInspection = hasPermission(
-    PermissionCode.QUALITY_INSPECTION_APPROVE,
+  const canApproveStage = hasPermission(
+    PermissionCode.QUALITY_INSPECTION_STAGE_APPROVE,
+  );
+  const canDelegateInspection = hasPermission(
+    PermissionCode.QUALITY_INSPECTION_DELEGATE,
+  );
+  const canApprovePourCard = hasPermission(
+    PermissionCode.QUALITY_POUR_CARD_APPROVE,
+  );
+  const canUpdatePourCard = hasPermission(
+    PermissionCode.QUALITY_POUR_CARD_UPDATE,
+  );
+  const canSubmitPourCard = hasPermission(
+    PermissionCode.QUALITY_POUR_CARD_SUBMIT,
+  );
+  const canApprovePourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_APPROVE,
+  );
+  const canUpdatePourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_UPDATE,
+  );
+  const canSubmitPourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_SUBMIT,
+  );
+  const canSignPourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_SIGN,
   );
   const canCloseChecklistObservation = hasPermission(
     PermissionCode.QUALITY_OBSERVATION_CLOSE,
@@ -2297,7 +2321,7 @@ export default function QualityApprovalsPage() {
   };
 
   const getStageApprovalActionReason = (stage: any) => {
-    if (!canApproveInspection) {
+    if (!canApproveStage) {
       return "You do not have approval permission for this checklist stage.";
     }
     if (isStageApproved(stage)) {
@@ -2537,7 +2561,7 @@ export default function QualityApprovalsPage() {
     }
   };
   const handleApproveStage = async (stage: any) => {
-    if (!canApproveInspection) {
+    if (!canApproveStage) {
       alert("You do not have permission to approve this stage.");
       return;
     }
@@ -4758,7 +4782,8 @@ export default function QualityApprovalsPage() {
                                   <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
                                     {pourCard.status || "DRAFT"}
                                   </span>
-                                  {pourCard.status === "SUBMITTED" ? (
+                                  {pourCard.status === "SUBMITTED" &&
+                                  canApprovePourCard ? (
                                     <>
                                       <button
                                         type="button"
@@ -5243,30 +5268,34 @@ export default function QualityApprovalsPage() {
                                     >
                                       Download PDF
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={savePourCardDetails}
-                                      disabled={savingPourCard || pourCard.status === "LOCKED"}
-                                      className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
-                                    >
-                                      {savingPourCard ? "Saving..." : "Save Pour Card"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={submitPourCardDetails}
-                                      disabled={
-                                        submittingPourCard || pourCard.status === "LOCKED"
-                                      }
-                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-                                    >
-                                      {submittingPourCard
-                                        ? "Submitting..."
-                                        : pourCard.status === "SUBMITTED"
-                                          ? "Submitted"
-                                          : pourCard.status === "LOCKED"
-                                            ? "Locked"
-                                            : "Submit"}
-                                    </button>
+                                    {canUpdatePourCard && (
+                                      <button
+                                        type="button"
+                                        onClick={savePourCardDetails}
+                                        disabled={savingPourCard || pourCard.status === "LOCKED"}
+                                        className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
+                                      >
+                                        {savingPourCard ? "Saving..." : "Save Pour Card"}
+                                      </button>
+                                    )}
+                                    {canSubmitPourCard && (
+                                      <button
+                                        type="button"
+                                        onClick={submitPourCardDetails}
+                                        disabled={
+                                          submittingPourCard || pourCard.status === "LOCKED"
+                                        }
+                                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                      >
+                                        {submittingPourCard
+                                          ? "Submitting..."
+                                          : pourCard.status === "SUBMITTED"
+                                            ? "Submitted"
+                                            : pourCard.status === "LOCKED"
+                                              ? "Locked"
+                                              : "Submit"}
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -5312,7 +5341,8 @@ export default function QualityApprovalsPage() {
                                   <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-semibold text-text-secondary">
                                     {prePourClearanceCard.status || "DRAFT"}
                                   </span>
-                                  {prePourClearanceCard.status === "SUBMITTED" ? (
+                                  {prePourClearanceCard.status === "SUBMITTED" &&
+                                  canApprovePourClearance ? (
                                     <>
                                       <button
                                         type="button"
@@ -5995,6 +6025,7 @@ export default function QualityApprovalsPage() {
                                               </label>
                                             </div>
                                             <div className="mt-3 flex flex-wrap gap-2">
+                                              {canSignPourClearance && (
                                               <button
                                                 type="button"
                                                 onClick={() => {
@@ -6011,7 +6042,9 @@ export default function QualityApprovalsPage() {
                                                   ? "Update identity signature"
                                                   : "Sign with identity"}
                                               </button>
-                                              {!signoff.signatureData ? (
+                                              )}
+                                              {!signoff.signatureData &&
+                                              canSignPourClearance ? (
                                                 <button
                                                   type="button"
                                                   onClick={() =>
@@ -6113,19 +6146,22 @@ export default function QualityApprovalsPage() {
                                       >
                                         Download PDF
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={savePrePourClearanceDetails}
-                                        disabled={
-                                          savingPrePourClearance ||
-                                          prePourClearanceCard.status === "LOCKED"
-                                        }
-                                        className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
-                                      >
-                                        {savingPrePourClearance
-                                          ? "Saving..."
-                                          : "Save Pre-Pour Clearance"}
-                                      </button>
+                                      {canUpdatePourClearance && (
+                                        <button
+                                          type="button"
+                                          onClick={savePrePourClearanceDetails}
+                                          disabled={
+                                            savingPrePourClearance ||
+                                            prePourClearanceCard.status === "LOCKED"
+                                          }
+                                          className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white hover:bg-secondary-dark disabled:opacity-50"
+                                        >
+                                          {savingPrePourClearance
+                                            ? "Saving..."
+                                            : "Save Pre-Pour Clearance"}
+                                        </button>
+                                      )}
+                                      {canSubmitPourClearance && (
                                       <button
                                         type="button"
                                         onClick={submitPrePourClearanceDetails}
@@ -6145,6 +6181,7 @@ export default function QualityApprovalsPage() {
                                               ? "Locked"
                                               : "Submit"}
                                       </button>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -6819,13 +6856,15 @@ export default function QualityApprovalsPage() {
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                        <button
-                          onClick={handleReject}
-                          className="px-4 py-2 bg-surface-card border border-red-200 text-error rounded-lg hover:bg-error-muted focus:ring-2 focus:ring-red-200 font-medium text-sm border-l"
-                        >
-                          Reject
-                        </button>
-                        {workflowState && (
+                        {canApproveStage && (
+                          <button
+                            onClick={handleReject}
+                            className="px-4 py-2 bg-surface-card border border-red-200 text-error rounded-lg hover:bg-error-muted focus:ring-2 focus:ring-red-200 font-medium text-sm border-l"
+                          >
+                            Reject
+                          </button>
+                        )}
+                        {workflowState && canDelegateInspection && (
                           <button
                             onClick={() => {
                               fetchEligibleUsers();

@@ -12,6 +12,8 @@ import {
   X,
 } from "lucide-react";
 import api from "../../../api/axios";
+import { useAuth } from "../../../context/AuthContext";
+import { PermissionCode } from "../../../config/permissions";
 
 interface QualityRatingDisplayTabProps {
   projectId: number;
@@ -20,6 +22,13 @@ interface QualityRatingDisplayTabProps {
 const QualityRatingDisplayTab: React.FC<QualityRatingDisplayTabProps> = ({
   projectId,
 }) => {
+  const { hasPermission } = useAuth();
+  const canCreateSnapshot = hasPermission(
+    PermissionCode.QUALITY_RATING_SNAPSHOT_CREATE,
+  );
+  const canDeleteSnapshot = hasPermission(
+    PermissionCode.QUALITY_RATING_SNAPSHOT_DELETE,
+  );
   const [rating, setRating] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,12 +130,14 @@ const QualityRatingDisplayTab: React.FC<QualityRatingDisplayTabProps> = ({
           </button>
         </div>
 
-        <button
-          onClick={takeSnapshot}
-          className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-2.5 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 font-bold"
-        >
-          Save Monthly Rating
-        </button>
+        {canCreateSnapshot && (
+          <button
+            onClick={takeSnapshot}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-2.5 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 font-bold"
+          >
+            Save Monthly Rating
+          </button>
+        )}
       </div>
 
       {/* Main Score UI */}
@@ -299,15 +310,17 @@ const QualityRatingDisplayTab: React.FC<QualityRatingDisplayTabProps> = ({
                           <Eye className="w-3.5 h-3.5" />
                           Snapshot
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteSnapshot(h.id)}
-                          disabled={deletingSnapshotId === h.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-error-muted px-3 py-1.5 text-xs font-bold text-error hover:bg-red-100 disabled:opacity-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          {deletingSnapshotId === h.id ? "Deleting..." : "Delete"}
-                        </button>
+                        {canDeleteSnapshot && (
+                          <button
+                            type="button"
+                            onClick={() => deleteSnapshot(h.id)}
+                            disabled={deletingSnapshotId === h.id}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-error-muted px-3 py-1.5 text-xs font-bold text-error hover:bg-red-100 disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            {deletingSnapshotId === h.id ? "Deleting..." : "Delete"}
+                          </button>
+                        )}
                         <span
                           className={`inline-block px-4 py-1 rounded-full font-black ${getScoreColor(h.overallScore)}`}
                         >

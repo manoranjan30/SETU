@@ -30,6 +30,7 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
     vehicleMachine: "",
     licenseExpiry: "",
     fitnessExpiry: "",
+    isActive: true,
   });
 
   const [stats, setStats] = useState({
@@ -64,7 +65,8 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
     let expiringSoon = 0;
     let expired = 0;
 
-    items.forEach((item) => {
+    const activeItems = items.filter((item) => item.isActive !== false);
+    activeItems.forEach((item) => {
       // Check both license and fitness expiry
       const ex1 = item.licenseExpiry ? new Date(item.licenseExpiry) : null;
       const ex2 = item.fitnessExpiry ? new Date(item.fitnessExpiry) : null;
@@ -86,10 +88,12 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
       else valid++;
     });
 
-    setStats({ total: items.length, valid, expiringSoon, expired });
+    setStats({ total: activeItems.length, valid, expiringSoon, expired });
   };
 
-  const getStatusLabel = (expiryDate: string) => {
+  const getStatusLabel = (expiryDate: string, isActive = true) => {
+    if (!isActive)
+      return { label: "Not Applicable", color: "bg-gray-200 text-gray-700" };
     if (!expiryDate)
       return { label: "Valid", color: "bg-green-100 text-green-700" };
 
@@ -112,6 +116,7 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
       vehicleMachine: item.vehicleMachine,
       licenseExpiry: item.licenseExpiry || "",
       fitnessExpiry: item.fitnessExpiry || "",
+      isActive: item.isActive !== false,
     });
     setEditingId(item.id);
     setShowModal(true);
@@ -155,6 +160,7 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
       vehicleMachine: "",
       licenseExpiry: "",
       fitnessExpiry: "",
+      isActive: true,
     });
   };
 
@@ -232,20 +238,30 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                 <th className="px-6 py-4">License Status</th>
                 <th className="px-6 py-4">License Expiry</th>
                 <th className="px-6 py-4">Fitness Expiry</th>
+                <th className="px-6 py-4">Site Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {data.map((item, index) => {
-                const licenseStatus = getStatusLabel(item.licenseExpiry);
+                const isActive = item.isActive !== false;
+                const licenseStatus = getStatusLabel(
+                  item.licenseExpiry,
+                  isActive,
+                );
                 // Logic for checking row class (if either is expired, highlight row)
                 const today = new Date();
                 const ex1 = new Date(item.licenseExpiry);
                 const ex2 = new Date(item.fitnessExpiry);
                 const isExpired =
-                  (item.licenseExpiry && ex1 < today) ||
-                  (item.fitnessExpiry && ex2 < today);
-                const rowClass = isExpired
+                  isActive &&
+                  Boolean(
+                    (item.licenseExpiry && ex1 < today) ||
+                      (item.fitnessExpiry && ex2 < today),
+                  );
+                const rowClass = !isActive
+                  ? "opacity-70"
+                  : isExpired
                   ? "bg-error-muted text-red-700 font-bold"
                   : "";
 
@@ -278,6 +294,17 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                             "en-GB",
                           )
                         : "-"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          item.isActive !== false
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        {item.isActive !== false ? "Active" : "Inactive"}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -348,6 +375,24 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                     }
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-text-secondary mb-1">
+                  Site Status
+                </label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                  value={formData.isActive ? "active" : "inactive"}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      isActive: e.target.value === "active",
+                    })
+                  }
+                >
+                  <option value="active">Active at site</option>
+                  <option value="inactive">Inactive / Left site</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-bold text-text-secondary mb-1">

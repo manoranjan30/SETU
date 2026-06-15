@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, Save, X } from "lucide-react";
+import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
 import api from "../../../api/axios";
+import { useAuth } from "../../../context/AuthContext";
+import { PermissionCode } from "../../../config/permissions";
 
 interface Props {
   projectId: number;
@@ -10,6 +12,10 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const { hasPermission } = useAuth();
+  const canUpdate = hasPermission(PermissionCode.EHS_MANHOUR_UPDATE);
+  const canDelete = hasPermission(PermissionCode.EHS_MANHOUR_DELETE);
 
   // Summary Stats
   const [stats, setStats] = useState({
@@ -166,12 +172,35 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
     };
 
     try {
-      await api.post(`/ehs/${projectId}/manhours`, payload);
+      if (editingId) {
+        await api.put(`/ehs/manhours/${editingId}`, payload);
+      } else {
+        await api.post(`/ehs/${projectId}/manhours`, payload);
+      }
       setShowModal(false);
+      setEditingId(null);
       fetchData();
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const handleEdit = (row: any) => {
+    setEditingId(row.id);
+    setFormData({
+      month: String(row.month).slice(0, 7),
+      staffMale: Number(row.staffMale),
+      staffFemale: Number(row.staffFemale),
+      avgWorkHours: Number(row.avgWorkHours),
+      ltiDeductions: Number(row.ltiDeductions),
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Delete this monthly man-hours record?")) return;
+    await api.delete(`/ehs/manhours/${id}`);
+    fetchData();
   };
 
   if (loading) return <div>Loading...</div>;
@@ -210,7 +239,10 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
             Monthly Manpower & Hours
           </h3>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setEditingId(null);
+              setShowModal(true);
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -227,6 +259,7 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
                 <th className="px-6 py-4">Working Days</th>
                 <th className="px-6 py-4">Manhours</th>
                 <th className="px-6 py-4">Safe Manhours</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -251,6 +284,30 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
                   <td className="px-6 py-4 text-success font-bold">
                     {Number(row.safeManhours).toLocaleString("en-IN")}
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-end gap-2">
+                      {canUpdate && (
+                        <button
+                          type="button"
+                          title="Edit man-hours"
+                          onClick={() => handleEdit(row)}
+                          className="p-1.5 text-primary hover:bg-primary-muted rounded-lg"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          type="button"
+                          title="Delete man-hours"
+                          onClick={() => handleDelete(row.id)}
+                          className="p-1.5 text-error hover:bg-error-muted rounded-lg"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -263,8 +320,15 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-surface-card w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b flex justify-between items-center bg-surface-base">
-              <h3 className="font-bold text-lg">Add Monthly Manhours</h3>
-              <button onClick={() => setShowModal(false)}>
+                <h3 className="font-bold text-lg">
+                  {editingId ? "Edit" : "Add"} Monthly Manhours
+                </h3>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingId(null);
+                }}
+              >
                 <X className="w-5 h-5 text-text-muted" />
               </button>
             </div>
@@ -419,7 +483,7 @@ const EhsManhours: React.FC<Props> = ({ projectId }) => {
                 className="w-full bg-primary text-white py-2 rounded-lg font-bold hover:bg-primary-dark transition-colors flex items-center justify-center gap-2"
               >
                 <Save className="w-4 h-4" />
-                Save & Calculate
+                {editingId ? "Update & Calculate" : "Save & Calculate"}
               </button>
             </form>
           </div>

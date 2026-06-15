@@ -1,13 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
-import 'dart:convert';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/clearance_card_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
@@ -308,6 +311,8 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
     final card = widget.card;
     final ps = PermissionService.of(context);
     final isEditable = card.status.isEditable && card.isActivated && ps.canRaiseRfi;
+    // Signing does not require raise-RFI permission — any authenticated user can sign.
+    final canSign = card.status.isEditable && card.isActivated;
     final canApprove = ps.canApproveInspection;
     final theme = Theme.of(context);
 
@@ -411,7 +416,9 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                               index: i,
                               signoff: card.signoffs[i],
                               isEditable: isEditable,
-                              onSign: isEditable
+                              inspectionId: widget.inspectionId,
+                              // Signing is open to any authenticated user — no canRaiseRfi check
+                              onSign: canSign
                                   ? () {
                                       final signoff = card.signoffs[i];
                                       SignatureApprovalSheet.showForSignoff(
@@ -427,7 +434,7 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                                       });
                                     }
                                   : null,
-                              onWaive: isEditable
+                              onWaive: canSign
                                   ? () => context.read<ClearanceCardBloc>().add(MarkSignoffWaived(i))
                                   : null,
                               onRemove: isEditable
@@ -1204,10 +1211,11 @@ class _ToggleChip extends StatelessWidget {
   }
 }
 
-class _SignoffRow extends StatelessWidget {
+class _SignoffRow extends StatefulWidget {
   final int index;
   final ClearanceSignoff signoff;
   final bool isEditable;
+  final int inspectionId;
   final VoidCallback? onSign;
   final VoidCallback? onWaive;
   final VoidCallback? onRemove;
@@ -1216,13 +1224,66 @@ class _SignoffRow extends StatelessWidget {
     required this.index,
     required this.signoff,
     required this.isEditable,
+    required this.inspectionId,
     this.onSign,
     this.onWaive,
     this.onRemove,
   });
 
   @override
+  State<_SignoffRow> createState() => _SignoffRowState();
+}
+
+class _SignoffRowState extends State<_SignoffRow> {
+  bool _qrLoading = false;
+
+  Future<void> _showQr() async {
+    final signoffId = widget.signoff.id;
+    if (signoffId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Save the card first before generating a QR code.')),
+      );
+      return;
+    }
+
+    setState(() => _qrLoading = true);
+    try {
+      final data = await sl<SetuApiClient>().createClearanceSignoffQr(
+        inspectionId: widget.inspectionId,
+        signoffId: signoffId,
+      );
+      if (!mounted) return;
+      setState(() => _qrLoading = false);
+      _openQrDialog(data);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _qrLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not generate QR: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  void _openQrDialog(Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _SignoffQrDialog(
+        data: data,
+        department: widget.signoff.department,
+        designation: widget.signoff.designation,
+        inspectionId: widget.inspectionId,
+        signoffId: widget.signoff.id!,
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final signoff = widget.signoff;
+    final isEditable = widget.isEditable;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -1297,12 +1358,28 @@ class _SignoffRow extends StatelessWidget {
               ],
             ),
           ),
-          if (isEditable && signoff.status == ClearanceSignoffStatus.pending) ...[
+          if (signoff.status == ClearanceSignoffStatus.pending) ...[
+            // QR code — visible to all users so signatory can scan from their own phone
+            _qrLoading
+                ? const SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.qr_code_2_outlined, size: 18),
+                    color: Colors.indigo.shade600,
+                    tooltip: 'Show Signature QR',
+                    onPressed: widget.onSign != null ? _showQr : null,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+            const SizedBox(width: 4),
+            // Direct sign button (same permission as QR)
             IconButton(
               icon: const Icon(Icons.check_circle_outline, size: 18),
               color: Colors.green.shade600,
-              tooltip: 'Mark Signed',
-              onPressed: onSign,
+              tooltip: 'Sign',
+              onPressed: widget.onSign,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
@@ -1311,7 +1388,7 @@ class _SignoffRow extends StatelessWidget {
               icon: const Icon(Icons.remove_circle_outline, size: 18),
               color: Colors.grey.shade600,
               tooltip: 'Waive',
-              onPressed: onWaive,
+              onPressed: widget.onWaive,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
@@ -1322,12 +1399,222 @@ class _SignoffRow extends StatelessWidget {
               icon: const Icon(Icons.delete_outline, size: 18),
               color: Colors.red.shade400,
               tooltip: 'Remove',
-              onPressed: onRemove,
+              onPressed: widget.onRemove,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
         ],
       ),
+    );
+  }
+}
+
+// ── QR dialog ──────────────────────────────────────────────────────────────
+
+/// Shows the QR code image for a specific clearance signoff.
+/// Includes a 5-minute countdown and a Regenerate button when the code expires.
+class _SignoffQrDialog extends StatefulWidget {
+  final Map<String, dynamic> data;
+  final String department;
+  final String? designation;
+  final int inspectionId;
+  final String signoffId;
+
+  const _SignoffQrDialog({
+    required this.data,
+    required this.department,
+    this.designation,
+    required this.inspectionId,
+    required this.signoffId,
+  });
+
+  @override
+  State<_SignoffQrDialog> createState() => _SignoffQrDialogState();
+}
+
+class _SignoffQrDialogState extends State<_SignoffQrDialog> {
+  late Map<String, dynamic> _data;
+  late int _secondsLeft;
+  Timer? _timer;
+  bool _regenerating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _data = widget.data;
+    _secondsLeft = _data['expiresInSeconds'] as int? ?? 300;
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) t.cancel();
+    });
+  }
+
+  Future<void> _regenerate() async {
+    setState(() => _regenerating = true);
+    try {
+      final fresh = await sl<SetuApiClient>().createClearanceSignoffQr(
+        inspectionId: widget.inspectionId,
+        signoffId: widget.signoffId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _data = fresh;
+        _secondsLeft = fresh['expiresInSeconds'] as int? ?? 300;
+        _regenerating = false;
+      });
+      _startTimer();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _regenerating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not regenerate QR: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  Uint8List? _decodeQr() {
+    final dataUrl = _data['qrCodeDataUrl'] as String?;
+    if (dataUrl == null || dataUrl.isEmpty) return null;
+    try {
+      final b64 = dataUrl.contains(',') ? dataUrl.split(',').last : dataUrl;
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String get _timerLabel {
+    final m = (_secondsLeft ~/ 60).toString().padLeft(2, '0');
+    final s = (_secondsLeft % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  bool get _expired => _secondsLeft <= 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final qrBytes = _decodeQr();
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.qr_code_2, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.department,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                if (widget.designation != null)
+                  Text(widget.designation!,
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // QR image
+          if (qrBytes != null && !_expired)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Image.memory(qrBytes, width: 220, height: 220, fit: BoxFit.contain),
+            )
+          else if (_expired)
+            Container(
+              width: 220, height: 220,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.timer_off_outlined, size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 8),
+                  Text('QR Expired', style: TextStyle(color: Colors.grey.shade500)),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 12),
+
+          // Countdown
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.timer_outlined,
+                size: 14,
+                color: _expired
+                    ? Colors.red.shade600
+                    : _secondsLeft <= 60
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _expired ? 'Expired' : 'Expires in $_timerLabel',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: _expired
+                      ? Colors.red.shade600
+                      : _secondsLeft <= 60
+                          ? Colors.orange.shade700
+                          : Colors.green.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Signatory scans this with the SETU app to sign',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+      actions: [
+        if (_expired || _secondsLeft <= 30)
+          TextButton.icon(
+            icon: _regenerating
+                ? const SizedBox(width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh, size: 16),
+            label: const Text('Regenerate'),
+            onPressed: _regenerating ? null : _regenerate,
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

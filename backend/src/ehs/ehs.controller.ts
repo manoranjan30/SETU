@@ -124,6 +124,18 @@ export class EhsController {
     return this.ehsService.saveManhours(projectId, data);
   }
 
+  @Put('manhours/:id')
+  @Permissions('EHS.MANHOUR.UPDATE')
+  async updateManhours(@Param('id') id: number, @Body() data: any) {
+    return this.ehsService.updateManhours(id, data);
+  }
+
+  @Delete('manhours/:id')
+  @Permissions('EHS.MANHOUR.DELETE')
+  async deleteManhours(@Param('id') id: number) {
+    return this.ehsService.deleteManhours(id);
+  }
+
   @Get(':projectId/labor-stats')
   @Permissions('EHS.MANHOUR.READ')
   async getLaborStats(

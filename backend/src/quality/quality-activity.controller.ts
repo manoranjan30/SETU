@@ -82,7 +82,7 @@ export class QualityActivityController {
   }
 
   @Post('activity-lists/:id/clone')
-  @Permissions('QUALITY.ACTIVITYLIST.CREATE')
+  @Permissions('QUALITY.ACTIVITYLIST.MANAGE')
   cloneList(
     @Param('id', ParseIntPipe) id: number,
     @Body('targetProjectId', ParseIntPipe) targetProjectId: number,
@@ -91,7 +91,7 @@ export class QualityActivityController {
   }
 
   @Post('activity-lists/project/:projectId/clone-from-project')
-  @Permissions('QUALITY.ACTIVITYLIST.CREATE')
+  @Permissions('QUALITY.ACTIVITYLIST.MANAGE')
   cloneListsFromProject(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body()

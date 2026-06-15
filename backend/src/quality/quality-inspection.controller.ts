@@ -163,7 +163,7 @@ export class QualityInspectionController {
   }
 
   @Patch('stage/:stageId')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
   updateStageStatus(
     @Param('stageId', ParseIntPipe) stageId: number,
     @Body() data: any,
@@ -177,7 +177,7 @@ export class QualityInspectionController {
   }
 
   @Patch(':id/stages/:stageId')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
   updateStageStatusForInspection(
     @Param('stageId', ParseIntPipe) stageId: number,
     @Body() data: any,
@@ -191,7 +191,7 @@ export class QualityInspectionController {
   }
 
   @Post('stage/:stageId')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
   postStageStatus(
     @Param('stageId', ParseIntPipe) stageId: number,
     @Body() data: any,
@@ -219,7 +219,7 @@ export class QualityInspectionController {
   }
 
   @Post(':id/workflow/advance')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
   advanceWorkflow(
     @Param('id', ParseIntPipe) id: number,
     @Body()
@@ -243,7 +243,7 @@ export class QualityInspectionController {
   }
 
   @Post(':id/workflow/reject')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
   rejectWorkflow(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { comments: string },
@@ -274,7 +274,7 @@ export class QualityInspectionController {
   }
 
   @Post(':id/workflow/delegate')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.DELEGATE')
   delegateWorkflowStep(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { targetUserId: number; comments: string },
@@ -294,7 +294,7 @@ export class QualityInspectionController {
   // ===== STAGE-WISE APPROVAL =====
 
   @Post(':id/stages/:stageId/approve')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
   @Auditable('QUALITY', 'STAGE_APPROVE_RFI', 'id')
   approveStage(
     @Param('id', ParseIntPipe) inspectionId: number,
@@ -322,7 +322,7 @@ export class QualityInspectionController {
   }
 
   @Post(':id/final-approve')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.INSPECTION.FINAL_APPROVE')
   @Auditable('QUALITY', 'FINAL_APPROVE_RFI', 'id')
   finalApprove(
     @Param('id', ParseIntPipe) inspectionId: number,

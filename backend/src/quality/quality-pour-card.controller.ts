@@ -98,13 +98,13 @@ export class QualityPourCardController {
   }
 
   @Get(':inspectionId/pour-card')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CARD.READ')
   getPourCard(@Param('inspectionId', ParseIntPipe) inspectionId: number) {
     return this.service.getPourCard(inspectionId);
   }
 
   @Put(':inspectionId/pour-card')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CARD.UPDATE')
   savePourCard(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Body() body: any,
@@ -118,7 +118,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pour-card/submit')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CARD.SUBMIT')
   submitPourCard(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Request() req,
@@ -130,7 +130,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pour-card/approve')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.POUR_CARD.APPROVE')
   approvePourCard(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Body() body: any,
@@ -145,7 +145,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pour-card/reject')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.POUR_CARD.APPROVE')
   rejectPourCard(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Body() body: any,
@@ -159,7 +159,7 @@ export class QualityPourCardController {
   }
 
   @Get(':inspectionId/pour-card/pdf')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CARD.READ')
   async downloadPourCardPdf(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Res() res: any,
@@ -174,7 +174,7 @@ export class QualityPourCardController {
   }
 
   @Get(':inspectionId/pre-pour-clearance')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.READ')
   getPrePourClearance(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
   ) {
@@ -182,7 +182,7 @@ export class QualityPourCardController {
   }
 
   @Put(':inspectionId/pre-pour-clearance')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.UPDATE')
   savePrePourClearance(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Body() body: any,
@@ -197,7 +197,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pre-pour-clearance/signoffs/:signoffId/qr')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.SIGN')
   createPrePourClearanceSignatureQr(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Param('signoffId') signoffId: string,
@@ -212,7 +212,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pre-pour-clearance/attachments')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE_ATTACHMENT.UPLOAD')
   @UseInterceptors(
     FileInterceptor('file', clearanceAttachmentUploadOptions),
   )
@@ -231,7 +231,7 @@ export class QualityPourCardController {
   }
 
   @Delete(':inspectionId/pre-pour-clearance/attachments/:attachmentId')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE_ATTACHMENT.DELETE')
   deletePrePourClearanceAttachment(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Param('attachmentId') attachmentId: string,
@@ -245,7 +245,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pre-pour-clearance/submit')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.SUBMIT')
   submitPrePourClearance(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Request() req,
@@ -257,7 +257,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pre-pour-clearance/approve')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.POUR_CLEARANCE.APPROVE')
   approvePrePourClearance(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Body() body: any,
@@ -272,7 +272,7 @@ export class QualityPourCardController {
   }
 
   @Post(':inspectionId/pre-pour-clearance/reject')
-  @Permissions('QUALITY.INSPECTION.APPROVE')
+  @Permissions('QUALITY.POUR_CLEARANCE.APPROVE')
   rejectPrePourClearance(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Body() body: any,
@@ -286,13 +286,13 @@ export class QualityPourCardController {
   }
 
   @Get('mobile-signature-sessions/:token')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.SIGN')
   getMobileSignatureSession(@Param('token') token: string) {
     return this.service.getMobileSignatureSession(token);
   }
 
   @Post('mobile-signature-sessions/:token/confirm')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.SIGN')
   confirmMobileSignatureSession(
     @Param('token') token: string,
     @Body() body: { signatureData?: string | null },
@@ -307,7 +307,7 @@ export class QualityPourCardController {
   }
 
   @Get(':inspectionId/pre-pour-clearance/pdf')
-  @Permissions('QUALITY.INSPECTION.READ')
+  @Permissions('QUALITY.POUR_CLEARANCE.READ')
   async downloadPrePourClearancePdf(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
     @Res() res: any,

@@ -214,7 +214,7 @@ export class QualityController {
   // === STRUCTURE ENDPOINTS ===
 
   @Get(':projectId/structure/floor/:floorId')
-  @Permissions('QUALITY.STRUCTURE.MANAGE')
+  @Permissions('QUALITY.STRUCTURE.READ')
   getFloorStructure(
     @Param('projectId') projectId: number,
     @Param('floorId') floorId: number,

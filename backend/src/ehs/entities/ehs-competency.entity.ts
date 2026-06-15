@@ -29,6 +29,9 @@ export class EhsCompetency {
   @Column({ type: 'date', nullable: true })
   fitnessExpiry: string; // Medical/Physical fitness
 
+  @Column({ default: true })
+  isActive: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
