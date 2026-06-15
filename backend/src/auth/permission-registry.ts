@@ -297,6 +297,8 @@ export const EHS_PERMISSIONS: PermissionDef[] = [
   perm('EHS.INCIDENTREGISTER.MANAGE', 'Manage Incident Register', 'EHS', S),
   perm('EHS.MANHOUR.READ', 'View Manhour Data', 'EHS', R),
   perm('EHS.MANHOUR.CREATE', 'Log Manhour Data', 'EHS', C),
+  perm('EHS.MANHOUR.UPDATE', 'Update Manhour Data', 'EHS', U),
+  perm('EHS.MANHOUR.DELETE', 'Delete Manhour Data', 'EHS', D),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -320,7 +322,9 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
   perm('QUALITY.SEQUENCE.UPDATE', 'Update Sequence Graph', 'QUALITY', U),
   perm('QUALITY.INSPECTION.READ', 'View Inspections (RFI)', 'QUALITY', R),
   perm('QUALITY.INSPECTION.RAISE', 'Raise Inspection (RFI)', 'QUALITY', C),
+  perm('QUALITY.INSPECTION.UPDATE', 'Update Inspection Checklist Data', 'QUALITY', U),
   perm('QUALITY.INSPECTION.APPROVE', 'Approve Inspection', 'QUALITY', S),
+  perm('QUALITY.INSPECTION.DELEGATE', 'Delegate Inspection Approval', 'QUALITY', S),
   perm(
     'QUALITY.INSPECTION.REVERSE',
     'Reverse Approved Inspection',
@@ -376,8 +380,24 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     D,
   ),
   perm('QUALITY.STRUCTURE.MANAGE', 'Manage Structure Templates', 'QUALITY', S),
+  perm('QUALITY.STRUCTURE.READ', 'View Quality Structure', 'QUALITY', R),
   perm('QUALITY.WORKFLOW.READ', 'View Approval Workflows', 'QUALITY', R),
   perm('QUALITY.WORKFLOW.WRITE', 'Manage Approval Workflows', 'QUALITY', C),
+  perm('QUALITY.POUR_CARD.READ', 'View Concrete Pour Cards', 'QUALITY', R),
+  perm('QUALITY.POUR_CARD.UPDATE', 'Update Concrete Pour Cards', 'QUALITY', U),
+  perm('QUALITY.POUR_CARD.SUBMIT', 'Submit Concrete Pour Cards', 'QUALITY', S),
+  perm('QUALITY.POUR_CARD.APPROVE', 'Approve or Reject Concrete Pour Cards', 'QUALITY', S),
+  perm('QUALITY.POUR_CLEARANCE.READ', 'View Pre-Pour Clearance Cards', 'QUALITY', R),
+  perm('QUALITY.POUR_CLEARANCE.UPDATE', 'Update Pre-Pour Clearance Cards', 'QUALITY', U),
+  perm('QUALITY.POUR_CLEARANCE.SUBMIT', 'Submit Pre-Pour Clearance Cards', 'QUALITY', S),
+  perm('QUALITY.POUR_CLEARANCE.APPROVE', 'Approve or Reject Pre-Pour Clearance Cards', 'QUALITY', S),
+  perm('QUALITY.POUR_CLEARANCE.SIGN', 'Sign Pre-Pour Clearance Responsibilities', 'QUALITY', S),
+  perm('QUALITY.POUR_CLEARANCE_ATTACHMENT.UPLOAD', 'Upload Pre-Pour Clearance Documents', 'QUALITY', C),
+  perm('QUALITY.POUR_CLEARANCE_ATTACHMENT.DELETE', 'Delete Pre-Pour Clearance Documents', 'QUALITY', D),
+  perm('QUALITY.RATING.READ', 'View Quality Ratings', 'QUALITY', R),
+  perm('QUALITY.RATING.CONFIGURE', 'Configure Quality Ratings', 'QUALITY', U),
+  perm('QUALITY.RATING_SNAPSHOT.CREATE', 'Create Quality Rating Snapshot', 'QUALITY', C),
+  perm('QUALITY.RATING_SNAPSHOT.DELETE', 'Delete Quality Rating Snapshot', 'QUALITY', D),
   ...crud('QUALITY', 'MATERIAL_ITP', 'Material ITP Template'),
   perm('QUALITY.MATERIAL_ITP.APPROVE', 'Approve Material ITP Template', 'QUALITY', S),
   perm(
@@ -405,6 +425,7 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
   perm('QUALITY.CUBE_TEST.SAVE', 'Save Cube Test Result', 'QUALITY', U),
   perm('QUALITY.CUBE_TEST.APPROVE', 'Approve Cube Test Result', 'QUALITY', S),
   perm('QUALITY.CUBE_TEST.DELETE', 'Delete Cube Test Register Row', 'QUALITY', D),
+  ...crud('QUALITY', 'CONCRETE_GRADE', 'Concrete Grade Setting'),
   perm('QUALITY.MATERIAL_EVIDENCE.READ', 'View Material Test Evidence', 'QUALITY', R),
   perm('QUALITY.MATERIAL_EVIDENCE.UPLOAD', 'Upload Material Test Evidence', 'QUALITY', C),
   perm('QUALITY.MATERIAL_EVIDENCE.DELETE', 'Delete Material Test Evidence', 'QUALITY', D),
@@ -639,7 +660,7 @@ export const MIGRATION_MAP: Record<string, string> = {
   'Quality.Read': 'QUALITY.DASHBOARD.READ',
   'Quality.Inspection.Raise': 'QUALITY.INSPECTION.RAISE',
   'Quality.Inspection.Approve': 'QUALITY.INSPECTION.APPROVE',
-  'Quality.Test.Manage': 'QUALITY.TEST.MANAGE',
+  'Quality.Test.Manage': 'QUALITY.TEST.UPDATE',
 
   // ─── Design (was PascalCase) ─────────────────────────────────────────────
   'Design.Drawing.Read': 'DESIGN.DRAWING.READ',
@@ -762,6 +783,32 @@ export function buildDependencyMap(
     }
     if (p.code.startsWith('ROLE.MANAGEMENT.')) {
       implied.push('MANAGE_ROLES');
+    }
+
+    // Backward compatibility for existing Quality roles created before
+    // pour-document and stage-specific permissions were introduced.
+    if (p.code === 'QUALITY.INSPECTION.RAISE') {
+      implied.push(
+        'QUALITY.INSPECTION.UPDATE',
+        'QUALITY.POUR_CARD.READ',
+        'QUALITY.POUR_CARD.UPDATE',
+        'QUALITY.POUR_CARD.SUBMIT',
+        'QUALITY.POUR_CLEARANCE.READ',
+        'QUALITY.POUR_CLEARANCE.UPDATE',
+        'QUALITY.POUR_CLEARANCE.SUBMIT',
+        'QUALITY.POUR_CLEARANCE.SIGN',
+        'QUALITY.POUR_CLEARANCE_ATTACHMENT.UPLOAD',
+        'QUALITY.CONCRETE_GRADE.READ',
+      );
+    }
+    if (p.code === 'QUALITY.INSPECTION.APPROVE') {
+      implied.push(
+        'QUALITY.INSPECTION.STAGE_APPROVE',
+        'QUALITY.INSPECTION.FINAL_APPROVE',
+        'QUALITY.INSPECTION.DELEGATE',
+        'QUALITY.POUR_CARD.APPROVE',
+        'QUALITY.POUR_CLEARANCE.APPROVE',
+      );
     }
 
     if (implied.length > 0) {

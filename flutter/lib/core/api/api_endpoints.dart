@@ -597,6 +597,10 @@ class ApiEndpoints {
   static String clearanceCardPdf(int inspectionId) =>
       '/quality/inspections/$inspectionId/pre-pour-clearance/pdf';
 
+  /// POST /quality/inspections/:id/pre-pour-clearance/signoffs/:signoffId/qr
+  static String clearanceCardSignoffQr(int inspectionId, String signoffId) =>
+      '/quality/inspections/$inspectionId/pre-pour-clearance/signoffs/$signoffId/qr';
+
   /// POST /quality/inspections/:id/pre-pour-clearance/attachments  (multipart)
   static String clearanceCardAttachments(int inspectionId) =>
       '/quality/inspections/$inspectionId/pre-pour-clearance/attachments';

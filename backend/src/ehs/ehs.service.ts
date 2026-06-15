@@ -20,6 +20,10 @@ import { EhsMachinery } from './entities/ehs-machinery.entity';
 import { EhsIncidentRegister } from './entities/ehs-incident-register.entity';
 import { EhsVehicle } from './entities/ehs-vehicle.entity';
 import { EhsCompetency } from './entities/ehs-competency.entity';
+import {
+  activeComplianceRecords,
+  normalizeActiveStatus,
+} from './ehs-compliance.utils';
 
 @Injectable()
 export class EhsService {
@@ -187,7 +191,10 @@ export class EhsService {
       legalStats.total - legalStats.expired - legalStats.expiringSoon;
 
     // 4. Machinery Alerts
-    const machinery = await this.machineryRepo.find({ where: { projectId } });
+    const allMachinery = await this.machineryRepo.find({
+      where: { projectId },
+    });
+    const machinery = activeComplianceRecords(allMachinery);
     const machineryStats = {
       total: machinery.length,
       expired: machinery.filter(
@@ -207,7 +214,8 @@ export class EhsService {
       machineryStats.expiringSoon;
 
     // 5. Vehicle Alerts (Any cert expired = expired)
-    const vehicles = await this.vehicleRepo.find({ where: { projectId } });
+    const allVehicles = await this.vehicleRepo.find({ where: { projectId } });
+    const vehicles = activeComplianceRecords(allVehicles);
     let vehicleExpired = 0;
     let vehicleExpiringSoon = 0;
     vehicles.forEach((v) => {
@@ -228,7 +236,10 @@ export class EhsService {
     };
 
     // 6. Competency Alerts
-    const competency = await this.competencyRepo.find({ where: { projectId } });
+    const allCompetencies = await this.competencyRepo.find({
+      where: { projectId },
+    });
+    const competency = activeComplianceRecords(allCompetencies);
     let compExpired = 0;
     let compExpiringSoon = 0;
     competency.forEach((c) => {
@@ -383,6 +394,15 @@ export class EhsService {
     }
   }
 
+  async updateManhours(id: number, data: any) {
+    await this.manhoursRepo.update(id, data);
+    return this.manhoursRepo.findOne({ where: { id } });
+  }
+
+  async deleteManhours(id: number) {
+    return this.manhoursRepo.delete(id);
+  }
+
   async getMonthlyLaborStats(projectId: number, month: string) {
     const startDate = `${month}-01`;
     const d = new Date(startDate);
@@ -500,11 +520,19 @@ export class EhsService {
     });
   }
   async createMachinery(data: any) {
-    const item = this.machineryRepo.create(data);
+    const item = this.machineryRepo.create({
+      ...data,
+      isActive: normalizeActiveStatus(data.isActive),
+    });
     return this.machineryRepo.save(item);
   }
   async updateMachinery(id: number, data: any) {
-    await this.machineryRepo.update(id, data);
+    await this.machineryRepo.update(id, {
+      ...data,
+      ...(data.isActive !== undefined
+        ? { isActive: normalizeActiveStatus(data.isActive) }
+        : {}),
+    });
     return this.machineryRepo.findOne({ where: { id } });
   }
   async deleteMachinery(id: number) {
@@ -535,11 +563,19 @@ export class EhsService {
     return this.vehicleRepo.find({ where: { projectId } });
   }
   async createVehicle(data: any) {
-    const item = this.vehicleRepo.create(data);
+    const item = this.vehicleRepo.create({
+      ...data,
+      isActive: normalizeActiveStatus(data.isActive),
+    });
     return this.vehicleRepo.save(item);
   }
   async updateVehicle(id: number, data: any) {
-    await this.vehicleRepo.update(id, data);
+    await this.vehicleRepo.update(id, {
+      ...data,
+      ...(data.isActive !== undefined
+        ? { isActive: normalizeActiveStatus(data.isActive) }
+        : {}),
+    });
     return this.vehicleRepo.findOne({ where: { id } });
   }
   async deleteVehicle(id: number) {
@@ -551,11 +587,19 @@ export class EhsService {
     return this.competencyRepo.find({ where: { projectId } });
   }
   async createCompetency(data: any) {
-    const item = this.competencyRepo.create(data);
+    const item = this.competencyRepo.create({
+      ...data,
+      isActive: normalizeActiveStatus(data.isActive),
+    });
     return this.competencyRepo.save(item);
   }
   async updateCompetency(id: number, data: any) {
-    await this.competencyRepo.update(id, data);
+    await this.competencyRepo.update(id, {
+      ...data,
+      ...(data.isActive !== undefined
+        ? { isActive: normalizeActiveStatus(data.isActive) }
+        : {}),
+    });
     return this.competencyRepo.findOne({ where: { id } });
   }
   async deleteCompetency(id: number) {

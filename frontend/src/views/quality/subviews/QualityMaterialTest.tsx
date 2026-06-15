@@ -21,6 +21,8 @@ import {
 import { qualityService } from "../../../services/quality.service";
 import { getPublicFileUrl } from "../../../api/baseUrl";
 import { exportUtils } from "../../../utils/export.utils";
+import { useAuth } from "../../../context/AuthContext";
+import { PermissionCode } from "../../../config/permissions";
 import type {
   QualityMaterialEvidenceFile,
   QualityMaterialItpCheckpoint,
@@ -65,6 +67,48 @@ const emptyCheckpoint = (sequence: number): QualityMaterialItpCheckpoint => ({
 });
 
 const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
+  const { hasPermission } = useAuth();
+  const canReadItp = hasPermission(PermissionCode.QUALITY_MATERIAL_ITP_READ);
+  const canReadReceipts = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_RECEIPT_READ,
+  );
+  const canReadMaterialTests = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_TEST_READ,
+  );
+  const canReadCubes = hasPermission(PermissionCode.QUALITY_CUBE_TEST_READ);
+  const canReadGrades = hasPermission(
+    PermissionCode.QUALITY_CONCRETE_GRADE_READ,
+  );
+  const canReadEvidence = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_EVIDENCE_READ,
+  );
+  const canCreateItp = hasPermission(PermissionCode.QUALITY_MATERIAL_ITP_CREATE);
+  const canApproveItp = hasPermission(PermissionCode.QUALITY_MATERIAL_ITP_APPROVE);
+  const canCreateReceipt = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_RECEIPT_CREATE,
+  );
+  const canLogMaterialTest = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_TEST_LOG,
+  );
+  const canApproveMaterialTest = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_TEST_APPROVE,
+  );
+  const canCreateCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_CREATE);
+  const canUpdateCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_UPDATE);
+  const canApproveCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_APPROVE);
+  const canDeleteCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_DELETE);
+  const canCreateGrade = hasPermission(
+    PermissionCode.QUALITY_CONCRETE_GRADE_CREATE,
+  );
+  const canUpdateGrade = hasPermission(
+    PermissionCode.QUALITY_CONCRETE_GRADE_UPDATE,
+  );
+  const canDeleteGrade = hasPermission(
+    PermissionCode.QUALITY_CONCRETE_GRADE_DELETE,
+  );
+  const canUploadEvidence = hasPermission(
+    PermissionCode.QUALITY_MATERIAL_EVIDENCE_UPLOAD,
+  );
   const [activeTab, setActiveTab] = useState<TabKey>("itps");
   const [templates, setTemplates] = useState<QualityMaterialItpTemplate[]>([]);
   const [receipts, setReceipts] = useState<QualityMaterialReceipt[]>([]);
@@ -260,13 +304,27 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
         nextCubeEvidence,
       ] =
         await Promise.all([
-          qualityService.getMaterialItps(projectId),
-          qualityService.getMaterialReceipts(projectId),
-          qualityService.getMaterialTestObligations(projectId),
-          qualityService.getMaterialTestResults(projectId),
-          qualityService.getCubeTestRegister(projectId),
-          qualityService.getConcreteGrades(projectId),
-          qualityService.getMaterialEvidence(projectId, "CUBE_TEST"),
+          canReadItp
+            ? qualityService.getMaterialItps(projectId)
+            : Promise.resolve([]),
+          canReadReceipts
+            ? qualityService.getMaterialReceipts(projectId)
+            : Promise.resolve([]),
+          canReadMaterialTests
+            ? qualityService.getMaterialTestObligations(projectId)
+            : Promise.resolve([]),
+          canReadMaterialTests
+            ? qualityService.getMaterialTestResults(projectId)
+            : Promise.resolve([]),
+          canReadCubes
+            ? qualityService.getCubeTestRegister(projectId)
+            : Promise.resolve([]),
+          canReadGrades
+            ? qualityService.getConcreteGrades(projectId)
+            : Promise.resolve([]),
+          canReadEvidence
+            ? qualityService.getMaterialEvidence(projectId, "CUBE_TEST")
+            : Promise.resolve([]),
         ]);
       setTemplates(nextTemplates);
       setReceipts(nextReceipts);
@@ -321,7 +379,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
       selectedObligation.id,
       resultForm as any,
     );
-    if (evidenceFile) {
+    if (evidenceFile && canUploadEvidence) {
       const formData = new FormData();
       formData.append("file", evidenceFile);
       formData.append("ownerType", "RESULT");
@@ -585,20 +643,24 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
             <AlertTriangle className="h-4 w-4" />
             Due for Testing
           </button>
-          <button
-            onClick={() => setModalMode("receipt")}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
-          >
-            <PackagePlus className="h-4 w-4" />
-            Material Receipt
-          </button>
-          <button
-            onClick={() => setModalMode("itp")}
-            className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700"
-          >
-            <Plus className="h-4 w-4" />
-            ITP Template
-          </button>
+          {canCreateReceipt && (
+            <button
+              onClick={() => setModalMode("receipt")}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+            >
+              <PackagePlus className="h-4 w-4" />
+              Material Receipt
+            </button>
+          )}
+          {canCreateItp && (
+            <button
+              onClick={() => setModalMode("itp")}
+              className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700"
+            >
+              <Plus className="h-4 w-4" />
+              ITP Template
+            </button>
+          )}
         </div>
       </div>
 
@@ -643,7 +705,14 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
 
       {activeTab === "itps" && (
         <div className="space-y-4">
-          <ApprovalPanel items={approvalItems} onAction={actOnApproval} compact />
+          <ApprovalPanel
+            items={approvalItems}
+            onAction={actOnApproval}
+            canAct={(kind) =>
+              kind === "ITP" ? canApproveItp : canApproveMaterialTest
+            }
+            compact
+          />
           <div className="grid gap-4 lg:grid-cols-2">
             {templates.map((template) => (
               <div key={template.id} className="rounded-lg border border-border-subtle bg-surface-card p-5 shadow-sm">
@@ -662,7 +731,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                   <span>Approval: {template.approvalStatus}</span>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {template.status === "DRAFT" && (
+                  {template.status === "DRAFT" && canApproveItp && (
                     <button
                       onClick={() => submitTemplate(template.id)}
                       className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white hover:bg-slate-900"
@@ -670,7 +739,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                       Submit Approval
                     </button>
                   )}
-                  {template.status === "APPROVED" && (
+                  {template.status === "APPROVED" && canApproveItp && (
                     <button
                       onClick={() => activateTemplate(template.id)}
                       className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
@@ -686,7 +755,13 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
       )}
 
       {activeTab === "approvals" && (
-        <ApprovalPanel items={approvalItems} onAction={actOnApproval} />
+        <ApprovalPanel
+          items={approvalItems}
+          onAction={actOnApproval}
+          canAct={(kind) =>
+            kind === "ITP" ? canApproveItp : canApproveMaterialTest
+          }
+        />
       )}
 
       {activeTab === "receipts" && (
@@ -718,7 +793,8 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                   Due {obligation.dueDate || "-"} | Batch {obligation.receipt?.batchNumber || "-"}
                 </p>
               </div>
-              {!["COMPLETED", "RESULT_LOGGED"].includes(obligation.status) && (
+              {!["COMPLETED", "RESULT_LOGGED"].includes(obligation.status) &&
+                canLogMaterialTest && (
                 <button
                   onClick={() => {
                     setSelectedObligation(obligation);
@@ -754,7 +830,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                   Tested {result.testDate} | {result.labType}
                 </p>
               </div>
-              {result.reviewStatus === "DRAFT" && (
+              {result.reviewStatus === "DRAFT" && canApproveMaterialTest && (
                 <button
                   onClick={() => submitResult(result.id)}
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-900"
@@ -867,14 +943,16 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setGradeSettingsOpen((current) => !current)}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  Grade Settings
-                </button>
+                {(canCreateGrade || canUpdateGrade || canDeleteGrade) && (
+                  <button
+                    type="button"
+                    onClick={() => setGradeSettingsOpen((current) => !current)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Grade Settings
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={exportCubeRegister}
@@ -883,14 +961,16 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                   <Download className="h-4 w-4" />
                   Export
                 </button>
-                <button
-                  type="button"
-                  onClick={addManualCubeRow}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
-                >
-                  <Plus className="h-4 w-4" />
-                  Manual Cube
-                </button>
+                {canCreateCube && (
+                  <button
+                    type="button"
+                    onClick={addManualCubeRow}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm font-bold text-text-secondary hover:bg-surface-raised"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Manual Cube
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setCubeFullscreen((current) => !current)}
@@ -907,6 +987,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
             </div>
             {gradeSettingsOpen && (
               <div className="mt-4 rounded-lg border border-border-subtle bg-surface-base p-3">
+                {canCreateGrade && (
                 <form onSubmit={saveConcreteGrade} className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">
                   <input
                     required
@@ -962,6 +1043,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                     Add Grade
                   </button>
                 </form>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {concreteGrades.map((grade) => (
                     <span
@@ -975,12 +1057,16 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                       <strong>{grade.grade}</strong>
                       {grade.targetMeanStrengthMpa && <span>TMS {grade.targetMeanStrengthMpa} MPa</span>}
                       {grade.mixRatio && <span>{grade.mixRatio}</span>}
-                      <button type="button" onClick={() => toggleConcreteGrade(grade)} className="font-bold">
-                        {grade.isActive ? "Disable" : "Enable"}
-                      </button>
-                      <button type="button" onClick={() => deleteConcreteGrade(grade.id)} className="text-red-700">
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      {canUpdateGrade && (
+                        <button type="button" onClick={() => toggleConcreteGrade(grade)} className="font-bold">
+                          {grade.isActive ? "Disable" : "Enable"}
+                        </button>
+                      )}
+                      {canDeleteGrade && (
+                        <button type="button" onClick={() => deleteConcreteGrade(grade.id)} className="text-red-700">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -1046,6 +1132,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                         <input
                           type="number"
                           value={cube.loadKn || ""}
+                          disabled={!canUpdateCube}
                           onChange={(event) => updateCubeDraft(cube.id, { loadKn: event.target.value })}
                           className="w-24 rounded border border-border-subtle bg-surface-base px-2 py-1"
                         />
@@ -1055,6 +1142,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                         <input
                           type="number"
                           value={cube.requiredStrengthMpa || ""}
+                          disabled={!canUpdateCube}
                           onChange={(event) => updateCubeDraft(cube.id, { requiredStrengthMpa: event.target.value })}
                           className="w-24 rounded border border-border-subtle bg-surface-base px-2 py-1"
                         />
@@ -1063,39 +1151,46 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                         <input
                           type="date"
                           value={cube.testedDate || today()}
+                          disabled={!canUpdateCube}
                           onChange={(event) => updateCubeDraft(cube.id, { testedDate: event.target.value })}
                           className="w-32 rounded border border-border-subtle bg-surface-base px-2 py-1"
                         />
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => saveCubeResult(cube)}
-                            className="rounded bg-orange-600 px-2 py-1 font-bold text-white hover:bg-orange-700"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => saveCubeResult(cube, true)}
-                            disabled={cube.status === "APPROVED"}
-                            className={`rounded px-2 py-1 font-bold ${
-                              cube.status === "APPROVED"
-                                ? "cursor-not-allowed bg-gray-300 text-gray-600"
-                                : "bg-emerald-600 text-white hover:bg-emerald-700"
-                            }`}
-                          >
-                            {cube.status === "APPROVED" ? "Approved" : "Approve"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteCubeResult(cube.id)}
-                            className="rounded border border-red-200 bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100"
-                            title="Delete cube row"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {canUpdateCube && (
+                            <button
+                              type="button"
+                              onClick={() => saveCubeResult(cube)}
+                              className="rounded bg-orange-600 px-2 py-1 font-bold text-white hover:bg-orange-700"
+                            >
+                              Save
+                            </button>
+                          )}
+                          {canApproveCube && (
+                            <button
+                              type="button"
+                              onClick={() => saveCubeResult(cube, true)}
+                              disabled={cube.status === "APPROVED"}
+                              className={`rounded px-2 py-1 font-bold ${
+                                cube.status === "APPROVED"
+                                  ? "cursor-not-allowed bg-gray-300 text-gray-600"
+                                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+                              }`}
+                            >
+                              {cube.status === "APPROVED" ? "Approved" : "Approve"}
+                            </button>
+                          )}
+                          {canDeleteCube && (
+                            <button
+                              type="button"
+                              onClick={() => deleteCubeResult(cube.id)}
+                              className="rounded border border-red-200 bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100"
+                              title="Delete cube row"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                       <td className="px-2 py-2">
@@ -1111,6 +1206,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                       <td className="px-2 py-2">
                         <input
                           value={cube.remarks || ""}
+                          disabled={!canUpdateCube}
                           onChange={(event) => updateCubeDraft(cube.id, { remarks: event.target.value })}
                           className="w-48 rounded border border-border-subtle bg-surface-base px-2 py-1"
                         />
@@ -1127,7 +1223,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                               Evidence {(cubeEvidence[cube.id] || []).length}
                             </a>
                           )}
-                          {cube.status === "FAILED" && (
+                          {cube.status === "FAILED" && canUploadEvidence && (
                             <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100">
                               <FileUp className="h-3.5 w-3.5" />
                               {uploadingCubeEvidenceId === cube.id ? "Uploading" : "Upload"}
@@ -1287,14 +1383,16 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                         <option value="FAIL">Fail</option>
                       </select>
                     </label>
-                    <label className="block text-sm font-bold text-text-secondary md:col-span-2">
-                      Evidence
-                      <input
-                        type="file"
-                        className="mt-1 w-full rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
-                        onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)}
-                      />
-                    </label>
+                    {canUploadEvidence && (
+                      <label className="block text-sm font-bold text-text-secondary md:col-span-2">
+                        Evidence
+                        <input
+                          type="file"
+                          className="mt-1 w-full rounded-lg border border-border-subtle bg-surface-base px-3 py-2 text-sm"
+                          onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)}
+                        />
+                      </label>
+                    )}
                     <label className="block text-sm font-bold text-text-secondary md:col-span-3">
                       Remarks
                       <textarea
@@ -1339,6 +1437,7 @@ const Stat = ({
 const ApprovalPanel = ({
   items,
   onAction,
+  canAct,
   compact,
 }: {
   items: Array<{
@@ -1355,6 +1454,7 @@ const ApprovalPanel = ({
     stepId: number,
     action: "approve" | "reject",
   ) => void;
+  canAct: (kind: "ITP" | "RESULT") => boolean;
   compact?: boolean;
 }) => {
   const visibleItems = compact
@@ -1399,7 +1499,7 @@ const ApprovalPanel = ({
                       {item.run.strategyName} | {pendingStep?.stepName || "Workflow closed"}
                     </p>
                   </div>
-                  {pendingStep && (
+                  {pendingStep && canAct(item.kind) && (
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => onAction(item.kind, item.id, pendingStep.id, "approve")}

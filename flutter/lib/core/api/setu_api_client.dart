@@ -1282,6 +1282,18 @@ class SetuApiClient {
     await _dio.download(fullUrl, savePath);
   }
 
+  /// Generates a QR-code session for a specific clearance card signoff row.
+  /// Returns { sessionId, token, deepLink, qrCodeDataUrl, expiresAt, expiresInSeconds, signoff }.
+  Future<Map<String, dynamic>> createClearanceSignoffQr({
+    required int inspectionId,
+    required String signoffId,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.clearanceCardSignoffQr(inspectionId, signoffId),
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Uploads a supporting document for a clearance attachment line.
   /// Returns the newly created [ClearanceAttachmentDocument] JSON.
   Future<Map<String, dynamic>> uploadClearanceAttachment({

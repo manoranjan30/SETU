@@ -31,6 +31,7 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
     certifiedDate: "",
     expiryDate: "",
     status: "Valid",
+    isActive: true,
     remarks: "",
   });
 
@@ -65,7 +66,7 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
     let expiringSoon = 0;
     let expired = 0;
 
-    items.forEach((item) => {
+    items.filter((item) => item.isActive !== false).forEach((item) => {
       if (!item.expiryDate) {
         valid++;
         return;
@@ -84,7 +85,8 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
     setStats({ valid, expiringSoon, expired });
   };
 
-  const getStatusStyle = (expiryDate: string) => {
+  const getStatusStyle = (expiryDate: string, isActive: boolean) => {
+    if (!isActive) return "opacity-70";
     if (!expiryDate) return "";
     const today = new Date();
     const expiry = new Date(expiryDate);
@@ -92,7 +94,9 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
     return "";
   };
 
-  const getStatusLabel = (expiryDate: string) => {
+  const getStatusLabel = (expiryDate: string, isActive: boolean) => {
+    if (!isActive)
+      return { label: "Not Applicable", color: "bg-gray-200 text-gray-700" };
     if (!expiryDate)
       return { label: "Valid", color: "bg-green-100 text-green-700" };
 
@@ -116,6 +120,7 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
       certifiedDate: item.certifiedDate || "",
       expiryDate: item.expiryDate || "",
       status: item.status,
+      isActive: item.isActive !== false,
       remarks: item.remarks || "",
     });
     setEditingId(item.id);
@@ -161,6 +166,7 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
       certifiedDate: "",
       expiryDate: "",
       status: "Valid",
+      isActive: true,
       remarks: "",
     });
   };
@@ -231,13 +237,15 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
                 <th className="px-6 py-4">Certified Date</th>
                 <th className="px-6 py-4">Expiry Date</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Site Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {data.map((item, index) => {
-                const status = getStatusLabel(item.expiryDate);
-                const rowClass = getStatusStyle(item.expiryDate);
+                const isActive = item.isActive !== false;
+                const status = getStatusLabel(item.expiryDate, isActive);
+                const rowClass = getStatusStyle(item.expiryDate, isActive);
                 return (
                   <tr
                     key={item.id}
@@ -255,6 +263,17 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
                             "en-GB",
                           )
                         : "-"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          item.isActive !== false
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        {item.isActive !== false ? "Active" : "Inactive"}
+                      </span>
                     </td>
                     <td className="px-6 py-4 font-medium">
                       {item.expiryDate
@@ -308,6 +327,24 @@ const EhsMachinery: React.FC<Props> = ({ projectId }) => {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-text-secondary mb-1">
+                  Site Status
+                </label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                  value={formData.isActive ? "active" : "inactive"}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      isActive: e.target.value === "active",
+                    })
+                  }
+                >
+                  <option value="active">Active at site</option>
+                  <option value="inactive">Inactive / Removed from site</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-bold text-text-secondary mb-1">
                   Equipment Name

@@ -32,6 +32,9 @@ export class EhsVehicle {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
+  @Column({ default: true })
+  isActive: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

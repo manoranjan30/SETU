@@ -15,6 +15,7 @@ import {
 import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
 import { useAuth } from "../../context/AuthContext";
+import { PermissionCode } from "../../config/permissions";
 import { qualityService } from "../../services/quality.service";
 import SignatureModal from "../../components/quality/SignatureModal";
 import ClearanceDocumentAttachments from "../../components/quality/ClearanceDocumentAttachments";
@@ -230,7 +231,26 @@ interface EpsNode {
 export default function InspectionRequestPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canReadPourCard = hasPermission(PermissionCode.QUALITY_POUR_CARD_READ);
+  const canUpdatePourCard = hasPermission(
+    PermissionCode.QUALITY_POUR_CARD_UPDATE,
+  );
+  const canSubmitPourCard = hasPermission(
+    PermissionCode.QUALITY_POUR_CARD_SUBMIT,
+  );
+  const canReadPourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_READ,
+  );
+  const canUpdatePourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_UPDATE,
+  );
+  const canSubmitPourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_SUBMIT,
+  );
+  const canSignPourClearance = hasPermission(
+    PermissionCode.QUALITY_POUR_CLEARANCE_SIGN,
+  );
   const [epsNodes, setEpsNodes] = useState<EpsNode[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [lists, setLists] = useState<ActivityList[]>([]);
@@ -320,6 +340,13 @@ export default function InspectionRequestPage() {
     inspection: QualityInspection,
     kind: "CLEARANCE" | "POUR_CARD",
   ) => {
+    if (
+      (kind === "CLEARANCE" && !canReadPourClearance) ||
+      (kind === "POUR_CARD" && !canReadPourCard)
+    ) {
+      alert("You do not have permission to view this document.");
+      return;
+    }
     if (
       kind === "CLEARANCE" &&
       !inspection.stageApprovalSummary?.pourClearanceTriggerApproved
@@ -2174,13 +2201,17 @@ export default function InspectionRequestPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={downloadActiveCardPdf}
-                  className="rounded-lg border border-border-default px-3 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised"
-                >
-                  Download PDF
-                </button>
+                {((activeCardKind === "CLEARANCE" &&
+                  canReadPourClearance) ||
+                  (activeCardKind === "POUR_CARD" && canReadPourCard)) && (
+                  <button
+                    type="button"
+                    onClick={downloadActiveCardPdf}
+                    className="rounded-lg border border-border-default px-3 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised"
+                  >
+                    Download PDF
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -2524,6 +2555,7 @@ export default function InspectionRequestPage() {
                               </select>
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {canSignPourClearance && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2536,7 +2568,9 @@ export default function InspectionRequestPage() {
                                   ? "Update identity signature"
                                   : "Sign with identity"}
                               </button>
-                              {!signoff.signatureData ? (
+                              )}
+                              {!signoff.signatureData &&
+                              canSignPourClearance ? (
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -2756,22 +2790,30 @@ export default function InspectionRequestPage() {
                 The submitted document will appear in QA/QC Approvals for review.
               </div>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={saveActiveCard}
-                  disabled={savingCardModal || loadingCardModal}
-                  className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised disabled:opacity-50"
-                >
-                  {savingCardModal ? "Saving..." : "Save Draft"}
-                </button>
-                <button
-                  type="button"
-                  onClick={submitActiveCard}
-                  disabled={savingCardModal || loadingCardModal}
-                  className="rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white hover:bg-secondary-dark disabled:opacity-50"
-                >
-                  Send For Approval
-                </button>
+                {((activeCardKind === "CLEARANCE" &&
+                  canUpdatePourClearance) ||
+                  (activeCardKind === "POUR_CARD" && canUpdatePourCard)) && (
+                  <button
+                    type="button"
+                    onClick={saveActiveCard}
+                    disabled={savingCardModal || loadingCardModal}
+                    className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-surface-raised disabled:opacity-50"
+                  >
+                    {savingCardModal ? "Saving..." : "Save Draft"}
+                  </button>
+                )}
+                {((activeCardKind === "CLEARANCE" &&
+                  canSubmitPourClearance) ||
+                  (activeCardKind === "POUR_CARD" && canSubmitPourCard)) && (
+                  <button
+                    type="button"
+                    onClick={submitActiveCard}
+                    disabled={savingCardModal || loadingCardModal}
+                    className="rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white hover:bg-secondary-dark disabled:opacity-50"
+                  >
+                    Send For Approval
+                  </button>
+                )}
               </div>
             </div>
           </div>

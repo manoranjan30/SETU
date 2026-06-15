@@ -183,25 +183,25 @@ export class MaterialItpController {
   }
 
   @Get(':projectId/concrete-grades')
-  @Permissions('QUALITY.CUBE_TEST.READ')
+  @Permissions('QUALITY.CONCRETE_GRADE.READ')
   listConcreteGrades(@Param('projectId') projectId: number) {
     return this.materialItpService.listConcreteGrades(Number(projectId));
   }
 
   @Post(':projectId/concrete-grades')
-  @Permissions('QUALITY.CUBE_TEST.SAVE')
+  @Permissions('QUALITY.CONCRETE_GRADE.CREATE')
   createConcreteGrade(@Param('projectId') projectId: number, @Body() body: any) {
     return this.materialItpService.createConcreteGrade(Number(projectId), body);
   }
 
   @Put('concrete-grades/:id')
-  @Permissions('QUALITY.CUBE_TEST.SAVE')
+  @Permissions('QUALITY.CONCRETE_GRADE.UPDATE')
   updateConcreteGrade(@Param('id') id: number, @Body() body: any) {
     return this.materialItpService.updateConcreteGrade(Number(id), body);
   }
 
   @Delete('concrete-grades/:id')
-  @Permissions('QUALITY.CUBE_TEST.DELETE')
+  @Permissions('QUALITY.CONCRETE_GRADE.DELETE')
   deleteConcreteGrade(@Param('id') id: number) {
     return this.materialItpService.deleteConcreteGrade(Number(id));
   }

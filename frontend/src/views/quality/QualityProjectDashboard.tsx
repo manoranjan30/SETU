@@ -104,6 +104,8 @@ const QualityProjectDashboard = () => {
       label: "Materials",
       icon: FlaskConical,
       visible:
+        hasPermission(PermissionCode.QUALITY_MATERIAL_ITP_READ) ||
+        hasPermission(PermissionCode.QUALITY_CUBE_TEST_READ) ||
         hasPermission(PermissionCode.QUALITY_MATERIAL_TEST_READ) ||
         hasPermission(PermissionCode.QUALITY_TEST_READ),
     },
@@ -117,13 +119,13 @@ const QualityProjectDashboard = () => {
       id: "rating-config",
       label: "Rating Config",
       icon: ShieldCheck,
-      visible: hasPermission(PermissionCode.QUALITY_DASHBOARD_READ),
+      visible: hasPermission(PermissionCode.QUALITY_RATING_CONFIGURE),
     },
     {
       id: "project-rating",
       label: "Project Rating",
       icon: LayoutDashboard,
-      visible: hasPermission(PermissionCode.QUALITY_DASHBOARD_READ),
+      visible: hasPermission(PermissionCode.QUALITY_RATING_READ),
     },
     {
       id: "checklists",
@@ -141,7 +143,9 @@ const QualityProjectDashboard = () => {
       id: "structure",
       label: "Structure",
       icon: LayoutDashboard,
-      visible: hasPermission(PermissionCode.QUALITY_STRUCTURE_MANAGE),
+      visible:
+        hasPermission(PermissionCode.QUALITY_STRUCTURE_READ) ||
+        hasPermission(PermissionCode.QUALITY_STRUCTURE_MANAGE),
     },
     {
       id: "audits",

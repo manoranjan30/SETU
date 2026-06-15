@@ -32,6 +32,9 @@ export class EhsMachinery {
   @Column({ default: 'Valid' })
   status: string;
 
+  @Column({ default: true })
+  isActive: boolean;
+
   @Column({ type: 'text', nullable: true })
   remarks: string;
 

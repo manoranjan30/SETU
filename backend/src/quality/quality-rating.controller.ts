@@ -11,21 +11,22 @@ import {
 } from '@nestjs/common';
 import { QualityRatingService } from './quality-rating.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { Permissions } from '../auth/permissions.decorator';
 
 @Controller('quality/ratings')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class QualityRatingController {
   constructor(private readonly service: QualityRatingService) {}
 
   @Get(':projectId/config')
+  @Permissions('QUALITY.RATING.READ')
   getConfig(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.service.getConfig(projectId);
   }
 
   @Post(':projectId/config')
-  @Roles('Admin')
+  @Permissions('QUALITY.RATING.CONFIGURE')
   updateConfig(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body() body: any,
@@ -34,6 +35,7 @@ export class QualityRatingController {
   }
 
   @Get(':projectId/calculate')
+  @Permissions('QUALITY.RATING.READ')
   calculate(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Query('status') status: string,
@@ -45,7 +47,7 @@ export class QualityRatingController {
   }
 
   @Post(':projectId/snapshot')
-  @Roles('Admin')
+  @Permissions('QUALITY.RATING_SNAPSHOT.CREATE')
   createSnapshot(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body('status') status: string,
@@ -54,12 +56,13 @@ export class QualityRatingController {
   }
 
   @Get(':projectId/history')
+  @Permissions('QUALITY.RATING.READ')
   getHistory(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.service.getRatingHistory(projectId);
   }
 
   @Delete(':projectId/snapshot/:snapshotId')
-  @Roles('Admin')
+  @Permissions('QUALITY.RATING_SNAPSHOT.DELETE')
   deleteSnapshot(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Param('snapshotId', ParseIntPipe) snapshotId: number,

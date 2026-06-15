@@ -30,6 +30,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
     fitnessCertDate: "",
     insuranceDate: "",
     pollutionDate: "",
+    isActive: true,
     remarks: "",
   });
 
@@ -70,6 +71,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
 
   // Overall status is worst of individual statuses
   const getOverallStatus = (item: any) => {
+    if (item.isActive === false) return "Not Applicable";
     const s1 = getStatus(item.fitnessCertDate);
     const s2 = getStatus(item.insuranceDate);
     const s3 = getStatus(item.pollutionDate);
@@ -90,20 +92,22 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
     let expiringSoon = 0;
     let expired = 0;
 
-    items.forEach((item) => {
+    const activeItems = items.filter((item) => item.isActive !== false);
+    activeItems.forEach((item) => {
       const overall = getOverallStatus(item);
       if (overall === "Expired") expired++;
       else if (overall === "Expiring Soon") expiringSoon++;
       else valid++;
     });
 
-    setStats({ total: items.length, valid, expiringSoon, expired });
+    setStats({ total: activeItems.length, valid, expiringSoon, expired });
   };
 
   const StatusBadge = ({ status }: { status: string }) => {
     let color = "bg-green-100 text-green-700";
     if (status === "Expired") color = "bg-red-100 text-red-700";
     if (status === "Expiring Soon") color = "bg-orange-100 text-orange-700";
+    if (status === "Not Applicable") color = "bg-gray-200 text-gray-700";
 
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-bold ${color}`}>
@@ -119,6 +123,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       fitnessCertDate: item.fitnessCertDate || "",
       insuranceDate: item.insuranceDate || "",
       pollutionDate: item.pollutionDate || "",
+      isActive: item.isActive !== false,
       remarks: item.remarks || "",
     });
     setEditingId(item.id);
@@ -163,6 +168,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       fitnessCertDate: "",
       insuranceDate: "",
       pollutionDate: "",
+      isActive: true,
       remarks: "",
     });
   };
@@ -244,18 +250,31 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                 <th className="px-6 py-4">Pollution</th>
                 <th className="px-6 py-4">Pollution Status</th>
                 <th className="px-6 py-4">Overall Status</th>
+                <th className="px-6 py-4">Site Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {data.map((item, index) => {
-                const fitnessStatus = getStatus(item.fitnessCertDate);
-                const insuranceStatus = getStatus(item.insuranceDate);
-                const pollutionStatus = getStatus(item.pollutionDate);
+                const inactive = item.isActive === false;
+                const fitnessStatus = inactive
+                  ? "Not Applicable"
+                  : getStatus(item.fitnessCertDate);
+                const insuranceStatus = inactive
+                  ? "Not Applicable"
+                  : getStatus(item.insuranceDate);
+                const pollutionStatus = inactive
+                  ? "Not Applicable"
+                  : getStatus(item.pollutionDate);
                 const overallStatus = getOverallStatus(item);
 
                 return (
-                  <tr key={item.id} className="hover:bg-surface-base/50">
+                  <tr
+                    key={item.id}
+                    className={`hover:bg-surface-base/50 ${
+                      inactive ? "opacity-70" : ""
+                    }`}
+                  >
                     <td className="px-6 py-4 font-medium">{index + 1}</td>
                     <td className="px-6 py-4 font-medium">
                       {item.vehicleNumber}
@@ -297,6 +316,17 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
 
                     <td className="px-6 py-4 font-bold">
                       <StatusBadge status={overallStatus} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          item.isActive !== false
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        {item.isActive !== false ? "Active" : "Inactive"}
+                      </span>
                     </td>
 
                     <td className="px-6 py-4 text-right">
@@ -422,6 +452,24 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                     }
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-text-secondary mb-1">
+                  Site Status
+                </label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                  value={formData.isActive ? "active" : "inactive"}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      isActive: e.target.value === "active",
+                    })
+                  }
+                >
+                  <option value="active">Active at site</option>
+                  <option value="inactive">Inactive / Removed from site</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-bold text-text-secondary mb-1">
