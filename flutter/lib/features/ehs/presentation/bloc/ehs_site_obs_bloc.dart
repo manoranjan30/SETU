@@ -375,12 +375,16 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
         }
         return;
       }
-      // Page-0 API failure — if cache was already emitted, stay silent.
+      // Page-0 API failure — if cache was shown, keep it visible but mark it.
+      // Re-emit the fromCache state so the UI banner stays visible.
       final current = state;
-      if (current is EhsSiteObsLoaded && current.fromCache) return;
+      if (current is EhsSiteObsLoaded && current.fromCache) {
+        emit(current.copyWith(fromCache: true));
+        return;
+      }
       // Nothing was cached — show error.
       emit(const EhsSiteObsError(
-          'Failed to load EHS observations. No cached data available.'));
+          'Failed to load EHS observations. Check your connection and pull to refresh.'));
     }
   }
 

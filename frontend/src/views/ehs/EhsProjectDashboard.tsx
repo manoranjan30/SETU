@@ -92,16 +92,18 @@ const EhsProjectDashboard = () => {
   return (
     <div className="ui-shell flex flex-col h-full">
       {/* Header */}
-      <div className="ui-page-header px-6 py-4">
-        <div className="flex items-center gap-4 mb-6">
+      <div className="ui-page-header px-3 py-3 sm:px-6 sm:py-4">
+        <div className="mb-4 flex min-w-0 items-center gap-3 sm:mb-6 sm:gap-4">
           <button
             onClick={() => navigate("/dashboard/eps")}
             className="p-2 hover:bg-surface-raised rounded-lg text-text-muted transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="ui-title text-3xl">{project.name}</h1>
+          <div className="min-w-0">
+            <h1 className="ui-title truncate text-2xl sm:text-3xl">
+              {project.name}
+            </h1>
             <p className="ui-subtitle">Site Safety Management System</p>
           </div>
         </div>
@@ -124,10 +126,10 @@ const EhsProjectDashboard = () => {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-auto">
-        <div className="p-6 max-w-[1600px] mx-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto min-w-0 max-w-[1600px] p-3 sm:p-6">
           {/* Global Alert for Expired Compliance */}
-          {expiredComplianceCount > 0 && (
+          {expiredComplianceCount > 0 && activeTab !== "overview" && (
             <div className="bg-error-muted border-l-4 border-error p-4 rounded-r-lg shadow-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2 mb-6">
               <AlertOctagon className="w-5 h-5 text-error mt-0.5" />
               <div>

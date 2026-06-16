@@ -955,7 +955,13 @@ class SetuApiClient {
       ApiEndpoints.ehsSiteObservations,
       queryParameters: params,
     );
-    return response.data as List<dynamic>;
+    final data = response.data;
+    if (data is List) return data;
+    if (data is Map) {
+      final inner = data['data'] ?? data['items'] ?? data['observations'];
+      if (inner is List) return inner;
+    }
+    return [];
   }
 
   /// Creates a new EHS site observation.
@@ -1115,7 +1121,13 @@ class SetuApiClient {
   /// reported for the given project.
   Future<List<dynamic>> getEhsIncidents(int projectId) async {
     final response = await _dio.get(ApiEndpoints.ehsIncidents(projectId));
-    return response.data as List<dynamic>;
+    final data = response.data;
+    if (data is List) return data;
+    if (data is Map) {
+      final inner = data['data'] ?? data['items'] ?? data['incidents'];
+      if (inner is List) return inner;
+    }
+    return [];
   }
 
   /// Creates a new EHS incident report.

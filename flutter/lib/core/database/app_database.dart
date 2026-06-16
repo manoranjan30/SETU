@@ -543,13 +543,17 @@ class AppDatabase extends _$AppDatabase {
 
   /// Cache EHS site observations from API response.
   ///
-  /// Removes optimistic-insert rows (id starts with `local_`) before writing
-  /// server data so confirmed server copies replace the pending placeholders.
+  /// Deletes all server-confirmed rows for the project before writing fresh
+  /// data — this evicts records deleted on the server and ensures the local
+  /// cache always matches the latest API page.  Pending optimistic rows
+  /// (id starts with `local_`) are preserved so they remain visible while
+  /// the sync queue replays them.
   Future<void> cacheEhsSiteObs(
       List<Map<String, dynamic>> items, int projectId) async {
     await (delete(cachedEhsSiteObs)
           ..where((t) =>
-              t.projectId.equals(projectId) & t.id.like('local_%')))
+              t.projectId.equals(projectId) &
+              t.id.like('local_%').not()))
         .go();
     await batch((b) {
       for (final item in items) {
