@@ -90,6 +90,8 @@ export class AppConfigController {
       forceUpdate?: boolean;
       updateMessage?: string;
       updateUrl?: string;
+      apkBuildNumber?: number | null;
+      apkVersionName?: string | null;
     },
   ) {
     return this.service.updateConfig(platform, body);
@@ -117,11 +119,24 @@ export class AppConfigController {
   uploadApk(
     @UploadedFile() file: Express.Multer.File,
     @Query('platform') platform = 'android',
+    @Body() body: { buildNumber?: string; versionName?: string },
     @Req() req,
   ) {
     if (!file) {
       throw new BadRequestException('APK file is required.');
     }
-    return this.service.updateApk(platform, file, getRequestOrigin(req));
+    const buildNumber = Number(body?.buildNumber);
+    if (!Number.isFinite(buildNumber) || buildNumber <= 0) {
+      throw new BadRequestException('APK build number is required.');
+    }
+    return this.service.updateApk(
+      platform,
+      file,
+      {
+        buildNumber,
+        versionName: body?.versionName,
+      },
+      getRequestOrigin(req),
+    );
   }
 }

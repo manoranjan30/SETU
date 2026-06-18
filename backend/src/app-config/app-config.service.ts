@@ -27,6 +27,8 @@ export class AppConfigService implements OnModuleInit {
             apkFileName: null,
             apkOriginalName: null,
             apkFileSize: null,
+            apkBuildNumber: null,
+            apkVersionName: null,
             apkUploadedAt: null,
           }),
         );
@@ -38,7 +40,7 @@ export class AppConfigService implements OnModuleInit {
     const row = await this.repo.findOneBy({ platform: platform ?? 'android' });
     if (!row) {
       // Fallback: return a safe default so the app never crashes on this call
-      return this.repo.create({
+      return this.withBuildAliases(this.repo.create({
         platform,
         latestVersion: '1.0.0',
         minimumVersion: '1.0.0',
@@ -48,10 +50,12 @@ export class AppConfigService implements OnModuleInit {
         apkFileName: null,
         apkOriginalName: null,
         apkFileSize: null,
+        apkBuildNumber: null,
+        apkVersionName: null,
         apkUploadedAt: null,
-      });
+      }));
     }
-    return row;
+    return this.withBuildAliases(row);
   }
 
   async getDownloadInfo(platform = 'android', origin?: string) {
@@ -75,6 +79,9 @@ export class AppConfigService implements OnModuleInit {
       qrCodeDataUrl,
       apkOriginalName: row.apkOriginalName,
       apkFileSize: row.apkFileSize,
+      apkBuildNumber: row.apkBuildNumber,
+      apkVersionName: row.apkVersionName,
+      latestBuildNumber: row.apkBuildNumber,
       apkUploadedAt: row.apkUploadedAt,
       updatedAt: row.updatedAt,
     };
@@ -96,14 +103,24 @@ export class AppConfigService implements OnModuleInit {
   async updateApk(
     platform: string,
     file: Express.Multer.File,
+    metadata?: { buildNumber?: number | string | null; versionName?: string | null },
     origin?: string,
   ) {
     const updateUrl = `/uploads/mobile-app/${platform}/${file.filename}`;
+    const parsedBuildNumber = Number(metadata?.buildNumber);
+    const apkBuildNumber =
+      Number.isFinite(parsedBuildNumber) && parsedBuildNumber > 0
+        ? Math.trunc(parsedBuildNumber)
+        : null;
+    const apkVersionName = String(metadata?.versionName || '').trim() || null;
     const row = await this.updateConfig(platform, {
       updateUrl,
       apkFileName: file.filename,
       apkOriginalName: file.originalname,
       apkFileSize: file.size,
+      apkBuildNumber,
+      apkVersionName,
+      ...(apkVersionName ? { latestVersion: apkVersionName } : {}),
       apkUploadedAt: new Date(),
     });
 
@@ -118,5 +135,12 @@ export class AppConfigService implements OnModuleInit {
     if (/^https?:\/\//i.test(url)) return url;
     const normalizedPath = url.startsWith('/') ? url : `/${url}`;
     return origin ? `${origin.replace(/\/+$/, '')}${normalizedPath}` : normalizedPath;
+  }
+
+  private withBuildAliases(row: AppConfig): AppConfig {
+    return Object.assign(row, {
+      latestBuildNumber: row.apkBuildNumber,
+      minimumBuildNumber: null,
+    } as any);
   }
 }

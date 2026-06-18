@@ -938,6 +938,78 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     super.dispose();
   }
 
+  /// Shows the full context for a linked checklist RFI — the inline row only
+  /// has room for a single truncated line of "GO label · activity · RFI #"
+  /// plus the location, and never shows `goDetails` at all.
+  void _showLinkedRfiDetail(BuildContext context, QualityInspection insp) {
+    Widget detailLine(IconData icon, String label, String value, [Color? color]) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 16, color: Colors.grey.shade500),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 96,
+              child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ),
+            Expanded(
+              child: Text(value,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final go = [
+      if (insp.goLabel != null) insp.goLabel!,
+      if (insp.goNo != null && insp.goLabel == null) 'GO ${insp.goNo}',
+      if (insp.goDetails != null) insp.goDetails!,
+    ].join(' — ');
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text('Linked Checklist Detail',
+                style: Theme.of(ctx).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 14),
+            detailLine(Icons.checklist_rtl_outlined, 'Checklist Name', insp.activityName ?? '—'),
+            detailLine(Icons.location_on_outlined, 'Element',
+                insp.locationDisplay.isNotEmpty ? insp.locationDisplay : '—'),
+            detailLine(Icons.assignment_outlined, 'GO Details', go.isEmpty ? '—' : go),
+            if (insp.isMultiPart)
+              detailLine(Icons.layers_outlined, 'Part', insp.partDisplay),
+            if (insp.vendorName != null)
+              detailLine(Icons.business_outlined, 'Vendor', insp.vendorName!),
+            detailLine(Icons.flag_outlined, 'Status', insp.status.label, insp.status.color),
+            detailLine(Icons.event_outlined, 'Requested', insp.requestDate),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadFloorInspections() async {
     setState(() => _floorInspectionsLoading = true);
     try {
@@ -1243,6 +1315,15 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                               child: Text(
                                 insp.status.label,
                                 style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: insp.status.color),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () => _showLinkedRfiDetail(context, insp),
+                              borderRadius: BorderRadius.circular(12),
+                              child: const Padding(
+                                padding: EdgeInsets.only(left: 4),
+                                child: Icon(Icons.info_outline_rounded,
+                                    size: 14, color: Color(0xFF1D4ED8)),
                               ),
                             ),
                           ],

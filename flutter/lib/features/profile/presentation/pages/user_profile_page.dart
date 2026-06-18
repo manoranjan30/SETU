@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:signature/signature.dart';
+import 'package:setu_mobile/core/update/update_dialog_helper.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 
@@ -499,7 +501,96 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
 
+          const SizedBox(height: 32),
+
+          // ── App Updates ────────────────────────────────────────────
+          const _SectionHeader(
+            icon: Icons.system_update_outlined,
+            title: 'App Updates',
+          ),
+          const SizedBox(height: 14),
+          const _AppUpdateSection(),
+
           const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// App update section — current version + manual check/download/install
+// ---------------------------------------------------------------------------
+
+/// Shows the installed app version and a "Check for Update" action.
+///
+/// Self-contained (loads its own [PackageInfo]) so it doesn't need to thread
+/// more parameters through [_ProfileBody]'s already-large constructor.
+/// Reuses [checkForUpdateAndPrompt] — the same update check, dialog, and
+/// download/install flow used for the automatic check on launch/resume —
+/// so a manual tap here behaves identically, just with feedback when
+/// there's nothing new (`silent: false`).
+class _AppUpdateSection extends StatefulWidget {
+  const _AppUpdateSection();
+
+  @override
+  State<_AppUpdateSection> createState() => _AppUpdateSectionState();
+}
+
+class _AppUpdateSectionState extends State<_AppUpdateSection> {
+  PackageInfo? _info;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _info = info);
+    });
+  }
+
+  Future<void> _check() async {
+    setState(() => _checking = true);
+    await checkForUpdateAndPrompt(context, silent: false);
+    if (mounted) setState(() => _checking = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Current Version',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
+                const SizedBox(height: 2),
+                Text(
+                  _info == null ? '—' : '${_info!.version} (build ${_info!.buildNumber})',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: _checking ? null : _check,
+            icon: _checking
+                ? const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_outlined, size: 16),
+            label: Text(_checking ? 'Checking…' : 'Check for Update'),
+          ),
         ],
       ),
     );
