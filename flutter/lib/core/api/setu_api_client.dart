@@ -458,8 +458,16 @@ class SetuApiClient {
   ///
   /// Used to populate the location picker in the inspection creation form
   /// so the user can select a specific floor or unit.
+  ///
+  /// The backend builds this tree by loading every EPS node in the system
+  /// and filtering in-memory (no project-scoped query), which can take
+  /// longer than the default 15s receive timeout on a slow site network —
+  /// give this specific call extra headroom rather than failing fast.
   Future<List<dynamic>> getEpsTreeForProject(int projectId) async {
-    final response = await _dio.get(ApiEndpoints.epsTree(projectId));
+    final response = await _dio.get(
+      ApiEndpoints.epsTree(projectId),
+      options: Options(receiveTimeout: const Duration(seconds: 30)),
+    );
     return response.data;
   }
 
@@ -1289,9 +1297,13 @@ class SetuApiClient {
 
   /// Downloads any file by URL to [savePath].
   /// Resolves relative paths against the server origin before downloading.
-  Future<void> downloadFile(String url, String savePath) async {
+  Future<void> downloadFile(
+    String url,
+    String savePath, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     final fullUrl = ApiEndpoints.resolveUrl(url);
-    await _dio.download(fullUrl, savePath);
+    await _dio.download(fullUrl, savePath, onReceiveProgress: onProgress);
   }
 
   /// Generates a QR-code session for a specific clearance card signoff row.
@@ -1407,9 +1419,19 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getEhsPerformance(int projectId) async {
+  /// Returns the monthly EHS performance records for a project.
+  ///
+  /// The backend's `getPerformance` returns an ARRAY of monthly
+  /// `EhsPerformance` rows (one per month), not a single aggregate object —
+  /// the previous `as Map<String, dynamic>` cast here threw on every call.
+  Future<List<Map<String, dynamic>>> getEhsPerformance(int projectId) async {
     final response = await _dio.get(ApiEndpoints.ehsPerformance(projectId));
-    return response.data as Map<String, dynamic>;
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    if (data is Map && data['data'] is List) {
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
+    return [];
   }
 
   Future<List<Map<String, dynamic>>> getEhsManhours(int projectId) async {

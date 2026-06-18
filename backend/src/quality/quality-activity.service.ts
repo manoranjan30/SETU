@@ -419,7 +419,9 @@ export class QualityActivityService {
       .filter((value): value is string => Boolean(value && value.trim()))
       .join(' | ');
 
-    await this.pushService.sendToUsers(
+    if (!inspectionScope?.projectId) return;
+    await this.pushService.sendToProjectUsers(
+      inspectionScope.projectId,
       [inspection.requestedById],
       'Quality Observation Raised',
       body,

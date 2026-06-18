@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { toRelativePath } from '../common/path.utils';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 import { ReleaseStrategyService } from '../planning/release-strategy.service';
@@ -217,12 +217,46 @@ export class MaterialItpService {
     });
   }
 
-  async listCubeTestRegister(projectId: number) {
-    const rows = await this.cubeRegisterRepo.find({
-      where: { projectId },
-      order: { dueDate: 'ASC', cubeId: 'ASC' },
-    });
-    return rows.map((row) => this.withLiveCubeStatus(row));
+  async listCubeTestRegister(
+    projectId: number,
+    paging?: { limit?: number; offset?: number; q?: string; status?: string },
+  ) {
+    const query = this.cubeRegisterRepo
+      .createQueryBuilder('cube')
+      .where('cube.projectId = :projectId', { projectId });
+    if (paging?.status && paging.status !== 'ALL') {
+      query.andWhere('cube.status = :status', { status: paging.status });
+    }
+    const q = paging?.q?.trim().toLowerCase();
+    if (q) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where(
+            `LOWER(COALESCE(cube.cubeId, '') || ' ' || COALESCE(cube.mixIdOrGrade, '') || ' ' || COALESCE(cube.locationText, '') || ' ' || COALESCE(cube.activityName, '') || ' ' || COALESCE(cube.elementName, '') || ' ' || COALESCE(cube.goLabel, '') || ' ' || COALESCE(cube.goDetails, '') || ' ' || COALESCE(cube.truckNo, '') || ' ' || COALESCE(cube.deliveryChallanNo, '') || ' ' || COALESCE(cube.remarks, '')) LIKE :q`,
+            { q: `%${q}%` },
+          );
+        }),
+      );
+    }
+    query.orderBy('cube.dueDate', 'ASC').addOrderBy('cube.cubeId', 'ASC');
+    const hasPaging =
+      Number.isFinite(Number(paging?.limit)) ||
+      Number.isFinite(Number(paging?.offset));
+    const limit = Math.min(100, Math.max(1, Number(paging?.limit) || 25));
+    const offset = Math.max(0, Number(paging?.offset) || 0);
+    const [rows, total] = hasPaging
+      ? await query.skip(offset).take(limit).getManyAndCount()
+      : [await query.getMany(), undefined];
+    const data = rows.map((row) => this.withLiveCubeStatus(row));
+    return hasPaging
+      ? {
+          data,
+          total: total || 0,
+          limit,
+          offset,
+          hasMore: offset + data.length < (total || 0),
+        }
+      : data;
   }
 
   listConcreteGrades(projectId: number) {

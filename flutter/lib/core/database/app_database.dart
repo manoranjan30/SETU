@@ -524,6 +524,30 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Patches a single cached quality site observation's rectification fields
+  /// in place, without touching any other row.
+  ///
+  /// Used for the optimistic UI update after a rectify/close action so the
+  /// new text/photos are visible immediately even before the next full
+  /// list refresh — critical when offline, since [cacheQualitySiteObs] is
+  /// only called from a successful API fetch.
+  Future<void> patchCachedQualitySiteObs(
+      String id, Map<String, dynamic> fieldUpdates) async {
+    final row = await (select(cachedQualitySiteObs)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final merged = {
+      ...jsonDecode(row.rawData) as Map<String, dynamic>,
+      ...fieldUpdates,
+    };
+    await (update(cachedQualitySiteObs)..where((t) => t.id.equals(id)))
+        .write(CachedQualitySiteObsCompanion(
+      status: Value(merged['status'] as String? ?? row.status),
+      rawData: Value(jsonEncode(merged)),
+    ));
+  }
+
   // ==================== EHS SITE OBS CACHE QUERIES ====================
 
   /// Get cached EHS site observations for a project, optionally filtered by
@@ -570,6 +594,26 @@ class AppDatabase extends _$AppDatabase {
         );
       }
     });
+  }
+
+  /// Patches a single cached EHS site observation's rectification fields in
+  /// place — mirrors [patchCachedQualitySiteObs]. See that method's doc for
+  /// why this targeted update (rather than a full [cacheEhsSiteObs] call) is
+  /// necessary for the offline optimistic-update path.
+  Future<void> patchCachedEhsSiteObs(
+      String id, Map<String, dynamic> fieldUpdates) async {
+    final row = await (select(cachedEhsSiteObs)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final merged = {
+      ...jsonDecode(row.rawData) as Map<String, dynamic>,
+      ...fieldUpdates,
+    };
+    await (update(cachedEhsSiteObs)..where((t) => t.id.equals(id)))
+        .write(CachedEhsSiteObsCompanion(
+      status: Value(merged['status'] as String? ?? row.status),
+      rawData: Value(jsonEncode(merged)),
+    ));
   }
 
   /// Return distinct projectIds across all cached tables.

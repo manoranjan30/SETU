@@ -306,6 +306,7 @@ const QUALITY_VIEWER: PermissionPreset = {
     'QUALITY.CONCRETE_GRADE.READ',
     'QUALITY.MATERIAL_EVIDENCE.READ',
     'QUALITY.SITE_OBS.READ',
+    'QUALITY.SITE_OBS.EXPORT',
     'QUALITY.AUDIT.READ',
     'QUALITY.DOCUMENT.READ',
     'EPS.NODE.READ',
@@ -379,7 +380,8 @@ const EHS_VIEWER: PermissionPreset = {
   icon: 'ShieldAlert',
   permissions: [
     'EHS.DASHBOARD.READ',
-    'EHS.OBSERVATION.READ',
+    'EHS.SITE_OBS.READ',
+    'EHS.SITE_OBS.EXPORT',
     'EHS.INCIDENT.READ',
     'EHS.INSPECTION.READ',
     'EHS.TRAINING.READ',
@@ -401,8 +403,8 @@ const EHS_FIELD_OFFICER: PermissionPreset = {
   icon: 'HardHat',
   permissions: [
     ...EHS_VIEWER.permissions,
-    'EHS.OBSERVATION.CREATE',
-    'EHS.OBSERVATION.UPDATE',
+    'EHS.SITE_OBS.CREATE',
+    'EHS.SITE_OBS.RECTIFY',
     'EHS.INCIDENT.CREATE',
     'EHS.INSPECTION.CREATE',
     'EHS.INSPECTION.UPDATE',
@@ -423,7 +425,8 @@ const EHS_MANAGER: PermissionPreset = {
   icon: 'ShieldCheck',
   permissions: [
     ...EHS_FIELD_OFFICER.permissions,
-    'EHS.OBSERVATION.DELETE',
+    'EHS.SITE_OBS.CLOSE',
+    'EHS.SITE_OBS.DELETE',
     'EHS.INCIDENT.DELETE',
     'EHS.INSPECTION.DELETE',
     'EHS.TRAINING.DELETE',

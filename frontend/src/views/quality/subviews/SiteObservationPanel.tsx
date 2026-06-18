@@ -11,6 +11,7 @@ import {
   Upload,
   Loader2,
   Layers,
+  Download,
 } from "lucide-react";
 import api from "../../../api/axios";
 import { getPublicFileUrl } from "../../../api/baseUrl";
@@ -29,11 +30,42 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const canCreate = hasPermission(PermissionCode.QUALITY_SITE_OBS_CREATE);
   const canRectify = hasPermission(PermissionCode.QUALITY_SITE_OBS_RECTIFY);
   const canClose = hasPermission(PermissionCode.QUALITY_SITE_OBS_CLOSE);
+  const canExport = hasPermission(PermissionCode.QUALITY_SITE_OBS_EXPORT);
   const canDelete = hasPermission(PermissionCode.QUALITY_SITE_OBS_DELETE);
 
   const [records, setRecords] = useState<any[]>([]);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("ALL");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [exportFullDump, setExportFullDump] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selectedObservationIds, setSelectedObservationIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [presetName, setPresetName] = useState("");
+  const [exportPresets, setExportPresets] = useState<
+    Array<{
+      id?: number;
+      name: string;
+      activeTab: "OPEN" | "RECTIFIED" | "CLOSED" | "ALL";
+      severityFilter: string;
+      dateFrom: string;
+      dateTo: string;
+      searchQuery: string;
+      exportFullDump: boolean;
+    }>
+  >(() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("qualityObservationExportPresets") || "[]",
+      );
+    } catch {
+      return [];
+    }
+  });
   const [activeTab, setActiveTab] = useState<
     "OPEN" | "RECTIFIED" | "CLOSED" | "ALL"
   >("OPEN");
@@ -68,10 +100,27 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const resp = await api.get(
-        `/quality/site-observations?projectId=${projectId}`,
-      );
-      setRecords(resp.data);
+      const resp = await api.get(`/quality/site-observations`, {
+        params: {
+          projectId,
+          paged: true,
+          page,
+          pageSize: 10,
+          status: activeTab,
+          severity: severityFilter,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          q: searchQuery.trim() || undefined,
+        },
+      });
+      const payload = resp.data;
+      if (Array.isArray(payload)) {
+        setRecords(payload);
+        setTotalRecords(payload.length);
+      } else {
+        setRecords(Array.isArray(payload.data) ? payload.data : []);
+        setTotalRecords(Number(payload.total || 0));
+      }
     } catch (error) {
       console.error("Failed to fetch observations", error);
     } finally {
@@ -107,9 +156,16 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   };
 
   useEffect(() => {
-    fetchRecords();
     fetchCategories();
   }, [projectId]);
+
+  useEffect(() => {
+    fetchRecords();
+  }, [projectId, activeTab, severityFilter, dateFrom, dateTo, searchQuery, page]);
+
+  useEffect(() => {
+    fetchExportPresets();
+  }, []);
 
   useEffect(() => {
     if (categories.length === 0) return;
@@ -120,39 +176,32 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchQuery, records.length]);
+  }, [activeTab, searchQuery, severityFilter, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const visibleIds = new Set(records.map((record) => String(record.id)));
+    setSelectedObservationIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [records]);
 
   const filteredRecords = useMemo(() => {
-    let filtered = records;
-    if (activeTab === "OPEN") {
-      filtered = records.filter((r) => r.status === "OPEN" || r.status === "HELD");
-    } else if (activeTab !== "ALL") {
-      filtered = records.filter((r) => r.status === activeTab);
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (r) =>
-          r.description.toLowerCase().includes(q) ||
-          r.category.toLowerCase().includes(q) ||
-          (r.epsNode?.name && r.epsNode.name.toLowerCase().includes(q)),
-      );
-    }
-    return filtered;
-  }, [records, activeTab, searchQuery]);
+    return records;
+  }, [records]);
 
   const tabCounts = {
-    OPEN: records.filter((r) => r.status === "OPEN" || r.status === "HELD").length,
-    RECTIFIED: records.filter((r) => r.status === "RECTIFIED").length,
-    CLOSED: records.filter((r) => r.status === "CLOSED").length,
-    ALL: records.length,
+    OPEN: activeTab === "OPEN" ? totalRecords : "-",
+    RECTIFIED: activeTab === "RECTIFIED" ? totalRecords : "-",
+    CLOSED: activeTab === "CLOSED" ? totalRecords : "-",
+    ALL: activeTab === "ALL" ? totalRecords : "-",
   };
   const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
-  const pagedRecords = filteredRecords.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  );
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const pagedRecords = filteredRecords;
+  const allPagedSelected =
+    pagedRecords.length > 0 &&
+    pagedRecords.every((item) => selectedObservationIds.has(String(item.id)));
 
   // Helpers
   const getSeverityStyle = (severity: string) => {
@@ -355,6 +404,131 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        projectId: String(projectId),
+      });
+      if (!exportFullDump) {
+        if (selectedObservationIds.size > 0) {
+          params.set("ids", Array.from(selectedObservationIds).join(","));
+        }
+        if (activeTab !== "ALL") params.set("status", activeTab);
+        if (severityFilter !== "ALL") params.set("severity", severityFilter);
+        if (dateFrom) params.set("dateFrom", dateFrom);
+        if (dateTo) params.set("dateTo", dateTo);
+        if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      } else {
+        params.set("fullDump", "true");
+      }
+      const response = await api.get(
+        `/quality/site-observations/export?${params.toString()}`,
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Quality_Observation_Register_${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to export observation register");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const fetchExportPresets = async () => {
+    try {
+      const response = await api.get("/export-presets", {
+        params: { module: "QUALITY", tableKey: "site-observations" },
+      });
+      const presets = Array.isArray(response.data)
+        ? response.data.map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            ...(item.filters || {}),
+          }))
+        : [];
+      setExportPresets(presets);
+      localStorage.setItem("qualityObservationExportPresets", JSON.stringify(presets));
+    } catch (error) {
+      console.error("Failed to fetch export presets", error);
+    }
+  };
+
+  const saveExportPreset = async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset = {
+      name,
+      activeTab,
+      severityFilter,
+      dateFrom,
+      dateTo,
+      searchQuery,
+      exportFullDump,
+    };
+    try {
+      const response = await api.post("/export-presets", {
+        module: "QUALITY",
+        tableKey: "site-observations",
+        name,
+        filters: preset,
+      });
+      const saved = { id: response.data.id, ...preset };
+      const next = [
+        saved,
+        ...exportPresets.filter(
+          (item) => item.name.toLowerCase() !== name.toLowerCase(),
+        ),
+      ].slice(0, 12);
+      setExportPresets(next);
+      localStorage.setItem("qualityObservationExportPresets", JSON.stringify(next));
+    } catch (error) {
+      const next = [
+        preset,
+        ...exportPresets.filter(
+          (item) => item.name.toLowerCase() !== name.toLowerCase(),
+        ),
+      ].slice(0, 12);
+      setExportPresets(next);
+      localStorage.setItem("qualityObservationExportPresets", JSON.stringify(next));
+    }
+    setPresetName("");
+  };
+
+  const applyExportPreset = (name: string) => {
+    const preset = exportPresets.find((item) => item.name === name);
+    if (!preset) return;
+    setActiveTab(preset.activeTab);
+    setSeverityFilter(preset.severityFilter);
+    setDateFrom(preset.dateFrom);
+    setDateTo(preset.dateTo);
+    setSearchQuery(preset.searchQuery);
+    setExportFullDump(preset.exportFullDump);
+    setSelectedObservationIds(new Set());
+  };
+
+  const deleteExportPreset = async (name: string) => {
+    const preset = exportPresets.find((item) => item.name === name);
+    if (preset?.id) {
+      try {
+        await api.delete(`/export-presets/${preset.id}`);
+      } catch (error) {
+        console.error("Failed to delete export preset", error);
+      }
+    }
+    const next = exportPresets.filter((item) => item.name !== name);
+    setExportPresets(next);
+    localStorage.setItem("qualityObservationExportPresets", JSON.stringify(next));
+  };
+
   const renderPhotos = (paths: string[]) => (
     <div className="flex flex-wrap gap-2 mt-2">
       {paths.map((p, i) => (
@@ -406,6 +580,101 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
           </button>
         )}
       </div>
+
+      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border-subtle bg-surface-card p-3 shadow-sm md:grid-cols-[1fr_1fr_1fr_auto_auto]">
+        <select
+          className="rounded-xl border border-border-default bg-white px-3 py-2 text-sm"
+          value={severityFilter}
+          onChange={(e) => setSeverityFilter(e.target.value)}
+        >
+          <option value="ALL">All Severities</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="MAJOR">Major</option>
+          <option value="MINOR">Minor</option>
+          <option value="INFO">Info</option>
+        </select>
+        <input
+          type="date"
+          className="rounded-xl border border-border-default bg-white px-3 py-2 text-sm"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+        <input
+          type="date"
+          className="rounded-xl border border-border-default bg-white px-3 py-2 text-sm"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
+        <label className="flex items-center gap-2 whitespace-nowrap rounded-xl border border-border-default bg-white px-3 py-2 text-sm font-semibold text-text-secondary">
+          <input
+            type="checkbox"
+            checked={exportFullDump}
+            onChange={(e) => setExportFullDump(e.target.checked)}
+          />
+          Full dump
+        </label>
+        {canExport && (
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" />
+            {exporting
+              ? "Exporting..."
+              : selectedObservationIds.size > 0
+                ? `Download Selected (${selectedObservationIds.size})`
+                : "Download Register"}
+          </button>
+        )}
+      </div>
+
+      {canExport && (
+        <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border-subtle bg-surface-card p-3 shadow-sm md:grid-cols-[1fr_auto_1fr]">
+          <div className="flex min-w-0 gap-2">
+            <input
+              value={presetName}
+              onChange={(event) => setPresetName(event.target.value)}
+              placeholder="Preset name"
+              className="min-w-0 flex-1 rounded-xl border border-border-default bg-white px-3 py-2 text-sm"
+            />
+            <button
+              onClick={saveExportPreset}
+              disabled={!presetName.trim()}
+              className="rounded-xl border border-border-default px-3 py-2 text-sm font-bold text-text-secondary disabled:opacity-50"
+            >
+              Save Preset
+            </button>
+          </div>
+          <select
+            className="rounded-xl border border-border-default bg-white px-3 py-2 text-sm"
+            defaultValue=""
+            onChange={(event) => {
+              applyExportPreset(event.target.value);
+              event.target.value = "";
+            }}
+          >
+            <option value="">Apply preset</option>
+            {exportPresets.map((preset) => (
+              <option key={preset.name} value={preset.name}>
+                {preset.name}
+              </option>
+            ))}
+          </select>
+          <div className="flex flex-wrap gap-2">
+            {exportPresets.slice(0, 4).map((preset) => (
+              <button
+                key={preset.name}
+                onClick={() => deleteExportPreset(preset.name)}
+                className="rounded-full bg-surface-base px-3 py-1 text-xs font-semibold text-text-muted hover:bg-rose-50 hover:text-error"
+                title="Click to delete preset"
+              >
+                {preset.name} x
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border-default">
@@ -460,6 +729,21 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
             <table className="min-w-full text-sm">
               <thead className="bg-surface-base text-xs uppercase tracking-wide text-text-muted">
                 <tr>
+                  <th className="w-10 px-4 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allPagedSelected}
+                      onChange={(event) => {
+                        const next = new Set(selectedObservationIds);
+                        pagedRecords.forEach((record) => {
+                          const id = String(record.id);
+                          if (event.target.checked) next.add(id);
+                          else next.delete(id);
+                        });
+                        setSelectedObservationIds(next);
+                      }}
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3 text-left">Severity</th>
                   <th className="px-4 py-3 text-left">Category</th>
@@ -484,6 +768,22 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                         setShowCloseModal(true);
                       }}
                     >
+                      <td
+                        className="px-4 py-3"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedObservationIds.has(String(item.id))}
+                          onChange={(event) => {
+                            const next = new Set(selectedObservationIds);
+                            const id = String(item.id);
+                            if (event.target.checked) next.add(id);
+                            else next.delete(id);
+                            setSelectedObservationIds(next);
+                          }}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
                           <span className="rounded-full bg-surface-raised px-2 py-1 text-[10px] font-bold uppercase text-text-secondary">
@@ -576,7 +876,8 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
           </div>
           <div className="flex items-center justify-between text-sm text-text-muted">
             <span>
-              Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, filteredRecords.length)} of {filteredRecords.length}
+              Showing {totalRecords === 0 ? 0 : (page - 1) * pageSize + 1}-
+              {Math.min(page * pageSize, totalRecords)} of {totalRecords}
             </span>
             <div className="flex items-center gap-2">
               <button

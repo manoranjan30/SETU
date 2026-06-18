@@ -446,7 +446,7 @@ const EhsOverview: React.FC<Props> = ({ projectId }) => {
           </div>
         </article>
 
-        <article className="min-w-0 rounded-lg border border-border-subtle bg-surface-card p-4 shadow-sm xl:col-span-2">
+        <article className="min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-surface-card p-4 shadow-sm xl:col-span-2">
           <div className="mb-2">
             <h2 className="text-base font-bold text-text-primary">
               Active compliance health
@@ -457,15 +457,15 @@ const EhsOverview: React.FC<Props> = ({ projectId }) => {
           </div>
 
           <div className="grid min-w-0 grid-cols-1 items-center gap-3 sm:grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[180px_minmax(0,1fr)]">
-            <div className="relative mx-auto h-[180px] w-[180px]">
+            <div className="relative mx-auto h-[160px] w-[160px] sm:h-[172px] sm:w-[172px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                   <Pie
                     data={dashboard.complianceData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={58}
-                    outerRadius={78}
+                    innerRadius={48}
+                    outerRadius={66}
                     paddingAngle={2}
                     dataKey="value"
                     stroke="none"

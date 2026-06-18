@@ -6,7 +6,7 @@ import { SystemSettingsService } from '../common/system-settings.service';
 export class EmailDeliveryService {
   constructor(private readonly settings: SystemSettingsService) {}
 
-  async sendLoginOtp(to: string, otp: string, ttlMinutes: number) {
+  private async createTransport() {
     const host = (await this.settings.getSetting('SMTP_HOST'))?.trim();
     const port = Number((await this.settings.getSetting('SMTP_PORT')) || 587);
     const secure = (await this.settings.getSettingBool('SMTP_SECURE')) || false;
@@ -18,17 +18,22 @@ export class EmailDeliveryService {
       'no-reply@setu.local';
 
     if (!host) {
-      throw new BadRequestException(
-        'Email OTP is enabled but SMTP_HOST is not configured.',
-      );
+      throw new BadRequestException('SMTP_HOST is not configured.');
     }
 
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: user ? { user, pass } : undefined,
-    });
+    return {
+      from,
+      transporter: nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: user ? { user, pass } : undefined,
+      }),
+    };
+  }
+
+  async sendLoginOtp(to: string, otp: string, ttlMinutes: number) {
+    const { from, transporter } = await this.createTransport();
 
     await transporter.sendMail({
       from,
@@ -43,6 +48,28 @@ export class EmailDeliveryService {
           <p>This OTP is valid for ${ttlMinutes} minutes. Do not share it with anyone.</p>
         </div>
       `,
+    });
+  }
+
+  async sendMail(options: {
+    to: string[];
+    subject: string;
+    text: string;
+    html?: string;
+    attachments?: Array<{
+      filename: string;
+      content: Buffer;
+      contentType?: string;
+    }>;
+  }) {
+    const { from, transporter } = await this.createTransport();
+    await transporter.sendMail({
+      from,
+      to: options.to.join(','),
+      subject: options.subject,
+      text: options.text,
+      html: options.html,
+      attachments: options.attachments,
     });
   }
 }

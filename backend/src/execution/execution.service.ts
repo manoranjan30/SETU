@@ -176,8 +176,15 @@ export class ExecutionService {
     return results;
   }
 
-  async getProjectProgressLogs(projectId: number) {
-    return this.listCompatLogs(projectId, ExecutionProgressEntryStatus.APPROVED);
+  async getProjectProgressLogs(
+    projectId: number,
+    paging?: { limit?: number; offset?: number; q?: string },
+  ) {
+    return this.listCompatLogs(
+      projectId,
+      ExecutionProgressEntryStatus.APPROVED,
+      paging,
+    );
   }
 
   async updateProgressLog(logId: number, newQty: number, userId: number) {
@@ -318,8 +325,15 @@ export class ExecutionService {
     });
   }
 
-  async getPendingProgressLogs(projectId: number) {
-    return this.listCompatLogs(projectId, ExecutionProgressEntryStatus.PENDING);
+  async getPendingProgressLogs(
+    projectId: number,
+    paging?: { limit?: number; offset?: number; q?: string },
+  ) {
+    return this.listCompatLogs(
+      projectId,
+      ExecutionProgressEntryStatus.PENDING,
+      paging,
+    );
   }
 
   async approveProgress(logIds: number[], userId: number) {
@@ -482,12 +496,13 @@ export class ExecutionService {
     }
 
     for (const [recipientUserId, summary] of grouped.entries()) {
+      const rootProjectId = await this.resolveRootProjectId(
+        manager,
+        Number(summary.projectId || 0),
+      );
       const notification =
         await this.notificationComposer.composeProgressEntryDecision({
-          projectId: await this.resolveRootProjectId(
-            manager,
-            Number(summary.projectId || 0),
-          ),
+          projectId: rootProjectId,
           epsNodeId: summary.epsNodeId,
           activityId: summary.activityId,
           activityLabel: summary.activityId ? null : 'Multiple activities',
@@ -501,7 +516,13 @@ export class ExecutionService {
         : notification.body;
 
       this.pushService
-        .sendToUsers([recipientUserId], notification.title, body, notification.data)
+        .sendToProjectUsers(
+          rootProjectId,
+          [recipientUserId],
+          notification.title,
+          body,
+          notification.data,
+        )
         .catch(() => {
           /* non-fatal */
         });
@@ -1175,9 +1196,10 @@ export class ExecutionService {
   private async listCompatLogs(
     projectId: number,
     status: ExecutionProgressEntryStatus,
+    paging?: { limit?: number; offset?: number; q?: string },
   ) {
     const scopeIds = await this.getProjectScopeIds(projectId);
-    const rows = await this.executionEntryRepo
+    const query = this.executionEntryRepo
       .createQueryBuilder('entry')
       .leftJoinAndSelect('entry.workOrderItem', 'workOrderItem')
       .leftJoinAndSelect('workOrderItem.boqItem', 'boqItem')
@@ -1188,12 +1210,34 @@ export class ExecutionService {
       .andWhere(
         '(entry.projectId IN (:...scopeIds) OR woActivityPlan.projectId IN (:...scopeIds) OR activity.projectId IN (:...scopeIds) OR entry.executionEpsNodeId IN (:...scopeIds))',
         { scopeIds },
-      )
-      .orderBy('entry.createdAt', 'DESC')
-      .addOrderBy('entry.id', 'DESC')
-      .getMany();
+      );
+    const q = paging?.q?.trim().toLowerCase();
+    if (q) {
+      query.andWhere(
+        `(LOWER(COALESCE(workOrderItem.description, '') || ' ' || COALESCE(boqItem.description, '') || ' ' || COALESCE(activity.activityName, '') || ' ' || COALESCE(activity.activityCode, '') || ' ' || COALESCE(executionEpsNode.name, '') || ' ' || COALESCE(entry.remarks, '')) LIKE :q)`,
+        { q: `%${q}%` },
+      );
+    }
+    query.orderBy('entry.createdAt', 'DESC').addOrderBy('entry.id', 'DESC');
+    const hasPaging =
+      Number.isFinite(Number(paging?.limit)) ||
+      Number.isFinite(Number(paging?.offset));
+    const limit = Math.min(100, Math.max(1, Number(paging?.limit) || 25));
+    const offset = Math.max(0, Number(paging?.offset) || 0);
+    const [rows, total] = hasPaging
+      ? await query.skip(offset).take(limit).getManyAndCount()
+      : [await query.getMany(), undefined];
 
-    return rows.map((row) => this.toCompatLogDto(row));
+    const data = rows.map((row) => this.toCompatLogDto(row));
+    return hasPaging
+      ? {
+          data,
+          total: total || 0,
+          limit,
+          offset,
+          hasMore: offset + data.length < (total || 0),
+        }
+      : data;
   }
 
   private async buildCompatLogDto(manager: Manager, entryId: number) {

@@ -28,8 +28,19 @@ export class EhsController {
 
   @Get(':projectId/incidents')
   @Permissions('EHS.INCIDENT.READ')
-  async getIncidents(@Param('projectId') projectId: number) {
-    return this.ehsService.getIncidents(projectId);
+  async getIncidents(
+    @Param('projectId') projectId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.ehsService.getIncidents(projectId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      q,
+      status,
+    });
   }
 
   @Post(':projectId/incidents')

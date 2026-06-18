@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
@@ -16,6 +19,7 @@ import 'package:setu_mobile/features/quality/presentation/pages/inspection_detai
 import 'package:setu_mobile/features/quality/presentation/widgets/activity_card.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 /// Shows the activities inside a selected checklist, allowing the site engineer
 /// to raise RFIs and submit rectifications for pending observations.
@@ -222,11 +226,10 @@ class _ActivityListBody extends StatelessWidget {
                   onRefresh: () async => context
                       .read<QualityRequestBloc>()
                       .add(const RefreshCurrentList()),
-                  child: ListView.builder(
+                  child: PaginatedListView<ActivityRow>(
+                    items: rows,
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: rows.length,
-                    itemBuilder: (context, i) {
-                      final row = rows[i];
+                    itemBuilder: (context, row, i) {
                       final status = row.displayStatus;
 
                       // Determine which CTA is available based on status
@@ -632,8 +635,27 @@ class _RectificationSheetState extends State<_RectificationSheet> {
     super.dispose();
   }
 
+  /// Saves a photo to the app's pending-observations directory so it survives
+  /// until the SyncService can upload it to the server — mirrors
+  /// [RectifySheet._savePhotoLocally] (the working offline pattern used for
+  /// site observation rectification).
+  Future<String> _savePhotoLocally(String sourcePath) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final pendingDir = Directory(p.join(dir.path, 'pending_obs_photos'));
+    await pendingDir.create(recursive: true);
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_activity_rectify.jpg';
+    final dest = File(p.join(pendingDir.path, fileName));
+    await File(sourcePath).copy(dest.path);
+    return dest.path;
+  }
+
   /// Opens the camera, routes the photo through the annotation editor,
   /// compresses it, uploads it, and appends the returned URL.
+  ///
+  /// When offline the upload throws — previously that just showed an error
+  /// and discarded the compressed file, losing the photo entirely. Now it
+  /// falls back to a persistent local copy (uploaded later by SyncService),
+  /// same as every other photo-capture flow in the app.
   Future<void> _pickPhoto() async {
     final xfile = await ImagePicker().pickImage(source: ImageSource.camera);
     if (xfile == null || !mounted) return;
@@ -646,26 +668,40 @@ class _RectificationSheetState extends State<_RectificationSheet> {
     if (!mounted) return;
     setState(() => _uploadingPhoto = true);
     String? compressedPath;
+    bool savedLocally = false;
     try {
       // Compress to reduce upload size
       compressedPath = await PhotoCompressor.compress(uploadPath);
-      final result =
-          await sl<SetuApiClient>().uploadFile(filePath: compressedPath);
-      final url =
-          result['url'] as String? ?? result['path'] as String? ?? '';
-      // Add the returned URL to the evidence list
-      if (mounted && url.isNotEmpty) setState(() => _photoUrls.add(url));
+      try {
+        final result =
+            await sl<SetuApiClient>().uploadFile(filePath: compressedPath);
+        final url =
+            result['url'] as String? ?? result['path'] as String? ?? '';
+        // Add the returned URL to the evidence list
+        if (mounted && url.isNotEmpty) setState(() => _photoUrls.add(url));
+      } catch (_) {
+        // Offline path: persist the compressed copy locally so it isn't lost.
+        final localPath = await _savePhotoLocally(compressedPath);
+        savedLocally = true;
+        if (mounted) {
+          setState(() => _photoUrls.add(localPath));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('Photo saved locally — will upload when online.'),
+            backgroundColor: Colors.orange.shade700,
+          ));
+        }
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Photo upload failed. Please try again.'),
+          content: const Text('Could not capture photo. Please try again.'),
           backgroundColor: Colors.red.shade700,
         ));
       }
     } finally {
       if (mounted) setState(() => _uploadingPhoto = false);
-      // Clean up temp files regardless of success/failure
-      if (compressedPath != null) {
+      // Don't delete the compressed file if it IS the local copy just saved.
+      if (compressedPath != null && !savedLocally) {
         await PhotoCompressor.deleteTempFile(compressedPath);
       }
       await PhotoCompressor.deleteTempFile(xfile.path);

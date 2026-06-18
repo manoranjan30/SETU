@@ -76,6 +76,9 @@ dependencies:
   # File opening / sharing
   open_file: ^3.3.2
 
+  # App version / build number (for update checks)
+  package_info_plus: ^8.0.0
+
   # Utilities
   intl: ^0.18.1
   uuid: ^4.2.2

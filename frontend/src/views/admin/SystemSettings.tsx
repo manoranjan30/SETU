@@ -34,11 +34,27 @@ interface MobileAppInfo {
   apkUploadedAt?: string | null;
 }
 
+interface ExportHistoryRow {
+  id: number;
+  module: string;
+  exportType: string;
+  projectId?: number | null;
+  projectName?: string | null;
+  status: "SUCCESS" | "FAILED" | "SKIPPED";
+  recipientCount: number;
+  fileName?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+}
+
 const SystemSettings = () => {
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [mobileAppInfo, setMobileAppInfo] = useState<MobileAppInfo | null>(
     null,
   );
+  const [exportHistory, setExportHistory] = useState<ExportHistoryRow[]>([]);
   const [apkFile, setApkFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -63,6 +79,7 @@ const SystemSettings = () => {
       ]);
       setSettings(settingsResponse.data);
       setMobileAppInfo(mobileAppResponse.data);
+      fetchExportHistory();
       setLoading(false);
     } catch (e) {
       setError("Failed to load settings");
@@ -89,6 +106,18 @@ const SystemSettings = () => {
       setTimeout(() => setError(null), 3000);
     } finally {
       setSaving(null);
+    }
+  };
+
+  const fetchExportHistory = async () => {
+    try {
+      const response = await api.get("/admin/export-history", {
+        params: { limit: 20 },
+        headers: { "X-Setu-Silent-Loader": "true" },
+      });
+      setExportHistory(Array.isArray(response.data) ? response.data : []);
+    } catch {
+      setExportHistory([]);
     }
   };
 
@@ -152,6 +181,8 @@ const SystemSettings = () => {
   const generalSettings = settings.filter((s) => s.group === "GENERAL");
   const securitySettings = settings.filter((s) => s.group === "SECURITY");
   const mailSettings = settings.filter((s) => s.group === "MAIL");
+  const ehsSettings = settings.filter((s) => s.group === "EHS");
+  const qualitySettings = settings.filter((s) => s.group === "QUALITY");
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -336,6 +367,117 @@ const SystemSettings = () => {
           </section>
         )}
 
+        {qualitySettings.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold text-text-secondary">
+                Quality Documents
+              </h2>
+            </div>
+            <div className="bg-surface-card rounded-xl shadow-sm border border-border-default overflow-hidden">
+              {qualitySettings.map((setting) => (
+                <SettingItem
+                  key={setting.id}
+                  setting={setting}
+                  saving={saving === setting.key}
+                  onToggle={handleToggle}
+                  onUpdate={updateSetting}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {ehsSettings.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <ShieldCheck className="w-5 h-5 text-emerald-700" />
+              <h2 className="text-lg font-semibold text-text-secondary">
+                EHS Automation
+              </h2>
+            </div>
+            <div className="bg-surface-card rounded-xl shadow-sm border border-border-default overflow-hidden">
+              {ehsSettings.map((setting) => (
+                <SettingItem
+                  key={setting.id}
+                  setting={setting}
+                  saving={saving === setting.key}
+                  onToggle={handleToggle}
+                  onUpdate={updateSetting}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Download className="w-5 h-5 text-cyan-700" />
+            <h2 className="text-lg font-semibold text-text-secondary">
+              Scheduled Export History
+            </h2>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-border-default bg-surface-card shadow-sm">
+            {exportHistory.length === 0 ? (
+              <div className="p-5 text-sm text-text-muted">
+                No scheduled export runs recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-surface-base text-xs uppercase text-text-muted">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Run</th>
+                      <th className="px-4 py-3 text-left">Module</th>
+                      <th className="px-4 py-3 text-left">Project</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                      <th className="px-4 py-3 text-left">File</th>
+                      <th className="px-4 py-3 text-left">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exportHistory.map((row) => (
+                      <tr key={row.id} className="border-t border-border-subtle">
+                        <td className="px-4 py-3 text-text-secondary">
+                          {new Date(row.createdAt).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-text-secondary">
+                          {row.module}
+                        </td>
+                        <td className="px-4 py-3 text-text-muted">
+                          {row.projectName ||
+                            (row.projectId ? `Project ${row.projectId}` : "-")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                              row.status === "SUCCESS"
+                                ? "bg-success-muted text-green-700"
+                                : row.status === "FAILED"
+                                  ? "bg-error-muted text-red-700"
+                                  : "bg-warning-muted text-amber-700"
+                            }`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="max-w-[220px] truncate px-4 py-3 text-text-muted">
+                          {row.fileName || "-"}
+                        </td>
+                        <td className="max-w-[280px] truncate px-4 py-3 text-text-muted">
+                          {row.errorMessage ||
+                            `${row.recipientCount} recipient(s), ${row.dateFrom || "-"} to ${row.dateTo || "-"}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
         <section>
           <div className="flex items-center gap-2 mb-4">
             <FlaskConical className="w-5 h-5 text-purple-600" />
@@ -410,7 +552,19 @@ const SystemSettings = () => {
   );
 };
 
-const SettingItem = ({ setting, saving, onToggle, onUpdate }: any) => (
+interface SettingItemProps {
+  setting: SystemSetting;
+  saving: boolean;
+  onToggle: (key: string, currentValue: string) => void;
+  onUpdate: (key: string, value: string) => void;
+}
+
+const SettingItem = ({
+  setting,
+  saving,
+  onToggle,
+  onUpdate,
+}: SettingItemProps) => (
   <div className="p-5 border-b last:border-0 hover:bg-surface-base transition-colors">
     <div className="flex items-start justify-between gap-6">
       <div className="flex-1">
@@ -422,7 +576,17 @@ const SettingItem = ({ setting, saving, onToggle, onUpdate }: any) => (
         </p>
       </div>
       <div className="flex flex-col items-end gap-2">
-        {setting.value === "true" || setting.value === "false" ? (
+        {setting.key === "QUALITY_POUR_CLEARANCE_PDF_TEMPLATE" ? (
+          <select
+            value={setting.value || "CERTIFICATE"}
+            onChange={(event) => onUpdate(setting.key, event.target.value)}
+            disabled={saving}
+            className="w-64 max-w-[45vw] rounded border border-border-default bg-surface-base px-2 py-1 text-sm font-mono"
+          >
+            <option value="CERTIFICATE">Certificate layout</option>
+            <option value="CARD">Legacy card layout</option>
+          </select>
+        ) : setting.value === "true" || setting.value === "false" ? (
           <button
             onClick={() => onToggle(setting.key, setting.value)}
             disabled={saving}

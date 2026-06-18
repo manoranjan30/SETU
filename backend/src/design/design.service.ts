@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, In } from 'typeorm';
+import { Brackets, Repository, IsNull, In } from 'typeorm';
 import { DrawingCategory } from './entities/drawing-category.entity';
 import {
   DrawingRegister,
@@ -85,7 +85,12 @@ export class DesignService {
   }
 
   // --- Register ---
-  async getRegister(projectId: number, categoryId?: number, userId?: number) {
+  async getRegister(
+    projectId: number,
+    categoryId?: number,
+    userId?: number,
+    paging?: { limit?: number; offset?: number; q?: string },
+  ) {
     const query = this.registerRepo
       .createQueryBuilder('register')
       .leftJoinAndSelect('register.category', 'category')
@@ -96,17 +101,47 @@ export class DesignService {
       query.andWhere('register.categoryId = :categoryId', { categoryId });
     }
 
-    const registers = await query.getMany();
+    const q = paging?.q?.trim().toLowerCase();
+    if (q) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where(
+            `LOWER(COALESCE(register.drawingNumber, '') || ' ' || COALESCE(register.title, '') || ' ' || COALESCE(register.status::text, '')) LIKE :q`,
+            { q: `%${q}%` },
+          ).orWhere('LOWER(category.name) LIKE :q', { q: `%${q}%` });
+        }),
+      );
+    }
+
+    query.orderBy('register.updatedAt', 'DESC').addOrderBy('register.id', 'DESC');
+    const hasPaging =
+      Number.isFinite(Number(paging?.limit)) ||
+      Number.isFinite(Number(paging?.offset));
+    const limit = Math.min(100, Math.max(1, Number(paging?.limit) || 25));
+    const offset = Math.max(0, Number(paging?.offset) || 0);
+    const [registers, total] = hasPaging
+      ? await query.skip(offset).take(limit).getManyAndCount()
+      : [await query.getMany(), undefined];
+    const wrap = (data: any[]) =>
+      hasPaging
+        ? {
+            data,
+            total: total || 0,
+            limit,
+            offset,
+            hasMore: offset + data.length < (total || 0),
+          }
+        : data;
     if (!userId) {
-      return registers.map((register) => ({
+      return wrap(registers.map((register) => ({
         ...register,
         status: this.normalizeStatus(register.status),
         currentRevisionUnread: false,
-      }));
+      })));
     }
 
     if (registers.length === 0) {
-      return [];
+      return wrap([]);
     }
 
     const receipts = await this.openReceiptRepo.find({
@@ -117,7 +152,7 @@ export class DesignService {
     });
     const receiptMap = new Map(receipts.map((receipt) => [receipt.registerId, receipt]));
 
-    return registers.map((register) => {
+    return wrap(registers.map((register) => {
       const receipt = receiptMap.get(register.id);
       const currentRevisionId = register.currentRevision?.id || null;
       const currentRevisionUnread =
@@ -132,7 +167,7 @@ export class DesignService {
         latestRevisionUploadedAt: register.currentRevision?.uploadedAt || null,
         statusUpdatedAt: register.statusUpdatedAt || register.updatedAt || null,
       };
-    });
+    }));
   }
 
   async createRegisterItem(

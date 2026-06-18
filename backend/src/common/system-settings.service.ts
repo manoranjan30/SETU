@@ -79,6 +79,69 @@ export class SystemSettingsService implements OnApplicationBootstrap {
         description: 'From email address for system OTP emails.',
         group: 'MAIL',
       },
+      {
+        key: 'QUALITY_POUR_CLEARANCE_PDF_TEMPLATE',
+        value: 'CERTIFICATE',
+        description:
+          'Pre-pour clearance PDF format. Use CERTIFICATE for the formal approval certificate layout or CARD for the legacy card layout.',
+        group: 'QUALITY',
+      },
+      {
+        key: 'EHS_OBSERVATION_WEEKLY_EXPORT_ENABLED',
+        value: 'false',
+        description:
+          'Email weekly EHS observation register exports every Monday morning.',
+        group: 'EHS',
+      },
+      {
+        key: 'EHS_OBSERVATION_WEEKLY_EXPORT_PROJECT_IDS',
+        value: '',
+        description:
+          'Comma-separated EPS project IDs to include in weekly EHS observation exports.',
+        group: 'EHS',
+      },
+      {
+        key: 'EHS_OBSERVATION_WEEKLY_EXPORT_RECIPIENTS',
+        value: '',
+        description:
+          'Comma-separated email recipients for weekly EHS observation exports.',
+        group: 'EHS',
+      },
+      {
+        key: 'EHS_OBSERVATION_EXPORT_FREQUENCY',
+        value: 'WEEKLY',
+        description:
+          'Scheduled EHS observation export frequency: DAILY, WEEKLY, or MONTHLY.',
+        group: 'EHS',
+      },
+      {
+        key: 'QUALITY_OBSERVATION_WEEKLY_EXPORT_ENABLED',
+        value: 'false',
+        description:
+          'Email weekly Quality observation register exports every Monday morning.',
+        group: 'QUALITY',
+      },
+      {
+        key: 'QUALITY_OBSERVATION_WEEKLY_EXPORT_PROJECT_IDS',
+        value: '',
+        description:
+          'Comma-separated EPS project IDs to include in weekly Quality observation exports.',
+        group: 'QUALITY',
+      },
+      {
+        key: 'QUALITY_OBSERVATION_WEEKLY_EXPORT_RECIPIENTS',
+        value: '',
+        description:
+          'Comma-separated email recipients for weekly Quality observation exports.',
+        group: 'QUALITY',
+      },
+      {
+        key: 'QUALITY_OBSERVATION_EXPORT_FREQUENCY',
+        value: 'WEEKLY',
+        description:
+          'Scheduled Quality observation export frequency: DAILY, WEEKLY, or MONTHLY.',
+        group: 'QUALITY',
+      },
     ];
 
     for (const setting of defaultSettings) {

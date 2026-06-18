@@ -38,8 +38,17 @@ export class ExecutionController {
 
   @Get(':projectId/logs')
   @Permissions('EXECUTION.ENTRY.READ')
-  async getLogs(@Param('projectId') projectId: string) {
-    return this.service.getProjectProgressLogs(+projectId);
+  async getLogs(
+    @Param('projectId') projectId: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.service.getProjectProgressLogs(+projectId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      q,
+    });
   }
 
   @Patch('logs/:logId')
@@ -128,8 +137,17 @@ export class ExecutionController {
 
   @Get(':projectId/approvals/pending')
   @Permissions('EXECUTION.ENTRY.APPROVE')
-  async getPendingApprovals(@Param('projectId') projectId: string) {
-    return this.service.getPendingProgressLogs(+projectId);
+  async getPendingApprovals(
+    @Param('projectId') projectId: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.service.getPendingProgressLogs(+projectId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      q,
+    });
   }
 
   @Post('approve')

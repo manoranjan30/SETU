@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -141,8 +142,19 @@ export class QualityController {
   // Snags
   @Get(':projectId/snags')
   @Permissions('QUALITY.SNAG.READ')
-  getSnags(@Param('projectId') projectId: number) {
-    return this.qualityService.getSnags(projectId);
+  getSnags(
+    @Param('projectId') projectId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.qualityService.getSnags(projectId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      q,
+      status,
+    });
   }
   @Post('snags')
   @Permissions('QUALITY.SNAG.CREATE')

@@ -150,6 +150,14 @@ export class QualityReportService {
     const drawingNo = inspection.drawingNo ?? '';
     const contractorName =
       inspection.contractorName ?? inspection.vendorName ?? 'Internal Team / Vendor';
+    const elementName =
+      inspection.elementName ?? qualityUnit?.name ?? qualityRoom?.name ?? '';
+    const goDetailsText = [
+      goLabel,
+      inspection.goDetails,
+    ]
+      .filter(Boolean)
+      .join(' - ');
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -237,80 +245,48 @@ export class QualityReportService {
       }
 
       // DRAW HEADER TABLE
-      const headerRowHeight = 20;
+      const headerRowHeight = 22;
+      const headerRows: Array<[string, unknown, string, unknown]> = [
+        ['Project :', projectName, 'Checklist No:', checklistNo],
+        ['Location :', locationWithScope, 'Rev No:', revNo],
+        ['Element :', elementName, 'RFI No:', `RFI #${inspection.id}`],
+        ['GO :', goLabel || 'N/A', 'GO Details:', goDetailsText || 'N/A'],
+        ['Contractor :', contractorName, 'Date:', inspection.requestDate],
+        ['Title:', activityTitle, 'Dwg No:', drawingNo],
+      ];
+      const rightColumnX = startX + 350;
+      const headerHeight = headerRowHeight * headerRows.length;
 
-      // Outer Frame for Header
-      doc.rect(startX, currentY, pageWidth, headerRowHeight * 4).stroke();
+      doc.rect(startX, currentY, pageWidth, headerHeight).stroke();
+      doc.moveTo(rightColumnX, currentY).lineTo(rightColumnX, currentY + headerHeight).stroke();
+      doc.fontSize(9);
 
-      // Row 1: Project & Checklist No
-      doc.fontSize(10).font('Helvetica-Bold');
-      doc.text('Project :', startX + 5, currentY + 5);
-      doc.font('Helvetica').text(projectName, startX + 60, currentY + 5);
+      headerRows.forEach(([leftLabel, leftValue, rightLabel, rightValue], index) => {
+        const rowY = currentY + index * headerRowHeight;
+        if (index > 0) {
+          doc.moveTo(startX, rowY).lineTo(startX + pageWidth, rowY).stroke();
+        }
+        doc.font('Helvetica-Bold').text(leftLabel, startX + 5, rowY + 5, {
+          width: 68,
+        });
+        doc.font('Helvetica').text(String(leftValue ?? ''), startX + 78, rowY + 5, {
+          width: 262,
+          height: headerRowHeight - 6,
+          ellipsis: true,
+        });
+        doc.font('Helvetica-Bold').text(rightLabel, rightColumnX + 5, rowY + 5, {
+          width: 72,
+        });
+        doc
+          .font('Helvetica')
+          .text(String(rightValue ?? ''), rightColumnX + 82, rowY + 5, {
+            width: pageWidth - 432,
+            height: headerRowHeight - 6,
+            ellipsis: true,
+          });
+      });
 
-      doc
-        .moveTo(startX + 350, currentY)
-        .lineTo(startX + 350, currentY + headerRowHeight * 4)
-        .stroke();
-      doc
-        .font('Helvetica-Bold')
-        .text('Checklist No:', startX + 355, currentY + 5);
-      doc
-        .font('Helvetica')
-        .text(checklistNo, startX + 430, currentY + 5);
-
-      currentY += headerRowHeight;
-      doc
-        .moveTo(startX, currentY)
-        .lineTo(startX + pageWidth, currentY)
-        .stroke();
-
-      // Row 2: Location & Rev No
-      doc.font('Helvetica-Bold').text('Location :', startX + 5, currentY + 5);
-      doc
-        .font('Helvetica')
-        .text(locationWithScope, startX + 60, currentY + 5, { width: 280 });
-
-      doc.font('Helvetica-Bold').text('Rev No:', startX + 355, currentY + 5);
-      doc.font('Helvetica').text(revNo, startX + 430, currentY + 5);
-
-      currentY += headerRowHeight;
-      doc
-        .moveTo(startX, currentY)
-        .lineTo(startX + pageWidth, currentY)
-        .stroke();
-
-      // Row 3: Contractor & Date
-      doc.font('Helvetica-Bold').text('Contractor :', startX + 5, currentY + 5);
-      doc
-        .font('Helvetica')
-        .text(contractorName, startX + 60, currentY + 5);
-
-      doc.font('Helvetica-Bold').text('Date:', startX + 355, currentY + 5);
-      doc
-        .font('Helvetica')
-        .text(inspection.requestDate, startX + 430, currentY + 5);
-
-      currentY += headerRowHeight;
-      doc
-        .moveTo(startX, currentY)
-        .lineTo(startX + pageWidth, currentY)
-        .stroke();
-
-      // Row 4: Dwg No (Centered vertically in the remaining space of header)
-      doc.font('Helvetica-Bold').text('Title:', startX + 5, currentY + 5);
-      doc
-        .font('Helvetica')
-        .text(activityTitle, startX + 60, currentY + 5, { width: 280 });
-      doc.font('Helvetica-Bold').text('Dwg No:', startX + 355, currentY + 5);
-      doc
-        .font('Helvetica')
-        .text(
-          `${drawingNo}${goLabel ? ` / ${goLabel}` : ''}`,
-          startX + 430,
-          currentY + 5,
-        );
-
-      currentY += headerRowHeight;
+      currentY += headerHeight;
 
       // Info Note
       doc

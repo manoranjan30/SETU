@@ -140,10 +140,16 @@ export class InspectionWorkflowService {
 
     if (assignedUserIds.length > 0) {
       this.pushService
-        .sendToUsers(assignedUserIds, notification.title, notification.body, {
-          inspectionId: String(inspection.id),
-          ...notification.data,
-        })
+        .sendToProjectUsers(
+          inspection.projectId,
+          assignedUserIds,
+          notification.title,
+          notification.body,
+          {
+            inspectionId: String(inspection.id),
+            ...notification.data,
+          },
+        )
         .catch(() => {
           /* non-fatal */
         });
@@ -736,7 +742,8 @@ export class InspectionWorkflowService {
             decisionLabel: 'RFI Fully Approved',
           });
         this.pushService
-          .sendToUsers(
+          .sendToProjectUsers(
+            refreshedInspection.projectId,
             [refreshedInspection.requestedById],
             notification.title,
             notification.body,
@@ -878,7 +885,8 @@ export class InspectionWorkflowService {
             }`,
         });
       this.pushService
-        .sendToUsers(
+        .sendToProjectUsers(
+          inspection.projectId,
           [inspection.requestedById],
           notification.title,
           notification.body,
@@ -974,7 +982,8 @@ export class InspectionWorkflowService {
           comments: reason,
         });
       this.pushService
-        .sendToUsers(
+        .sendToProjectUsers(
+          inspection.projectId,
           [inspection.requestedById],
           notification.title,
           notification.body,
@@ -1036,6 +1045,7 @@ export class InspectionWorkflowService {
     }
 
     targetStep.assignedUserId = newUserId;
+    targetStep.assignedUserIds = [newUserId];
     targetStep.assignedRoleId = null;
     targetStep.comments =
       comments || `Delegated by ${isAdmin ? 'Admin' : `User ${currentUserId}`}`;
@@ -1052,10 +1062,16 @@ export class InspectionWorkflowService {
       delegateName: delegate.name,
     });
     this.pushService
-      .sendToUsers([newUserId], notification.title, notification.body, {
-        inspectionId: String(inspectionId),
-        ...notification.data,
-      })
+      .sendToProjectUsers(
+        inspection.projectId,
+        [newUserId],
+        notification.title,
+        notification.body,
+        {
+          inspectionId: String(inspectionId),
+          ...notification.data,
+        },
+      )
       .catch(() => {
         /* non-fatal */
       });

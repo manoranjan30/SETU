@@ -247,6 +247,35 @@ class EhsSiteObservation extends Equatable {
   EhsCategory get categoryEnum =>
       category != null ? EhsCategory.fromString(category!) : EhsCategory.other;
 
+  EhsSiteObservation copyWith({
+    EhsObsStatus? status,
+    String? rectificationNotes,
+    List<String>? rectificationPhotoUrls,
+    String? closureNotes,
+    DateTime? rectifiedAt,
+    DateTime? closedAt,
+  }) {
+    return EhsSiteObservation(
+      id: id,
+      projectId: projectId,
+      epsNodeId: epsNodeId,
+      description: description,
+      severity: severity,
+      category: category,
+      locationLabel: locationLabel,
+      status: status ?? this.status,
+      photoUrls: photoUrls,
+      raisedByName: raisedByName,
+      rectificationNotes: rectificationNotes ?? this.rectificationNotes,
+      rectificationPhotoUrls:
+          rectificationPhotoUrls ?? this.rectificationPhotoUrls,
+      closureNotes: closureNotes ?? this.closureNotes,
+      createdAt: createdAt,
+      rectifiedAt: rectifiedAt ?? this.rectifiedAt,
+      closedAt: closedAt ?? this.closedAt,
+    );
+  }
+
   @override
   List<Object?> get props => [id, projectId, description, severity, status, createdAt];
 }

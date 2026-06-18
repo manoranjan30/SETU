@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { toRelativePath } from '../common/path.utils';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import {
   QualityInspection,
   InspectionStatus,
@@ -179,17 +179,52 @@ export class QualityService {
   }
 
   // UNIFIED QUALITY ITEMS (Snags & Observations)
-  async getSnags(projectId: number) {
-    const items = await this.itemRepo.find({
-      where: { projectId, type: QualityType.SNAG },
-      order: { createdAt: 'DESC' },
-      relations: ['photos'],
-    });
+  async getSnags(
+    projectId: number,
+    paging?: { limit?: number; offset?: number; q?: string; status?: string },
+  ) {
+    const query = this.itemRepo
+      .createQueryBuilder('item')
+      .leftJoinAndSelect('item.photos', 'photos')
+      .where('item.projectId = :projectId', { projectId })
+      .andWhere('item.type = :type', { type: QualityType.SNAG });
+    if (paging?.status && paging.status !== 'ALL') {
+      query.andWhere('item.status = :status', { status: paging.status });
+    }
+    const q = paging?.q?.trim().toLowerCase();
+    if (q) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where(
+            `LOWER(COALESCE(item.description, '') || ' ' || COALESCE(item.locationName, '') || ' ' || COALESCE(item.trade, '') || ' ' || COALESCE(item.priority::text, '') || ' ' || COALESCE(item.status::text, '')) LIKE :q`,
+            { q: `%${q}%` },
+          );
+        }),
+      );
+    }
+    query.orderBy('item.createdAt', 'DESC');
+    const hasPaging =
+      Number.isFinite(Number(paging?.limit)) ||
+      Number.isFinite(Number(paging?.offset));
+    const limit = Math.min(100, Math.max(1, Number(paging?.limit) || 25));
+    const offset = Math.max(0, Number(paging?.offset) || 0);
+    const [items, total] = hasPaging
+      ? await query.skip(offset).take(limit).getManyAndCount()
+      : [await query.getMany(), undefined];
     // Map for frontend compatibility
-    return items.map((item) => ({
+    const data = items.map((item) => ({
       ...item,
       defectDescription: item.description,
     }));
+    return hasPaging
+      ? {
+          data,
+          total: total || 0,
+          limit,
+          offset,
+          hasMore: offset + data.length < (total || 0),
+        }
+      : data;
   }
 
   async createSnag(data: any, file?: any) {

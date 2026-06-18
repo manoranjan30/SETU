@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 // ─────────────────────────────────────── Cubit ──────────────────────────────
 // The approvals feature is self-contained in this file — it owns its own
@@ -298,12 +299,11 @@ class _ProgressApprovalsView extends StatelessWidget {
               ),
               // ── Pending approval list ────────────────────────────────────
               Expanded(
-                child: ListView.separated(
+                child: PaginatedListView<Map<String, dynamic>>(
+                  items: items,
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final item = items[i];
+                  separatorBuilder: (_) => const Divider(height: 1),
+                  itemBuilder: (_, item, __) {
                     final id = item['id'] as int;
                     final isSelected = selected.contains(id);
                     return _PendingApprovalTile(

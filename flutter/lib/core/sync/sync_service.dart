@@ -495,6 +495,7 @@ class SyncService {
       'ehs_site_obs_create',
       'ehs_site_obs_rectify',
       'ehs_site_obs_close',
+      'clearance_attachment_upload',
     ];
     final queueItems = await (_database.select(_database.syncQueue)
           ..where((t) => t.entityType.isNotIn(qualityEntityTypes))
@@ -675,7 +676,8 @@ class SyncService {
               t.entityType.equals('quality_site_obs_close') |
               t.entityType.equals('ehs_site_obs_create') |
               t.entityType.equals('ehs_site_obs_rectify') |
-              t.entityType.equals('ehs_site_obs_close'))
+              t.entityType.equals('ehs_site_obs_close') |
+              t.entityType.equals('clearance_attachment_upload'))
           ..orderBy([
             (t) => OrderingTerm.desc(t.priority),  // Highest priority first
             (t) => OrderingTerm.asc(t.createdAt),  // FIFO within same priority
@@ -888,6 +890,24 @@ class SyncService {
               projectId: payload['projectId'] as int,
               payload: payload,
             );
+            break;
+
+          case 'clearance_attachment_upload':
+            // Pre-pour clearance attachments were saved to a local file when
+            // the immediate upload failed (offline) — upload it now. No bloc
+            // callback is needed: the clearance card re-fetches from the
+            // server on its next load, which will include this attachment.
+            final localPath = payload['localPath'] as String;
+            await _apiClient.uploadClearanceAttachment(
+              inspectionId: payload['inspectionId'] as int,
+              lineKey: payload['lineKey'] as String,
+              filePath: localPath,
+              fileName: payload['fileName'] as String,
+              mimeType: payload['mimeType'] as String,
+            );
+            try {
+              await File(localPath).delete();
+            } catch (_) {}
             break;
         }
 

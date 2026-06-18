@@ -5,6 +5,7 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/cube_register_bloc.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 class CubeRegisterPage extends StatelessWidget {
   final int projectId;
@@ -197,12 +198,12 @@ class _CubeRegisterViewState extends State<_CubeRegisterView> {
                           : RefreshIndicator(
                               onRefresh: () async =>
                                   context.read<CubeRegisterBloc>().add(LoadCubeRegister(widget.projectId)),
-                              child: ListView.builder(
+                              child: PaginatedListView<CubeTestRecord>(
+                                items: filtered,
                                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                                itemCount: filtered.length,
-                                itemBuilder: (context, i) => _CubeCard(
-                                  record: filtered[i],
-                                  onTap: () => _openDetail(context, filtered[i]),
+                                itemBuilder: (context, record, __) => _CubeCard(
+                                  record: record,
+                                  onTap: () => _openDetail(context, record),
                                 ),
                               ),
                             ),

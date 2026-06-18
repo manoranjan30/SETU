@@ -1,7 +1,15 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
+
+/// Photos captured offline are stored as `file://` paths until the sync
+/// queue uploads them — those must render via the local filesystem, not
+/// [CachedNetworkImage], which only understands http(s) URLs.
+bool _isLocalFile(String url) => url.startsWith('file://');
+
+String _filePath(String url) => url.replaceFirst('file://', '');
 
 /// Horizontal scrollable photo thumbnail strip with cached loading.
 /// Tapping a thumbnail opens a fullscreen swipe-able gallery.
@@ -31,34 +39,48 @@ class PhotoGalleryStrip extends StatelessWidget {
             tag: 'photo_${urls[i]}',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: urls[i],
-                width: thumbSize,
-                height: thumbSize,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(
-                  width: thumbSize,
-                  height: thumbSize,
-                  color: Colors.grey.shade200,
-                  child: const Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+              child: _isLocalFile(urls[i])
+                  ? Image.file(
+                      File(_filePath(urls[i])),
+                      width: thumbSize,
+                      height: thumbSize,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: thumbSize,
+                        height: thumbSize,
+                        color: Colors.grey.shade200,
+                        child: const Icon(Icons.broken_image_outlined,
+                            color: Colors.grey, size: 22),
+                      ),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: urls[i],
+                      width: thumbSize,
+                      height: thumbSize,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        width: thumbSize,
+                        height: thumbSize,
+                        color: Colors.grey.shade200,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        width: thumbSize,
+                        height: thumbSize,
+                        color: Colors.grey.shade200,
+                        child: const Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey,
+                          size: 22,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  width: thumbSize,
-                  height: thumbSize,
-                  color: Colors.grey.shade200,
-                  child: const Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.grey,
-                    size: 22,
-                  ),
-                ),
-              ),
             ),
           ),
         ),
@@ -129,7 +151,9 @@ class _FullscreenGalleryState extends State<_FullscreenGallery> {
         itemCount: widget.urls.length,
         onPageChanged: (i) => setState(() => _current = i),
         builder: (_, i) => PhotoViewGalleryPageOptions(
-          imageProvider: CachedNetworkImageProvider(widget.urls[i]),
+          imageProvider: _isLocalFile(widget.urls[i])
+              ? FileImage(File(_filePath(widget.urls[i]))) as ImageProvider
+              : CachedNetworkImageProvider(widget.urls[i]),
           minScale: PhotoViewComputedScale.contained,
           maxScale: PhotoViewComputedScale.covered * 3,
           heroAttributes: PhotoViewHeroAttributes(tag: 'photo_${widget.urls[i]}'),

@@ -667,8 +667,10 @@ class ApiEndpoints {
   /// GET/POST /ehs/:projectId/manhours
   static String ehsManhours(int projectId) => '/ehs/$projectId/manhours';
 
-  /// GET/POST /ehs/:projectId/training
-  static String ehsTraining(int projectId) => '/ehs/$projectId/training';
+  /// GET/POST /ehs/:projectId/trainings
+  /// NOTE: backend route is plural ("trainings"), unlike the other EHS
+  /// dashboard sub-resources — verified against EhsController routes.
+  static String ehsTraining(int projectId) => '/ehs/$projectId/trainings';
 
   /// GET/POST/PUT /ehs/:projectId/legal
   static String ehsLegal(int projectId) => '/ehs/$projectId/legal';
