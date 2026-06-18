@@ -131,11 +131,10 @@ const SystemSettings = () => {
       setTimeout(() => setError(null), 8000);
       return;
     }
-    if (!apkBuildNumber.trim() || Number(apkBuildNumber) <= 0) {
-      setError("Please enter the APK build number before uploading");
-      setTimeout(() => setError(null), 8000);
-      return;
-    }
+    // Build number / version name are no longer required from the admin —
+    // the server now extracts them directly from the uploaded APK's
+    // AndroidManifest.xml. These fields are kept as an optional manual
+    // override, used only if that extraction fails for some reason.
 
     const formData = new FormData();
     formData.append("file", apkFile);
@@ -259,14 +258,14 @@ const SystemSettings = () => {
                       step="1"
                       value={apkBuildNumber}
                       onChange={(event) => setApkBuildNumber(event.target.value)}
-                      placeholder="Build no."
+                      placeholder="Build no. (auto-detected)"
                       className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm text-text-secondary sm:w-32"
                     />
                     <input
                       type="text"
                       value={apkVersionName}
                       onChange={(event) => setApkVersionName(event.target.value)}
-                      placeholder="Version name"
+                      placeholder="Version name (auto-detected)"
                       className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm text-text-secondary sm:w-36"
                     />
                     <button
