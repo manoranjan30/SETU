@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 
 class UpdateCheckResult {
@@ -30,42 +29,32 @@ class UpdateCheckResult {
 /// stale relative to `pubspec.yaml`'s `version: X.Y.Z+build`.
 ///
 /// Backend contract (`GET /app/config?platform=android`, no auth required) —
-/// this matches the SETU backend's actual `AppConfigService.getConfig()`
-/// response (the full `app_config` row):
+/// matches `AppConfigService.getConfig()`'s response, which now aliases the
+/// APK's actual extracted version info onto `latestBuildNumber`:
 /// ```json
 /// {
 ///   "platform": "android",
 ///   "latestVersion": "1.0.2",
 ///   "minimumVersion": "1.0.0",
+///   "latestBuildNumber": 3,
+///   "minimumBuildNumber": null,
 ///   "forceUpdate": false,
 ///   "updateMessage": "Bug fixes and performance improvements",
-///   "updateUrl": "/uploads/mobile-app/android/1780428694958-app-release.apk",
-///   "apkFileName": "1780428694958-app-release.apk",
-///   "apkOriginalName": "app-release.apk",
-///   "apkFileSize": 86374912,
-///   "apkUploadedAt": "2026-06-19T10:15:00.000Z"
+///   "updateUrl": "/uploads/mobile-app/android/1780428694958-app-release.apk"
 /// }
 /// ```
 ///
-/// IMPORTANT: uploading a new APK through the admin panel (`POST
-/// /app/mobile-app/apk`) only updates `updateUrl`/`apkFileName`/
-/// `apkFileSize`/`apkUploadedAt` — it does NOT touch `latestVersion` or
-/// `minimumVersion` (confirmed by reading `AppConfigService.updateApk()`).
-/// Those are only changed by a separate `PUT /app/config` call. So relying
-/// on version-string comparison ALONE means a freshly-uploaded APK is
-/// invisible to this check unless someone also remembers to bump the
-/// version fields separately.
-///
-/// To close that gap without requiring a backend change, this service ALSO
-/// tracks `apkFileName` (which is unique per upload — it's prefixed with
-/// `Date.now()`) locally via [SharedPreferences]. If the backend's
-/// `apkFileName` differs from the last one this device has already shown a
-/// prompt for, that alone counts as "update available" — independent of
-/// whatever the version fields say. Once shown, that filename is recorded
-/// so the same upload doesn't keep re-prompting on every launch.
+/// `latestVersion`/`latestBuildNumber` are now populated automatically when
+/// an APK is uploaded through the admin panel — the backend parses
+/// `versionName`/`versionCode` straight out of the uploaded APK's own
+/// AndroidManifest.xml (the exact values Flutter's build tooling sets from
+/// `pubspec.yaml`'s `version: X.Y.Z+N`), so they're guaranteed to match
+/// what this device's own [PackageInfo] will read once it installs that
+/// build. No separate "remember to update the version field" step, and
+/// nothing for this service to track locally — straightforward apples-to-
+/// apples comparison.
 class AppUpdateService {
   final SetuApiClient _api;
-  static const _lastSeenApkKey = 'update_last_seen_apk_filename';
 
   AppUpdateService(this._api);
 
@@ -84,24 +73,13 @@ class AppUpdateService {
       final forceUpdate = config['forceUpdate'] as bool? ?? false;
       final message = config['updateMessage'] as String?;
       final apkUrl = config['updateUrl'] as String?;
-      final apkFileName = config['apkFileName'] as String?;
 
       final isForced = forceUpdate ||
           _isBehind(currentVersion, currentBuild, minimumVersion, minimumBuild);
-      final versionHasUpdate =
+      final hasUpdate =
           _isBehind(currentVersion, currentBuild, latestVersion, latestBuild);
 
-      // Catches a freshly-uploaded APK even when the admin didn't also bump
-      // latestVersion/minimumVersion — see class doc for why this is needed.
-      final apkChanged = await _hasNewApkUpload(apkFileName);
-
-      final hasUpdate = versionHasUpdate || apkChanged;
-
       if (!hasUpdate && !isForced) return UpdateCheckResult.noUpdate;
-
-      if (hasUpdate && apkFileName != null) {
-        await _rememberSeenApk(apkFileName);
-      }
 
       return UpdateCheckResult(
         hasUpdate: hasUpdate || isForced,
@@ -118,34 +96,11 @@ class AppUpdateService {
     }
   }
 
-  /// True when [apkFileName] is set and differs from the last filename this
-  /// device has already been prompted about. `null` on a fresh install (no
-  /// prior record) — that's NOT treated as "changed" since there's nothing
-  /// to compare against yet; the version-based check still covers that case.
-  Future<bool> _hasNewApkUpload(String? apkFileName) async {
-    if (apkFileName == null) return false;
-    final prefs = await SharedPreferences.getInstance();
-    final lastSeen = prefs.getString(_lastSeenApkKey);
-    if (lastSeen == null) {
-      // First check ever on this device — record the baseline rather than
-      // flagging it, so installing the app fresh from the current latest
-      // upload doesn't immediately prompt to "update" to itself.
-      await prefs.setString(_lastSeenApkKey, apkFileName);
-      return false;
-    }
-    return lastSeen != apkFileName;
-  }
-
-  Future<void> _rememberSeenApk(String apkFileName) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastSeenApkKey, apkFileName);
-  }
-
   /// True when the installed (version, build) is strictly behind the given
   /// (targetVersion, targetBuild). Version string wins first; when versions
   /// are equal, the build number is the tiebreaker — this is what lets the
   /// same semantic version with a newer build (e.g. a hotfix re-upload)
-  /// still trigger the prompt, per the "different build" requirement.
+  /// still trigger the prompt.
   bool _isBehind(String currentVersion, int currentBuild,
       String targetVersion, int? targetBuild) {
     try {
