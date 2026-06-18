@@ -4,235 +4,375 @@ import 'package:flutter/material.dart';
 // ============================================================
 // EHS SUMMARY (Overview tab)
 // ============================================================
+//
+// Mirrors the EXACT nested shape returned by the backend's
+// `GET /ehs/:projectId/summary` (see backend EhsService.getSummary) — the
+// backend does not return flat KPI fields, it returns per-domain stat
+// blocks (incidents, legal, machinery, vehicle, competency, inspections,
+// training) plus two cumulative manhour totals.
 
-class EhsSummary extends Equatable {
-  final int totalIncidents;
-  final int nearMissCount;
-  final int openObservations;
-  final int closedObservations;
-  final double trainingCompliancePercent;
-  final double legalCompliancePercent;
-  final int totalManhoursThisMonth;
-  final int totalWorkersOnSite;
+class EhsCountStats extends Equatable {
+  final int total;
+  final int fatal;
+  final int major;
+  final int minor;
+  final int firstAid;
+  final int nearMiss;
+  final int dangerous;
 
-  const EhsSummary({
-    this.totalIncidents = 0,
-    this.nearMissCount = 0,
-    this.openObservations = 0,
-    this.closedObservations = 0,
-    this.trainingCompliancePercent = 0,
-    this.legalCompliancePercent = 0,
-    this.totalManhoursThisMonth = 0,
-    this.totalWorkersOnSite = 0,
+  const EhsCountStats({
+    this.total = 0,
+    this.fatal = 0,
+    this.major = 0,
+    this.minor = 0,
+    this.firstAid = 0,
+    this.nearMiss = 0,
+    this.dangerous = 0,
   });
 
-  factory EhsSummary.fromJson(Map<String, dynamic> j) {
-    double d(dynamic v) => v == null ? 0.0 : (v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0);
+  factory EhsCountStats.fromJson(Map<String, dynamic>? j) {
     int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
-    return EhsSummary(
-      totalIncidents: i(j['totalIncidents'] ?? j['incidentCount']),
-      nearMissCount: i(j['nearMissCount'] ?? j['nearMiss']),
-      openObservations: i(j['openObservations'] ?? j['openObs']),
-      closedObservations: i(j['closedObservations'] ?? j['closedObs']),
-      trainingCompliancePercent: d(j['trainingCompliancePercent'] ?? j['trainingCompliance']),
-      legalCompliancePercent: d(j['legalCompliancePercent'] ?? j['legalCompliance']),
-      totalManhoursThisMonth: i(j['totalManhoursThisMonth'] ?? j['manhours']),
-      totalWorkersOnSite: i(j['totalWorkersOnSite'] ?? j['workers']),
+    if (j == null) return const EhsCountStats();
+    return EhsCountStats(
+      total: i(j['total']),
+      fatal: i(j['fatal']),
+      major: i(j['major']),
+      minor: i(j['minor']),
+      firstAid: i(j['firstAid']),
+      nearMiss: i(j['nearMiss']),
+      dangerous: i(j['dangerous']),
     );
   }
 
   @override
-  List<Object?> get props => [totalIncidents, nearMissCount, openObservations, trainingCompliancePercent];
+  List<Object?> get props => [total, fatal, major, minor, firstAid, nearMiss, dangerous];
+}
+
+/// Used for legal / machinery / vehicle / competency compliance blocks —
+/// all four share the same {total, expired, expiringSoon, valid} shape.
+class EhsComplianceStats extends Equatable {
+  final int total;
+  final int expired;
+  final int expiringSoon;
+  final int valid;
+
+  const EhsComplianceStats({
+    this.total = 0,
+    this.expired = 0,
+    this.expiringSoon = 0,
+    this.valid = 0,
+  });
+
+  factory EhsComplianceStats.fromJson(Map<String, dynamic>? j) {
+    int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    if (j == null) return const EhsComplianceStats();
+    return EhsComplianceStats(
+      total: i(j['total']),
+      expired: i(j['expired']),
+      expiringSoon: i(j['expiringSoon']),
+      valid: i(j['valid']),
+    );
+  }
+
+  @override
+  List<Object?> get props => [total, expired, expiringSoon, valid];
+}
+
+class EhsInspectionStats extends Equatable {
+  final int total;
+  final int completed;
+  final int pending;
+  final int overdue;
+
+  const EhsInspectionStats({
+    this.total = 0,
+    this.completed = 0,
+    this.pending = 0,
+    this.overdue = 0,
+  });
+
+  factory EhsInspectionStats.fromJson(Map<String, dynamic>? j) {
+    int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    if (j == null) return const EhsInspectionStats();
+    return EhsInspectionStats(
+      total: i(j['total']),
+      completed: i(j['completed']),
+      pending: i(j['pending']),
+      overdue: i(j['overdue']),
+    );
+  }
+
+  @override
+  List<Object?> get props => [total, completed, pending, overdue];
+}
+
+class EhsTrainingStats extends Equatable {
+  final int total;
+  final int participants;
+
+  const EhsTrainingStats({this.total = 0, this.participants = 0});
+
+  factory EhsTrainingStats.fromJson(Map<String, dynamic>? j) {
+    int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    if (j == null) return const EhsTrainingStats();
+    return EhsTrainingStats(total: i(j['total']), participants: i(j['participants']));
+  }
+
+  @override
+  List<Object?> get props => [total, participants];
+}
+
+class EhsSummary extends Equatable {
+  final double cumulativeSafeManhours;
+  final double cumulativeManpower;
+  final EhsCountStats incidents;
+  final EhsComplianceStats legal;
+  final EhsComplianceStats machinery;
+  final EhsComplianceStats vehicle;
+  final EhsComplianceStats competency;
+  final EhsInspectionStats inspections;
+  final EhsTrainingStats training;
+
+  const EhsSummary({
+    this.cumulativeSafeManhours = 0,
+    this.cumulativeManpower = 0,
+    this.incidents = const EhsCountStats(),
+    this.legal = const EhsComplianceStats(),
+    this.machinery = const EhsComplianceStats(),
+    this.vehicle = const EhsComplianceStats(),
+    this.competency = const EhsComplianceStats(),
+    this.inspections = const EhsInspectionStats(),
+    this.training = const EhsTrainingStats(),
+  });
+
+  factory EhsSummary.fromJson(Map<String, dynamic> j) {
+    double d(dynamic v) => v == null ? 0.0 : (v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0);
+    return EhsSummary(
+      cumulativeSafeManhours: d(j['cumulativeSafeManhours']),
+      cumulativeManpower: d(j['cumulativeManpower']),
+      incidents: EhsCountStats.fromJson(j['incidents'] as Map<String, dynamic>?),
+      legal: EhsComplianceStats.fromJson(j['legal'] as Map<String, dynamic>?),
+      machinery: EhsComplianceStats.fromJson(j['machinery'] as Map<String, dynamic>?),
+      vehicle: EhsComplianceStats.fromJson(j['vehicle'] as Map<String, dynamic>?),
+      competency: EhsComplianceStats.fromJson(j['competency'] as Map<String, dynamic>?),
+      inspections: EhsInspectionStats.fromJson(j['inspections'] as Map<String, dynamic>?),
+      training: EhsTrainingStats.fromJson(j['training'] as Map<String, dynamic>?),
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+        cumulativeSafeManhours,
+        cumulativeManpower,
+        incidents,
+        legal,
+        machinery,
+        vehicle,
+        competency,
+        inspections,
+        training,
+      ];
 }
 
 // ============================================================
 // EHS PERFORMANCE (Performance tab)
 // ============================================================
+//
+// `GET /ehs/:projectId/performance` returns an ARRAY of monthly records
+// (one EhsPerformance row per month), each holding just an EHS rating and
+// a housekeeping rating out of (typically) 5 or 10 — there is no
+// TRIFR/LTI/near-miss-rate field on the backend.
 
-class EhsPerformanceData extends Equatable {
-  final double trifr;         // Total Recordable Incident Frequency Rate
-  final double nearMissRate;
-  final int ltiCount;         // Lost Time Injuries
-  final int firstAidCount;
-  final List<EhsIncidentPoint> incidentTrend; // monthly trend
+class EhsPerformanceRecord extends Equatable {
+  final int id;
+  final String month; // 'YYYY-MM-DD' (first of month)
+  final double ehsRating;
+  final double housekeepingRating;
 
-  const EhsPerformanceData({
-    this.trifr = 0,
-    this.nearMissRate = 0,
-    this.ltiCount = 0,
-    this.firstAidCount = 0,
-    this.incidentTrend = const [],
+  const EhsPerformanceRecord({
+    required this.id,
+    required this.month,
+    this.ehsRating = 0,
+    this.housekeepingRating = 0,
   });
 
-  factory EhsPerformanceData.fromJson(Map<String, dynamic> j) {
+  factory EhsPerformanceRecord.fromJson(Map<String, dynamic> j) {
     double d(dynamic v) => v == null ? 0.0 : (v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0);
     int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
-    return EhsPerformanceData(
-      trifr: d(j['trifr'] ?? j['TRIFR']),
-      nearMissRate: d(j['nearMissRate']),
-      ltiCount: i(j['ltiCount'] ?? j['lti']),
-      firstAidCount: i(j['firstAidCount'] ?? j['firstAid']),
-      incidentTrend: (j['incidentTrend'] as List<dynamic>? ?? [])
-          .map((e) => EhsIncidentPoint.fromJson(e as Map<String, dynamic>))
-          .toList(),
+    return EhsPerformanceRecord(
+      id: i(j['id']),
+      month: j['month'] as String? ?? '',
+      ehsRating: d(j['ehsRating']),
+      housekeepingRating: d(j['housekeepingRating']),
     );
   }
 
   @override
-  List<Object?> get props => [trifr, ltiCount, incidentTrend];
-}
-
-class EhsIncidentPoint extends Equatable {
-  final String monthLabel;
-  final int count;
-
-  const EhsIncidentPoint({required this.monthLabel, required this.count});
-
-  factory EhsIncidentPoint.fromJson(Map<String, dynamic> j) => EhsIncidentPoint(
-    monthLabel: j['month'] as String? ?? j['label'] as String? ?? '',
-    count: j['count'] as int? ?? 0,
-  );
-
-  @override
-  List<Object?> get props => [monthLabel, count];
+  List<Object?> get props => [id, month, ehsRating, housekeepingRating];
 }
 
 // ============================================================
 // EHS MANHOURS
 // ============================================================
+//
+// Field names mirror the `EhsManhours` entity exactly.
 
 class EhsManhoursRecord extends Equatable {
   final int id;
-  final String month;        // e.g. "2026-05"
-  final int totalManhours;
+  final String month; // e.g. "2026-05-01"
+  final int staffMale;
+  final int staffFemale;
+  final int workersMale;
+  final int workersFemale;
   final int totalWorkers;
-  final int tbmCount;        // Toolbox Meeting count
+  final int totalManpower;
+  final int workingDays;
+  final double avgWorkHours;
+  final double totalManhours;
+  final double ltiDeductions;
+  final double safeManhours;
   final String? remarks;
-  final DateTime? recordedAt;
 
   const EhsManhoursRecord({
     required this.id,
     required this.month,
-    required this.totalManhours,
+    this.staffMale = 0,
+    this.staffFemale = 0,
+    this.workersMale = 0,
+    this.workersFemale = 0,
     this.totalWorkers = 0,
-    this.tbmCount = 0,
+    this.totalManpower = 0,
+    this.workingDays = 0,
+    this.avgWorkHours = 0,
+    this.totalManhours = 0,
+    this.ltiDeductions = 0,
+    this.safeManhours = 0,
     this.remarks,
-    this.recordedAt,
   });
 
   factory EhsManhoursRecord.fromJson(Map<String, dynamic> j) {
     int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    double d(dynamic v) => v == null ? 0.0 : (v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0);
     return EhsManhoursRecord(
-      id: j['id'] as int? ?? 0,
+      id: i(j['id']),
       month: j['month'] as String? ?? '',
-      totalManhours: i(j['totalManhours'] ?? j['manhours']),
-      totalWorkers: i(j['totalWorkers'] ?? j['workers']),
-      tbmCount: i(j['tbmCount'] ?? j['tbm']),
+      staffMale: i(j['staffMale']),
+      staffFemale: i(j['staffFemale']),
+      workersMale: i(j['workersMale']),
+      workersFemale: i(j['workersFemale']),
+      totalWorkers: i(j['totalWorkers']),
+      totalManpower: i(j['totalManpower']),
+      workingDays: i(j['workingDays']),
+      avgWorkHours: d(j['avgWorkHours']),
+      totalManhours: d(j['totalManhours']),
+      ltiDeductions: d(j['ltiDeductions']),
+      safeManhours: d(j['safeManhours']),
       remarks: j['remarks'] as String?,
-      recordedAt: j['recordedAt'] == null ? null : DateTime.tryParse(j['recordedAt'].toString()),
     );
   }
 
   @override
-  List<Object?> get props => [id, month, totalManhours];
+  List<Object?> get props => [id, month, totalManhours, totalWorkers];
 }
 
 // ============================================================
 // EHS TRAINING
 // ============================================================
+//
+// Field names mirror the `EhsTraining` entity exactly (note: `trainer`,
+// `attendeeCount`, `date` — not `trainerName`/`participantCount`/
+// `trainingDate`, and there is no `expiryDate`/expiry concept here).
 
 class EhsTrainingRecord extends Equatable {
   final int id;
-  final String trainingType;   // INDUCTION | SKILL | REFRESHER | CERTIFICATION
+  final String trainingType; // INDUCTION | TBT | SPECIALIZED | FIRE_DRILL | FIRST_AID
+  final String status;       // defaults to 'Completed'
+  final String date;
   final String topic;
-  final String? trainerName;
-  final int participantCount;
-  final String? trainingDate;
-  final String? expiryDate;
-  final String status;         // COMPLETED | SCHEDULED | EXPIRED
+  final String trainer;
+  final int attendeeCount;
+  final List<String> attendeeNames;
+  final int duration; // minutes
   final String? remarks;
 
   const EhsTrainingRecord({
     required this.id,
     required this.trainingType,
+    this.status = 'Completed',
+    required this.date,
     required this.topic,
-    this.trainerName,
-    this.participantCount = 0,
-    this.trainingDate,
-    this.expiryDate,
-    this.status = 'COMPLETED',
+    required this.trainer,
+    this.attendeeCount = 0,
+    this.attendeeNames = const [],
+    this.duration = 0,
     this.remarks,
   });
 
   factory EhsTrainingRecord.fromJson(Map<String, dynamic> j) {
     int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
     return EhsTrainingRecord(
-      id: j['id'] as int? ?? 0,
-      trainingType: j['trainingType'] as String? ?? j['type'] as String? ?? 'INDUCTION',
-      topic: j['topic'] as String? ?? j['title'] as String? ?? '',
-      trainerName: j['trainerName'] as String?,
-      participantCount: i(j['participantCount'] ?? j['participants']),
-      trainingDate: j['trainingDate'] as String?,
-      expiryDate: j['expiryDate'] as String?,
-      status: j['status'] as String? ?? 'COMPLETED',
+      id: i(j['id']),
+      trainingType: j['trainingType'] as String? ?? 'INDUCTION',
+      status: j['status'] as String? ?? 'Completed',
+      date: j['date'] as String? ?? '',
+      topic: j['topic'] as String? ?? '',
+      trainer: j['trainer'] as String? ?? '',
+      attendeeCount: i(j['attendeeCount']),
+      attendeeNames: (j['attendeeNames'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
+      duration: i(j['duration']),
       remarks: j['remarks'] as String?,
     );
   }
 
-  bool get isExpired => expiryDate != null &&
-      DateTime.tryParse(expiryDate!)?.isBefore(DateTime.now()) == true;
-
-  Color get statusColor {
-    if (isExpired || status == 'EXPIRED') return const Color(0xFFDC2626);
-    if (status == 'SCHEDULED') return const Color(0xFF1D4ED8);
-    return const Color(0xFF15803D);
-  }
+  Color get statusColor => switch (status.toUpperCase()) {
+        'EXPIRED' => const Color(0xFFDC2626),
+        'SCHEDULED' => const Color(0xFF1D4ED8),
+        _ => const Color(0xFF15803D),
+      };
 
   @override
-  List<Object?> get props => [id, trainingType, topic, status];
+  List<Object?> get props => [id, trainingType, topic, status, date];
 }
 
 // ============================================================
 // EHS LEGAL COMPLIANCE
 // ============================================================
+//
+// Field names mirror the `EhsLegalRegister` entity exactly — the backend
+// has no `licenseType`/`licenseNumber` columns, it tracks a freeform
+// `requirement` and a `responsibility` (the party accountable for it).
 
 class EhsLegalItem extends Equatable {
   final int id;
-  final String licenseType;    // LABOUR_LICENSE | FACTORY_LICENSE | FIRE_NOC | POLLUTION_NOC | etc.
-  final String description;
-  final String? licenseNumber;
-  final String? issuingAuthority;
-  final String? issueDate;
+  final String requirement;
+  final String responsibility;
+  final String status; // Valid | Expired | Expiring Soon
+  final String? certifiedDate;
   final String? expiryDate;
-  final String status;         // VALID | EXPIRING_SOON | EXPIRED | PENDING_RENEWAL
-  final String? documentUrl;
   final String? remarks;
 
   const EhsLegalItem({
     required this.id,
-    required this.licenseType,
-    required this.description,
-    this.licenseNumber,
-    this.issuingAuthority,
-    this.issueDate,
+    required this.requirement,
+    required this.responsibility,
+    this.status = 'Valid',
+    this.certifiedDate,
     this.expiryDate,
-    this.status = 'VALID',
-    this.documentUrl,
     this.remarks,
   });
 
-  factory EhsLegalItem.fromJson(Map<String, dynamic> j) => EhsLegalItem(
-    id: j['id'] as int? ?? 0,
-    licenseType: j['licenseType'] as String? ?? j['type'] as String? ?? '',
-    description: j['description'] as String? ?? j['title'] as String? ?? '',
-    licenseNumber: j['licenseNumber'] as String?,
-    issuingAuthority: j['issuingAuthority'] as String?,
-    issueDate: j['issueDate'] as String?,
-    expiryDate: j['expiryDate'] as String?,
-    status: j['status'] as String? ?? 'VALID',
-    documentUrl: j['documentUrl'] as String?,
-    remarks: j['remarks'] as String?,
-  );
+  factory EhsLegalItem.fromJson(Map<String, dynamic> j) {
+    int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    return EhsLegalItem(
+      id: i(j['id']),
+      requirement: j['requirement'] as String? ?? '',
+      responsibility: j['responsibility'] as String? ?? '',
+      status: j['status'] as String? ?? 'Valid',
+      certifiedDate: j['certifiedDate'] as String?,
+      expiryDate: j['expiryDate'] as String?,
+      remarks: j['remarks'] as String?,
+    );
+  }
 
   bool get isExpired {
     if (expiryDate == null) return false;
@@ -248,116 +388,114 @@ class EhsLegalItem extends Equatable {
   }
 
   Color get statusColor => switch (status.toUpperCase()) {
-    'EXPIRED' => const Color(0xFFDC2626),
-    'EXPIRING_SOON' => const Color(0xFFF59E0B),
-    'PENDING_RENEWAL' => const Color(0xFF1D4ED8),
-    _ => const Color(0xFF15803D),
-  };
+        'EXPIRED' => const Color(0xFFDC2626),
+        'EXPIRING SOON' => const Color(0xFFF59E0B),
+        _ => const Color(0xFF15803D),
+      };
 
   @override
-  List<Object?> get props => [id, licenseType, status, expiryDate];
+  List<Object?> get props => [id, requirement, status, expiryDate];
 }
 
 // ============================================================
 // EHS MACHINERY
 // ============================================================
+//
+// Field names mirror the `EhsMachinery` entity exactly.
 
 class EhsMachineryRecord extends Equatable {
   final int id;
-  final String machineryType;
-  final String? machineName;
-  final String? equipmentId;
-  final String? operator_;
-  final String inspectionDate;
-  final String? nextInspectionDate;
-  final String status;         // FIT | UNFIT | UNDER_REPAIR
-  final String? fitnessCertNo;
+  final String equipmentName;
+  final String idNumber;
+  final String location;
+  final String? certifiedDate;
+  final String? expiryDate;
+  final String status; // defaults to 'Valid'
+  final bool isActive;
   final String? remarks;
 
   const EhsMachineryRecord({
     required this.id,
-    required this.machineryType,
-    this.machineName,
-    this.equipmentId,
-    this.operator_,
-    required this.inspectionDate,
-    this.nextInspectionDate,
-    this.status = 'FIT',
-    this.fitnessCertNo,
+    required this.equipmentName,
+    required this.idNumber,
+    required this.location,
+    this.certifiedDate,
+    this.expiryDate,
+    this.status = 'Valid',
+    this.isActive = true,
     this.remarks,
   });
 
-  factory EhsMachineryRecord.fromJson(Map<String, dynamic> j) => EhsMachineryRecord(
-    id: j['id'] as int? ?? 0,
-    machineryType: j['machineryType'] as String? ?? j['type'] as String? ?? '',
-    machineName: j['machineName'] as String? ?? j['name'] as String?,
-    equipmentId: j['equipmentId'] as String?,
-    operator_: j['operator'] as String?,
-    inspectionDate: j['inspectionDate'] as String? ?? '',
-    nextInspectionDate: j['nextInspectionDate'] as String?,
-    status: j['status'] as String? ?? 'FIT',
-    fitnessCertNo: j['fitnessCertNo'] as String?,
-    remarks: j['remarks'] as String?,
-  );
+  factory EhsMachineryRecord.fromJson(Map<String, dynamic> j) {
+    int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    return EhsMachineryRecord(
+      id: i(j['id']),
+      equipmentName: j['equipmentName'] as String? ?? '',
+      idNumber: j['idNumber'] as String? ?? '',
+      location: j['location'] as String? ?? '',
+      certifiedDate: j['certifiedDate'] as String?,
+      expiryDate: j['expiryDate'] as String?,
+      status: j['status'] as String? ?? 'Valid',
+      isActive: j['isActive'] as bool? ?? true,
+      remarks: j['remarks'] as String?,
+    );
+  }
 
   Color get statusColor => switch (status.toUpperCase()) {
-    'UNFIT' => const Color(0xFFDC2626),
-    'UNDER_REPAIR' => const Color(0xFFF59E0B),
-    _ => const Color(0xFF15803D),
-  };
+        'EXPIRED' => const Color(0xFFDC2626),
+        'EXPIRING SOON' => const Color(0xFFF59E0B),
+        _ => const Color(0xFF15803D),
+      };
 
   @override
-  List<Object?> get props => [id, machineryType, status, inspectionDate];
+  List<Object?> get props => [id, equipmentName, status, expiryDate];
 }
 
 // ============================================================
 // EHS VEHICLES
 // ============================================================
+//
+// Field names mirror the `EhsVehicle` entity exactly — there is no
+// driver-related column on the backend.
 
 class EhsVehicleRecord extends Equatable {
   final int id;
+  final String vehicleNumber;
   final String vehicleType;
-  final String? vehicleNumber;
-  final String? driverName;
-  final String? driverLicense;
-  final String? pucExpiryDate;
-  final String? insuranceExpiryDate;
-  final String? fitnessExpiryDate;
-  final String status;         // ACTIVE | INACTIVE | UNDER_MAINTENANCE
+  final String? fitnessCertDate;
+  final String? insuranceDate;
+  final String? pollutionDate;
   final String? remarks;
-  final DateTime? recordedAt;
+  final bool isActive;
 
   const EhsVehicleRecord({
     required this.id,
+    required this.vehicleNumber,
     required this.vehicleType,
-    this.vehicleNumber,
-    this.driverName,
-    this.driverLicense,
-    this.pucExpiryDate,
-    this.insuranceExpiryDate,
-    this.fitnessExpiryDate,
-    this.status = 'ACTIVE',
+    this.fitnessCertDate,
+    this.insuranceDate,
+    this.pollutionDate,
     this.remarks,
-    this.recordedAt,
+    this.isActive = true,
   });
 
-  factory EhsVehicleRecord.fromJson(Map<String, dynamic> j) => EhsVehicleRecord(
-    id: j['id'] as int? ?? 0,
-    vehicleType: j['vehicleType'] as String? ?? j['type'] as String? ?? '',
-    vehicleNumber: j['vehicleNumber'] as String? ?? j['number'] as String?,
-    driverName: j['driverName'] as String?,
-    driverLicense: j['driverLicense'] as String?,
-    pucExpiryDate: j['pucExpiryDate'] as String?,
-    insuranceExpiryDate: j['insuranceExpiryDate'] as String?,
-    fitnessExpiryDate: j['fitnessExpiryDate'] as String?,
-    status: j['status'] as String? ?? 'ACTIVE',
-    remarks: j['remarks'] as String?,
-    recordedAt: j['recordedAt'] == null ? null : DateTime.tryParse(j['recordedAt'].toString()),
-  );
+  factory EhsVehicleRecord.fromJson(Map<String, dynamic> j) {
+    int i(dynamic v) => v == null ? 0 : (v is int ? v : int.tryParse(v.toString()) ?? 0);
+    return EhsVehicleRecord(
+      id: i(j['id']),
+      vehicleNumber: j['vehicleNumber'] as String? ?? '',
+      vehicleType: j['vehicleType'] as String? ?? '',
+      fitnessCertDate: j['fitnessCertDate'] as String?,
+      insuranceDate: j['insuranceDate'] as String?,
+      pollutionDate: j['pollutionDate'] as String?,
+      remarks: j['remarks'] as String?,
+      isActive: j['isActive'] as bool? ?? true,
+    );
+  }
 
   bool get hasExpiringDocs {
     final now = DateTime.now();
-    for (final dateStr in [pucExpiryDate, insuranceExpiryDate, fitnessExpiryDate]) {
+    for (final dateStr in [fitnessCertDate, insuranceDate, pollutionDate]) {
       if (dateStr == null) continue;
       final dt = DateTime.tryParse(dateStr);
       if (dt != null && dt.difference(now).inDays <= 30) return true;
@@ -365,12 +503,8 @@ class EhsVehicleRecord extends Equatable {
     return false;
   }
 
-  Color get statusColor => switch (status.toUpperCase()) {
-    'INACTIVE' => const Color(0xFF6B7280),
-    'UNDER_MAINTENANCE' => const Color(0xFFF59E0B),
-    _ => const Color(0xFF15803D),
-  };
+  Color get statusColor => isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280);
 
   @override
-  List<Object?> get props => [id, vehicleType, vehicleNumber, status];
+  List<Object?> get props => [id, vehicleNumber, vehicleType, isActive];
 }

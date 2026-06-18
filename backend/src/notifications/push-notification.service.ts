@@ -9,6 +9,7 @@ import {
   AssignmentStatus,
 } from '../projects/entities/user-project-assignment.entity';
 import { NotificationLog } from './notification-log.entity';
+import { TempUser } from '../temp-user/entities/temp-user.entity';
 
 @Injectable()
 export class PushNotificationService implements OnModuleInit {
@@ -22,6 +23,8 @@ export class PushNotificationService implements OnModuleInit {
     private readonly usersRepo: Repository<User>,
     @InjectRepository(UserProjectAssignment)
     private readonly assignmentRepo: Repository<UserProjectAssignment>,
+    @InjectRepository(TempUser)
+    private readonly tempUserRepo: Repository<TempUser>,
     @InjectRepository(NotificationLog)
     private readonly logRepo: Repository<NotificationLog>,
   ) {}
@@ -88,6 +91,77 @@ export class PushNotificationService implements OnModuleInit {
       });
     } catch (err) {
       this.handleSendFailure(err, 'sendToUsers');
+    }
+  }
+
+  /**
+   * Project-scoped direct send. Use this instead of sendToUsers() for project
+   * documents when recipient IDs were resolved elsewhere.
+   */
+  async sendToProjectUsers(
+    projectId: number,
+    userIds: number[],
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<void> {
+    if (!this.isPushAvailable() || userIds.length === 0) return;
+
+    try {
+      const requestedUserIds = Array.from(
+        new Set(
+          userIds
+            .map((userId) => Number(userId))
+            .filter((userId) => Number.isFinite(userId) && userId > 0),
+        ),
+      );
+      if (requestedUserIds.length === 0) return;
+
+      const assignments = await this.assignmentRepo.find({
+        where: {
+          project: { id: projectId },
+          status: AssignmentStatus.ACTIVE,
+          user: { id: In(requestedUserIds), isActive: true },
+        },
+        relations: ['user'],
+      });
+
+      const usersById = new Map<number, User>(
+        assignments
+          .map((assignment) => assignment.user)
+          .filter((user): user is User => Boolean(user))
+          .map((user) => [user.id, user] as [number, User]),
+      );
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tempUsers = await this.tempUserRepo.find({
+        where: {
+          projectId,
+          status: 'ACTIVE',
+          user: { id: In(requestedUserIds), isActive: true },
+        },
+        relations: ['user'],
+      });
+      for (const tempUser of tempUsers) {
+        const expiry = new Date(tempUser.expiryDate);
+        expiry.setHours(0, 0, 0, 0);
+        if (expiry < today || !tempUser.user) continue;
+        usersById.set(tempUser.user.id, tempUser.user);
+      }
+
+      const tokens = Array.from(usersById.values())
+        .map((u) => u.fcmToken)
+        .filter((t): t is string => !!t);
+      if (tokens.length === 0) return;
+
+      await this._sendWithLog(tokens, title, body, data, {
+        type: data?.type ?? 'PROJECT_DIRECT',
+        projectId,
+        recipientCount: tokens.length,
+      });
+    } catch (err) {
+      this.handleSendFailure(err, 'sendToProjectUsers');
     }
   }
 

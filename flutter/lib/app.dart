@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/core/navigation/deep_link_service.dart';
@@ -155,17 +158,9 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
               icon: const Icon(Icons.download_outlined, size: 18),
               label: const Text('Update Now'),
               onPressed: () {
-                // Show the URL in a snackbar — user can copy and open in browser,
-                // or admin can configure the updateUrl to an auto-download link.
                 Navigator.of(ctx).pop();
-                if (result.updateUrl != null) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(
-                      content: Text('Download: ${result.updateUrl}'),
-                      duration: const Duration(seconds: 10),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
+                if (result.apkUrl != null) {
+                  _downloadAndInstallUpdate(result.apkUrl!, result.latestVersionLabel);
                 }
               },
             ),
@@ -173,6 +168,79 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
         ),
       );
     });
+  }
+
+  /// Downloads the APK from [apkUrl] to a temp file with a live progress
+  /// dialog, then hands it to the OS package installer via [OpenFile.open].
+  /// Falls back to showing the raw URL in a SnackBar if either step fails
+  /// (e.g. server unreachable, or "install unknown apps" not yet granted —
+  /// the system itself prompts for that permission when the installer opens).
+  Future<void> _downloadAndInstallUpdate(String apkUrl, String? versionLabel) async {
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    final progress = ValueNotifier<double?>(0);
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => ValueListenableBuilder<double?>(
+        valueListenable: progress,
+        builder: (_, value, __) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Downloading${versionLabel != null ? ' v$versionLabel' : ''}…'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: value),
+              const SizedBox(height: 12),
+              Text(value != null ? '${(value * 100).toStringAsFixed(0)}%' : 'Starting…'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final dir = await getTemporaryDirectory();
+      final savePath = p.join(dir.path,
+          'setu_update_${versionLabel ?? DateTime.now().millisecondsSinceEpoch}.apk');
+
+      await sl<SetuApiClient>().downloadFile(
+        apkUrl,
+        savePath,
+        onProgress: (received, total) {
+          if (total > 0) progress.value = received / total;
+        },
+      );
+
+      if (_navigatorKey.currentContext != null) {
+        Navigator.of(_navigatorKey.currentContext!).pop(); // close progress dialog
+      }
+
+      final result = await OpenFile.open(savePath);
+      if (result.type != ResultType.done && _navigatorKey.currentContext != null) {
+        _showUpdateFallback(apkUrl, 'Could not launch installer: ${result.message}');
+      }
+    } catch (e) {
+      if (_navigatorKey.currentContext != null) {
+        Navigator.of(_navigatorKey.currentContext!).pop(); // close progress dialog
+      }
+      _showUpdateFallback(apkUrl, 'Download failed: $e');
+    }
+  }
+
+  /// Shows the raw APK URL in a long-lived SnackBar so the user can open it
+  /// in a browser manually when the in-app download/install path fails.
+  void _showUpdateFallback(String apkUrl, String reason) {
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        content: Text('$reason\nDownload manually: $apkUrl'),
+        duration: const Duration(seconds: 12),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   /// Handles a notification tap from any of the three FCM delivery scenarios

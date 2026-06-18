@@ -22,10 +22,15 @@ import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entit
 
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuthModule } from '../auth/auth.module';
+import { EhsObservationExportCron } from './ehs-observation-export.cron';
+import { CommonModule } from '../common/common.module';
 
 @Module({
   imports: [
     NotificationsModule,
+    AuthModule,
+    CommonModule,
     TypeOrmModule.forFeature([
       EhsObservation,
       EhsIncident,
@@ -46,7 +51,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AuditModule,
   ],
   controllers: [EhsController, EhsObservationController],
-  providers: [EhsService, EhsObservationService],
+  providers: [EhsService, EhsObservationService, EhsObservationExportCron],
   exports: [EhsService],
 })
 export class EhsModule {}

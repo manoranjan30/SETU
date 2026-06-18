@@ -96,7 +96,7 @@ class EhsDashboardLoading extends EhsDashboardState {
 class EhsDashboardLoaded extends EhsDashboardState {
   final int projectId;
   final EhsSummary? summary;
-  final EhsPerformanceData? performance;
+  final List<EhsPerformanceRecord> performance;
   final List<EhsManhoursRecord> manhours;
   final List<EhsTrainingRecord> training;
   final List<EhsLegalItem> legal;
@@ -106,7 +106,7 @@ class EhsDashboardLoaded extends EhsDashboardState {
   const EhsDashboardLoaded({
     required this.projectId,
     this.summary,
-    this.performance,
+    this.performance = const [],
     this.manhours = const [],
     this.training = const [],
     this.legal = const [],
@@ -116,7 +116,7 @@ class EhsDashboardLoaded extends EhsDashboardState {
 
   EhsDashboardLoaded copyWith({
     EhsSummary? summary,
-    EhsPerformanceData? performance,
+    List<EhsPerformanceRecord>? performance,
     List<EhsManhoursRecord>? manhours,
     List<EhsTrainingRecord>? training,
     List<EhsLegalItem>? legal,
@@ -187,7 +187,7 @@ class EhsDashboardBloc extends Bloc<EhsDashboardEvent, EhsDashboardState> {
       // Load all sub-modules in parallel
       final results = await Future.wait([
         _api.getEhsSummary(event.projectId).catchError((_) => <String, dynamic>{}),
-        _api.getEhsPerformance(event.projectId).catchError((_) => <String, dynamic>{}),
+        _api.getEhsPerformance(event.projectId).catchError((_) => <Map<String, dynamic>>[]),
         _api.getEhsManhours(event.projectId).catchError((_) => <Map<String, dynamic>>[]),
         _api.getEhsTraining(event.projectId).catchError((_) => <Map<String, dynamic>>[]),
         _api.getEhsLegal(event.projectId).catchError((_) => <Map<String, dynamic>>[]),
@@ -198,7 +198,7 @@ class EhsDashboardBloc extends Bloc<EhsDashboardEvent, EhsDashboardState> {
       _loaded = EhsDashboardLoaded(
         projectId: event.projectId,
         summary: _parseSummary(results[0]),
-        performance: _parsePerformance(results[1]),
+        performance: _parseList(results[1], EhsPerformanceRecord.fromJson),
         manhours: _parseList(results[2], EhsManhoursRecord.fromJson),
         training: _parseList(results[3], EhsTrainingRecord.fromJson),
         legal: _parseList(results[4], EhsLegalItem.fromJson),
@@ -223,8 +223,8 @@ class EhsDashboardBloc extends Bloc<EhsDashboardEvent, EhsDashboardState> {
           final data = await _api.getEhsSummary(event.projectId);
           _loaded = _loaded!.copyWith(summary: _parseSummary(data));
         case EhsTab.performance:
-          final data = await _api.getEhsPerformance(event.projectId);
-          _loaded = _loaded!.copyWith(performance: _parsePerformance(data));
+          final list = await _api.getEhsPerformance(event.projectId);
+          _loaded = _loaded!.copyWith(performance: _parseList(list, EhsPerformanceRecord.fromJson));
         case EhsTab.manhours:
           final list = await _api.getEhsManhours(event.projectId);
           _loaded = _loaded!.copyWith(manhours: _parseList(list, EhsManhoursRecord.fromJson));
@@ -322,11 +322,6 @@ class EhsDashboardBloc extends Bloc<EhsDashboardEvent, EhsDashboardState> {
   // Helpers
   EhsSummary? _parseSummary(dynamic data) {
     if (data is Map<String, dynamic> && data.isNotEmpty) return EhsSummary.fromJson(data);
-    return null;
-  }
-
-  EhsPerformanceData? _parsePerformance(dynamic data) {
-    if (data is Map<String, dynamic> && data.isNotEmpty) return EhsPerformanceData.fromJson(data);
     return null;
   }
 

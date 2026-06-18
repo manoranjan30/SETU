@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/features/ehs/data/models/ehs_dashboard_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_dashboard_bloc.dart';
 
 class EhsHubPage extends StatelessWidget {
@@ -194,6 +195,12 @@ class _OverviewTab extends StatelessWidget {
         onRefresh: () => context.read<EhsDashboardBloc>().add(RefreshEhsTab(projectId, EhsTab.overview)),
       );
     }
+    // Derive a 0-100% compliance figure from the {total, expired, expiringSoon,
+    // valid} blocks the backend actually returns — there's no precomputed
+    // "compliance percent" field on the backend.
+    double compliancePercent(EhsComplianceStats c) =>
+        c.total == 0 ? 100 : (c.valid / c.total) * 100;
+
     return RefreshIndicator(
       onRefresh: () async => context.read<EhsDashboardBloc>().add(RefreshEhsTab(projectId, EhsTab.overview)),
       child: ListView(
@@ -209,31 +216,55 @@ class _OverviewTab extends StatelessWidget {
             crossAxisSpacing: 8,
             childAspectRatio: 1.6,
             children: [
-              _KpiCard(label: 'Total Incidents', value: '${s.totalIncidents}',
-                  color: s.totalIncidents > 0 ? Colors.red.shade700 : Colors.green.shade700,
+              _KpiCard(label: 'Total Incidents', value: '${s.incidents.total}',
+                  color: s.incidents.total > 0 ? Colors.red.shade700 : Colors.green.shade700,
                   icon: Icons.warning_amber_outlined),
-              _KpiCard(label: 'Near Misses', value: '${s.nearMissCount}',
+              _KpiCard(label: 'Near Misses', value: '${s.incidents.nearMiss}',
                   color: Colors.orange.shade700, icon: Icons.remove_circle_outline),
-              _KpiCard(label: 'Open Observations', value: '${s.openObservations}',
+              _KpiCard(label: 'Pending Inspections', value: '${s.inspections.pending}',
                   color: Colors.blue.shade700, icon: Icons.visibility_outlined),
-              _KpiCard(label: 'Workers On Site', value: '${s.totalWorkersOnSite}',
+              _KpiCard(label: 'Cumulative Manpower', value: '${s.cumulativeManpower.toStringAsFixed(0)}',
                   color: Colors.indigo.shade700, icon: Icons.groups_outlined),
             ],
           ),
           const SizedBox(height: 16),
           const _SectionTitle('Compliance'),
           const SizedBox(height: 8),
-          _ComplianceBar(label: 'Training Compliance', percent: s.trainingCompliancePercent),
+          _ComplianceBar(label: 'Legal (${s.legal.valid}/${s.legal.total} valid)',
+              percent: compliancePercent(s.legal)),
           const SizedBox(height: 8),
-          _ComplianceBar(label: 'Legal Compliance', percent: s.legalCompliancePercent),
+          _ComplianceBar(label: 'Machinery (${s.machinery.valid}/${s.machinery.total} valid)',
+              percent: compliancePercent(s.machinery)),
+          const SizedBox(height: 8),
+          _ComplianceBar(label: 'Vehicles (${s.vehicle.valid}/${s.vehicle.total} valid)',
+              percent: compliancePercent(s.vehicle)),
+          const SizedBox(height: 8),
+          _ComplianceBar(label: 'Competency (${s.competency.valid}/${s.competency.total} valid)',
+              percent: compliancePercent(s.competency)),
           const SizedBox(height: 16),
-          const _SectionTitle('This Month'),
+          const _SectionTitle('Manhours & Training'),
           const SizedBox(height: 8),
-          _KpiCard(
-            label: 'Total Manhours',
-            value: '${s.totalManhoursThisMonth}',
-            color: Colors.teal.shade700,
-            icon: Icons.access_time_outlined,
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1.6,
+            children: [
+              _KpiCard(
+                label: 'Cumulative Safe Manhours',
+                value: s.cumulativeSafeManhours.toStringAsFixed(0),
+                color: Colors.teal.shade700,
+                icon: Icons.access_time_outlined,
+              ),
+              _KpiCard(
+                label: 'Training Sessions',
+                value: '${s.training.total}',
+                color: Colors.purple.shade700,
+                icon: Icons.school_outlined,
+              ),
+            ],
           ),
         ],
       ),
@@ -252,18 +283,23 @@ class _PerformanceTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = data.performance;
-    if (p == null) {
+    final records = data.performance;
+    if (records.isEmpty) {
       return _EmptyCard(
         label: 'No performance data',
         onRefresh: () => context.read<EhsDashboardBloc>().add(RefreshEhsTab(projectId, EhsTab.performance)),
       );
     }
+    // Backend tracks one EHS rating + one housekeeping rating per month —
+    // there is no TRIFR/LTI/near-miss-rate field on this backend.
+    final latest = records.first;
     return RefreshIndicator(
       onRefresh: () async => context.read<EhsDashboardBloc>().add(RefreshEhsTab(projectId, EhsTab.performance)),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const _SectionTitle('Latest Month'),
+          const SizedBox(height: 8),
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -272,22 +308,21 @@ class _PerformanceTab extends StatelessWidget {
             crossAxisSpacing: 8,
             childAspectRatio: 1.6,
             children: [
-              _KpiCard(label: 'TRIFR', value: p.trifr.toStringAsFixed(2),
-                  color: Colors.red.shade700, icon: Icons.trending_up_outlined),
-              _KpiCard(label: 'Near Miss Rate', value: p.nearMissRate.toStringAsFixed(2),
-                  color: Colors.orange.shade700, icon: Icons.remove_circle_outline),
-              _KpiCard(label: 'LTI Count', value: '${p.ltiCount}',
-                  color: Colors.red.shade900, icon: Icons.personal_injury_outlined),
-              _KpiCard(label: 'First Aid', value: '${p.firstAidCount}',
-                  color: Colors.blue.shade700, icon: Icons.medical_services_outlined),
+              _KpiCard(label: 'EHS Rating', value: latest.ehsRating.toStringAsFixed(1),
+                  color: Colors.indigo.shade700, icon: Icons.health_and_safety_outlined),
+              _KpiCard(label: 'Housekeeping Rating', value: latest.housekeepingRating.toStringAsFixed(1),
+                  color: Colors.teal.shade700, icon: Icons.cleaning_services_outlined),
             ],
           ),
-          if (p.incidentTrend.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            const _SectionTitle('Incident Trend (Monthly)'),
-            const SizedBox(height: 8),
-            ...p.incidentTrend.map((pt) => _TrendRow(month: pt.monthLabel, count: pt.count)),
-          ],
+          const SizedBox(height: 16),
+          const _SectionTitle('Monthly Ratings'),
+          const SizedBox(height: 8),
+          ...records.map((r) => _InfoCard(
+                title: r.month,
+                subtitle: 'EHS ${r.ehsRating.toStringAsFixed(1)} · Housekeeping ${r.housekeepingRating.toStringAsFixed(1)}',
+                icon: Icons.show_chart_outlined,
+                iconColor: Colors.indigo.shade700,
+              )),
         ],
       ),
     );
@@ -321,7 +356,7 @@ class _ManhoursTab extends StatelessWidget {
                   final r = data.manhours[i];
                   return _InfoCard(
                     title: r.month,
-                    subtitle: '${r.totalManhours} manhours · ${r.totalWorkers} workers · ${r.tbmCount} TBMs',
+                    subtitle: '${r.totalManhours.toStringAsFixed(0)} manhours · ${r.totalWorkers} workers · ${r.workingDays} days',
                     icon: Icons.access_time_outlined,
                     iconColor: Colors.teal.shade700,
                     trailing: r.remarks,
@@ -342,7 +377,8 @@ class _ManhoursTab extends StatelessWidget {
     final monthCtrl = TextEditingController();
     final hoursCtrl = TextEditingController();
     final workersCtrl = TextEditingController();
-    final tbmCtrl = TextEditingController();
+    final daysCtrl = TextEditingController();
+    final safeHoursCtrl = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -367,8 +403,11 @@ class _ManhoursTab extends StatelessWidget {
             TextField(controller: workersCtrl, keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Total Workers', border: OutlineInputBorder())),
             const SizedBox(height: 8),
-            TextField(controller: tbmCtrl, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'TBM Count', border: OutlineInputBorder())),
+            TextField(controller: daysCtrl, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Working Days', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: safeHoursCtrl, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Safe Manhours', border: OutlineInputBorder())),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -377,12 +416,16 @@ class _ManhoursTab extends StatelessWidget {
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: () {
-                    if (monthCtrl.text.trim().isEmpty || hoursCtrl.text.trim().isEmpty) return;
+                    final month = monthCtrl.text.trim();
+                    if (month.isEmpty || hoursCtrl.text.trim().isEmpty) return;
                     context.read<EhsDashboardBloc>().add(CreateEhsManhours(projectId, {
-                      'month': monthCtrl.text.trim(),
-                      'totalManhours': int.tryParse(hoursCtrl.text) ?? 0,
+                      // Backend column is a SQL date — append day-of-month.
+                      'month': month.length == 7 ? '$month-01' : month,
+                      'totalManhours': double.tryParse(hoursCtrl.text) ?? 0,
                       'totalWorkers': int.tryParse(workersCtrl.text) ?? 0,
-                      'tbmCount': int.tryParse(tbmCtrl.text) ?? 0,
+                      'totalManpower': int.tryParse(workersCtrl.text) ?? 0,
+                      'workingDays': int.tryParse(daysCtrl.text) ?? 0,
+                      'safeManhours': double.tryParse(safeHoursCtrl.text) ?? 0,
                     }));
                     Navigator.pop(ctx);
                   },
@@ -422,13 +465,12 @@ class _TrainingTab extends StatelessWidget {
                   final r = data.training[i];
                   return _InfoCard(
                     title: r.topic,
-                    subtitle: '${r.trainingType} · ${r.participantCount} participants',
+                    subtitle: '${r.trainingType} · ${r.attendeeCount} attendees · ${r.trainer}',
                     icon: Icons.school_outlined,
                     iconColor: Colors.indigo.shade700,
                     statusLabel: r.status,
                     statusColor: r.statusColor,
-                    trailing: r.trainingDate,
-                    alert: r.isExpired ? 'Expired' : null,
+                    trailing: r.date,
                   );
                 },
               ),
@@ -445,7 +487,9 @@ class _TrainingTab extends StatelessWidget {
   void _showTrainingForm(BuildContext context) {
     final topicCtrl = TextEditingController();
     final trainerCtrl = TextEditingController();
-    final participantsCtrl = TextEditingController();
+    final attendeesCtrl = TextEditingController();
+    final durationCtrl = TextEditingController();
+    // Must match the backend's TrainingType enum exactly (see EhsTraining entity).
     String type = 'INDUCTION';
     showModalBottomSheet(
       context: context,
@@ -466,8 +510,8 @@ class _TrainingTab extends StatelessWidget {
               DropdownButtonFormField<String>(
                 initialValue: type,
                 decoration: const InputDecoration(labelText: 'Training Type', border: OutlineInputBorder()),
-                items: ['INDUCTION', 'SKILL', 'REFRESHER', 'CERTIFICATION']
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                items: ['INDUCTION', 'TBT', 'SPECIALIZED', 'FIRE_DRILL', 'FIRST_AID']
+                    .map((t) => DropdownMenuItem(value: t, child: Text(t.replaceAll('_', ' ')))).toList(),
                 onChanged: (v) => setModalState(() => type = v ?? 'INDUCTION'),
               ),
               const SizedBox(height: 8),
@@ -475,10 +519,13 @@ class _TrainingTab extends StatelessWidget {
                   labelText: 'Topic *', border: OutlineInputBorder())),
               const SizedBox(height: 8),
               TextField(controller: trainerCtrl, decoration: const InputDecoration(
-                  labelText: 'Trainer Name', border: OutlineInputBorder())),
+                  labelText: 'Trainer *', border: OutlineInputBorder())),
               const SizedBox(height: 8),
-              TextField(controller: participantsCtrl, keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Participants', border: OutlineInputBorder())),
+              TextField(controller: attendeesCtrl, keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Attendees', border: OutlineInputBorder())),
+              const SizedBox(height: 8),
+              TextField(controller: durationCtrl, keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Duration (minutes)', border: OutlineInputBorder())),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -487,12 +534,14 @@ class _TrainingTab extends StatelessWidget {
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: () {
-                      if (topicCtrl.text.trim().isEmpty) return;
+                      if (topicCtrl.text.trim().isEmpty || trainerCtrl.text.trim().isEmpty) return;
                       context.read<EhsDashboardBloc>().add(CreateEhsTraining(projectId, {
                         'trainingType': type,
                         'topic': topicCtrl.text.trim(),
-                        'trainerName': trainerCtrl.text.trim().isEmpty ? null : trainerCtrl.text.trim(),
-                        'participantCount': int.tryParse(participantsCtrl.text) ?? 0,
+                        'trainer': trainerCtrl.text.trim(),
+                        'date': DateTime.now().toIso8601String().substring(0, 10),
+                        'attendeeCount': int.tryParse(attendeesCtrl.text) ?? 0,
+                        'duration': int.tryParse(durationCtrl.text) ?? 0,
                       }));
                       Navigator.pop(ctx);
                     },
@@ -532,8 +581,8 @@ class _LegalTab extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final item = data.legal[i];
                   return _InfoCard(
-                    title: item.description,
-                    subtitle: item.licenseType + (item.licenseNumber != null ? ' · ${item.licenseNumber}' : ''),
+                    title: item.requirement,
+                    subtitle: 'Responsibility: ${item.responsibility}',
                     icon: Icons.gavel_outlined,
                     iconColor: Colors.deepPurple.shade700,
                     statusLabel: item.status,
@@ -558,70 +607,61 @@ class _LegalTab extends StatelessWidget {
   }
 
   void _showLegalForm(BuildContext context) {
-    final descCtrl = TextEditingController();
-    final licNoCtrl = TextEditingController();
-    final authorityCtrl = TextEditingController();
+    final requirementCtrl = TextEditingController();
+    final responsibilityCtrl = TextEditingController();
+    final certifiedCtrl = TextEditingController();
     final expiryCtrl = TextEditingController();
-    String type = 'LABOUR_LICENSE';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            left: 16, right: 16, top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Add Legal Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: type,
-                decoration: const InputDecoration(labelText: 'License Type', border: OutlineInputBorder()),
-                items: ['LABOUR_LICENSE', 'FACTORY_LICENSE', 'FIRE_NOC', 'POLLUTION_NOC', 'BUILDING_PERMIT', 'OTHER']
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t.replaceAll('_', ' ')))).toList(),
-                onChanged: (v) => setModalState(() => type = v ?? 'LABOUR_LICENSE'),
-              ),
-              const SizedBox(height: 8),
-              TextField(controller: descCtrl, decoration: const InputDecoration(
-                  labelText: 'Description *', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: licNoCtrl, decoration: const InputDecoration(
-                  labelText: 'License Number', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: authorityCtrl, decoration: const InputDecoration(
-                  labelText: 'Issuing Authority', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: expiryCtrl, decoration: const InputDecoration(
-                  labelText: 'Expiry Date (YYYY-MM-DD)', border: OutlineInputBorder())),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () {
-                      if (descCtrl.text.trim().isEmpty) return;
-                      context.read<EhsDashboardBloc>().add(CreateEhsLegal(projectId, {
-                        'licenseType': type,
-                        'description': descCtrl.text.trim(),
-                        if (licNoCtrl.text.trim().isNotEmpty) 'licenseNumber': licNoCtrl.text.trim(),
-                        if (authorityCtrl.text.trim().isNotEmpty) 'issuingAuthority': authorityCtrl.text.trim(),
-                        if (expiryCtrl.text.trim().isNotEmpty) 'expiryDate': expiryCtrl.text.trim(),
-                      }));
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text('Add'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16, right: 16, top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Add Legal Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            TextField(controller: requirementCtrl, decoration: const InputDecoration(
+                labelText: 'Requirement *', border: OutlineInputBorder(),
+                hintText: 'e.g. Factory License, Labour License')),
+            const SizedBox(height: 8),
+            TextField(controller: responsibilityCtrl, decoration: const InputDecoration(
+                labelText: 'Responsibility *', border: OutlineInputBorder(),
+                hintText: 'e.g. Contractor, Client')),
+            const SizedBox(height: 8),
+            TextField(controller: certifiedCtrl, decoration: const InputDecoration(
+                labelText: 'Certified Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: expiryCtrl, decoration: const InputDecoration(
+                labelText: 'Expiry Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () {
+                    if (requirementCtrl.text.trim().isEmpty ||
+                        responsibilityCtrl.text.trim().isEmpty) return;
+                    context.read<EhsDashboardBloc>().add(CreateEhsLegal(projectId, {
+                      'requirement': requirementCtrl.text.trim(),
+                      'responsibility': responsibilityCtrl.text.trim(),
+                      if (certifiedCtrl.text.trim().isNotEmpty) 'certifiedDate': certifiedCtrl.text.trim(),
+                      if (expiryCtrl.text.trim().isNotEmpty) 'expiryDate': expiryCtrl.text.trim(),
+                    }));
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -652,13 +692,13 @@ class _MachineryTab extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final r = data.machinery[i];
                   return _InfoCard(
-                    title: r.machineName ?? r.machineryType,
-                    subtitle: r.machineryType + (r.equipmentId != null ? ' · ${r.equipmentId}' : ''),
+                    title: r.equipmentName,
+                    subtitle: '${r.idNumber} · ${r.location}',
                     icon: Icons.construction_outlined,
                     iconColor: Colors.brown.shade700,
                     statusLabel: r.status,
                     statusColor: r.statusColor,
-                    trailing: 'Inspected: ${r.inspectionDate}',
+                    trailing: r.expiryDate != null ? 'Expires: ${r.expiryDate}' : null,
                   );
                 },
               ),
@@ -673,75 +713,67 @@ class _MachineryTab extends StatelessWidget {
   }
 
   void _showMachineryForm(BuildContext context) {
-    final typeCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final idCtrl = TextEditingController();
-    final operatorCtrl = TextEditingController();
-    final dateCtrl = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
-    String status = 'FIT';
+    final locationCtrl = TextEditingController();
+    final certifiedCtrl = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final expiryCtrl = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            left: 16, right: 16, top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Add Machinery Record', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              TextField(controller: typeCtrl, decoration: const InputDecoration(
-                  labelText: 'Machinery Type *', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: nameCtrl, decoration: const InputDecoration(
-                  labelText: 'Machine Name', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: idCtrl, decoration: const InputDecoration(
-                  labelText: 'Equipment ID', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: operatorCtrl, decoration: const InputDecoration(
-                  labelText: 'Operator', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              TextField(controller: dateCtrl, decoration: const InputDecoration(
-                  labelText: 'Inspection Date (YYYY-MM-DD)', border: OutlineInputBorder())),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: status,
-                decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-                items: ['FIT', 'UNFIT', 'UNDER_REPAIR']
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s.replaceAll('_', ' ')))).toList(),
-                onChanged: (v) => setModalState(() => status = v ?? 'FIT'),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () {
-                      if (typeCtrl.text.trim().isEmpty) return;
-                      context.read<EhsDashboardBloc>().add(CreateEhsMachinery(projectId, {
-                        'machineryType': typeCtrl.text.trim(),
-                        if (nameCtrl.text.trim().isNotEmpty) 'machineName': nameCtrl.text.trim(),
-                        if (idCtrl.text.trim().isNotEmpty) 'equipmentId': idCtrl.text.trim(),
-                        if (operatorCtrl.text.trim().isNotEmpty) 'operator': operatorCtrl.text.trim(),
-                        'inspectionDate': dateCtrl.text.trim(),
-                        'status': status,
-                      }));
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text('Add'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16, right: 16, top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Add Machinery Record', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            TextField(controller: nameCtrl, decoration: const InputDecoration(
+                labelText: 'Equipment Name *', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: idCtrl, decoration: const InputDecoration(
+                labelText: 'ID Number *', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: locationCtrl, decoration: const InputDecoration(
+                labelText: 'Location *', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: certifiedCtrl, decoration: const InputDecoration(
+                labelText: 'Certified Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: expiryCtrl, decoration: const InputDecoration(
+                labelText: 'Expiry Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () {
+                    if (nameCtrl.text.trim().isEmpty ||
+                        idCtrl.text.trim().isEmpty ||
+                        locationCtrl.text.trim().isEmpty) {
+                      return;
+                    }
+                    context.read<EhsDashboardBloc>().add(CreateEhsMachinery(projectId, {
+                      'equipmentName': nameCtrl.text.trim(),
+                      'idNumber': idCtrl.text.trim(),
+                      'location': locationCtrl.text.trim(),
+                      if (certifiedCtrl.text.trim().isNotEmpty) 'certifiedDate': certifiedCtrl.text.trim(),
+                      if (expiryCtrl.text.trim().isNotEmpty) 'expiryDate': expiryCtrl.text.trim(),
+                    }));
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -772,13 +804,13 @@ class _VehiclesTab extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final r = data.vehicles[i];
                   return _InfoCard(
-                    title: r.vehicleNumber ?? r.vehicleType,
-                    subtitle: r.vehicleType + (r.driverName != null ? ' · ${r.driverName}' : ''),
+                    title: r.vehicleNumber,
+                    subtitle: r.vehicleType,
                     icon: Icons.local_shipping_outlined,
                     iconColor: Colors.blueGrey.shade700,
-                    statusLabel: r.status,
+                    statusLabel: r.isActive ? 'Active' : 'Inactive',
                     statusColor: r.statusColor,
-                    trailing: r.insuranceExpiryDate != null ? 'Insurance: ${r.insuranceExpiryDate}' : null,
+                    trailing: r.insuranceDate != null ? 'Insurance: ${r.insuranceDate}' : null,
                     alert: r.hasExpiringDocs ? 'Document expiring soon' : null,
                   );
                 },
@@ -796,9 +828,8 @@ class _VehiclesTab extends StatelessWidget {
   void _showVehicleForm(BuildContext context) {
     final typeCtrl = TextEditingController();
     final numberCtrl = TextEditingController();
-    final driverCtrl = TextEditingController();
-    final licCtrl = TextEditingController();
-    final pucCtrl = TextEditingController();
+    final fitnessCtrl = TextEditingController();
+    final pollutionCtrl = TextEditingController();
     final insCtrl = TextEditingController();
     showModalBottomSheet(
       context: context,
@@ -819,16 +850,13 @@ class _VehiclesTab extends StatelessWidget {
                 labelText: 'Vehicle Type *', border: OutlineInputBorder())),
             const SizedBox(height: 8),
             TextField(controller: numberCtrl, decoration: const InputDecoration(
-                labelText: 'Vehicle Number', border: OutlineInputBorder())),
+                labelText: 'Vehicle Number *', border: OutlineInputBorder())),
             const SizedBox(height: 8),
-            TextField(controller: driverCtrl, decoration: const InputDecoration(
-                labelText: 'Driver Name', border: OutlineInputBorder())),
+            TextField(controller: fitnessCtrl, decoration: const InputDecoration(
+                labelText: 'Fitness Cert. Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
             const SizedBox(height: 8),
-            TextField(controller: licCtrl, decoration: const InputDecoration(
-                labelText: 'Driver License No.', border: OutlineInputBorder())),
-            const SizedBox(height: 8),
-            TextField(controller: pucCtrl, decoration: const InputDecoration(
-                labelText: 'PUC Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: pollutionCtrl, decoration: const InputDecoration(
+                labelText: 'Pollution (PUC) Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
             const SizedBox(height: 8),
             TextField(controller: insCtrl, decoration: const InputDecoration(
                 labelText: 'Insurance Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
@@ -840,14 +868,13 @@ class _VehiclesTab extends StatelessWidget {
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: () {
-                    if (typeCtrl.text.trim().isEmpty) return;
+                    if (typeCtrl.text.trim().isEmpty || numberCtrl.text.trim().isEmpty) return;
                     context.read<EhsDashboardBloc>().add(CreateEhsVehicle(projectId, {
                       'vehicleType': typeCtrl.text.trim(),
-                      if (numberCtrl.text.trim().isNotEmpty) 'vehicleNumber': numberCtrl.text.trim(),
-                      if (driverCtrl.text.trim().isNotEmpty) 'driverName': driverCtrl.text.trim(),
-                      if (licCtrl.text.trim().isNotEmpty) 'driverLicense': licCtrl.text.trim(),
-                      if (pucCtrl.text.trim().isNotEmpty) 'pucExpiryDate': pucCtrl.text.trim(),
-                      if (insCtrl.text.trim().isNotEmpty) 'insuranceExpiryDate': insCtrl.text.trim(),
+                      'vehicleNumber': numberCtrl.text.trim(),
+                      if (fitnessCtrl.text.trim().isNotEmpty) 'fitnessCertDate': fitnessCtrl.text.trim(),
+                      if (pollutionCtrl.text.trim().isNotEmpty) 'pollutionDate': pollutionCtrl.text.trim(),
+                      if (insCtrl.text.trim().isNotEmpty) 'insuranceDate': insCtrl.text.trim(),
                     }));
                     Navigator.pop(ctx);
                   },

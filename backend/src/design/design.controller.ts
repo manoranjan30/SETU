@@ -59,12 +59,20 @@ export class DesignController {
   async getRegister(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Query('categoryId') categoryId?: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
     @GetUser() user?: User,
   ) {
     return this.designService.getRegister(
       projectId,
       categoryId ? Number(categoryId) : undefined,
       user?.id,
+      {
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+        q,
+      },
     );
   }
 

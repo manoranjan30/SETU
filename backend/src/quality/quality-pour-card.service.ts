@@ -29,6 +29,7 @@ import {
 import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
+import { SystemSettingsService } from '../common/system-settings.service';
 import { User } from '../users/user.entity';
 import QRCode from 'qrcode';
 
@@ -111,6 +112,7 @@ export class QualityPourCardService {
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
+    private readonly systemSettingsService: SystemSettingsService,
   ) {}
 
   private async getInspectionOrThrow(inspectionId: number) {
@@ -1826,36 +1828,220 @@ export class QualityPourCardService {
     return this.clearanceRepo.save(card);
   }
 
+  private writeClearanceAttachmentTable(
+    doc: PDFKit.PDFDocument,
+    card: QualityPrePourClearanceCard,
+    title: string,
+  ) {
+    this.writePdfSectionTitle(doc, title);
+    const attachmentLabels: Record<string, string> = {
+      checklistPccAttached: 'Checklist for PCC Attached',
+      checklistWaterproofingAttached: 'Checklist for waterproofing Attached',
+      checklistFormworkAttached: 'Checklist for Formwork Attached',
+      checklistReinforcementAttached: 'Checklist for Reinforcement Attached',
+      checklistMepAttached: 'Checklist for MEP Attached',
+      checklistConcretingAttached: 'Checklist for Concreting Attached',
+      concretePourCardAttached: 'Concrete pour card Attached',
+    };
+    this.writePdfTable(
+      doc,
+      [
+        'Sl No',
+        'Clearance Requirement',
+        'Yes',
+        'No',
+        'NA',
+        'Related Checklist IDs',
+        'Uploaded Documents',
+      ],
+      CLEARANCE_ATTACHMENT_KEYS.map((key, index) => {
+        const value = card.attachments?.[key] || 'NO';
+        return [
+          index + 1,
+          attachmentLabels[key] || key,
+          value === 'YES' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
+          value === 'NO' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
+          value === 'NA' ? '__PDF_CHECKED__' : '__PDF_UNCHECKED__',
+          (card.attachmentChecklistSelections?.[key] || []).join(', '),
+          (card.attachmentDocuments?.[key] || [])
+            .map((attachment) => attachment.originalName)
+            .join(', '),
+        ];
+      }),
+      [32, 155, 36, 36, 36, 95, 120],
+    );
+  }
+
+  private writeClearanceSignoffTable(
+    doc: PDFKit.PDFDocument,
+    card: QualityPrePourClearanceCard,
+    title: string,
+  ) {
+    this.writePdfSectionTitle(doc, title);
+    this.writePdfTable(
+      doc,
+      ['Sl No', 'Department / Party', 'Name', 'Status', 'Signed By', 'Evidence'],
+      (card.signoffs || [])
+        .filter((signoff) => signoff?.isActive !== false)
+        .map((signoff, index) => [
+          index + 1,
+          [signoff.department, signoff.designation].filter(Boolean).join(' - '),
+          signoff.personName,
+          signoff.status || 'PENDING',
+          [
+            signoff.signerDisplayName ||
+              (signoff.signedByUserId ? `User #${signoff.signedByUserId}` : ''),
+            signoff.signerDesignation,
+          ]
+            .filter(Boolean)
+            .join(' - '),
+          signoff.status === 'SIGNED'
+            ? [
+                signoff.signedDate || signoff.signedAt || '',
+                signoff.signatureMode ? `Mode: ${signoff.signatureMode}` : '',
+                signoff.signatureHash
+                  ? `Hash: ${String(signoff.signatureHash).slice(0, 12)}`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' | ')
+            : '',
+        ]),
+      [38, 130, 85, 62, 92, 107],
+    );
+  }
+
   async generatePrePourClearancePdf(inspectionId: number): Promise<Buffer> {
     const card = await this.getPrePourClearanceCard(inspectionId);
     const inspection = await this.getInspectionOrThrow(inspectionId);
+    const template = (
+      await this.systemSettingsService.getSetting(
+        'QUALITY_POUR_CLEARANCE_PDF_TEMPLATE',
+      )
+    )?.toUpperCase();
+
+    if (template === 'CARD') {
+      return this.buildPdfBuffer((doc) => {
+        doc
+          .fontSize(16)
+          .font('Helvetica-Bold')
+          .text('PRE-POUR CLEARANCE CARD', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(10).font('Helvetica');
+        doc.text(`Format No: ${card.formatNo || 'F/QA/20'}`);
+        doc.text(`Revision: ${card.revisionNo || '00'}`);
+        doc.text(
+          'Note: Please tick the appropriate attachment state as per site requirements.',
+        );
+        this.writePdfSectionTitle(doc, 'Inspection Details');
+        this.writePdfTwoColumnFields(doc, [
+          ['Inspection ID', inspection.id, 'Status', card.status],
+          [
+            'Date',
+            card.cardDate,
+            'Activity',
+            card.activityLabel || inspection.activity?.activityName,
+          ],
+          ['Project', card.projectNameSnapshot, 'Contractor', card.contractorName],
+          ['Element', card.elementName, 'Location', card.locationText],
+          ['Pour Location', card.pourLocation, 'Pour No', card.pourNo],
+          [
+            'Grade Of Concrete',
+            card.gradeOfConcrete,
+            'Placement Method',
+            card.placementMethod,
+          ],
+          ['Pour Start Time', card.pourStartTime, 'Pour End Time', card.pourEndTime],
+          [
+            'Estimated Qty',
+            card.estimatedConcreteQty,
+            'Actual Qty',
+            card.actualConcreteQty,
+          ],
+          [
+            'Concrete Supplier',
+            card.concreteSupplier,
+            'Cube Mould Count',
+            card.cubeMouldCount,
+          ],
+          ['Target Slump', card.targetSlump, 'Vibrator Count', card.vibratorCount],
+          ['Requested On', inspection.requestDate, 'EPS Node', inspection.epsNode?.name],
+        ]);
+
+        this.writeClearanceAttachmentTable(doc, card, 'Attachments');
+        this.writeClearanceSignoffTable(doc, card, 'Signoff Parties');
+      });
+    }
 
     return this.buildPdfBuffer((doc) => {
+      const pageWidth =
+        doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      const certificateTitle = 'PRE-POUR CLEARANCE CERTIFICATE';
+      const statusText = String(card.status || 'DRAFT').replace(/_/g, ' ');
+
       doc
-        .fontSize(16)
+        .fontSize(15)
         .font('Helvetica-Bold')
-        .text('PRE-POUR CLEARANCE CARD', { align: 'center' });
-      doc.moveDown(0.5);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Format No: ${card.formatNo || 'F/QA/20'}`);
-      doc.text(`Revision: ${card.revisionNo || '00'}`);
-      doc.text('Note: Please tick the appropriate attachment state as per site requirements.');
-      this.writePdfSectionTitle(doc, 'Inspection Details');
+        .text(certificateTitle, { align: 'center' });
+      doc.moveDown(0.35);
+
+      const headerY = doc.y;
+      doc.rect(doc.page.margins.left, headerY, pageWidth, 46).stroke('#111827');
+      doc.fontSize(8).font('Helvetica-Bold');
+      doc.text('Format No', doc.page.margins.left + 8, headerY + 8, {
+        width: 70,
+      });
+      doc.text('Revision', doc.page.margins.left + 150, headerY + 8, {
+        width: 60,
+      });
+      doc.text('Certificate Date', doc.page.margins.left + 265, headerY + 8, {
+        width: 90,
+      });
+      doc.text('Status', doc.page.margins.left + 410, headerY + 8, {
+        width: 70,
+      });
+      doc.font('Helvetica').fontSize(9);
+      doc.text(card.formatNo || 'F/QA/20', doc.page.margins.left + 8, headerY + 25, {
+        width: 120,
+      });
+      doc.text(card.revisionNo || '00', doc.page.margins.left + 150, headerY + 25, {
+        width: 80,
+      });
+      doc.text(card.cardDate || inspection.requestDate || '', doc.page.margins.left + 265, headerY + 25, {
+        width: 110,
+      });
+      doc.text(statusText, doc.page.margins.left + 410, headerY + 25, {
+        width: 95,
+      });
+      doc.y = headerY + 58;
+
+      doc
+        .fontSize(8.5)
+        .font('Helvetica')
+        .fillColor('#374151')
+        .text(
+          'This certificate records site readiness, linked checklist evidence, attached documents, and required signoffs before concrete pour approval.',
+          doc.page.margins.left,
+          doc.y,
+          { width: pageWidth },
+        )
+        .fillColor('black');
+
+      this.writePdfSectionTitle(doc, 'Project And Pour Details');
       this.writePdfTwoColumnFields(doc, [
-        ['Inspection ID', inspection.id, 'Status', card.status],
-        ['Date', card.cardDate, 'Activity', card.activityLabel || inspection.activity?.activityName],
+        ['Inspection ID', `RFI #${inspection.id}`, 'Activity', card.activityLabel || inspection.activity?.activityName],
         ['Project', card.projectNameSnapshot, 'Contractor', card.contractorName],
-        ['Element', card.elementName, 'Location', card.locationText],
+        ['Element', card.elementName || inspection.elementName, 'Location', card.locationText],
         ['Pour Location', card.pourLocation, 'Pour No', card.pourNo],
         ['Grade Of Concrete', card.gradeOfConcrete, 'Placement Method', card.placementMethod],
-        ['Pour Start Time', card.pourStartTime, 'Pour End Time', card.pourEndTime],
         ['Estimated Qty', card.estimatedConcreteQty, 'Actual Qty', card.actualConcreteQty],
-        ['Concrete Supplier', card.concreteSupplier, 'Cube Mould Count', card.cubeMouldCount],
-        ['Target Slump', card.targetSlump, 'Vibrator Count', card.vibratorCount],
-        ['Requested On', inspection.requestDate, 'EPS Node', inspection.epsNode?.name],
+        ['Concrete Supplier', card.concreteSupplier, 'Pour Time', [card.pourStartTime, card.pourEndTime].filter(Boolean).join(' to ')],
+        ['Cube Mould Count', card.cubeMouldCount, 'Target Slump', card.targetSlump],
+        ['Vibrator Count', card.vibratorCount, 'Requested On', inspection.requestDate],
+        ['EPS Node', inspection.epsNode?.name, 'GO Details', inspection.goDetails],
       ]);
 
-      this.writePdfSectionTitle(doc, 'Attachments');
+      this.writePdfSectionTitle(doc, 'Checklist And Document Attachments');
       const attachmentLabels: Record<string, string> = {
         checklistPccAttached: 'Checklist for PCC Attached',
         checklistWaterproofingAttached: 'Checklist for waterproofing Attached',
@@ -1869,7 +2055,7 @@ export class QualityPourCardService {
         doc,
         [
           'Sl No',
-          'Description',
+          'Clearance Requirement',
           'Yes',
           'No',
           'NA',
@@ -1893,7 +2079,18 @@ export class QualityPourCardService {
         [32, 155, 36, 36, 36, 95, 120],
       );
 
-      this.writePdfSectionTitle(doc, 'Signoff Parties');
+      doc.moveDown(0.5);
+      doc
+        .fontSize(8.5)
+        .font('Helvetica-Bold')
+        .text(
+          'Certification: The undersigned confirm that the applicable checklist records and supporting documents have been reviewed for this pour clearance.',
+          doc.page.margins.left,
+          doc.y,
+          { width: pageWidth },
+        );
+
+      this.writePdfSectionTitle(doc, 'Approval Signoff List');
       this.writePdfTable(
         doc,
         ['Sl No', 'Department / Party', 'Name', 'Status', 'Signed By', 'Evidence'],

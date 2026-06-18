@@ -63,6 +63,10 @@ export class QualityInspectionController {
     @Query('epsNodeId', new ParseIntPipe({ optional: true }))
     epsNodeId?: number,
     @Query('listId', new ParseIntPipe({ optional: true })) listId?: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
     @Request() req?,
   ) {
     return this.service.getInspections(
@@ -71,6 +75,12 @@ export class QualityInspectionController {
       listId,
       req?.user?.userId || req?.user?.id,
       this.isAdminRequest(req),
+      {
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+        q,
+        status,
+      },
     );
   }
 

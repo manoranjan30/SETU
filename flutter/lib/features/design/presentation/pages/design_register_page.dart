@@ -7,6 +7,7 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/features/design/data/models/design_models.dart';
 import 'package:setu_mobile/features/design/presentation/bloc/design_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 class DesignRegisterPage extends StatelessWidget {
   final int projectId;
@@ -271,14 +272,14 @@ class _LoadedBody extends StatelessWidget {
           child: state.filtered.isEmpty
               ? _EmptyView(hasSearch: state.searchQuery.isNotEmpty ||
                   state.selectedCategoryId != null)
-              : ListView.separated(
+              : PaginatedListView<DrawingRegister>(
+                  items: state.filtered,
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemCount: state.filtered.length,
-                  itemBuilder: (_, i) => _DrawingCard(
-                    drawing: state.filtered[i],
-                    downloadProgress: state.filtered[i].currentRevision != null
-                        ? downloading[state.filtered[i].currentRevision!.id]
+                  separatorBuilder: (_) => const SizedBox(height: 8),
+                  itemBuilder: (_, drawing, __) => _DrawingCard(
+                    drawing: drawing,
+                    downloadProgress: drawing.currentRevision != null
+                        ? downloading[drawing.currentRevision!.id]
                         : null,
                     onOpenWith: onOpenWith,
                   ),

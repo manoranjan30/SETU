@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { toRelativePaths } from '../common/path.utils';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Brackets, Repository, In } from 'typeorm';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import {
   ActivityObservation,
@@ -227,6 +227,12 @@ export class QualityInspectionService {
     listId?: number,
     viewerUserId?: number,
     viewerIsAdmin: boolean = false,
+    paging?: {
+      limit?: number;
+      offset?: number;
+      q?: string;
+      status?: string;
+    },
   ) {
     const query = this.inspectionRepo
       .createQueryBuilder('i')
@@ -240,10 +246,36 @@ export class QualityInspectionService {
     if (listId) {
       query.andWhere('i.listId = :listId', { listId });
     }
+    if (paging?.status && paging.status !== 'ALL') {
+      query.andWhere('i.status = :status', { status: paging.status });
+    }
+    const q = paging?.q?.trim().toLowerCase();
+    if (q) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where(
+            `LOWER(COALESCE(i.comments, '') || ' ' || COALESCE(i.drawingNo, '') || ' ' || COALESCE(i.elementName, '') || ' ' || COALESCE(i.contractorName, '') || ' ' || COALESCE(i.goDetails, '') || ' ' || COALESCE(i.goLabel, '')) LIKE :q`,
+            { q: `%${q}%` },
+          )
+            .orWhere('LOWER(activity.name) LIKE :q', { q: `%${q}%` })
+            .orWhere('LOWER(eps.name) LIKE :q', { q: `%${q}%` });
+        }),
+      );
+    }
 
-    const inspections = await query.orderBy('i.createdAt', 'DESC').getMany();
+    query.orderBy('i.createdAt', 'DESC');
+    const hasPaging =
+      Number.isFinite(Number(paging?.limit)) ||
+      Number.isFinite(Number(paging?.offset));
+    const limit = Math.min(100, Math.max(1, Number(paging?.limit) || 25));
+    const offset = Math.max(0, Number(paging?.offset) || 0);
+    const [inspections, total] = hasPaging
+      ? await query.skip(offset).take(limit).getManyAndCount()
+      : [await query.getMany(), undefined];
 
-    if (inspections.length === 0) return [];
+    if (inspections.length === 0) {
+      return hasPaging ? { data: [], total: total || 0, limit, offset, hasMore: false } : [];
+    }
 
     // Build related lookups in batch to avoid per-row queries.
     const unitIds = Array.from(
@@ -281,7 +313,7 @@ export class QualityInspectionService {
       viewerIsAdmin,
     );
 
-    return inspectionsWithWorkflow.map((inspection) => {
+    const data = inspectionsWithWorkflow.map((inspection) => {
       const ancestry = this.buildEpsAncestry(inspection.epsNodeId, epsById);
       const locationPath = ancestry.map((n) => n.name).join(' > ');
 
@@ -320,6 +352,16 @@ export class QualityInspectionService {
         roomName: qualityRoom?.name || epsRoomName || null,
       };
     });
+
+    return hasPaging
+      ? {
+          data,
+          total: total || 0,
+          limit,
+          offset,
+          hasMore: offset + data.length < (total || 0),
+        }
+      : data;
   }
 
   async getMyPendingInspections(projectId: number, userId: number) {
@@ -1083,7 +1125,8 @@ export class QualityInspectionService {
             comments: dto.comments,
           });
         this.pushService
-          .sendToUsers(
+          .sendToProjectUsers(
+            inspection.projectId,
             [inspection.requestedById],
             notification.title,
             notification.body,
@@ -1514,7 +1557,8 @@ export class QualityInspectionService {
             levelLabel: `Level ${nextPendingLevel.stepOrder}`,
           });
         this.pushService
-          .sendToUsers(
+          .sendToProjectUsers(
+            stage.inspection.projectId,
             notifyUserIds,
             notification.title,
             notification.body,
@@ -1549,7 +1593,8 @@ export class QualityInspectionService {
               : `${approvedStages}/${totalStages} stages approved.`,
         });
       this.pushService
-        .sendToUsers(
+        .sendToProjectUsers(
+          inspection.projectId,
           [inspection.requestedById],
           notification.title,
           notification.body,
@@ -1708,7 +1753,8 @@ export class QualityInspectionService {
           decisionLabel: 'RFI Approved',
           comments: comments || undefined,
         });
-        await this.pushService.sendToUsers(
+        await this.pushService.sendToProjectUsers(
+            inspection.projectId,
             [inspection.requestedById],
             notification.title,
             notification.body,
@@ -1860,6 +1906,7 @@ export class QualityInspectionService {
         },
       },
     });
+
   }
 
   private normalizeRelatedChecklistInspectionIds(input?: number[]) {
@@ -2725,6 +2772,7 @@ export class QualityInspectionService {
         },
       };
     });
+
   }
 
   private buildEpsAncestry(

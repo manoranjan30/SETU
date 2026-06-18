@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+  Brackets,
+  Repository,
+  Between,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
 import { EhsObservation } from './entities/ehs-observation.entity';
 import {
   EhsIncident,
@@ -297,11 +303,42 @@ export class EhsService {
   }
 
   // Incidents
-  async getIncidents(projectId: number) {
-    return this.incidentRepo.find({
-      where: { projectId },
-      order: { incidentDate: 'DESC' },
-    });
+  async getIncidents(
+    projectId: number,
+    paging?: { limit?: number; offset?: number; q?: string; status?: string },
+  ) {
+    const query = this.incidentRepo
+      .createQueryBuilder('incident')
+      .where('incident.projectId = :projectId', { projectId });
+    if (paging?.status && paging.status !== 'ALL') {
+      query.andWhere('incident.status = :status', { status: paging.status });
+    }
+    const q = paging?.q?.trim().toLowerCase();
+    if (q) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where(
+            `LOWER(COALESCE(incident.location, '') || ' ' || COALESCE(incident.description, '') || ' ' || COALESCE(incident.immediateCause, '') || ' ' || COALESCE(incident.rootCause, '') || ' ' || COALESCE(incident.correctiveActions, '') || ' ' || COALESCE(incident.preventiveActions, '')) LIKE :q`,
+            { q: `%${q}%` },
+          );
+        }),
+      );
+    }
+    query.orderBy('incident.incidentDate', 'DESC').addOrderBy('incident.id', 'DESC');
+    const hasPaging =
+      Number.isFinite(Number(paging?.limit)) ||
+      Number.isFinite(Number(paging?.offset));
+    const limit = Math.min(100, Math.max(1, Number(paging?.limit) || 25));
+    const offset = Math.max(0, Number(paging?.offset) || 0);
+    if (!hasPaging) return query.getMany();
+    const [data, total] = await query.skip(offset).take(limit).getManyAndCount();
+    return {
+      data,
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
   }
 
   async createIncident(data: any) {

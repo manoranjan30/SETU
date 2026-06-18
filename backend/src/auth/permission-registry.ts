@@ -282,6 +282,7 @@ export const EHS_PERMISSIONS: PermissionDef[] = [
     U,
   ),
   perm('EHS.SITE_OBS.CLOSE', 'Close EHS Observation', 'EHS', S),
+  perm('EHS.SITE_OBS.EXPORT', 'Export EHS Observation Register', 'EHS', S),
   perm('EHS.SITE_OBS.DELETE', 'Delete EHS Observation (Admin)', 'EHS', D),
   ...crud('EHS', 'INCIDENT', 'Incident'),
   ...crud('EHS', 'INSPECTION', 'EHS Inspection'),
@@ -440,6 +441,7 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     U,
   ),
   perm('QUALITY.SITE_OBS.CLOSE', 'Close Site Observation', 'QUALITY', S),
+  perm('QUALITY.SITE_OBS.EXPORT', 'Export Site Observation Register', 'QUALITY', S),
   perm(
     'QUALITY.SITE_OBS.DELETE',
     'Delete Site Observation (Admin)',
@@ -809,6 +811,14 @@ export function buildDependencyMap(
         'QUALITY.POUR_CARD.APPROVE',
         'QUALITY.POUR_CLEARANCE.APPROVE',
       );
+    }
+
+    if (p.code === 'EHS.SITE_OBS.READ') {
+      implied.push('EHS.SITE_OBS.EXPORT');
+    }
+
+    if (p.code === 'QUALITY.SITE_OBS.READ') {
+      implied.push('QUALITY.SITE_OBS.EXPORT');
     }
 
     if (implied.length > 0) {

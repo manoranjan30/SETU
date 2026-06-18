@@ -429,16 +429,23 @@ export class ReleaseStrategyService {
       matched,
       resolvedSteps: (strategy.steps || [])
         .sort((a, b) => a.sequence - b.sequence)
-        .map((step) => ({
-          id: step.id,
-          levelNo: step.levelNo,
-          stepName: step.stepName,
-          approverMode: step.approverMode,
-          userId: step.userId ?? null,
-          userIds: step.userIds || (step.userId ? [step.userId] : []),
-          roleId: step.roleId ?? null,
-          approvers: this.resolveStepApprovers(step, eligibleActors),
-        })),
+        .map((step) => {
+          const approvers = this.resolveStepApprovers(step, eligibleActors);
+          const scopedUserIds =
+            step.approverMode === ReleaseStrategyApproverMode.USER
+              ? approvers.map((approver) => approver.userId)
+              : [];
+          return {
+            id: step.id,
+            levelNo: step.levelNo,
+            stepName: step.stepName,
+            approverMode: step.approverMode,
+            userId: scopedUserIds[0] ?? null,
+            userIds: scopedUserIds,
+            roleId: step.roleId ?? null,
+            approvers,
+          };
+        }),
       restartPolicy: strategy.restartPolicy,
       unmatchedConditions: matched
         ? []
@@ -478,17 +485,27 @@ export class ReleaseStrategyService {
             restartPolicy: winner.restartPolicy,
             resolvedSteps: (winner.steps || [])
               .sort((a, b) => a.sequence - b.sequence)
-              .map((step) => ({
-                levelNo: step.levelNo,
-                stepName: step.stepName,
-                approverMode: step.approverMode,
-                userId: step.userId ?? null,
-                userIds: step.userIds || (step.userId ? [step.userId] : []),
-                roleId: step.roleId ?? null,
-                canDelegate: step.canDelegate,
-                minApprovalsRequired: step.minApprovalsRequired,
-                approvers: this.resolveStepApprovers(step, eligibleActors),
-              })),
+              .map((step) => {
+                const approvers = this.resolveStepApprovers(
+                  step,
+                  eligibleActors,
+                );
+                const scopedUserIds =
+                  step.approverMode === ReleaseStrategyApproverMode.USER
+                    ? approvers.map((approver) => approver.userId)
+                    : [];
+                return {
+                  levelNo: step.levelNo,
+                  stepName: step.stepName,
+                  approverMode: step.approverMode,
+                  userId: scopedUserIds[0] ?? null,
+                  userIds: scopedUserIds,
+                  roleId: step.roleId ?? null,
+                  canDelegate: step.canDelegate,
+                  minApprovalsRequired: step.minApprovalsRequired,
+                  approvers,
+                };
+              }),
           }
         : null,
       status: winner ? 'MATCHED' : 'NO_STRATEGY_ASSIGNED',

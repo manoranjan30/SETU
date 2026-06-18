@@ -1488,6 +1488,35 @@ class QualitySiteObservation extends Equatable {
   bool get isRectified => status == SiteObsStatus.rectified;
   bool get isClosed => status == SiteObsStatus.closed;
 
+  QualitySiteObservation copyWith({
+    SiteObsStatus? status,
+    String? rectificationNotes,
+    List<String>? rectificationPhotoUrls,
+    String? closureNotes,
+    DateTime? rectifiedAt,
+    DateTime? closedAt,
+  }) {
+    return QualitySiteObservation(
+      id: id,
+      projectId: projectId,
+      epsNodeId: epsNodeId,
+      description: description,
+      severity: severity,
+      category: category,
+      locationLabel: locationLabel,
+      status: status ?? this.status,
+      photoUrls: photoUrls,
+      raisedByName: raisedByName,
+      rectificationNotes: rectificationNotes ?? this.rectificationNotes,
+      rectificationPhotoUrls:
+          rectificationPhotoUrls ?? this.rectificationPhotoUrls,
+      closureNotes: closureNotes ?? this.closureNotes,
+      createdAt: createdAt,
+      rectifiedAt: rectifiedAt ?? this.rectifiedAt,
+      closedAt: closedAt ?? this.closedAt,
+    );
+  }
+
   @override
   List<Object?> get props => [
         id, projectId, description, severity, status, createdAt,

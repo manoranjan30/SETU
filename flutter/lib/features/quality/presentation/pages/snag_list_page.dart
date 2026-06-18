@@ -6,6 +6,7 @@ import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/snag_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/snag_detail_page.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 class SnagListPage extends StatelessWidget {
   final int projectId;
@@ -147,16 +148,16 @@ class _SnagListViewState extends State<_SnagListView>
                   }
                   return RefreshIndicator(
                     onRefresh: () async => context.read<SnagBloc>().add(LoadSnags(widget.projectId)),
-                    child: ListView.builder(
+                    child: PaginatedListView<QualitySnag>(
+                      items: filtered,
                       padding: const EdgeInsets.all(12),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) => _SnagCard(
-                        snag: filtered[i],
+                      itemBuilder: (context, snag, i) => _SnagCard(
+                        snag: snag,
                         onTap: () async {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => SnagDetailPage(snag: filtered[i]),
+                              builder: (_) => SnagDetailPage(snag: snag),
                             ),
                           );
                           if (context.mounted) {

@@ -191,7 +191,7 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
   };
 
   return (
-    <div className="relative">
+    <div className="relative isolate">
       <div
         className={`w-full bg-surface-card border ${
           isOpen
@@ -219,9 +219,9 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 right-0 mt-2 bg-surface-card rounded-xl shadow-xl border border-border-subtle z-50 max-h-96 overflow-hidden flex flex-col">
-            <div className="p-3 border-b border-border-subtle">
+          <div className="fixed inset-0 z-[110]" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-border-strong z-[120] max-h-96 overflow-hidden flex flex-col">
+            <div className="p-3 border-b border-border-subtle bg-white">
               <input
                 type="text"
                 placeholder="Search locations..."
@@ -231,7 +231,7 @@ const EpsLocationPicker: React.FC<EpsLocationPickerProps> = ({
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
-            <div className="p-2 overflow-y-auto flex-1">
+            <div className="p-2 overflow-y-auto flex-1 bg-white">
               {loading ? (
                 <div className="p-4 text-center text-sm text-text-muted animate-pulse">
                   Loading structure...

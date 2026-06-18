@@ -524,6 +524,30 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Patches a single cached quality site observation's rectification fields
+  /// in place, without touching any other row.
+  ///
+  /// Used for the optimistic UI update after a rectify/close action so the
+  /// new text/photos are visible immediately even before the next full
+  /// list refresh — critical when offline, since [cacheQualitySiteObs] is
+  /// only called from a successful API fetch.
+  Future<void> patchCachedQualitySiteObs(
+      String id, Map<String, dynamic> fieldUpdates) async {
+    final row = await (select(cachedQualitySiteObs)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final merged = {
+      ...jsonDecode(row.rawData) as Map<String, dynamic>,
+      ...fieldUpdates,
+    };
+    await (update(cachedQualitySiteObs)..where((t) => t.id.equals(id)))
+        .write(CachedQualitySiteObsCompanion(
+      status: Value(merged['status'] as String? ?? row.status),
+      rawData: Value(jsonEncode(merged)),
+    ));
+  }
+
   // ==================== EHS SITE OBS CACHE QUERIES ====================
 
   /// Get cached EHS site observations for a project, optionally filtered by
@@ -543,13 +567,17 @@ class AppDatabase extends _$AppDatabase {
 
   /// Cache EHS site observations from API response.
   ///
-  /// Removes optimistic-insert rows (id starts with `local_`) before writing
-  /// server data so confirmed server copies replace the pending placeholders.
+  /// Deletes all server-confirmed rows for the project before writing fresh
+  /// data — this evicts records deleted on the server and ensures the local
+  /// cache always matches the latest API page.  Pending optimistic rows
+  /// (id starts with `local_`) are preserved so they remain visible while
+  /// the sync queue replays them.
   Future<void> cacheEhsSiteObs(
       List<Map<String, dynamic>> items, int projectId) async {
     await (delete(cachedEhsSiteObs)
           ..where((t) =>
-              t.projectId.equals(projectId) & t.id.like('local_%')))
+              t.projectId.equals(projectId) &
+              t.id.like('local_%').not()))
         .go();
     await batch((b) {
       for (final item in items) {
@@ -566,6 +594,26 @@ class AppDatabase extends _$AppDatabase {
         );
       }
     });
+  }
+
+  /// Patches a single cached EHS site observation's rectification fields in
+  /// place — mirrors [patchCachedQualitySiteObs]. See that method's doc for
+  /// why this targeted update (rather than a full [cacheEhsSiteObs] call) is
+  /// necessary for the offline optimistic-update path.
+  Future<void> patchCachedEhsSiteObs(
+      String id, Map<String, dynamic> fieldUpdates) async {
+    final row = await (select(cachedEhsSiteObs)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final merged = {
+      ...jsonDecode(row.rawData) as Map<String, dynamic>,
+      ...fieldUpdates,
+    };
+    await (update(cachedEhsSiteObs)..where((t) => t.id.equals(id)))
+        .write(CachedEhsSiteObsCompanion(
+      status: Value(merged['status'] as String? ?? row.status),
+      rawData: Value(jsonEncode(merged)),
+    ));
   }
 
   /// Return distinct projectIds across all cached tables.

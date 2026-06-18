@@ -9,9 +9,11 @@ import {
   Param,
   Query,
   Request,
+  Res,
   UseGuards,
   ParseIntPipe,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { EhsObservationService } from './ehs-observation.service';
 import {
   CreateEhsObservationDto,
@@ -36,8 +38,57 @@ export class EhsObservationController {
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('status') status?: string,
     @Query('severity') severity?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('paged') paged?: string,
   ) {
-    return this.service.getAll(projectId, status, severity);
+    return this.service.getAll(projectId, status, severity, {
+      dateFrom,
+      dateTo,
+      q,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      paged: paged === 'true',
+    });
+  }
+
+  @Get('export')
+  @Permissions('EHS.SITE_OBS.EXPORT')
+  @Auditable('EHS', 'EXPORT_SITE_OBS_REGISTER')
+  async exportRegister(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Res() res: Response,
+    @Query('status') status?: string,
+    @Query('severity') severity?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('q') q?: string,
+    @Query('ids') ids?: string,
+    @Query('fullDump') fullDump?: string,
+  ) {
+    const buffer = await this.service.exportRegister(projectId, {
+      status,
+      severity,
+      dateFrom,
+      dateTo,
+      q,
+      ids,
+      fullDump: fullDump === 'true',
+    });
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="EHS_Observation_Register_${new Date()
+        .toISOString()
+        .slice(0, 10)}.xlsx"`,
+    );
+    res.send(buffer);
   }
 
   @Get(':id')

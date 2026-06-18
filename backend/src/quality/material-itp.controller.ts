@@ -178,8 +178,19 @@ export class MaterialItpController {
 
   @Get(':projectId/cube-test-register')
   @Permissions('QUALITY.CUBE_TEST.READ')
-  listCubeTestRegister(@Param('projectId') projectId: number) {
-    return this.materialItpService.listCubeTestRegister(Number(projectId));
+  listCubeTestRegister(
+    @Param('projectId') projectId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.materialItpService.listCubeTestRegister(Number(projectId), {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      q,
+      status,
+    });
   }
 
   @Get(':projectId/concrete-grades')

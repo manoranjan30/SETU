@@ -4,6 +4,7 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 import 'package:setu_mobile/shared/widgets/sync_status_banner.dart';
 import 'package:setu_mobile/features/projects/presentation/widgets/breadcrumb_widget.dart'
     as widgets;
@@ -151,12 +152,12 @@ class _EhsIncidentsPageState extends State<EhsIncidentsPage> {
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async => _refresh(),
-                  child: ListView.separated(
+                  child: PaginatedListView<EhsIncident>(
+                    items: incidents,
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
-                    itemCount: incidents.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) => RepaintBoundary(
-                      child: _IncidentCard(incident: incidents[i]),
+                    separatorBuilder: (_) => const SizedBox(height: 8),
+                    itemBuilder: (_, incident, __) => RepaintBoundary(
+                      child: _IncidentCard(incident: incident),
                     ),
                   ),
                 ),

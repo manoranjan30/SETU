@@ -6,6 +6,7 @@ import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/inspection_detail_page.dart';
+import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 class QualityApprovalsPage extends StatefulWidget {
   final int projectId;
@@ -385,13 +386,11 @@ class _InspectionListState extends State<_InspectionList> {
                           : 'No inspections found'),
                     ),
                   ])
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                    itemCount: list.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) {
-                      if (i == 0) {
-                        return Card(
+                : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                        child: Card(
                           elevation: 0,
                           color: Theme.of(context)
                               .colorScheme
@@ -403,13 +402,19 @@ class _InspectionListState extends State<_InspectionList> {
                             subtitle: Text(
                                 'Showing ${list.length}/${all.length}  Pending $pending  Approved $approved  Rejected $rejected'),
                           ),
-                        );
-                      }
-                      final inspection = list[i - 1];
-                      return _InspectionCard(
-                          inspection: inspection,
-                          onTap: () => widget.onInspectionTap(inspection));
-                    },
+                        ),
+                      ),
+                      Expanded(
+                        child: PaginatedListView<QualityInspection>(
+                          items: list,
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          separatorBuilder: (_) => const SizedBox(height: 8),
+                          itemBuilder: (context, inspection, __) => _InspectionCard(
+                              inspection: inspection,
+                              onTap: () => widget.onInspectionTap(inspection)),
+                        ),
+                      ),
+                    ],
                   ),
           ),
         ),

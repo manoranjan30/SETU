@@ -41,6 +41,6 @@ import { SystemSettingsService } from '../common/system-settings.service';
     SystemSettingsService,
   ],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [AuthService, EmailDeliveryService],
 })
 export class AuthModule {}

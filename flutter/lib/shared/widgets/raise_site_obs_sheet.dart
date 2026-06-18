@@ -394,7 +394,22 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                             onSelected: (_) => setState(
                               () => _category = selected ? null : c,
                             ),
-                            labelStyle: const TextStyle(fontSize: 12),
+                            backgroundColor: theme.colorScheme.surfaceContainerLowest,
+                            selectedColor:
+                                theme.colorScheme.primary.withValues(alpha: 0.15),
+                            checkmarkColor: theme.colorScheme.primary,
+                            side: BorderSide(
+                                color: selected
+                                    ? theme.colorScheme.primary
+                                    : theme.dividerColor),
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              fontWeight:
+                                  selected ? FontWeight.w700 : FontWeight.w500,
+                              color: selected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface,
+                            ),
                           );
                         }).toList(),
                       ),
@@ -591,7 +606,14 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
     _load();
   }
 
+  /// Loads the location tree cache-first so the picker is instantly usable
+  /// even on a slow site network, then refreshes from the server in the
+  /// background. Previously this fetched live first and only fell back to
+  /// cache on failure — on a slow/flaky mobile connection the live call
+  /// could take the full timeout before the (already-available) cache was
+  /// ever consulted, making the picker look broken/empty.
   Future<void> _load() async {
+    await _loadFromCache();
     try {
       final raw = await sl<SetuApiClient>().getEpsTreeForProject(widget.projectId);
       // Flatten the tree into a list of maps (preserving parentId) and cache it
@@ -625,21 +647,25 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
       if (nodes.length == 1 && nodes.first.children.isNotEmpty) {
         nodes = nodes.first.children;
       }
-      if (mounted) setState(() => _nodes = nodes);
+      if (mounted) setState(() {
+        _nodes = nodes;
+        _error = null;
+      });
     } catch (_) {
-      // Offline fallback: rebuild tree from Drift-cached flat node list.
-      await _loadFromCache();
+      // Live refresh failed — if the cache load above also found nothing,
+      // surface the unavailable state now.
+      if (_nodes == null && mounted) {
+        widget.onUnavailable?.call();
+        setState(() => _error =
+            'No locations available offline. Go online to load EPS locations first.');
+      }
     }
   }
 
   Future<void> _loadFromCache() async {
     try {
       final cached = await sl<AppDatabase>().getEpsNodesForProject(widget.projectId);
-      if (cached.isEmpty) {
-        widget.onUnavailable?.call();
-        if (mounted) setState(() => _error = 'No cached locations. Go online first to load locations.');
-        return;
-      }
+      if (cached.isEmpty) return; // Let the live fetch attempt surface errors.
       // Build parent→children map from flat list.
       final childrenByParent = <int?, List<EpsTreeNode>>{};
       for (final n in cached) {
@@ -664,8 +690,8 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
         roots = roots.first.children;
       }
       if (mounted) setState(() => _nodes = roots);
-    } catch (e) {
-      if (mounted) setState(() => _error = 'Failed to load locations.');
+    } catch (_) {
+      // Cache read failed — live fetch attempt will still run.
     }
   }
 

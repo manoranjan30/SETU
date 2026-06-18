@@ -62,6 +62,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PlanningModule } from '../planning/planning.module';
 import { CommonModule } from '../common/common.module';
 import { MilestoneModule } from '../milestone/milestone.module';
+import { AuthModule } from '../auth/auth.module';
 
 // Workflow Designer
 import { ApprovalWorkflowTemplate } from './entities/approval-workflow-template.entity';
@@ -96,6 +97,7 @@ import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
 import { QualitySignatureQrSession } from './entities/quality-signature-qr-session.entity';
 import { QualityPourCardService } from './quality-pour-card.service';
 import { QualityPourCardController } from './quality-pour-card.controller';
+import { SiteObservationExportCron } from './site-observation-export.cron';
 
 @Module({
   imports: [
@@ -105,6 +107,7 @@ import { QualityPourCardController } from './quality-pour-card.controller';
     PlanningModule,
     CommonModule,
     MilestoneModule,
+    AuthModule,
     TypeOrmModule.forFeature([
       QualityInspection,
       QualityMaterialTest,
@@ -192,6 +195,7 @@ import { QualityPourCardController } from './quality-pour-card.controller';
     QualityRatingService,
     MaterialItpService,
     QualityPourCardService,
+    SiteObservationExportCron,
   ],
   exports: [
     QualityService,

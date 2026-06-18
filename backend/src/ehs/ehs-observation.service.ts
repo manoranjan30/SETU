@@ -5,7 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
+import * as XLSX from 'xlsx';
 import {
   EhsObservation,
   EhsObservationRectificationHistoryEntry,
@@ -93,17 +94,241 @@ export class EhsObservationService {
     return config.observationCategories;
   }
 
-  async getAll(projectId: number, status?: string, severity?: string) {
+  async getAll(
+    projectId: number,
+    status?: string,
+    severity?: string,
+    options?: {
+      q?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      page?: number;
+      pageSize?: number;
+      paged?: boolean;
+    },
+  ) {
     const query = this.observationRepo
       .createQueryBuilder('obs')
       .leftJoinAndSelect('obs.epsNode', 'epsNode')
       .where('obs.projectId = :projectId', { projectId });
 
-    if (status) query.andWhere('obs.status = :status', { status });
-    if (severity) query.andWhere('obs.severity = :severity', { severity });
+    if (status && status !== 'ALL') {
+      if (status === 'OPEN') {
+        query.andWhere('obs.status IN (:...statuses)', {
+          statuses: ['OPEN', 'HELD'],
+        });
+      } else {
+        query.andWhere('obs.status = :status', { status });
+      }
+    }
+    if (severity && severity !== 'ALL') {
+      query.andWhere('obs.severity = :severity', { severity });
+    }
+    if (options?.dateFrom) {
+      query.andWhere('obs.createdAt >= :dateFrom', {
+        dateFrom: new Date(options.dateFrom),
+      });
+    }
+    if (options?.dateTo) {
+      query.andWhere('obs.createdAt <= :dateTo', {
+        dateTo: new Date(`${options.dateTo}T23:59:59`),
+      });
+    }
+    const q = options?.q?.trim();
+    if (q) {
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where(
+            `LOWER(COALESCE(obs.description, '') || ' ' || COALESCE(obs.category, '') || ' ' || COALESCE(obs.locationLabel, '')) LIKE :q`,
+            { q: `%${q.toLowerCase()}%` },
+          ).orWhere('LOWER(epsNode.name) LIKE :q', {
+            q: `%${q.toLowerCase()}%`,
+          });
+        }),
+      );
+    }
 
-    const rows = await query.orderBy('obs.createdAt', 'DESC').getMany();
+    query.orderBy('obs.createdAt', 'DESC');
+
+    if (options?.paged) {
+      const page = Math.max(1, Number(options.page) || 1);
+      const pageSize = Math.min(100, Math.max(5, Number(options.pageSize) || 10));
+      const [rows, total] = await query
+        .skip((page - 1) * pageSize)
+        .take(pageSize)
+        .getManyAndCount();
+      return {
+        data: rows.map((obs) =>
+          this.decorateObservation(this.normalizePhotos(obs)),
+        ),
+        total,
+        page,
+        pageSize,
+      };
+    }
+
+    const rows = await query.getMany();
     return rows.map((obs) => this.decorateObservation(this.normalizePhotos(obs)));
+  }
+
+  async exportRegister(
+    projectId: number,
+    filters: {
+      status?: string;
+      severity?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      q?: string;
+      ids?: string;
+      fullDump?: boolean;
+    },
+  ): Promise<Buffer> {
+    const query = this.observationRepo
+      .createQueryBuilder('obs')
+      .leftJoinAndSelect('obs.epsNode', 'epsNode')
+      .where('obs.projectId = :projectId', { projectId });
+
+    if (!filters.fullDump) {
+      const ids = this.parseExportIds(filters.ids);
+      if (ids.length > 0) {
+        query.andWhere('obs.id IN (:...ids)', { ids });
+      } else {
+        if (filters.status && filters.status !== 'ALL') {
+          if (filters.status === 'OPEN') {
+            query.andWhere('obs.status IN (:...statuses)', {
+              statuses: ['OPEN', 'HELD'],
+            });
+          } else {
+            query.andWhere('obs.status = :status', { status: filters.status });
+          }
+        }
+        if (filters.severity && filters.severity !== 'ALL') {
+          query.andWhere('obs.severity = :severity', {
+            severity: filters.severity,
+          });
+        }
+        if (filters.dateFrom) {
+          query.andWhere('obs.createdAt >= :dateFrom', {
+            dateFrom: new Date(filters.dateFrom),
+          });
+        }
+        if (filters.dateTo) {
+          query.andWhere('obs.createdAt <= :dateTo', {
+            dateTo: new Date(`${filters.dateTo}T23:59:59`),
+          });
+        }
+        if (filters.q?.trim()) {
+          query.andWhere(
+            `(LOWER(COALESCE(obs.description, '') || ' ' || COALESCE(obs.category, '') || ' ' || COALESCE(obs.locationLabel, '')) LIKE :q OR LOWER(epsNode.name) LIKE :q)`,
+            { q: `%${filters.q.trim().toLowerCase()}%` },
+          );
+        }
+      }
+    }
+
+    const rows = (await query.orderBy('obs.createdAt', 'DESC').getMany()).map(
+      (obs) => this.decorateObservation(this.normalizePhotos(obs)),
+    );
+    const projectInfo = await this.getProjectInfo(projectId);
+    const registerRows = rows.map((obs, index) => ({
+      'Sl No': index + 1,
+      'Observation ID': obs.id,
+      Status: obs.status,
+      Severity: obs.severity,
+      Category: obs.category,
+      Location: obs.locationLabel || obs.epsNode?.name || 'General Site',
+      Description: obs.description,
+      Remarks: obs.remarks || '',
+      'Target Date': obs.targetDate || '',
+      'Raised On': obs.createdAt ? new Date(obs.createdAt).toLocaleString() : '',
+      'Ageing Days': obs.ageingDays,
+      'Rectification': obs.rectificationText || '',
+      'Rectified On': obs.rectifiedAt
+        ? new Date(obs.rectifiedAt).toLocaleString()
+        : '',
+      'Closure Remarks': obs.closureRemarks || '',
+      'Closed On': obs.closedAt ? new Date(obs.closedAt).toLocaleString() : '',
+      'Hold Reason': obs.holdReason || '',
+      'Photo Count': obs.photos?.length || 0,
+      'Rectification Photo Count': obs.rectificationPhotos?.length || 0,
+    }));
+
+    const summaryRows = [
+      { Metric: 'Module', Value: 'EHS Observation Register' },
+      { Metric: 'Generated On', Value: new Date().toLocaleString() },
+      { Metric: 'Project ID', Value: projectId },
+      { Metric: 'Project Name', Value: projectInfo.name },
+      { Metric: 'Project Path', Value: projectInfo.path },
+      {
+        Metric: 'Export Scope',
+        Value: filters.fullDump
+          ? 'Full data dump'
+          : filters.ids
+            ? 'Selected observations'
+            : 'Filtered register',
+      },
+      { Metric: 'Total Records', Value: rows.length },
+      { Metric: 'Open / Held', Value: rows.filter((r) => ['OPEN', 'HELD'].includes(r.status)).length },
+      { Metric: 'Rectified', Value: rows.filter((r) => r.status === 'RECTIFIED').length },
+      { Metric: 'Closed', Value: rows.filter((r) => r.status === 'CLOSED').length },
+      { Metric: 'Critical', Value: rows.filter((r) => r.severity === 'CRITICAL').length },
+      { Metric: 'Major', Value: rows.filter((r) => r.severity === 'MAJOR').length },
+      { Metric: 'Minor', Value: rows.filter((r) => r.severity === 'MINOR').length },
+      { Metric: 'Info', Value: rows.filter((r) => r.severity === 'INFO').length },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    const registerSheet = XLSX.utils.json_to_sheet(registerRows);
+    if (registerSheet['!ref']) {
+      registerSheet['!autofilter'] = { ref: registerSheet['!ref'] };
+    }
+    registerSheet['!cols'] = [
+      { wch: 8 },
+      { wch: 36 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 38 },
+      { wch: 70 },
+      { wch: 30 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 50 },
+      { wch: 22 },
+      { wch: 40 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 12 },
+      { wch: 20 },
+    ];
+    summarySheet['!cols'] = [{ wch: 24 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    XLSX.utils.book_append_sheet(workbook, registerSheet, 'Observation Register');
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  }
+
+  private parseExportIds(ids?: string) {
+    return (ids || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+  }
+
+  private async getProjectInfo(projectId: number) {
+    const path: string[] = [];
+    let currentId: number | null | undefined = projectId;
+    while (currentId) {
+      const node = await this.epsRepo.findOne({ where: { id: currentId } });
+      if (!node) break;
+      path.unshift(node.name);
+      currentId = node.parentId;
+    }
+    return {
+      name: path[path.length - 1] || `Project #${projectId}`,
+      path: path.join(' / ') || `Project #${projectId}`,
+    };
   }
 
   async getById(id: string) {
@@ -229,7 +454,7 @@ export class EhsObservationService {
       this.pushService
         .sendToProjectPermission(
           dto.projectId,
-          'EHS.OBSERVATION.CLOSE',
+          'EHS.SITE_OBS.CLOSE',
           notification.title,
           notification.body,
           {
@@ -295,7 +520,8 @@ export class EhsObservationService {
         });
 
       this.pushService
-        .sendToUsers(
+        .sendToProjectUsers(
+          obs.projectId,
           [parseInt(obs.raisedById, 10)],
           notification.title,
           `${notification.body} | Please review and close.`,
@@ -366,7 +592,8 @@ export class EhsObservationService {
         });
 
       this.pushService
-        .sendToUsers(
+        .sendToProjectUsers(
+          obs.projectId,
           [parseInt(obs.raisedById, 10)],
           notification.title,
           [
@@ -487,7 +714,8 @@ export class EhsObservationService {
         });
 
       this.pushService
-        .sendToUsers(
+        .sendToProjectUsers(
+          obs.projectId,
           [parseInt(obs.raisedById, 10)],
           notification.title,
           notification.body,

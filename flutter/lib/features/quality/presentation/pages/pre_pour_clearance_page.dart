@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:open_file/open_file.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/clearance_card_bloc.dart';
@@ -726,6 +728,47 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
+/// Icon + label + value row used in the checklist detail bottom sheet.
+class _DetailLine extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _DetailLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey.shade500),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 96,
+            child: Text(label,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FormField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -810,6 +853,90 @@ class _AttachmentRowState extends State<_AttachmentRow> {
     }
   }
 
+  /// Shows the full context for a related checklist RFI — Checklist Name >
+  /// Element (block/tower/floor/unit) > GO Details — so the user doesn't
+  /// have to guess what a bare "RFI #123" row refers to.
+  void _showChecklistDetail(BuildContext context, QualityInspection insp) {
+    final element = insp.locationPath ??
+        insp.epsNodeLabel ??
+        [insp.blockName, insp.towerName, insp.floorName, insp.unitName]
+            .where((s) => s != null && s.isNotEmpty)
+            .join(' › ');
+    final go = [
+      if (insp.goLabel != null) insp.goLabel!,
+      if (insp.goNo != null && insp.goLabel == null) 'GO ${insp.goNo}',
+      if (insp.goDetails != null) insp.goDetails!,
+    ].join(' — ');
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text('Checklist Detail',
+                style: Theme.of(ctx).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 14),
+            _DetailLine(
+              icon: Icons.checklist_rtl_outlined,
+              label: 'Checklist Name',
+              value: insp.activityName ?? '—',
+            ),
+            _DetailLine(
+              icon: Icons.location_on_outlined,
+              label: 'Element',
+              value: element.isEmpty ? '—' : element,
+            ),
+            _DetailLine(
+              icon: Icons.assignment_outlined,
+              label: 'GO Details',
+              value: go.isEmpty ? '—' : go,
+            ),
+            if (insp.isMultiPart)
+              _DetailLine(
+                icon: Icons.layers_outlined,
+                label: 'Part',
+                value: insp.partDisplay,
+              ),
+            if (insp.vendorName != null)
+              _DetailLine(
+                icon: Icons.business_outlined,
+                label: 'Vendor',
+                value: insp.vendorName!,
+              ),
+            _DetailLine(
+              icon: Icons.flag_outlined,
+              label: 'Status',
+              value: insp.status.label,
+              valueColor: insp.status.color,
+            ),
+            _DetailLine(
+              icon: Icons.event_outlined,
+              label: 'Requested',
+              value: insp.requestDate,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickAndUpload() async {
     if (widget.documents.length >= _maxDocs) {
       setState(() => _uploadError = 'Maximum $_maxDocs documents per line');
@@ -885,10 +1012,53 @@ class _AttachmentRowState extends State<_AttachmentRow> {
         ),
       );
     } catch (e) {
-      if (mounted) setState(() => _uploadError = 'Upload failed. Please try again.');
+      // Offline (or any upload failure): persist the file so it survives app
+      // restart/cache cleanup, then queue it for upload — without this the
+      // picked file would just be discarded and the document permanently lost.
+      try {
+        final localPath = await _savePendingDocLocally(file.path, file.name);
+        await sl<SyncService>().addToQueue(
+          entityType: 'clearance_attachment_upload',
+          entityId: widget.inspectionId,
+          operation: 'create',
+          payload: {
+            'inspectionId': widget.inspectionId,
+            'lineKey': widget.lineKey,
+            'localPath': localPath,
+            'fileName': file.name,
+            'mimeType': _mimeType(file.name),
+          },
+          priority: 2,
+        );
+        // Attempt immediate sync in case the first failure was transient
+        // (e.g. a momentary network blip) rather than truly offline.
+        unawaited(sl<SyncService>().syncAll());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('Saved locally — will upload when online.'),
+            backgroundColor: Colors.orange.shade700,
+          ));
+        }
+      } catch (_) {
+        if (mounted) setState(() => _uploadError = 'Upload failed. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  /// Saves a picked attachment to a persistent app directory so it survives
+  /// app restarts and OS temp-cache cleanup until [SyncService] uploads it.
+  /// Mirrors the `pending_obs_photos` pattern used by the offline-capable
+  /// observation flows elsewhere in the app.
+  Future<String> _savePendingDocLocally(String sourcePath, String fileName) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final pendingDir = Directory(p.join(dir.path, 'pending_clearance_docs'));
+    await pendingDir.create(recursive: true);
+    final dest = File(p.join(
+        pendingDir.path, '${DateTime.now().millisecondsSinceEpoch}_$fileName'));
+    await File(sourcePath).copy(dest.path);
+    return dest.path;
   }
 
   Future<void> _openDocument(ClearanceAttachmentDocument doc) async {
@@ -1010,6 +1180,15 @@ class _AttachmentRowState extends State<_AttachmentRow> {
                                 child: Text(insp.status.label,
                                     style: TextStyle(fontSize: 9, color: insp.status.color,
                                         fontWeight: FontWeight.w600)),
+                              ),
+                              InkWell(
+                                onTap: () => _showChecklistDetail(context, insp),
+                                borderRadius: BorderRadius.circular(12),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.info_outline_rounded,
+                                      size: 14, color: Color(0xFF15803D)),
+                                ),
                               ),
                             ],
                           ),

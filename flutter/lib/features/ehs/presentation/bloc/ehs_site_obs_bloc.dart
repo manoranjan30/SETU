@@ -375,12 +375,16 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
         }
         return;
       }
-      // Page-0 API failure — if cache was already emitted, stay silent.
+      // Page-0 API failure — if cache was shown, keep it visible but mark it.
+      // Re-emit the fromCache state so the UI banner stays visible.
       final current = state;
-      if (current is EhsSiteObsLoaded && current.fromCache) return;
+      if (current is EhsSiteObsLoaded && current.fromCache) {
+        emit(current.copyWith(fromCache: true));
+        return;
+      }
       // Nothing was cached — show error.
       emit(const EhsSiteObsError(
-          'Failed to load EHS observations. No cached data available.'));
+          'Failed to load EHS observations. Check your connection and pull to refresh.'));
     }
   }
 
@@ -436,6 +440,12 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
   }
 
   /// Submits a rectification via the sync queue.
+  ///
+  /// Patches the Drift cache with the submitted notes/photos immediately —
+  /// without this, a user who rectifies while offline (or whose sync hasn't
+  /// completed yet) would see no rectification text/photos until a fresh
+  /// online fetch overwrites the cache, since [cacheEhsSiteObs] only runs on
+  /// a successful API response.
   Future<void> _onRectify(
     RectifyEhsSiteObs event,
     Emitter<EhsSiteObsState> emit,
@@ -452,6 +462,16 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
         },
         priority: 2,
       );
+      await _db.patchCachedEhsSiteObs(event.id, {
+        'status': 'RECTIFIED',
+        'rectificationNotes': event.notes,
+        // Raw local paths need the file:// prefix so resolvePhotos() in the
+        // model recognises them as local rather than a server-relative URL.
+        'rectificationPhotoUrls': event.photoUrls
+            .map((p) => p.startsWith('/') ? 'file://$p' : p)
+            .toList(),
+        'rectifiedAt': DateTime.now().toIso8601String(),
+      });
       final syncResult = await _syncService.syncAll();
       emit(EhsSiteObsActionSuccess(
           syncResult.success ? 'rectified' : 'rectified_offline'));
@@ -460,7 +480,8 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
     }
   }
 
-  /// Closes an observation via the sync queue.
+  /// Closes an observation via the sync queue. See [_onRectify] for why the
+  /// cache is patched optimistically before the sync attempt.
   Future<void> _onClose(
     CloseEhsSiteObs event,
     Emitter<EhsSiteObsState> emit,
@@ -476,6 +497,11 @@ class EhsSiteObsBloc extends Bloc<EhsSiteObsEvent, EhsSiteObsState> {
         },
         priority: 2,
       );
+      await _db.patchCachedEhsSiteObs(event.id, {
+        'status': 'CLOSED',
+        if (event.closureNotes != null) 'closureNotes': event.closureNotes,
+        'closedAt': DateTime.now().toIso8601String(),
+      });
       final syncResult = await _syncService.syncAll();
       emit(EhsSiteObsActionSuccess(
           syncResult.success ? 'closed' : 'closed_offline'));

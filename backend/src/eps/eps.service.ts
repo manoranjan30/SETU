@@ -402,17 +402,44 @@ export class EpsService {
 
   // --- NEW: Project Tree Method ---
   async getProjectTree(projectId: number): Promise<any[]> {
-    // 1. Fetch Project Node + All Descendants
-    // Since we don't have a closure table, we must fetch all children recursively.
-    // Or, simpler: Fetch EVERYTHING and filter in-memory (assuming reasonable dataset size).
-    // Or, for just one project, we can use a recursive query.
-    // Let's rely on simple parentId traversal from the DB if possible, OR fetch all and filter.
+    const allNodes = await this.epsRepository.query(
+      `
+        WITH RECURSIVE project_tree AS (
+          SELECT
+            id,
+            name,
+            type,
+            "parentId",
+            "order",
+            "createdBy",
+            "updatedBy",
+            "createdAt",
+            "updatedAt"
+          FROM eps_node
+          WHERE id = $1
 
-    // Fetch all nodes first (optimization: filter by Project ID path if we knew it? No.)
-    // We can assume the tree isn't millions of rows.
-    const allNodes = await this.epsRepository.find();
+          UNION ALL
 
-    // Build Tree Structure for the given Project ID
+          SELECT
+            child.id,
+            child.name,
+            child.type,
+            child."parentId",
+            child."order",
+            child."createdBy",
+            child."updatedBy",
+            child."createdAt",
+            child."updatedAt"
+          FROM eps_node child
+          INNER JOIN project_tree parent ON child."parentId" = parent.id
+        )
+        SELECT *
+        FROM project_tree
+        ORDER BY COALESCE("parentId", 0), "order", name
+      `,
+      [projectId],
+    );
+
     return this.buildTree(allNodes, projectId);
   }
 

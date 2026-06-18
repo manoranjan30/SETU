@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { User } from './user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcryptjs';
@@ -281,7 +281,16 @@ export class UsersService {
   // ============================
 
   async saveFcmToken(userId: number, token: string): Promise<void> {
-    await this.usersRepository.update(userId, { fcmToken: token });
+    const normalizedToken = String(token || '').trim();
+    if (!normalizedToken) {
+      await this.clearFcmToken(userId);
+      return;
+    }
+    await this.usersRepository.update(
+      { fcmToken: normalizedToken, id: Not(userId) },
+      { fcmToken: null },
+    );
+    await this.usersRepository.update(userId, { fcmToken: normalizedToken });
   }
 
   async clearFcmToken(userId: number): Promise<void> {
