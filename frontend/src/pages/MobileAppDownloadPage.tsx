@@ -8,6 +8,8 @@ interface MobileAppInfo {
   qrCodeDataUrl?: string | null;
   apkOriginalName?: string | null;
   apkFileSize?: number | string | null;
+  apkBuildNumber?: number | string | null;
+  apkVersionName?: string | null;
   apkUploadedAt?: string | null;
 }
 
@@ -75,13 +77,21 @@ const MobileAppDownloadPage = () => {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         <section className="rounded-lg border border-border-default bg-surface-card p-6 shadow-sm">
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div>
               <p className="text-xs font-semibold uppercase text-text-muted">
                 Version
               </p>
               <p className="mt-1 text-base font-semibold text-text-primary">
-                {info?.latestVersion || "Not available"}
+                {info?.apkVersionName || info?.latestVersion || "Not available"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-text-muted">
+                Build
+              </p>
+              <p className="mt-1 text-base font-semibold text-text-primary">
+                {info?.apkBuildNumber || "Not available"}
               </p>
             </div>
             <div>

@@ -43,6 +43,12 @@ export class AppConfig {
   @Column({ nullable: true, type: 'bigint' })
   apkFileSize: number | null;
 
+  @Column({ nullable: true, type: 'int' })
+  apkBuildNumber: number | null;
+
+  @Column({ nullable: true, type: 'text' })
+  apkVersionName: string | null;
+
   @Column({ nullable: true, type: 'timestamp' })
   apkUploadedAt: Date | null;
 

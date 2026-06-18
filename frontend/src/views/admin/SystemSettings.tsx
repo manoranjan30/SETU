@@ -31,6 +31,8 @@ interface MobileAppInfo {
   qrCodeDataUrl?: string | null;
   apkOriginalName?: string | null;
   apkFileSize?: number | string | null;
+  apkBuildNumber?: number | string | null;
+  apkVersionName?: string | null;
   apkUploadedAt?: string | null;
 }
 
@@ -56,6 +58,8 @@ const SystemSettings = () => {
   );
   const [exportHistory, setExportHistory] = useState<ExportHistoryRow[]>([]);
   const [apkFile, setApkFile] = useState<File | null>(null);
+  const [apkBuildNumber, setApkBuildNumber] = useState("");
+  const [apkVersionName, setApkVersionName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [apkUploading, setApkUploading] = useState(false);
@@ -127,9 +131,20 @@ const SystemSettings = () => {
       setTimeout(() => setError(null), 8000);
       return;
     }
+    if (!apkBuildNumber.trim() || Number(apkBuildNumber) <= 0) {
+      setError("Please enter the APK build number before uploading");
+      setTimeout(() => setError(null), 8000);
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", apkFile);
+    if (apkBuildNumber.trim()) {
+      formData.append("buildNumber", apkBuildNumber.trim());
+    }
+    if (apkVersionName.trim()) {
+      formData.append("versionName", apkVersionName.trim());
+    }
     setApkUploading(true);
 
     try {
@@ -140,6 +155,8 @@ const SystemSettings = () => {
       });
       setMobileAppInfo(response.data);
       setApkFile(null);
+      setApkBuildNumber("");
+      setApkVersionName("");
       setSuccess("Mobile APK uploaded successfully");
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
@@ -236,6 +253,22 @@ const SystemSettings = () => {
                       }
                       className="block w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm text-text-secondary file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
                     />
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={apkBuildNumber}
+                      onChange={(event) => setApkBuildNumber(event.target.value)}
+                      placeholder="Build no."
+                      className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm text-text-secondary sm:w-32"
+                    />
+                    <input
+                      type="text"
+                      value={apkVersionName}
+                      onChange={(event) => setApkVersionName(event.target.value)}
+                      placeholder="Version name"
+                      className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm text-text-secondary sm:w-36"
+                    />
                     <button
                       type="button"
                       onClick={handleApkUpload}
@@ -277,7 +310,7 @@ const SystemSettings = () => {
                   )}
                 </div>
 
-                <div className="grid gap-3 text-sm text-text-muted sm:grid-cols-3">
+                <div className="grid gap-3 text-sm text-text-muted sm:grid-cols-5">
                   <div>
                     <span className="block font-medium text-text-secondary">
                       File
@@ -289,6 +322,20 @@ const SystemSettings = () => {
                       Size
                     </span>
                     {formatFileSize(mobileAppInfo?.apkFileSize)}
+                  </div>
+                  <div>
+                    <span className="block font-medium text-text-secondary">
+                      Build
+                    </span>
+                    {mobileAppInfo?.apkBuildNumber || "Not set"}
+                  </div>
+                  <div>
+                    <span className="block font-medium text-text-secondary">
+                      Version
+                    </span>
+                    {mobileAppInfo?.apkVersionName ||
+                      mobileAppInfo?.latestVersion ||
+                      "Not set"}
                   </div>
                   <div>
                     <span className="block font-medium text-text-secondary">

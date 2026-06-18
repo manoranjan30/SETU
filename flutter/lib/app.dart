@@ -4,15 +4,12 @@ import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/core/navigation/deep_link_service.dart';
 import 'package:setu_mobile/core/navigation/pending_qr_service.dart';
 import 'package:setu_mobile/core/notifications/notification_service.dart';
 import 'package:setu_mobile/core/theme/app_theme.dart';
+import 'package:setu_mobile/core/update/update_dialog_helper.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
@@ -20,7 +17,7 @@ import 'package:setu_mobile/features/projects/presentation/pages/projects_list_p
 import 'package:setu_mobile/features/quality/presentation/pages/qr_signature_confirmation_page.dart';
 import 'package:setu_mobile/features/server_setup/presentation/pages/server_setup_page.dart';
 import 'package:setu_mobile/core/media/photo_cache_manager.dart';
-import 'package:setu_mobile/core/update/app_update_service.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Root widget of the SETU Mobile application.
@@ -42,7 +39,7 @@ class SETUMobileApp extends StatefulWidget {
   State<SETUMobileApp> createState() => _SETUMobileAppState();
 }
 
-class _SETUMobileAppState extends State<SETUMobileApp> {
+class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserver {
   // A global navigator key is required so that [_handleNotificationTap] can
   // push routes and show SnackBars from outside the build tree (the callback
   // is set in initState, before any context is available).
@@ -54,6 +51,7 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _isServerConfigured = ServerConfigService.instance.isConfigured();
     sl<NotificationService>().onNotificationTap = _handleNotificationTap;
     _checkForUpdate();
@@ -62,8 +60,22 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _deepLinkSub?.cancel();
     super.dispose();
+  }
+
+  /// Re-checks for an update whenever the app comes back to the foreground.
+  ///
+  /// "Automatically upon app launch" previously only meant cold process
+  /// start (`initState`, which never runs again for the lifetime of the
+  /// process) — a build uploaded while the app was merely backgrounded
+  /// (not fully killed) would never trigger the check until the user force-
+  /// closed and reopened the app. Resume is the point users actually
+  /// experience as "launching" the app day-to-day.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkForUpdate();
   }
 
   void _initDeepLinks() {
@@ -109,138 +121,17 @@ class _SETUMobileAppState extends State<SETUMobileApp> {
     ));
   }
 
-  /// Checks the backend for a newer or mandatory app version.
-  /// Shows a non-dismissible dialog on force update; a dismissible one otherwise.
-  Future<void> _checkForUpdate() async {
-    final result = await sl<AppUpdateService>().checkForUpdate();
-    if (!result.hasUpdate) return;
-
+  /// Checks the backend for a newer or mandatory app version and shows the
+  /// update dialog if one is found. Stays completely silent otherwise — this
+  /// is the automatic check, run on cold start and whenever the app resumes
+  /// from the background (see [didChangeAppLifecycleState]), not a
+  /// user-initiated action, so there's nothing to report when there's no
+  /// update.
+  void _checkForUpdate() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _navigatorKey.currentContext;
-      if (ctx == null) return;
-
-      showDialog(
-        context: ctx,
-        barrierDismissible: !result.isForced,
-        builder: (_) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(
-                result.isForced
-                    ? Icons.system_update_outlined
-                    : Icons.new_releases_outlined,
-                color: result.isForced ? Colors.red : Colors.blue,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                result.isForced ? 'Update Required' : 'Update Available',
-                style: const TextStyle(fontSize: 17),
-              ),
-            ],
-          ),
-          content: Text(
-            result.message ??
-                (result.isForced
-                    ? 'This version is no longer supported. Please update SETU to continue.'
-                    : 'A newer version of SETU is available. Update for the latest features and fixes.'),
-            style: const TextStyle(fontSize: 14),
-          ),
-          actions: [
-            if (!result.isForced)
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Later'),
-              ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.download_outlined, size: 18),
-              label: const Text('Update Now'),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                if (result.apkUrl != null) {
-                  _downloadAndInstallUpdate(result.apkUrl!, result.latestVersionLabel);
-                }
-              },
-            ),
-          ],
-        ),
-      );
+      if (ctx != null) checkForUpdateAndPrompt(ctx, silent: true);
     });
-  }
-
-  /// Downloads the APK from [apkUrl] to a temp file with a live progress
-  /// dialog, then hands it to the OS package installer via [OpenFile.open].
-  /// Falls back to showing the raw URL in a SnackBar if either step fails
-  /// (e.g. server unreachable, or "install unknown apps" not yet granted —
-  /// the system itself prompts for that permission when the installer opens).
-  Future<void> _downloadAndInstallUpdate(String apkUrl, String? versionLabel) async {
-    final ctx = _navigatorKey.currentContext;
-    if (ctx == null) return;
-
-    final progress = ValueNotifier<double?>(0);
-    showDialog(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (_) => ValueListenableBuilder<double?>(
-        valueListenable: progress,
-        builder: (_, value, __) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Downloading${versionLabel != null ? ' v$versionLabel' : ''}…'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LinearProgressIndicator(value: value),
-              const SizedBox(height: 12),
-              Text(value != null ? '${(value * 100).toStringAsFixed(0)}%' : 'Starting…'),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    try {
-      final dir = await getTemporaryDirectory();
-      final savePath = p.join(dir.path,
-          'setu_update_${versionLabel ?? DateTime.now().millisecondsSinceEpoch}.apk');
-
-      await sl<SetuApiClient>().downloadFile(
-        apkUrl,
-        savePath,
-        onProgress: (received, total) {
-          if (total > 0) progress.value = received / total;
-        },
-      );
-
-      if (_navigatorKey.currentContext != null) {
-        Navigator.of(_navigatorKey.currentContext!).pop(); // close progress dialog
-      }
-
-      final result = await OpenFile.open(savePath);
-      if (result.type != ResultType.done && _navigatorKey.currentContext != null) {
-        _showUpdateFallback(apkUrl, 'Could not launch installer: ${result.message}');
-      }
-    } catch (e) {
-      if (_navigatorKey.currentContext != null) {
-        Navigator.of(_navigatorKey.currentContext!).pop(); // close progress dialog
-      }
-      _showUpdateFallback(apkUrl, 'Download failed: $e');
-    }
-  }
-
-  /// Shows the raw APK URL in a long-lived SnackBar so the user can open it
-  /// in a browser manually when the in-app download/install path fails.
-  void _showUpdateFallback(String apkUrl, String reason) {
-    final ctx = _navigatorKey.currentContext;
-    if (ctx == null) return;
-    ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(
-        content: Text('$reason\nDownload manually: $apkUrl'),
-        duration: const Duration(seconds: 12),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   /// Handles a notification tap from any of the three FCM delivery scenarios

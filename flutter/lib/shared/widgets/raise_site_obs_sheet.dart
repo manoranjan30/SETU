@@ -1,13 +1,18 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
+import 'package:setu_mobile/features/projects/data/models/project_model.dart' as proj;
+import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/injection_container.dart';
 
@@ -599,20 +604,72 @@ class _EpsPickerDialog extends StatefulWidget {
 class _EpsPickerDialogState extends State<_EpsPickerDialog> {
   List<EpsTreeNode>? _nodes;
   String? _error;
+  String? _appVersionLabel;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Stamps the installed build onto every screenshot of this dialog so a
+    // bug report can never be mistaken for an older build that already
+    // shipped a fix — this exact ambiguity has cost a full debugging round
+    // trip before.
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _appVersionLabel = '${info.version}+${info.buildNumber}');
+    });
   }
 
-  /// Loads the location tree cache-first so the picker is instantly usable
-  /// even on a slow site network, then refreshes from the server in the
-  /// background. Previously this fetched live first and only fell back to
-  /// cache on failure — on a slow/flaky mobile connection the live call
+  /// Converts the projects-list EPS shape into the tree shape this dialog
+  /// renders — same fields, different model class (each was written against
+  /// a different endpoint that happens to return identically-shaped data).
+  EpsTreeNode _convertEpsNode(proj.EpsNode node) {
+    return EpsTreeNode(
+      id: node.id,
+      label: node.name,
+      type: node.type,
+      children: node.children.map(_convertEpsNode).toList(),
+    );
+  }
+
+  /// Loads the location tree, preferring the EPS data already embedded in
+  /// the projects list (`ProjectBloc`'s `ProjectsLoaded.projects[i].children`)
+  /// — fetched once at app start and held in memory for the whole session.
+  /// This "initial config" data is what every other working location-aware
+  /// screen in the app (e.g. the Quality dashboard) effectively relies on,
+  /// whereas this dialog previously made its own separate live call to
+  /// `/eps/:id/tree` that was producing an empty result for at least one
+  /// real project despite the same data being available via the project
+  /// list — so it's the more reliable source, not just a redundant cache.
+  ///
+  /// Falls back to the Drift cache, then a live fetch, only if the project
+  /// isn't found in `ProjectBloc`'s state (e.g. opened via a deep link
+  /// before the project list has loaded).
+  Future<void> _load() async {
+    final projectState = context.read<ProjectBloc>().state;
+    if (projectState is ProjectsLoaded) {
+      final project = projectState.projects
+          .where((p) => p.id == widget.projectId)
+          .firstOrNull;
+      if (project != null && project.children.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _nodes = project.children.map(_convertEpsNode).toList();
+            _error = null;
+          });
+        }
+        return;
+      }
+    }
+    await _loadFallback();
+  }
+
+  /// Cache-first so the picker is instantly usable even on a slow site
+  /// network, then refreshes from the server in the background. Previously
+  /// this fetched live first and only fell back to cache on failure — on a
+  /// slow/flaky mobile connection the live call
   /// could take the full timeout before the (already-available) cache was
   /// ever consulted, making the picker look broken/empty.
-  Future<void> _load() async {
+  Future<void> _loadFallback() async {
     await _loadFromCache();
     try {
       final raw = await sl<SetuApiClient>().getEpsTreeForProject(widget.projectId);
@@ -646,6 +703,13 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
       // EPS nodes (blocks, towers). Skip the root to show blocks at the top level.
       if (nodes.length == 1 && nodes.first.children.isNotEmpty) {
         nodes = nodes.first.children;
+      }
+      // Don't let a successful-but-empty live response wipe out a non-empty
+      // cached list — an empty result is far more likely to indicate a
+      // transient/partial backend response than the project's locations
+      // genuinely vanishing between the cache write and now.
+      if (nodes.isEmpty && _nodes != null && _nodes!.isNotEmpty) {
+        return;
       }
       if (mounted) setState(() {
         _nodes = nodes;
@@ -707,10 +771,20 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
               children: [
                 const Icon(Icons.account_tree_outlined, size: 20),
                 const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('Select Location',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Select Location',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      if (_appVersionLabel != null)
+                        Text('App v$_appVersionLabel',
+                            style: TextStyle(
+                                fontSize: 10, color: Colors.grey.shade500)),
+                    ],
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -726,8 +800,31 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
                 : _nodes == null
                     ? const Center(child: CircularProgressIndicator())
                     : _nodes!.isEmpty
-                        ? const Center(
-                            child: Text('No locations found.'))
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('No locations found.',
+                                      textAlign: TextAlign.center),
+                                  const SizedBox(height: 8),
+                                  // Surfaces which backend this request actually
+                                  // hit — the EPS tree call succeeded but came
+                                  // back empty, which most often means this
+                                  // device is connected to a different server
+                                  // than wherever the structure was created
+                                  // (e.g. the web app). Check Settings > Server.
+                                  Text(
+                                    'Connected to: ${ApiEndpoints.baseUrl}',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        fontSize: 11, color: Colors.grey.shade500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
                         : ListView(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
