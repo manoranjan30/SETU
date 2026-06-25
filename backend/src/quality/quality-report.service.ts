@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
+import {
+  PDFDocument as PdfLibDocument,
+  StandardFonts,
+  rgb,
+} from 'pdf-lib';
 import { PassThrough } from 'stream';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -13,9 +18,12 @@ import { ProjectProfile } from '../eps/project-profile.entity';
 
 import { InspectionWorkflowRun } from './entities/inspection-workflow-run.entity';
 import { ActivityObservation } from './entities/activity-observation.entity';
+import { QualityInspectionAttachment } from './entities/quality-inspection-attachment.entity';
 
 @Injectable()
 export class QualityReportService {
+  private readonly logger = new Logger(QualityReportService.name);
+
   constructor(
     @InjectRepository(QualityInspection)
     private readonly inspectionRepo: Repository<QualityInspection>,
@@ -31,6 +39,8 @@ export class QualityReportService {
     private readonly workflowRepo: Repository<InspectionWorkflowRun>,
     @InjectRepository(ActivityObservation)
     private readonly observationRepo: Repository<ActivityObservation>,
+    @InjectRepository(QualityInspectionAttachment)
+    private readonly attachmentRepo: Repository<QualityInspectionAttachment>,
   ) {}
 
   private async getEpsPath(nodeId: number): Promise<string> {
@@ -69,7 +79,10 @@ export class QualityReportService {
     return null;
   }
 
-  async generateInspectionReport(inspectionId: number): Promise<Buffer> {
+  async generateInspectionReport(
+    inspectionId: number,
+    includeAppendices = true,
+  ): Promise<Buffer> {
     const inspection = await this.inspectionRepo.findOne({
       where: { id: inspectionId },
       relations: [
@@ -158,8 +171,22 @@ export class QualityReportService {
     ]
       .filter(Boolean)
       .join(' - ');
+    const attachments = await this.attachmentRepo.find({
+      where: { inspectionId },
+      order: { uploadedAt: 'ASC' },
+    });
+    const relatedIds = Array.from(
+      new Set(inspection.relatedChecklistInspectionIds || []),
+    );
+    const relatedInspections = relatedIds.length
+      ? await this.inspectionRepo.find({
+          where: { id: In(relatedIds) },
+          relations: ['activity'],
+          order: { id: 'ASC' },
+        })
+      : [];
 
-    return new Promise((resolve, reject) => {
+    const mainPdf = await new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         margin: 40,
         size: 'A4',
@@ -923,10 +950,12 @@ export class QualityReportService {
               }
             }
           }
+          currentY += sigBlockHeight * numRows + 20;
         }
-
-        doc.end();
       };
+
+      // Keep the signed checklist together before its observation appendix.
+      drawSignatureBlock();
 
       // Fetch observations scoped to this specific inspection
       this.observationRepo
@@ -936,12 +965,8 @@ export class QualityReportService {
         })
         .then((observations) => {
           if (observations.length > 0) {
-            if (currentY + 100 > doc.page.height) {
-              doc.addPage();
-              currentY = 40;
-            } else {
-              currentY += 20;
-            }
+            doc.addPage();
+            currentY = 40;
 
             doc
               .fontSize(10)
@@ -1135,8 +1160,159 @@ export class QualityReportService {
             currentY += 20;
           }
 
-          drawSignatureBlock();
+          doc.end();
+        })
+        .catch(reject);
+    });
+
+    if (
+      !includeAppendices ||
+      (relatedInspections.length === 0 && attachments.length === 0)
+    ) {
+      return mainPdf;
+    }
+    return this.appendInspectionDocuments(
+      mainPdf,
+      relatedInspections,
+      attachments,
+    );
+  }
+
+  private async appendInspectionDocuments(
+    mainPdf: Buffer,
+    relatedInspections: QualityInspection[],
+    attachments: QualityInspectionAttachment[],
+  ): Promise<Buffer> {
+    const output = await PdfLibDocument.load(mainPdf);
+    const font = await output.embedFont(StandardFonts.Helvetica);
+    const boldFont = await output.embedFont(StandardFonts.HelveticaBold);
+    const cover = output.addPage([595.28, 841.89]);
+    const { height } = cover.getSize();
+
+    cover.drawText('ATTACHED DOCUMENTS', {
+      x: 42,
+      y: height - 70,
+      size: 18,
+      font: boldFont,
+      color: rgb(0.12, 0.25, 0.2),
+    });
+    cover.drawText(
+      'Linked checklists and supporting evidence follow as full-page appendices.',
+      {
+        x: 42,
+        y: height - 96,
+        size: 10,
+        font,
+        color: rgb(0.28, 0.33, 0.31),
+      },
+    );
+
+    let indexY = height - 135;
+    for (const attachment of attachments) {
+      cover.drawText(`Supporting document: ${attachment.originalName}`, {
+        x: 50,
+        y: indexY,
+        size: 9,
+        font,
+        maxWidth: 500,
+      });
+      indexY -= 18;
+    }
+    for (const related of relatedInspections) {
+      cover.drawText(
+        `Linked checklist: RFI #${related.id} | ${related.activity?.activityName || 'Checklist'} | ${related.goLabel || related.partLabel || 'GO 1'} | ${related.status}`,
+        { x: 50, y: indexY, size: 9, font, maxWidth: 500 },
+      );
+      indexY -= 18;
+    }
+
+    await this.appendAttachmentPages(output, attachments);
+
+    for (const related of relatedInspections) {
+      try {
+        const linkedPdf = await this.generateInspectionReport(related.id, false);
+        const linkedDocument = await PdfLibDocument.load(linkedPdf);
+        const pages = await output.copyPages(
+          linkedDocument,
+          linkedDocument.getPageIndices(),
+        );
+        pages.forEach((page) => output.addPage(page));
+        const linkedAttachments = await this.attachmentRepo.find({
+          where: { inspectionId: related.id },
+          order: { uploadedAt: 'ASC' },
         });
+        await this.appendAttachmentPages(output, linkedAttachments);
+      } catch (error) {
+        this.logger.warn(
+          `Could not append linked checklist RFI #${related.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return Buffer.from(await output.save());
+  }
+
+  private async appendAttachmentPages(
+    output: PdfLibDocument,
+    attachments: QualityInspectionAttachment[],
+  ) {
+    for (const attachment of attachments) {
+      const filePath = this.resolveUploadPath(
+        attachment.mimeType === 'application/pdf'
+          ? attachment.originalUrl
+          : attachment.annotatedUrl || attachment.originalUrl,
+      );
+      if (!filePath || !existsSync(filePath)) {
+        this.logger.warn(
+          `Could not append missing inspection attachment ${attachment.id}.`,
+        );
+        continue;
+      }
+
+      try {
+        const attachmentPdf =
+          attachment.mimeType === 'application/pdf'
+            ? readFileSync(filePath)
+            : await this.renderImageAttachmentPdf(
+                filePath,
+                attachment.originalName,
+              );
+        const attachmentDocument = await PdfLibDocument.load(attachmentPdf);
+        const pages = await output.copyPages(
+          attachmentDocument,
+          attachmentDocument.getPageIndices(),
+        );
+        pages.forEach((page) => output.addPage(page));
+      } catch (error) {
+        this.logger.warn(
+          `Could not append inspection attachment ${attachment.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+  }
+
+  private renderImageAttachmentPdf(
+    filePath: string,
+    originalName: string,
+  ): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 36, size: 'A4' });
+      const buffers: Buffer[] = [];
+      const stream = new PassThrough();
+      stream.on('data', (chunk) => buffers.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(buffers)));
+      stream.on('error', reject);
+      doc.pipe(stream);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text(originalName, 36, 28, { width: doc.page.width - 72 });
+      doc.image(readFileSync(filePath), 36, 55, {
+        fit: [doc.page.width - 72, doc.page.height - 95],
+        align: 'center',
+        valign: 'center',
+      });
+      doc.end();
     });
   }
 }

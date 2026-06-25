@@ -18,6 +18,10 @@ import { getPublicFileUrl } from "../../../api/baseUrl";
 import { useAuth } from "../../../context/AuthContext";
 import { PermissionCode } from "../../../config/permissions";
 import EpsLocationPicker from "../../../components/common/EpsLocationPicker";
+import {
+  getQualityObservationRating,
+  QUALITY_OBSERVATION_RATINGS,
+} from "../../../config/qualityObservationRatings";
 
 interface SiteObservationPanelProps {
   projectId: number;
@@ -30,6 +34,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const canCreate = hasPermission(PermissionCode.QUALITY_SITE_OBS_CREATE);
   const canRectify = hasPermission(PermissionCode.QUALITY_SITE_OBS_RECTIFY);
   const canClose = hasPermission(PermissionCode.QUALITY_SITE_OBS_CLOSE);
+  const canRejectRectification =
+    hasPermission(PermissionCode.QUALITY_SITE_OBS_REJECT_RECTIFICATION) ||
+    hasPermission(PermissionCode.QUALITY_SITE_OBS_CLOSE);
   const canExport = hasPermission(PermissionCode.QUALITY_SITE_OBS_EXPORT);
   const canDelete = hasPermission(PermissionCode.QUALITY_SITE_OBS_DELETE);
 
@@ -86,6 +93,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
     epsNodeId: null as number | null,
     locationLabel: "",
     severity: "MINOR",
+    observationRating: "MINOR",
     category: "Structural",
     description: "",
     remarks: "",
@@ -279,6 +287,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
         epsNodeId: null,
         locationLabel: "",
         severity: "MINOR",
+        observationRating: "MINOR",
         category: categories[0] || "Structural",
         description: "",
         remarks: "",
@@ -334,6 +343,10 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   };
 
   const handleRejectRectification = async () => {
+    if (!rejectionRemarks.trim()) {
+      alert("Enter the reason for rejecting this rectification.");
+      return;
+    }
     if (!confirm("Reject this rectification and reopen the observation?")) return;
     setUploading(true);
     try {
@@ -568,6 +581,7 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               setFormData({
                 ...formData,
                 severity: "MINOR",
+                observationRating: "MINOR",
                 category: categories.includes(formData.category)
                   ? formData.category
                   : (categories[0] || "Structural"),
@@ -745,10 +759,11 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     />
                   </th>
                   <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Severity</th>
+                  <th className="px-4 py-3 text-left">Observation Rating</th>
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-left">Location</th>
                   <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-left">Raised By</th>
                   <th className="px-4 py-3 text-left">Aging</th>
                   <th className="px-4 py-3 text-left">Target</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -757,6 +772,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
               <tbody>
                 {pagedRecords.map((item) => {
                   const style = getSeverityStyle(item.severity);
+                  const rating = getQualityObservationRating(
+                    item.observationRating || item.severity,
+                  );
                   const age = getDaysOpen(item.createdAt);
                   const isHeld = item.status === "HELD";
                   return (
@@ -803,7 +821,9 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded px-2 py-1 text-[10px] font-black uppercase ${style.badge}`}>
-                          {item.severity}
+                          <span title={rating.description}>
+                            {rating.label} ({rating.shortLabel})
+                          </span>
                         </span>
                       </td>
                       <td className="px-4 py-3 font-medium text-text-secondary">
@@ -817,6 +837,24 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                       </td>
                       <td className="max-w-[320px] truncate px-4 py-3 font-medium text-text-primary">
                         {item.description}
+                      </td>
+                      <td className="min-w-[180px] px-4 py-3">
+                        <div className="text-xs font-semibold text-text-primary">
+                          {item.raisedBy?.displayName ||
+                            (item.raisedById
+                              ? `User #${item.raisedById}`
+                              : "System")}
+                        </div>
+                        {item.raisedBy?.designation && (
+                          <div className="text-[11px] text-text-muted">
+                            {item.raisedBy.designation}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-text-muted">
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleString()
+                            : "-"}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className={`text-xs ${age.color}`}>{age.text}</div>
@@ -933,38 +971,44 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                   <div className="xl:col-span-2 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-text-muted uppercase mb-2">
-                      Severity
+                      Category of Observation
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      {["INFO", "MINOR", "MAJOR", "CRITICAL"].map((sev) => (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                      {QUALITY_OBSERVATION_RATINGS.map((rating) => (
                         <button
-                          key={sev}
+                          key={rating.value}
                           type="button"
+                          title={rating.description}
                           onClick={() =>
-                            setFormData({ ...formData, severity: sev })
+                            setFormData({
+                              ...formData,
+                              observationRating: rating.value,
+                              severity: rating.severity,
+                            })
                           }
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                            formData.severity === sev
-                              ? sev === "CRITICAL"
-                                ? "bg-error text-white border-error"
-                                : sev === "MAJOR"
-                                  ? "bg-orange-500 text-white border-orange-500"
-                                  : sev === "MINOR"
-                                    ? "bg-primary text-white border-primary"
-                                    : "bg-gray-600 text-white border-gray-600"
-                              : "bg-surface-card text-text-secondary border-border-default hover:bg-surface-base"
+                          className={`min-h-20 rounded-lg border px-3 py-2 text-left transition-all ${
+                            formData.observationRating === rating.value
+                              ? rating.value === "CRITICAL"
+                                ? "border-error bg-error-muted text-red-800"
+                                : "border-secondary bg-secondary-muted text-indigo-800"
+                              : "border-border-default bg-surface-card text-text-secondary hover:bg-surface-raised"
                           }`}
                         >
-                          {sev}
+                          <span className="block text-xs font-bold">
+                            {rating.label} ({rating.shortLabel})
+                          </span>
+                          <span className="mt-1 block text-[10px] leading-4 text-text-muted">
+                            {rating.description}
+                          </span>
                         </button>
                       ))}
                     </div>
-                    {formData.severity === "INFO" && (
-                      <p className="text-[10px] text-text-muted mt-1 italic">
-                        * INFO items can be closed directly without a formal
-                        rectification step.
+                    {formData.observationRating === "CRITICAL" && (
+                      <p className="mt-2 text-xs font-semibold text-error">
+                        Critical observations are automatically added to the NC
+                        Register.
                       </p>
                     )}
                   </div>
@@ -1308,10 +1352,13 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-text-disabled uppercase">
-                    Severity
+                    Observation Rating
                   </p>
                   <p className="text-sm font-bold text-text-primary">
-                    {selectedRecord.severity}
+                    {getQualityObservationRating(
+                      selectedRecord.observationRating ||
+                        selectedRecord.severity,
+                    ).label}
                   </p>
                 </div>
                 <div>
@@ -1324,10 +1371,21 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-text-disabled uppercase">
-                    Raised On
+                    Raised By
                   </p>
                   <p className="text-sm font-bold text-text-primary">
-                    {new Date(selectedRecord.createdAt).toLocaleDateString()}
+                    {selectedRecord.raisedBy?.displayName ||
+                      (selectedRecord.raisedById
+                        ? `User #${selectedRecord.raisedById}`
+                        : "System")}
+                  </p>
+                  {selectedRecord.raisedBy?.designation && (
+                    <p className="text-xs text-text-muted">
+                      {selectedRecord.raisedBy.designation}
+                    </p>
+                  )}
+                  <p className="text-xs text-text-muted">
+                    {new Date(selectedRecord.createdAt).toLocaleString()}
                   </p>
                 </div>
                 <div>
@@ -1396,12 +1454,21 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     <p className="text-blue-800 text-sm">
                       {selectedRecord.rectificationText}
                     </p>
-                    <p className="text-[10px] font-bold text-blue-400 mt-2 uppercase">
-                      Fixed on:{" "}
-                      {new Date(
-                        selectedRecord.rectifiedAt,
-                      ).toLocaleDateString()}
-                    </p>
+                    <div className="mt-3 text-xs text-blue-700">
+                      <span className="font-semibold">
+                        Rectified by{" "}
+                        {selectedRecord.rectifiedBy?.displayName ||
+                          (selectedRecord.rectifiedById
+                            ? `User #${selectedRecord.rectifiedById}`
+                            : "Unknown user")}
+                      </span>
+                      {selectedRecord.rectifiedBy?.designation
+                        ? `, ${selectedRecord.rectifiedBy.designation}`
+                        : ""}
+                      {selectedRecord.rectifiedAt
+                        ? ` on ${new Date(selectedRecord.rectifiedAt).toLocaleString()}`
+                        : ""}
+                    </div>
                     {selectedRecord.rectificationPhotos?.length > 0 && (
                       <div className="mt-3">
                         {renderPhotos(selectedRecord.rectificationPhotos)}
@@ -1428,6 +1495,21 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                   </h3>
                   <p className="text-emerald-800 text-sm">
                     {selectedRecord.closureRemarks || "Closed successfully."}
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-700">
+                    <span className="font-semibold">
+                      Closed by{" "}
+                      {selectedRecord.closedBy?.displayName ||
+                        (selectedRecord.closedById
+                          ? `User #${selectedRecord.closedById}`
+                          : "Unknown user")}
+                    </span>
+                    {selectedRecord.closedBy?.designation
+                      ? `, ${selectedRecord.closedBy.designation}`
+                      : ""}
+                    {selectedRecord.closedAt
+                      ? ` on ${new Date(selectedRecord.closedAt).toLocaleString()}`
+                      : ""}
                   </p>
                 </div>
               )}
@@ -1476,7 +1558,8 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                 )}
 
               {/* Close Action Area */}
-              {((selectedRecord.status === "RECTIFIED" && canClose) ||
+              {((selectedRecord.status === "RECTIFIED" &&
+                (canClose || canRejectRectification)) ||
                 (selectedRecord.status === "OPEN" &&
                   selectedRecord.severity === "INFO" &&
                   canClose)) && (
@@ -1491,7 +1574,8 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     value={closureRemarks}
                     onChange={(e) => setClosureRemarks(e.target.value)}
                   />
-                  {selectedRecord.status === "RECTIFIED" && (
+                  {selectedRecord.status === "RECTIFIED" &&
+                    canRejectRectification && (
                     <textarea
                       rows={2}
                       placeholder="Reason for rejecting this rectification..."
@@ -1501,15 +1585,16 @@ const SiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     />
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row">
-                    <button
+                    {canClose && <button
                       onClick={handleCloseSubmit}
                       disabled={uploading}
                       className="flex-1 py-3 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       <CheckCircle2 className="w-5 h-5" /> Formally Close
                       Observation
-                    </button>
-                    {selectedRecord.status === "RECTIFIED" && (
+                    </button>}
+                    {selectedRecord.status === "RECTIFIED" &&
+                      canRejectRectification && (
                       <button
                         onClick={handleRejectRectification}
                         disabled={uploading}

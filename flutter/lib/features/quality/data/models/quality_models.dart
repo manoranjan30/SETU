@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:setu_mobile/core/api/api_endpoints.dart';
+import 'package:setu_mobile/features/quality/data/models/rfi_attachment.dart';
 
 // ==================== ENUMS ====================
 
@@ -523,6 +524,14 @@ class QualityInspection extends Equatable {
   /// IDs of related checklist inspections linked to this RFI (e.g. for pre-pour clearance attachment tracking).
   final List<int> relatedChecklistInspectionIds;
 
+  /// Full summaries for [relatedChecklistInspectionIds] — embedded directly
+  /// in the inspection detail response so the approver UI never needs a
+  /// second round-trip to render linked-RFI cards.
+  final List<RelatedChecklistSummary> relatedChecklistInspections;
+
+  /// Attachments bound to this inspection (drawings/supporting docs).
+  final List<RfiAttachment> attachments;
+
   const QualityInspection({
     required this.id,
     required this.activityId,
@@ -564,6 +573,8 @@ class QualityInspection extends Equatable {
     this.goLabel,
     this.goDetails,
     this.relatedChecklistInspectionIds = const [],
+    this.relatedChecklistInspections = const [],
+    this.attachments = const [],
   });
 
   factory QualityInspection.fromJson(Map<String, dynamic> json) {
@@ -675,6 +686,16 @@ class QualityInspection extends Equatable {
               ?.whereType<int>()
               .toList() ??
           [],
+      relatedChecklistInspections: (json['relatedChecklistInspections'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(RelatedChecklistSummary.fromJson)
+              .toList() ??
+          const [],
+      attachments: (json['attachments'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(RfiAttachment.fromJson)
+              .toList() ??
+          const [],
     );
   }
 
@@ -942,7 +963,16 @@ class ActivityObservation extends Equatable {
   final String id; // UUID from backend
   final int activityId;
   final String observationText;
-  final String type; // Minor / Major / Critical
+  final String type; // Minor / Major / Critical (legacy label)
+
+  /// Five-value quality-impact classification — null for older records
+  /// raised before this rating system existed (fall back to [type]).
+  final String? observationRating;
+
+  /// Set when [observationRating] is CRITICAL — the backend auto-created
+  /// NCR linked to this observation.
+  final int? ncrId;
+
   final String? remarks;
   final List<String> photos;
   final String? closureText;
@@ -950,25 +980,54 @@ class ActivityObservation extends Equatable {
   final ObservationStatus status;
   final DateTime createdAt;
 
+  /// Resolved user info for who raised/rectified/closed this observation —
+  /// the backend's decorateObservations() joins these from inspectorId/
+  /// resolvedBy/closedBy. Note the backend key for the closer is
+  /// `closedByUser`, not `closedBy` (that name is already the raw user-id
+  /// column on the entity).
+  final String? raisedByName;
+  final String? rectifiedByName;
+  final String? closedByName;
+  final DateTime? rectifiedAt;
+  final DateTime? closedAt;
+
   const ActivityObservation({
     required this.id,
     required this.activityId,
     required this.observationText,
     this.type = 'Minor',
+    this.observationRating,
+    this.ncrId,
     this.remarks,
     this.photos = const [],
     this.closureText,
     this.closureEvidence = const [],
     required this.status,
     required this.createdAt,
+    this.raisedByName,
+    this.rectifiedByName,
+    this.closedByName,
+    this.rectifiedAt,
+    this.closedAt,
   });
 
   factory ActivityObservation.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic raw) {
+      if (raw == null) return null;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    final raisedBy = json['raisedBy'] as Map<String, dynamic>?;
+    final rectifiedBy = json['rectifiedBy'] as Map<String, dynamic>?;
+    final closedByUser = json['closedByUser'] as Map<String, dynamic>?;
+
     return ActivityObservation(
       id: json['id'] as String,
       activityId: json['activityId'] as int? ?? 0,
       observationText: json['observationText'] as String? ?? '',
       type: json['type'] as String? ?? 'Minor',
+      observationRating: json['observationRating'] as String?,
+      ncrId: json['ncrId'] as int?,
       remarks: json['remarks'] as String?,
       // Resolve relative photo paths to absolute URLs using the configured base URL.
       photos: (json['photos'] as List<dynamic>?)
@@ -985,6 +1044,14 @@ class ActivityObservation extends Equatable {
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
           : DateTime.now(),
+      raisedByName: raisedBy?['displayName'] as String? ??
+          raisedBy?['username'] as String?,
+      rectifiedByName: rectifiedBy?['displayName'] as String? ??
+          rectifiedBy?['username'] as String?,
+      closedByName: closedByUser?['displayName'] as String? ??
+          closedByUser?['username'] as String?,
+      rectifiedAt: parseDate(json['resolvedAt']),
+      closedAt: parseDate(json['closedAt']),
     );
   }
 
@@ -1407,11 +1474,22 @@ class QualitySiteObservation extends Equatable {
   final int? epsNodeId;
   final String description;
   final String severity; // INFO | MINOR | MAJOR | CRITICAL (DB enum)
+
+  /// Five-value quality-impact classification — null for older records
+  /// raised before this rating system existed (fall back to [severity]).
+  final String? observationRating;
+
+  /// Set when [observationRating] is CRITICAL — the backend auto-created
+  /// NCR linked to this observation.
+  final int? ncrId;
+
   final String? category;
   final String? locationLabel;
   final SiteObsStatus status;
   final List<String> photoUrls;
   final String? raisedByName;
+  final String? rectifiedByName;
+  final String? closedByName;
   final String? rectificationNotes;
   final List<String> rectificationPhotoUrls;
   final String? closureNotes;
@@ -1425,11 +1503,15 @@ class QualitySiteObservation extends Equatable {
     this.epsNodeId,
     required this.description,
     required this.severity,
+    this.observationRating,
+    this.ncrId,
     this.category,
     this.locationLabel,
     required this.status,
     this.photoUrls = const [],
     this.raisedByName,
+    this.rectifiedByName,
+    this.closedByName,
     this.rectificationNotes,
     this.rectificationPhotoUrls = const [],
     this.closureNotes,
@@ -1459,21 +1541,35 @@ class QualitySiteObservation extends Equatable {
       return DateTime.tryParse(raw.toString());
     }
 
-    // raisedBy may be a nested user object or a flat name string.
+    // raisedBy/rectifiedBy/closedBy are nested user objects shaped
+    // {id, username, displayName, designation} — see the backend's
+    // decorateObservations(). Each falls back to a flat *Name field for any
+    // older/alternate response shape that already flattened it server-side.
     final raisedBy = json['raisedBy'] as Map<String, dynamic>?;
+    final rectifiedBy = json['rectifiedBy'] as Map<String, dynamic>?;
+    final closedBy = json['closedBy'] as Map<String, dynamic>?;
     return QualitySiteObservation(
       id: json['id'].toString(),
       projectId: json['projectId'] as int? ?? 0,
       epsNodeId: json['epsNodeId'] as int?,
       description: json['description'] as String? ?? '',
       severity: json['severity'] as String? ?? 'MINOR',
+      observationRating: json['observationRating'] as String?,
+      ncrId: json['ncrId'] as int?,
       category: json['category'] as String?,
       locationLabel: json['locationLabel'] as String?,
       status: SiteObsStatus.fromString(json['status'] as String? ?? 'OPEN'),
       // Support both 'photoUrls' and legacy 'photos' field names.
       photoUrls: resolvePhotos(json['photoUrls'] ?? json['photos']),
-      raisedByName: raisedBy?['name'] as String? ??
+      raisedByName: raisedBy?['displayName'] as String? ??
+          raisedBy?['username'] as String? ??
           json['raisedByName'] as String?,
+      rectifiedByName: rectifiedBy?['displayName'] as String? ??
+          rectifiedBy?['username'] as String? ??
+          json['rectifiedByName'] as String?,
+      closedByName: closedBy?['displayName'] as String? ??
+          closedBy?['username'] as String? ??
+          json['closedByName'] as String?,
       rectificationNotes: json['rectificationNotes'] as String?,
       rectificationPhotoUrls: resolvePhotos(
           json['rectificationPhotoUrls'] ?? json['rectificationPhotos']),
@@ -1502,11 +1598,15 @@ class QualitySiteObservation extends Equatable {
       epsNodeId: epsNodeId,
       description: description,
       severity: severity,
+      observationRating: observationRating,
+      ncrId: ncrId,
       category: category,
       locationLabel: locationLabel,
       status: status ?? this.status,
       photoUrls: photoUrls,
       raisedByName: raisedByName,
+      rectifiedByName: rectifiedByName,
+      closedByName: closedByName,
       rectificationNotes: rectificationNotes ?? this.rectificationNotes,
       rectificationPhotoUrls:
           rectificationPhotoUrls ?? this.rectificationPhotoUrls,
@@ -1940,7 +2040,7 @@ class ClearanceAttachmentDocument extends Equatable {
 
   /// Human-readable file size (e.g. "2.4 MB").
   String get sizeLabel {
-    if (size < 1024) return '${size} B';
+    if (size < 1024) return '$size B';
     if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
     return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
   }

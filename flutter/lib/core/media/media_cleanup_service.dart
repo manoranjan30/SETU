@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'photo_cache_manager.dart';
 
 /// Runs once per app launch to enforce storage limits on photos.

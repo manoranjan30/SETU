@@ -7,9 +7,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
+import 'package:setu_mobile/core/media/photo_edit_helper.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
+import 'package:setu_mobile/features/quality/data/models/observation_rating.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/observation_rating_selector.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Modal bottom sheet for QC inspector to raise a new observation.
@@ -44,13 +47,11 @@ class RaiseObservationSheet extends StatefulWidget {
 class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
   final _formKey = GlobalKey<FormState>();
   final _textCtrl = TextEditingController();
-  String _type = 'Minor';
+  QualityObservationRating? _rating;
   int? _selectedStageId;
   final List<String> _photoUrls = [];
   bool _submitting = false;
   bool _uploadingPhoto = false;
-
-  static const _types = ['Minor', 'Major', 'Critical'];
 
   @override
   void dispose() {
@@ -72,14 +73,23 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
     return dest.path; // absolute local path used as placeholder URL
   }
 
+  /// Re-opens an already-added photo in the annotation editor — lets the
+  /// user touch it up again before the observation is submitted.
+  Future<void> _editPhoto(int index, String url) async {
+    final newUrl = await editAddedPhoto(context, url);
+    if (newUrl != null && mounted) {
+      setState(() => _photoUrls[index] = newUrl);
+    }
+  }
+
   Future<void> _pickPhoto() async {
     final xfile = await ImagePicker().pickImage(source: ImageSource.camera);
     if (xfile == null || !mounted) return;
 
     // Open annotation editor — user can draw/crop before uploading
-    final annotatedPath =
+    final annotationResult =
         await ImageAnnotationPage.show(context, xfile.path);
-    final uploadPath = annotatedPath ?? xfile.path;
+    final uploadPath = annotationResult?.flattenedImagePath ?? xfile.path;
 
     if (!mounted) return;
     setState(() => _uploadingPhoto = true);
@@ -96,7 +106,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
       } catch (_) {
         // Offline path: save compressed copy locally.
         // The SyncService will upload it when connectivity is restored.
-        final localPath = await _savePhotoLocally(compressedPath!);
+        final localPath = await _savePhotoLocally(compressedPath);
         if (mounted) {
           setState(() => _photoUrls.add(localPath));
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -122,18 +132,20 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
         await PhotoCompressor.deleteTempFile(compressedPath);
       }
       await PhotoCompressor.deleteTempFile(xfile.path);
-      if (annotatedPath != null) {
-        await PhotoCompressor.deleteTempFile(annotatedPath);
+      if (annotationResult != null) {
+        await PhotoCompressor.deleteTempFile(annotationResult.flattenedImagePath);
       }
     }
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_rating == null) return;
     setState(() => _submitting = true);
     context.read<QualityApprovalBloc>().add(RaiseObservation(
           observationText: _textCtrl.text.trim(),
-          type: _type,
+          type: _rating!.shortLabel,
+          observationRating: _rating!.apiValue,
           photos: List.from(_photoUrls),
           stageId: _selectedStageId,
         ));
@@ -173,20 +185,10 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Observation type selector
-            Text('Type', style: theme.textTheme.labelLarge),
-            const SizedBox(height: 8),
-            SegmentedButton<String>(
-              segments: _types
-                  .map((t) => ButtonSegment(value: t, label: Text(t)))
-                  .toList(),
-              selected: {_type},
-              onSelectionChanged: (s) =>
-                  setState(() => _type = s.first),
-              style: SegmentedButton.styleFrom(
-                selectedBackgroundColor: _typeColor(_type).withValues(alpha: 0.15),
-                selectedForegroundColor: _typeColor(_type),
-              ),
+            // Observation rating selector
+            ObservationRatingSelector(
+              value: _rating,
+              onChanged: (r) => setState(() => _rating = r),
             ),
             const SizedBox(height: 16),
 
@@ -195,7 +197,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
               Text('Link to Stage (optional)', style: theme.textTheme.labelLarge),
               const SizedBox(height: 8),
               DropdownButtonFormField<int?>(
-                value: _selectedStageId,
+                initialValue: _selectedStageId,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -238,6 +240,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
                 photoUrls: _photoUrls,
                 canDelete: true,
                 onDelete: (url) => setState(() => _photoUrls.remove(url)),
+                onEdit: (index, url) => _editPhoto(index, url),
               ),
               const SizedBox(height: 8),
             ],
@@ -263,7 +266,7 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  onPressed: (_submitting || _uploadingPhoto) ? null : _submit,
+                  onPressed: (_submitting || _uploadingPhoto || _rating == null) ? null : _submit,
                   child: _submitting
                       ? const SizedBox(
                           width: 18,
@@ -279,16 +282,5 @@ class _RaiseObservationSheetState extends State<RaiseObservationSheet> {
         ),
       ),
     );
-  }
-
-  Color _typeColor(String type) {
-    switch (type) {
-      case 'Major':
-        return Colors.orange.shade700;
-      case 'Critical':
-        return Colors.red.shade700;
-      default:
-        return Colors.blue.shade700;
-    }
   }
 }

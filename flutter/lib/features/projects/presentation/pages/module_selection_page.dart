@@ -11,6 +11,7 @@ import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_approvals_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/nc_register_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
@@ -124,6 +125,18 @@ class ModuleSelectionPage extends StatelessWidget {
               onTap: () => _navigateToQualitySiteObs(context),
             ),
           ],
+          // ── NC Register ────────────────────────────────────────────────────
+          // Permission gate: user must be able to read NCRs
+          if (ps.canReadNcr) ...[
+            const Divider(height: 1),
+            _ModuleRow(
+              icon: Icons.report_problem_outlined,
+              title: 'NC Register',
+              subtitle: 'Non-Conformance Reports',
+              color: const Color(0xFFB91C1C),
+              onTap: () => _navigateToNcRegister(context),
+            ),
+          ],
           // ── EHS Observations ──────────────────────────────────────────────
           // Permission gate: user must have any EHS access
           if (ps.hasAnyEhsAccess) ...[
@@ -232,6 +245,20 @@ class ModuleSelectionPage extends StatelessWidget {
             projectId: project.id,
             projectName: project.name,
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Navigates to the NC Register page (no dedicated bloc — calls the API
+  /// directly, same pattern as other lightweight register-style pages).
+  void _navigateToNcRegister(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NcRegisterPage(
+          projectId: project.id,
+          projectName: project.name,
         ),
       ),
     );

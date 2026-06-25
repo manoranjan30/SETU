@@ -566,9 +566,9 @@ class _ActionStatCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       def.label,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 10,
-                        color: const Color(0xFF6B7280),
+                        color: Color(0xFF6B7280),
                         height: 1.3,
                       ),
                       maxLines: 2,
@@ -1043,10 +1043,10 @@ class _ModuleGridItem extends StatelessWidget {
               Text(
                 def.label,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFF374151),
+                  color: Color(0xFF374151),
                   height: 1.3,
                 ),
               ),

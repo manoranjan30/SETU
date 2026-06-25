@@ -284,6 +284,41 @@ export interface QualityChecklistTemplatePayload {
   }>;
 }
 
+export interface QualityInspectionAttachment {
+  id: string;
+  projectId: number;
+  inspectionId?: number | null;
+  attachmentType: "DRAWING_MARKUP" | "SUPPORTING_DOCUMENT";
+  originalName: string;
+  mimeType: string;
+  size: number;
+  originalUrl: string;
+  annotatedUrl?: string | null;
+  annotationData?: Record<string, unknown> | null;
+  uploadedAt: string;
+  isLocked: boolean;
+}
+
+export interface RelatedChecklistOption {
+  checklistId: number;
+  checklistName: string;
+  checklistNo?: string | null;
+  activityId: number;
+  activityName: string;
+  listName?: string | null;
+  children: Array<{
+    inspectionId: number;
+    rfiNumber: string;
+    goNo?: number | null;
+    goLabel?: string | null;
+    goDetails?: string | null;
+    elementName?: string | null;
+    drawingNo?: string | null;
+    status: string;
+    requestDate?: string | null;
+  }>;
+}
+
 export interface QualityMaterialItpCheckpoint {
   id?: number;
   templateId?: number;

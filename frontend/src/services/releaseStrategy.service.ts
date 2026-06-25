@@ -67,6 +67,13 @@ export interface EligibleApproverDto {
   sourceType: "PERMANENT" | "TEMP_VENDOR";
   projectRoleIds: number[];
   projectRoleNames: string[];
+  projectRoles: Array<{
+    id: number;
+    name: string;
+    displayName: string;
+    tempRoleTemplateId?: number | null;
+    vendorRoleLevel?: number | null;
+  }>;
   companyLabel: string;
   primaryRoleLabel?: string | null;
   vendorId?: number | null;

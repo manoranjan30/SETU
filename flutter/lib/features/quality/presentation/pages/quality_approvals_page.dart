@@ -473,7 +473,7 @@ class _InspectionCard extends StatelessWidget {
             Row(children: [
               Expanded(
                 child: Text(
-                  inspection.activityName ?? 'Inspection #${inspection.id}',
+                  'RFI #${inspection.id} · ${inspection.activityName ?? 'Inspection'}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context)

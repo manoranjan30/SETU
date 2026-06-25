@@ -30,7 +30,7 @@ class BreadcrumbWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.04),
+        color: AppColors.primary.withValues(alpha: 0.04),
         border: const Border(
           bottom: BorderSide(
             color: AppColors.divider,
@@ -139,7 +139,7 @@ class _BreadcrumbItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: isActive
             ? BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               )
             : null,
@@ -187,7 +187,7 @@ class SyncStatusIndicator extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: _getBackgroundColor().withOpacity(0.15),
+          color: _getBackgroundColor().withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -328,10 +328,10 @@ class SyncStatusBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: _getBackgroundColor().withOpacity(0.1),
+        color: _getBackgroundColor().withValues(alpha: 0.1),
         border: Border(
           bottom: BorderSide(
-            color: _getBackgroundColor().withOpacity(0.2),
+            color: _getBackgroundColor().withValues(alpha: 0.2),
           ),
         ),
       ),

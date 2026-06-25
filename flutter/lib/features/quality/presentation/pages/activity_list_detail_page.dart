@@ -12,12 +12,16 @@ import 'package:setu_mobile/core/network/connectivity_banner.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
+import 'package:setu_mobile/features/quality/data/models/rfi_attachment.dart';
+import 'package:setu_mobile/features/quality/data/models/rfi_attachment_draft.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart'
     hide SubmitRectification;
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/inspection_detail_page.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/activity_card.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/linked_rfi_detail_sheet.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/rfi_attachment_picker.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
@@ -265,11 +269,11 @@ class _ActivityListBody extends StatelessWidget {
                             ? (inspection) =>
                                 _openInspectionApproval(context, inspection)
                             : null,
-                        // Expand GO series: add more GOs to an existing series
+                        // Add GO: reserve and raise the next GO in the series
                         onExpandGo: canRaiseMore &&
                                 row.allInspections.isNotEmpty &&
                                 row.activity.applicabilityLevel != 'UNIT'
-                            ? () => _showExpandGoDialog(context, row)
+                            ? () => _showAddGoDialog(context, row)
                             : null,
                       );
                     },
@@ -377,105 +381,52 @@ class _ActivityListBody extends StatelessWidget {
   /// Shows a minimal dialog that collects a drawing number, then calls
   /// [onConfirm] with the trimmed value. Used for quick-raises from
   /// progress chips where the full RFI dialog is not needed again.
-  /// Opens a dialog to expand the GO series for [row]'s activity.
-  /// Loads the current totalParts from existing inspections and lets the user
-  /// set a higher total — then calls the backend expand-go endpoint.
-  void _showExpandGoDialog(BuildContext context, ActivityRow row) {
+  /// Reserves the next single GO for [row]'s activity via the backend
+  /// add-go endpoint, then immediately opens the raise dialog for that GO —
+  /// one tap, no upfront count picker (matches the web-aligned GO workflow).
+  void _showAddGoDialog(BuildContext context, ActivityRow row) {
     final currentTotal =
         row.allInspections.fold(1, (max, i) => i.totalParts > max ? i.totalParts : max);
-    int newTotal = currentTotal + 1;
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('Add GO'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Activity: ${row.activity.activityName}',
-                style: const TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Current total GOs: $currentTotal',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('New total GOs:', style: TextStyle(fontSize: 13)),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: newTotal > currentTotal + 1
-                        ? () => setS(() => newTotal--)
-                        : null,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                  Text('$newTotal',
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: newTotal < 20
-                        ? () => setS(() => newTotal++)
-                        : null,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'GO ${currentTotal + 1}–$newTotal will be added to the series.',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                try {
-                  await sl<SetuApiClient>().expandGoSeries(
-                    projectId: projectId,
-                    epsNodeId: epsNodeId,
-                    activityId: row.activity.id,
-                    newTotalParts: newTotal,
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(
-                          'GO series expanded to $newTotal GOs. Raise the new GOs from the list.'),
-                      backgroundColor: Colors.green.shade700,
-                    ));
-                    context
-                        .read<QualityRequestBloc>()
-                        .add(const RefreshCurrentList());
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Failed to expand GO series: $e'),
-                      backgroundColor: Colors.red.shade700,
-                    ));
-                  }
-                }
-              },
-              child: Text('Add ${newTotal - currentTotal} GO(s)'),
-            ),
-          ],
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add GO'),
+        content: Text(
+          'Activity: ${row.activity.activityName}\n'
+          'This reserves GO ${currentTotal + 1} — you\'ll raise it right after.',
+          style: const TextStyle(fontSize: 13),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final result = await sl<SetuApiClient>().addGo(
+                  projectId: projectId,
+                  epsNodeId: epsNodeId,
+                  activityId: row.activity.id,
+                );
+                if (!context.mounted) return;
+                final nextGoNo = result['nextGoNo'] as int? ?? currentTotal + 1;
+                final newTotalParts = result['newTotalParts'] as int? ?? nextGoNo;
+                _raiseRfiPart(context, row, nextGoNo, newTotalParts);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Failed to add GO: $e'),
+                    backgroundColor: Colors.red.shade700,
+                  ));
+                }
+              }
+            },
+            child: const Text('Add GO'),
+          ),
+        ],
       ),
     );
   }
@@ -661,9 +612,9 @@ class _RectificationSheetState extends State<_RectificationSheet> {
     if (xfile == null || !mounted) return;
 
     // Allow the engineer to annotate (draw on) the photo before uploading
-    final annotatedPath =
+    final annotationResult =
         await ImageAnnotationPage.show(context, xfile.path);
-    final uploadPath = annotatedPath ?? xfile.path;
+    final uploadPath = annotationResult?.flattenedImagePath ?? xfile.path;
 
     if (!mounted) return;
     setState(() => _uploadingPhoto = true);
@@ -705,8 +656,8 @@ class _RectificationSheetState extends State<_RectificationSheet> {
         await PhotoCompressor.deleteTempFile(compressedPath);
       }
       await PhotoCompressor.deleteTempFile(xfile.path);
-      if (annotatedPath != null) {
-        await PhotoCompressor.deleteTempFile(annotatedPath);
+      if (annotationResult != null) {
+        await PhotoCompressor.deleteTempFile(annotationResult.flattenedImagePath);
       }
     }
   }
@@ -901,19 +852,22 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
   bool _vendorLoading = true;
   String? _vendorError;
 
-  // FLOOR mode: 'ONE_GO' or 'MULTI_GO'
-  String _rfiMode = 'ONE_GO';
-  int _rfiParts = 2;
-
   // UNIT mode — units fetched from floor structure API
   List<Map<String, dynamic>> _units = [];
   final Set<int> _selectedUnitIds = {};
   bool _unitsLoading = false;
 
-  // Previous approved RFIs from the same floor/node — for the related checklist picker
-  List<QualityInspection> _floorInspections = [];
+  // Related checklist tree for this floor/node — checklist+activity groups
+  // with selectable RFI children, fed by GET /quality/inspections/related-options.
+  List<Map<String, dynamic>> _relatedGroups = [];
   final Set<int> _selectedRelatedIds = {};
-  bool _floorInspectionsLoading = false;
+  bool _relatedLoading = false;
+  final _relatedSearchCtrl = TextEditingController();
+  String _relatedSearch = '';
+
+  // Attachments staged via RfiAttachmentPicker — uploaded as drafts before
+  // this RFI exists, then bound at create time via attachmentDraftIds.
+  List<RfiAttachmentDraft> _attachmentDrafts = const [];
 
   bool get _isUnit => widget.activity.applicabilityLevel == 'UNIT';
   bool get _isFloor => !_isUnit;
@@ -926,7 +880,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     super.initState();
     _loadVendors();
     if (_isUnit) _loadUnits();
-    if (_isFloor) _loadFloorInspections();
+    if (_isFloor) _loadRelatedOptions();
   }
 
   @override
@@ -935,102 +889,101 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     _elementNameCtrl.dispose();
     _goDetailsCtrl.dispose();
     _commentsCtrl.dispose();
+    _relatedSearchCtrl.dispose();
     super.dispose();
   }
 
   /// Shows the full context for a linked checklist RFI — the inline row only
   /// has room for a single truncated line of "GO label · activity · RFI #"
-  /// plus the location, and never shows `goDetails` at all.
-  void _showLinkedRfiDetail(BuildContext context, QualityInspection insp) {
-    Widget detailLine(IconData icon, String label, String value, [Color? color]) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 16, color: Colors.grey.shade500),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 96,
-              child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-            ),
-            Expanded(
-              child: Text(value,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final go = [
-      if (insp.goLabel != null) insp.goLabel!,
-      if (insp.goNo != null && insp.goLabel == null) 'GO ${insp.goNo}',
-      if (insp.goDetails != null) insp.goDetails!,
-    ].join(' — ');
-
+  /// plus the checklist name, and never shows `goDetails` at all. Also
+  /// fetches and shows the linked RFI's attachment images so the user can
+  /// visually verify before selecting it for linking — and can select it
+  /// directly from here via the bottom button.
+  void _showRelatedRfiDetail(
+      BuildContext context, Map<String, dynamic> group, Map<String, dynamic> child) {
+    final inspectionId = child['inspectionId'] as int;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Text('Linked Checklist Detail',
-                style: Theme.of(ctx).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 14),
-            detailLine(Icons.checklist_rtl_outlined, 'Checklist Name', insp.activityName ?? '—'),
-            detailLine(Icons.location_on_outlined, 'Element',
-                insp.locationDisplay.isNotEmpty ? insp.locationDisplay : '—'),
-            detailLine(Icons.assignment_outlined, 'GO Details', go.isEmpty ? '—' : go),
-            if (insp.isMultiPart)
-              detailLine(Icons.layers_outlined, 'Part', insp.partDisplay),
-            if (insp.vendorName != null)
-              detailLine(Icons.business_outlined, 'Vendor', insp.vendorName!),
-            detailLine(Icons.flag_outlined, 'Status', insp.status.label, insp.status.color),
-            detailLine(Icons.event_outlined, 'Requested', insp.requestDate),
-          ],
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (sheetCtx, scrollController) => _RelatedRfiDetailSheet(
+          group: group,
+          child: child,
+          inspectionId: inspectionId,
+          isSelected: _selectedRelatedIds.contains(inspectionId),
+          scrollController: scrollController,
+          onToggleSelect: () {
+            setState(() {
+              if (_selectedRelatedIds.contains(inspectionId)) {
+                _selectedRelatedIds.remove(inspectionId);
+              } else {
+                _selectedRelatedIds.add(inspectionId);
+              }
+            });
+            Navigator.of(sheetCtx).pop();
+          },
         ),
       ),
     );
   }
 
-  Future<void> _loadFloorInspections() async {
-    setState(() => _floorInspectionsLoading = true);
+  /// Finds the (group, child) pair for [inspectionId] across all loaded
+  /// groups — used to render the "Selected" removable-chip summary without
+  /// re-fetching anything.
+  (Map<String, dynamic>, Map<String, dynamic>)? _findRelatedChild(int inspectionId) {
+    for (final group in _relatedGroups) {
+      final children = (group['children'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+      for (final child in children) {
+        if (child['inspectionId'] == inspectionId) return (group, child);
+      }
+    }
+    return null;
+  }
+
+  /// True if [child] (within [group]) matches the current search query
+  /// across checklist, activity, RFI number, GO, GO details, element,
+  /// drawing, and status — matching the web-aligned tree picker's search.
+  bool _matchesRelatedSearch(Map<String, dynamic> group, Map<String, dynamic> child) {
+    if (_relatedSearch.isEmpty) return true;
+    final q = _relatedSearch.toLowerCase();
+    final haystack = [
+      group['checklistName'],
+      group['checklistNo'],
+      group['activityName'],
+      group['listName'],
+      child['rfiNumber'],
+      child['goLabel'],
+      child['goNo']?.toString(),
+      child['goDetails'],
+      child['elementName'],
+      child['drawingNo'],
+      child['status'],
+    ].whereType<String>().map((s) => s.toLowerCase());
+    return haystack.any((s) => s.contains(q));
+  }
+
+  Future<void> _loadRelatedOptions() async {
+    setState(() => _relatedLoading = true);
     try {
-      final raw = await sl<SetuApiClient>().getQualityInspections(
+      final groups = await sl<SetuApiClient>().getRelatedChecklistOptions(
         projectId: widget.projectId,
         epsNodeId: widget.epsNodeId,
       );
       if (!mounted) return;
-      final inspections = raw
-          .whereType<Map<String, dynamic>>()
-          .map(QualityInspection.fromJson)
-          .where((i) =>
-              i.status == InspectionStatus.approved ||
-              i.status == InspectionStatus.partiallyApproved)
-          .toList();
       setState(() {
-        _floorInspections = inspections;
-        _floorInspectionsLoading = false;
+        _relatedGroups = groups;
+        _relatedLoading = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _floorInspectionsLoading = false);
+      if (mounted) setState(() => _relatedLoading = false);
     }
   }
 
@@ -1105,6 +1058,12 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     }
     // Unit Wise mode requires at least one unit selected
     if (_isUnit) return _selectedUnitIds.isNotEmpty;
+    // Never submit while an attachment is still uploading or has failed —
+    // the RFI must not be created referencing an attachment that doesn't
+    // exist yet (or never will, without the user noticing and retrying).
+    if (_attachmentDrafts.any((d) => d.status != DraftUploadStatus.uploaded)) {
+      return false;
+    }
     return true;
   }
 
@@ -1116,9 +1075,19 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     final vendorId = _selectedVendor?['id'] as int?;
     final vendorName = _selectedVendor?['name'] as String?;
     final relatedIds = _selectedRelatedIds.toList();
+    final attachmentIds = _attachmentDrafts
+        .where((d) => d.status == DraftUploadStatus.uploaded && d.serverAttachmentId != null)
+        .map((d) => d.serverAttachmentId!)
+        .toList();
 
     if (_isUnit) {
-      // Queue one RFI per selected unit (Unit Wise mode)
+      // Queue one RFI per selected unit (Unit Wise mode). A draft can only
+      // ever bind to one inspection, so attachments are only forwarded when
+      // exactly one unit is raised — batch unit creation must upload and
+      // submit attachments independently per RFI (not supported by this
+      // dialog's single shared attachment list).
+      final singleUnitAttachmentIds =
+          _selectedUnitIds.length == 1 ? attachmentIds : const <String>[];
       for (final unitId in _selectedUnitIds) {
         widget.bloc.add(RaiseRfi(
           projectId: widget.projectId,
@@ -1132,15 +1101,16 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
           vendorId: vendorId,
           vendorName: vendorName,
           elementName: elementName,
+          attachmentDraftIds: singleUnitAttachmentIds,
         ));
       }
     } else {
-      // Additional GO mode: partNo/totalParts are fixed from the existing series
-      // First GO mode: derive from the selected inspection type
+      // Additional GO mode: partNo/totalParts are fixed from the existing
+      // series (reserved via Add GO). A brand-new floor activity always
+      // starts at GO 1 / partNo 1 / totalParts 1 — later GOs are reserved
+      // one at a time via Add GO, never picked upfront.
       final partNo = _isAdditionalGo ? widget.partNo! : 1;
-      final totalParts = _isAdditionalGo
-          ? widget.totalParts!
-          : (_rfiMode == 'MULTI_GO' ? _rfiParts.clamp(2, 20) : 1);
+      final totalParts = _isAdditionalGo ? widget.totalParts! : 1;
       widget.bloc.add(RaiseRfi(
         projectId: widget.projectId,
         epsNodeId: widget.epsNodeId,
@@ -1157,6 +1127,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         elementName: elementName,
         goDetails: goDetails,
         relatedChecklistInspectionIds: relatedIds,
+        attachmentDraftIds: attachmentIds,
       ));
     }
     Navigator.pop(context);
@@ -1164,8 +1135,6 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return AlertDialog(
       title: Text(_isAdditionalGo
           ? 'Raise GO ${widget.partNo} of ${widget.totalParts}'
@@ -1238,8 +1207,32 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
             if (_isFloor) ...[
               const Text('Link Previous Checklist RFIs',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 4),
-              if (_floorInspectionsLoading)
+              const SizedBox(height: 6),
+
+              // Selected summary — removable chips, shown above the tree so
+              // the user always sees what they've picked without scrolling.
+              if (_selectedRelatedIds.isNotEmpty) ...[
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _selectedRelatedIds.map((id) {
+                    final found = _findRelatedChild(id);
+                    final label = found == null
+                        ? 'RFI #$id'
+                        : (found.$2['rfiNumber'] as String? ?? 'RFI #$id');
+                    return Chip(
+                      label: Text(label, style: const TextStyle(fontSize: 11)),
+                      visualDensity: VisualDensity.compact,
+                      deleteIcon: const Icon(Icons.close, size: 14),
+                      onDeleted: () =>
+                          setState(() => _selectedRelatedIds.remove(id)),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              if (_relatedLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Row(children: [
@@ -1249,89 +1242,145 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                     Text('Loading…', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   ]),
                 )
-              else if (_floorInspections.isEmpty)
+              else if (_relatedGroups.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
-                    'No previous approved RFIs available for this location.',
+                    'No previous RFIs available for this location.',
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   ),
                 )
-              else
-                Column(
-                  children: _floorInspections.map((insp) {
-                    final isSelected = _selectedRelatedIds.contains(insp.id);
-                    final label = [
-                      if (insp.goLabel != null) insp.goLabel!,
-                      if (insp.activityName != null) insp.activityName!,
-                      'RFI #${insp.id}',
-                    ].join(' · ');
-                    final sublabel = insp.locationDisplay.isNotEmpty
-                        ? insp.locationDisplay
-                        : null;
-                    return InkWell(
-                      onTap: () => setState(() {
-                        if (isSelected) {
-                          _selectedRelatedIds.remove(insp.id);
-                        } else {
-                          _selectedRelatedIds.add(insp.id);
-                        }
-                      }),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Checkbox(
-                              value: isSelected,
-                              visualDensity: VisualDensity.compact,
-                              onChanged: (v) => setState(() {
-                                if (v == true) {
-                                  _selectedRelatedIds.add(insp.id);
+              else ...[
+                // Search across checklist, activity, RFI, GO, GO details,
+                // element, drawing, and status.
+                TextField(
+                  controller: _relatedSearchCtrl,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    hintText: 'Search checklist, RFI, GO, element, drawing…',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    suffixIcon: _relatedSearch.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () => setState(() {
+                              _relatedSearchCtrl.clear();
+                              _relatedSearch = '';
+                            }),
+                          ),
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                  onChanged: (v) => setState(() => _relatedSearch = v.trim()),
+                ),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: _relatedGroups.map((group) {
+                        final children = (group['children'] as List<dynamic>? ?? [])
+                            .cast<Map<String, dynamic>>()
+                            .where((c) => _matchesRelatedSearch(group, c))
+                            .toList();
+                        if (children.isEmpty) return const SizedBox.shrink();
+                        return ExpansionTile(
+                          initiallyExpanded: _relatedSearch.isNotEmpty,
+                          dense: true,
+                          tilePadding: EdgeInsets.zero,
+                          title: Text(
+                            '${group['checklistName'] ?? 'Checklist'} · ${group['activityName'] ?? ''}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: group['checklistNo'] != null
+                              ? Text(group['checklistNo'] as String,
+                                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500))
+                              : null,
+                          children: children.map((child) {
+                            final inspectionId = child['inspectionId'] as int;
+                            final isSelected = _selectedRelatedIds.contains(inspectionId);
+                            final goLabel = child['goLabel'] as String? ??
+                                (child['goNo'] != null ? 'GO ${child['goNo']}' : null);
+                            final label = [
+                              if (goLabel != null) goLabel,
+                              child['rfiNumber'] as String? ?? 'RFI #$inspectionId',
+                            ].join(' · ');
+                            final sublabel = [
+                              if (child['elementName'] != null) child['elementName'] as String,
+                              if (child['drawingNo'] != null) child['drawingNo'] as String,
+                            ].join(' · ');
+                            final status = InspectionStatus.fromString(
+                                child['status'] as String? ?? 'PENDING');
+                            return InkWell(
+                              onTap: () => setState(() {
+                                if (isSelected) {
+                                  _selectedRelatedIds.remove(inspectionId);
                                 } else {
-                                  _selectedRelatedIds.remove(insp.id);
+                                  _selectedRelatedIds.add(inspectionId);
                                 }
                               }),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(label,
-                                      style: const TextStyle(fontSize: 12),
-                                      overflow: TextOverflow.ellipsis),
-                                  if (sublabel != null)
-                                    Text(sublabel,
-                                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                                        overflow: TextOverflow.ellipsis),
-                                ],
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 3),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: isSelected,
+                                      visualDensity: VisualDensity.compact,
+                                      onChanged: (v) => setState(() {
+                                        if (v == true) {
+                                          _selectedRelatedIds.add(inspectionId);
+                                        } else {
+                                          _selectedRelatedIds.remove(inspectionId);
+                                        }
+                                      }),
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(label,
+                                              style: const TextStyle(fontSize: 12),
+                                              overflow: TextOverflow.ellipsis),
+                                          if (sublabel.isNotEmpty)
+                                            Text(sublabel,
+                                                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                                                overflow: TextOverflow.ellipsis),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: status.color.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        status.label,
+                                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: status.color),
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () => _showRelatedRfiDetail(context, group, child),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: const Padding(
+                                        padding: EdgeInsets.only(left: 4),
+                                        child: Icon(Icons.info_outline_rounded,
+                                            size: 14, color: Color(0xFF1D4ED8)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: insp.status.color.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                insp.status.label,
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: insp.status.color),
-                              ),
-                            ),
-                            InkWell(
-                              onTap: () => _showLinkedRfiDetail(context, insp),
-                              borderRadius: BorderRadius.circular(12),
-                              child: const Padding(
-                                padding: EdgeInsets.only(left: 4),
-                                child: Icon(Icons.info_outline_rounded,
-                                    size: 14, color: Color(0xFF1D4ED8)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                            );
+                          }).toList(),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ),
+              ],
               const SizedBox(height: 16),
             ],
 
@@ -1387,7 +1436,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 6),
               DropdownButtonFormField<Map<String, dynamic>>(
-                value: _selectedVendor,
+                initialValue: _selectedVendor,
                 isExpanded: true,
                 hint: const Text('Select vendor'),
                 decoration: const InputDecoration(
@@ -1408,60 +1457,6 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
               ),
             ],
             const SizedBox(height: 16),
-
-            // ── Inspection mode selector (FLOOR activities, first GO only) ─
-            if (!_isUnit && !_isAdditionalGo) ...[
-              const Text('Inspection Type',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 6),
-              Row(children: [
-                Expanded(
-                  child: _ModeChip(
-                    label: 'One Go',
-                    selected: _rfiMode == 'ONE_GO',
-                    onTap: () => setState(() => _rfiMode = 'ONE_GO'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ModeChip(
-                    label: 'Multi Go',
-                    selected: _rfiMode == 'MULTI_GO',
-                    onTap: () => setState(() => _rfiMode = 'MULTI_GO'),
-                  ),
-                ),
-              ]),
-              if (_rfiMode == 'MULTI_GO') ...[
-                const SizedBox(height: 10),
-                Row(children: [
-                  const Text('Total GOs:',
-                      style: TextStyle(fontSize: 13)),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 64,
-                    child: TextFormField(
-                      initialValue: _rfiParts.toString(),
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      ),
-                      onChanged: (v) {
-                        final n = int.tryParse(v) ?? 2;
-                        setState(() => _rfiParts = n.clamp(2, 20));
-                      },
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 4),
-                Text(
-                  'GO 1 is raised now. Use "Add GO" on the activity card to raise GOs 2–$_rfiParts.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-              const SizedBox(height: 16),
-            ],
 
             // ── Unit selector (UNIT activities) ──────────────────────────
             if (_isUnit) ...[
@@ -1506,6 +1501,22 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
               const SizedBox(height: 16),
             ],
 
+            // ── Attachments ───────────────────────────────────────────────
+            RfiAttachmentPicker(
+              projectId: widget.projectId,
+              onChanged: (drafts) => setState(() => _attachmentDrafts = drafts),
+            ),
+            if (_isUnit && _selectedUnitIds.length > 1 && _attachmentDrafts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Attachments only apply when raising a single unit — they '
+                  'will not be attached when raising ${_selectedUnitIds.length} units at once.',
+                  style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                ),
+              ),
+            const SizedBox(height: 16),
+
             // ── Comments ─────────────────────────────────────────────────
             TextField(
               controller: _commentsCtrl,
@@ -1538,49 +1549,165 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
 }
 
 // ---------------------------------------------------------------------------
-// Mode chip — toggle button for One Go / Multi Go selection
+// Related RFI detail sheet — text fields + attachment images + select action
 // ---------------------------------------------------------------------------
 
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+/// Full detail for one related-checklist tree child, fetched fresh (the tree
+/// endpoint only returns summary fields, not attachments) so the user can
+/// visually verify the linked checklist's evidence photos before selecting
+/// it for linking — selection happens directly from this sheet via
+/// [onToggleSelect], rather than requiring the user to close this sheet and
+/// find the checkbox again in the tree.
+class _RelatedRfiDetailSheet extends StatefulWidget {
+  final Map<String, dynamic> group;
+  final Map<String, dynamic> child;
+  final int inspectionId;
+  final bool isSelected;
+  final VoidCallback onToggleSelect;
+  final ScrollController scrollController;
 
-  const _ModeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
+  const _RelatedRfiDetailSheet({
+    required this.group,
+    required this.child,
+    required this.inspectionId,
+    required this.isSelected,
+    required this.onToggleSelect,
+    required this.scrollController,
   });
 
   @override
+  State<_RelatedRfiDetailSheet> createState() => _RelatedRfiDetailSheetState();
+}
+
+class _RelatedRfiDetailSheetState extends State<_RelatedRfiDetailSheet> {
+  List<RfiAttachment>? _attachments;
+  bool _loadingAttachments = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAttachments();
+  }
+
+  Future<void> _loadAttachments() async {
+    try {
+      final raw = await sl<SetuApiClient>()
+          .getQualityInspectionDetail(widget.inspectionId);
+      final attachments = (raw['attachments'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(RfiAttachment.fromJson)
+              .toList() ??
+          const [];
+      if (mounted) {
+        setState(() {
+          _attachments = attachments;
+          _loadingAttachments = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingAttachments = false);
+    }
+  }
+
+  Widget _detailLine(IconData icon, String label, String value, [Color? color]) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey.shade500),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 96,
+            child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? theme.colorScheme.primary : Colors.transparent,
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outline,
+    final group = widget.group;
+    final child = widget.child;
+    final goLabel = child['goLabel'] as String? ??
+        (child['goNo'] != null ? 'GO ${child['goNo']}' : null);
+    final go = [
+      if (goLabel != null) goLabel,
+      if (child['goDetails'] != null) child['goDetails'] as String,
+    ].join(' — ');
+    final status =
+        InspectionStatus.fromString(child['status'] as String? ?? 'PENDING');
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
           ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight:
-                selected ? FontWeight.w600 : FontWeight.normal,
-            color: selected
-                ? theme.colorScheme.onPrimary
-                : theme.colorScheme.onSurface,
+          Text('Linked Checklist Detail',
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(
+              controller: widget.scrollController,
+              children: [
+                _detailLine(Icons.checklist_rtl_outlined, 'Checklist',
+                    group['checklistName'] as String? ?? '—'),
+                _detailLine(Icons.construction_outlined, 'Activity',
+                    group['activityName'] as String? ?? '—'),
+                _detailLine(Icons.assignment_outlined, 'GO Details', go.isEmpty ? '—' : go),
+                if (child['elementName'] != null)
+                  _detailLine(Icons.location_on_outlined, 'Element', child['elementName'] as String),
+                if (child['drawingNo'] != null)
+                  _detailLine(Icons.description_outlined, 'Drawing No.', child['drawingNo'] as String),
+                _detailLine(Icons.flag_outlined, 'Status', status.label, status.color),
+                _detailLine(Icons.event_outlined, 'Requested', child['requestDate'] as String? ?? '—'),
+                const SizedBox(height: 12),
+                Text('Attachments',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                const SizedBox(height: 6),
+                if (_loadingAttachments)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                else if ((_attachments ?? const []).isEmpty)
+                  Text('No attachments.', style: TextStyle(fontSize: 12, color: Colors.grey.shade500))
+                else
+                  AttachmentGrid(attachments: _attachments!, readOnly: true),
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: widget.onToggleSelect,
+              icon: Icon(widget.isSelected ? Icons.remove_circle_outline : Icons.check_circle_outline, size: 18),
+              label: Text(widget.isSelected ? 'Remove From Selection' : 'Select This Checklist'),
+              style: FilledButton.styleFrom(
+                backgroundColor: widget.isSelected ? Colors.red.shade600 : null,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+

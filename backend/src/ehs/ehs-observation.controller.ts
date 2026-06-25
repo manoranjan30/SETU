@@ -142,7 +142,10 @@ export class EhsObservationController {
   }
 
   @Patch(':id/reject-rectification')
-  @Permissions('EHS.SITE_OBS.CLOSE')
+  @Permissions(
+    'EHS.SITE_OBS.REJECT_RECTIFICATION',
+    'EHS.SITE_OBS.CLOSE',
+  )
   @Auditable('EHS', 'REJECT_SITE_OBS_RECTIFICATION', 'id')
   rejectRectification(
     @Param('id') id: string,

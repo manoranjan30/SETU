@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -545,6 +544,7 @@ class SetuApiClient {
     String? elementName,
     String? goDetails,
     List<int>? relatedChecklistInspectionIds,
+    List<String>? attachmentDraftIds,
   }) async {
     final response = await _dio.post(
       ApiEndpoints.raiseRfi,
@@ -567,9 +567,110 @@ class SetuApiClient {
         if (goDetails != null && goDetails.isNotEmpty) 'goDetails': goDetails,
         if (relatedChecklistInspectionIds != null && relatedChecklistInspectionIds.isNotEmpty)
           'relatedChecklistInspectionIds': relatedChecklistInspectionIds,
+        if (attachmentDraftIds != null && attachmentDraftIds.isNotEmpty)
+          'attachmentDraftIds': attachmentDraftIds,
       },
     );
     return response.data;
+  }
+
+  /// Returns checklist/activity groups with selectable RFI children for the
+  /// "Link Previous Checklist RFIs" tree picker at this project/location.
+  Future<List<Map<String, dynamic>>> getRelatedChecklistOptions({
+    required int projectId,
+    required int epsNodeId,
+  }) async {
+    final response = await _dio.get(
+      ApiEndpoints.relatedChecklistOptions,
+      queryParameters: {'projectId': projectId, 'epsNodeId': epsNodeId},
+    );
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Uploads an RFI attachment before the RFI itself exists. [clientUploadId]
+  /// must be generated and persisted by the caller before the first attempt
+  /// so retries reuse the same UUID — the backend returns the existing draft
+  /// unchanged on a repeat upload with the same id (idempotent).
+  Future<Map<String, dynamic>> createAttachmentDraft({
+    required int projectId,
+    required String clientUploadId,
+    required String attachmentType,
+    required String originalFilePath,
+    String? annotatedFilePath,
+    String? annotationDataJson,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      'projectId': projectId.toString(),
+      'clientUploadId': clientUploadId,
+      'attachmentType': attachmentType,
+      'originalFile': await MultipartFile.fromFile(originalFilePath),
+      if (annotatedFilePath != null)
+        'annotatedFile': await MultipartFile.fromFile(annotatedFilePath),
+      if (annotationDataJson != null) 'annotationData': annotationDataJson,
+    });
+    final response = await _dio.post(
+      ApiEndpoints.attachmentDrafts,
+      data: formData,
+      onSendProgress: onProgress,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Deletes an unused attachment draft (one never bound to an RFI).
+  Future<void> deleteAttachmentDraft(String attachmentId) async {
+    await _dio.delete(ApiEndpoints.deleteAttachmentDraft(attachmentId));
+  }
+
+  /// Lists attachments already bound to an existing inspection.
+  Future<List<Map<String, dynamic>>> getInspectionAttachments(
+      int inspectionId) async {
+    final response =
+        await _dio.get(ApiEndpoints.inspectionAttachments(inspectionId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Adds an attachment directly to an existing inspection (same multipart
+  /// fields as [createAttachmentDraft], minus [projectId] which the backend
+  /// derives from the inspection).
+  Future<Map<String, dynamic>> addInspectionAttachment({
+    required int inspectionId,
+    required String clientUploadId,
+    required String attachmentType,
+    required String originalFilePath,
+    String? annotatedFilePath,
+    String? annotationDataJson,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      'clientUploadId': clientUploadId,
+      'attachmentType': attachmentType,
+      'originalFile': await MultipartFile.fromFile(originalFilePath),
+      if (annotatedFilePath != null)
+        'annotatedFile': await MultipartFile.fromFile(annotatedFilePath),
+      if (annotationDataJson != null) 'annotationData': annotationDataJson,
+    });
+    final response = await _dio.post(
+      ApiEndpoints.addInspectionAttachment(inspectionId),
+      data: formData,
+      onSendProgress: onProgress,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Removes an attachment already bound to [inspectionId]. Fails server-side
+  /// if the inspection (and therefore its attachments) is locked.
+  Future<void> deleteInspectionAttachment({
+    required int inspectionId,
+    required String attachmentId,
+  }) async {
+    await _dio.delete(
+      ApiEndpoints.deleteInspectionAttachment(inspectionId, attachmentId),
+    );
   }
 
   /// Returns the list of units under a floor EPS node.
@@ -785,6 +886,7 @@ class SetuApiClient {
     required int inspectionId,
     int? stageId,
     String? type,
+    String? observationRating,
     List<String>? photos,
   }) async {
     final response = await _dio.post(
@@ -794,6 +896,7 @@ class SetuApiClient {
         'inspectionId': inspectionId,
         if (stageId != null) 'stageId': stageId,
         if (type != null) 'type': type,
+        if (observationRating != null) 'observationRating': observationRating,
         // Only send photos array if it is non-empty to avoid unnecessary payload.
         if (photos != null && photos.isNotEmpty) 'photos': photos,
       },
@@ -884,6 +987,7 @@ class SetuApiClient {
     int? epsNodeId,
     required String description,
     required String severity,
+    String? observationRating,
     String? category,
     String? locationLabel,
     List<String>? photoUrls,
@@ -895,6 +999,7 @@ class SetuApiClient {
         if (epsNodeId != null) 'epsNodeId': epsNodeId,
         'description': description,
         'severity': severity,
+        if (observationRating != null) 'observationRating': observationRating,
         if (category != null) 'category': category,
         if (locationLabel != null) 'locationLabel': locationLabel,
         // Backend DTO uses 'photos' — not 'photoUrls'
@@ -1059,21 +1164,25 @@ class SetuApiClient {
     return list.cast<Map<String, dynamic>>();
   }
 
-  /// Expands an existing floor RFI series to a higher total-part count.
+  /// Reserves the next GO number for an existing floor RFI series.
   /// Backend expects projectId/epsNodeId/activityId — NOT inspectionId.
-  Future<Map<String, dynamic>> expandGoSeries({
+  /// Returns `{previousTotalParts, newTotalParts, nextGoNo, nextGoLabel}` —
+  /// raise the reserved GO immediately afterward via [raiseRfi].
+  Future<Map<String, dynamic>> addGo({
     required int projectId,
     required int epsNodeId,
     required int activityId,
-    required int newTotalParts,
+    int? qualityUnitId,
+    int? qualityRoomId,
   }) async {
     final response = await _dio.post(
-      ApiEndpoints.expandGoSeries,
+      ApiEndpoints.addGo,
       data: {
         'projectId': projectId,
         'epsNodeId': epsNodeId,
         'activityId': activityId,
-        'newTotalParts': newTotalParts,
+        'qualityUnitId': qualityUnitId,
+        'qualityRoomId': qualityRoomId,
       },
     );
     return response.data as Map<String, dynamic>? ?? {};
@@ -1342,6 +1451,45 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Returns the full Observation/NCR register for a project. Callers
+  /// filter client-side for `type == 'NCR'` — the same endpoint also
+  /// returns plain 'Observation' rows used elsewhere.
+  Future<List<Map<String, dynamic>>> getObservationNcrRegister(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.observationNcrRegister(projectId));
+    final data = response.data;
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Updates manual NCR fields (root cause, corrective action, target date,
+  /// status). The auto-created-from-observation fields (severity, category,
+  /// sourceType/sourceId/sourceReference) are not editable from mobile.
+  Future<Map<String, dynamic>> updateObservationNcr(
+    int id, {
+    String? status,
+    String? rootCause,
+    String? correctiveAction,
+    String? targetDate,
+    String? assignedTo,
+  }) async {
+    final response = await _dio.put(
+      ApiEndpoints.observationNcr(id),
+      data: {
+        if (status != null) 'status': status,
+        if (rootCause != null) 'rootCause': rootCause,
+        if (correctiveAction != null) 'correctiveAction': correctiveAction,
+        if (targetDate != null) 'targetDate': targetDate,
+        if (assignedTo != null) 'assignedTo': assignedTo,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Permanently deletes an NCR register entry.
+  Future<void> deleteObservationNcr(int id) async {
+    await _dio.delete(ApiEndpoints.deleteObservationNcr(id));
+  }
+
   /// Deletes a supporting document from a clearance attachment line.
   Future<void> deleteClearanceAttachment({
     required int inspectionId,
@@ -1438,8 +1586,9 @@ class SetuApiClient {
     final response = await _dio.get(ApiEndpoints.ehsManhours(projectId));
     final data = response.data;
     if (data is List) return data.cast<Map<String, dynamic>>();
-    if (data is Map && data['data'] is List)
+    if (data is Map && data['data'] is List) {
       return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
     return [];
   }
 
@@ -1454,8 +1603,9 @@ class SetuApiClient {
     final response = await _dio.get(ApiEndpoints.ehsTraining(projectId));
     final data = response.data;
     if (data is List) return data.cast<Map<String, dynamic>>();
-    if (data is Map && data['data'] is List)
+    if (data is Map && data['data'] is List) {
       return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
     return [];
   }
 
@@ -1470,8 +1620,9 @@ class SetuApiClient {
     final response = await _dio.get(ApiEndpoints.ehsLegal(projectId));
     final data = response.data;
     if (data is List) return data.cast<Map<String, dynamic>>();
-    if (data is Map && data['data'] is List)
+    if (data is Map && data['data'] is List) {
       return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
     return [];
   }
 
@@ -1493,8 +1644,9 @@ class SetuApiClient {
     final response = await _dio.get(ApiEndpoints.ehsMachinery(projectId));
     final data = response.data;
     if (data is List) return data.cast<Map<String, dynamic>>();
-    if (data is Map && data['data'] is List)
+    if (data is Map && data['data'] is List) {
       return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
     return [];
   }
 
@@ -1509,8 +1661,9 @@ class SetuApiClient {
     final response = await _dio.get(ApiEndpoints.ehsVehicles(projectId));
     final data = response.data;
     if (data is List) return data.cast<Map<String, dynamic>>();
-    if (data is Map && data['data'] is List)
+    if (data is Map && data['data'] is List) {
       return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
     return [];
   }
 
@@ -1746,22 +1899,22 @@ class _ErrorInterceptor extends Interceptor {
     // so we print the underlying error before it gets normalised, helping debug
     // physical-device vs. emulator networking issues.
     if (err.type == DioExceptionType.connectionError) {
-      print('[ErrorInterceptor] Connection Error Details:');
-      print('[ErrorInterceptor] - Error type: ${err.type}');
-      print('[ErrorInterceptor] - Error object: ${err.error}');
-      print('[ErrorInterceptor] - Error runtimeType: ${err.error?.runtimeType}');
-      print('[ErrorInterceptor] - Error message: ${err.message}');
-      print('[ErrorInterceptor] - Request URL: ${err.requestOptions.uri}');
+      debugPrint('[ErrorInterceptor] Connection Error Details:');
+      debugPrint('[ErrorInterceptor] - Error type: ${err.type}');
+      debugPrint('[ErrorInterceptor] - Error object: ${err.error}');
+      debugPrint('[ErrorInterceptor] - Error runtimeType: ${err.error?.runtimeType}');
+      debugPrint('[ErrorInterceptor] - Error message: ${err.message}');
+      debugPrint('[ErrorInterceptor] - Request URL: ${err.requestOptions.uri}');
 
       // Dig into the underlying OS-level error for extra context (e.g., the
       // exact errno that caused the connection refusal).
       if (err.error != null) {
         final underlyingError = err.error;
-        print('[ErrorInterceptor] - Underlying error: $underlyingError');
+        debugPrint('[ErrorInterceptor] - Underlying error: $underlyingError');
         if (underlyingError is SocketException) {
           final socketError = underlyingError;
-          print('[ErrorInterceptor] - SocketException message: ${socketError.message}');
-          print('[ErrorInterceptor] - SocketException OS error: ${socketError.osError}');
+          debugPrint('[ErrorInterceptor] - SocketException message: ${socketError.message}');
+          debugPrint('[ErrorInterceptor] - SocketException OS error: ${socketError.osError}');
         }
       }
     }

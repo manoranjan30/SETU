@@ -499,7 +499,7 @@ class _CreateIncidentSheetState extends State<_CreateIncidentSheet> {
 
               // Incident type dropdown — drives days-lost visibility
               DropdownButtonFormField<IncidentType>(
-                value: _type,
+                initialValue: _type,
                 decoration: const InputDecoration(
                   labelText: 'Incident Type *',
                   border: OutlineInputBorder(),

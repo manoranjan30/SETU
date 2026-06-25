@@ -34,7 +34,10 @@ services:
       dockerfile: Dockerfile
       target: frontend-dev
     container_name: setu_frontend_dev
-    command: npm run dev -- --host
+    # The source tree is bind-mounted while node_modules lives in a Docker
+    # volume. Reconcile it with package-lock.json on startup so newly added
+    # frontend dependencies are never hidden by a stale volume.
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host"
     ports:
       - "5173:5173"
     volumes:

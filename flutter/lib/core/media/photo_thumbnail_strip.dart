@@ -8,16 +8,21 @@ import 'package:setu_mobile/core/media/photo_cache_manager.dart';
 ///
 /// Tapping any thumbnail opens [FullScreenPhotoViewer].
 /// When [canDelete] is true, each thumbnail shows an ✕ button that calls [onDelete].
+/// When [onEdit] is provided, each thumbnail also shows a pencil button that
+/// re-opens the photo in the annotation editor (see [editAddedPhoto]) —
+/// lets a photo be touched up after adding it but before final submission.
 class PhotoThumbnailStrip extends StatelessWidget {
   final List<String> photoUrls;
   final bool canDelete;
   final void Function(String url)? onDelete;
+  final void Function(int index, String url)? onEdit;
 
   const PhotoThumbnailStrip({
     super.key,
     required this.photoUrls,
     this.canDelete = false,
     this.onDelete,
+    this.onEdit,
   });
 
   /// Returns true when [url] is a local file path (not a remote URL).
@@ -40,6 +45,7 @@ class PhotoThumbnailStrip extends StatelessWidget {
             url: photoUrls[i],
             canDelete: canDelete,
             onDelete: onDelete != null ? () => onDelete!(photoUrls[i]) : null,
+            onEdit: onEdit != null ? () => onEdit!(i, photoUrls[i]) : null,
             onTap: () => FullScreenPhotoViewer.show(
               context,
               photoUrls,
@@ -56,12 +62,14 @@ class _Thumbnail extends StatelessWidget {
   final String url;
   final bool canDelete;
   final VoidCallback? onDelete;
+  final VoidCallback? onEdit;
   final VoidCallback onTap;
 
   const _Thumbnail({
     required this.url,
     required this.canDelete,
     this.onDelete,
+    this.onEdit,
     required this.onTap,
   });
 
@@ -112,6 +120,29 @@ class _Thumbnail extends StatelessWidget {
                   ),
           ),
         ),
+        if (onEdit != null)
+          Positioned(
+            bottom: -6,
+            right: -6,
+            child: GestureDetector(
+              onTap: onEdit,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade600,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 3,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.edit, size: 11, color: Colors.white),
+              ),
+            ),
+          ),
         if (canDelete && onDelete != null)
           Positioned(
             top: -6,

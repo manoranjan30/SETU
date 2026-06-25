@@ -96,7 +96,9 @@ class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserv
   void _handleIncomingLink(Uri uri) {
     if (uri.scheme != 'setu') return;
     if (uri.host != 'signature' ||
-        uri.pathSegments.firstOrNull != 'confirm') return;
+        uri.pathSegments.firstOrNull != 'confirm') {
+      return;
+    }
 
     final token = uri.queryParameters['token'];
     if (token == null || token.isEmpty) return;

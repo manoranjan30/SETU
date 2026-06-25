@@ -19,6 +19,7 @@ import { EhsVehicle } from './entities/ehs-vehicle.entity';
 import { EhsCompetency } from './entities/ehs-competency.entity';
 import { EpsNode } from '../eps/eps.entity';
 import { DailyLaborPresence } from '../labor/entities/daily-labor-presence.entity';
+import { User } from '../users/user.entity';
 
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -47,6 +48,7 @@ import { CommonModule } from '../common/common.module';
       EhsCompetency,
       EpsNode,
       DailyLaborPresence,
+      User,
     ]),
     AuditModule,
   ],

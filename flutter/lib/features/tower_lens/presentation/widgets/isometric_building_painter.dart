@@ -98,9 +98,9 @@ class IsometricBuildingPainter extends CustomPainter {
     // Apply parallax rotation skew — cheap "rotate" effect via matrix skew
     if (rotationAngle != 0) {
       final matrix = Matrix4.identity()
-        ..translate(cx, baseY)
+        ..translateByDouble(cx, baseY, 0.0, 1.0)
         ..rotateZ(rotationAngle * 0.06)  // subtle tilt
-        ..translate(-cx, -baseY);
+        ..translateByDouble(-cx, -baseY, 0.0, 1.0);
       canvas.transform(matrix.storage);
     }
 
@@ -434,9 +434,9 @@ class IsometricBuildingPainter extends CustomPainter {
     canvas.drawPath(path, Paint()..color = color);
     // "!" label
     final tp = TextPainter(
-      text: TextSpan(
+      text: const TextSpan(
         text: '!',
-        style: const TextStyle(
+        style: TextStyle(
             color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
       ),
       textDirection: TextDirection.ltr,
@@ -501,12 +501,12 @@ class IsometricBuildingPainter extends CustomPainter {
 
   /// Returns a darkened version of [color] by [factor] (0 = black, 1 = unchanged).
   Color _darken(Color color, double factor) {
-    if (color.alpha == 0) return color;
-    return Color.fromARGB(
-      color.alpha,
-      (color.red * factor).round().clamp(0, 255),
-      (color.green * factor).round().clamp(0, 255),
-      (color.blue * factor).round().clamp(0, 255),
+    if (color.a == 0) return color;
+    return Color.from(
+      alpha: color.a,
+      red: (color.r * factor).clamp(0, 1),
+      green: (color.g * factor).clamp(0, 1),
+      blue: (color.b * factor).clamp(0, 1),
     );
   }
 

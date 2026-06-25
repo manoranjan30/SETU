@@ -119,7 +119,7 @@ class _SignatureQrScannerPageState extends State<SignatureQrScannerPage> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(14),
-                child: Stack(children: [
+                child: const Stack(children: [
                   _Corner(top: true,  left: true),
                   _Corner(top: true,  left: false),
                   _Corner(top: false, left: true),
@@ -135,20 +135,20 @@ class _SignatureQrScannerPageState extends State<SignatureQrScannerPage> {
           ),
 
           // Instruction label
-          Positioned(
+          const Positioned(
             bottom: 64,
             left: 0,
             right: 0,
             child: Column(
               children: [
-                const Icon(Icons.qr_code_2, color: Colors.white54, size: 32),
-                const SizedBox(height: 10),
-                const Text(
+                Icon(Icons.qr_code_2, color: Colors.white54, size: 32),
+                SizedBox(height: 10),
+                Text(
                   'Point the camera at the signature QR code',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 Text(
                   'Generated from Pre-Pour Clearance card',
                   textAlign: TextAlign.center,

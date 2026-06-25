@@ -6,6 +6,7 @@ import 'package:setu_mobile/core/navigation/app_routes.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_detail_page.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/observation_rating_selector.dart';
 import 'package:setu_mobile/shared/widgets/advanced_filter_sheet.dart';
 import 'package:setu_mobile/shared/widgets/filter_chip_bar.dart';
 import 'package:setu_mobile/shared/widgets/obs_status_badge.dart';
@@ -104,6 +105,7 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
       context,
       title: 'Raise Quality Observation',
       projectId: widget.projectId,
+      showObservationRating: true,
       categories: const [
         'Workmanship',
         'Material',
@@ -115,6 +117,7 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
       onSubmit: ({
         required description,
         required severity,
+        observationRating,
         category,
         epsNodeId,
         locationLabel,
@@ -124,6 +127,7 @@ class _QualitySiteObsPageState extends State<QualitySiteObsPage>
               projectId: widget.projectId,
               description: description,
               severity: severity,
+              observationRating: observationRating,
               category: category,
               epsNodeId: epsNodeId,
               locationLabel: locationLabel,
@@ -550,7 +554,23 @@ class _QualityObsCard extends StatelessWidget {
                 children: [
                   ObsStatusBadge(status: obs.status.label),
                   const SizedBox(width: 6),
-                  SeverityBadge(severity: obs.severity),
+                  ObservationRatingBadge(
+                    observationRating: obs.observationRating,
+                    legacySeverity: obs.severity,
+                  ),
+                  if (obs.ncrId != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Text('NCR #${obs.ncrId}',
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.red.shade700)),
+                    ),
+                  ],
                   if (obs.category != null) ...[
                     const SizedBox(width: 6),
                     _CategoryChip(obs.category!),
@@ -638,6 +658,29 @@ class _QualityObsCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (obs.raisedByName != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.person_outline,
+                        size: 12,
+                        color: theme.colorScheme.onSurface
+                            .withValues(alpha: 0.5)),
+                    const SizedBox(width: 2),
+                    Flexible(
+                      child: Text(
+                        'Raised by ${obs.raisedByName}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

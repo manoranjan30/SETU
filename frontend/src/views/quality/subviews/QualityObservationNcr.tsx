@@ -17,9 +17,13 @@ import api from "../../../api/axios";
 
 interface Props {
   projectId: number;
+  ncrOnly?: boolean;
 }
 
-const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
+const QualityObservationNcr: React.FC<Props> = ({
+  projectId,
+  ncrOnly = false,
+}) => {
   const [records, setRecords] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -42,7 +46,11 @@ const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
   const fetchRecords = async () => {
     try {
       const response = await api.get(`/quality/${projectId}/observation-ncr`);
-      setRecords(response.data);
+      setRecords(
+        ncrOnly
+          ? response.data.filter((item: any) => item.type === "NCR")
+          : response.data,
+      );
     } catch (error) {
       console.error(error);
     }
@@ -137,12 +145,12 @@ const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
           <Search className="w-4 h-4 text-text-disabled" />
           <input
             type="text"
-            placeholder="Search Observation/NCR..."
+            placeholder={ncrOnly ? "Search NC register..." : "Search Observation/NCR..."}
             className="bg-transparent border-none focus:ring-0 text-sm w-full"
           />
         </div>
         <div className="flex gap-3">
-          <button
+          {!ncrOnly && <button
             onClick={() => {
               resetForm();
               setFormData({ ...formData, type: "Observation" });
@@ -151,7 +159,7 @@ const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
             className="flex items-center gap-2 bg-primary text-white px-6 py-2.5 rounded-xl hover:bg-primary-dark transition-all shadow-lg shadow-blue-200 font-bold"
           >
             <Plus className="w-4 h-4" /> New Observation
-          </button>
+          </button>}
           <button
             onClick={() => {
               resetForm();
@@ -195,6 +203,11 @@ const QualityObservationNcr: React.FC<Props> = ({ projectId }) => {
               <h3 className="text-lg font-bold text-text-primary">
                 {item.issueDescription}
               </h3>
+              {item.sourceReference && (
+                <div className="inline-flex rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800">
+                  Source: {item.sourceReference}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="flex items-center gap-2 text-sm text-text-muted">

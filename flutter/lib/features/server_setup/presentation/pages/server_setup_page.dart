@@ -239,7 +239,7 @@ class _ServerSetupPageState extends State<ServerSetupPage> {
             const SizedBox(height: 20),
 
             // ── Section: Presets ──────────────────────────────────────────
-            _SectionLabel('Choose Connection Type'),
+            const _SectionLabel('Choose Connection Type'),
             const SizedBox(height: 8),
             _buildPresetTile(
               index:    0,
@@ -269,7 +269,7 @@ class _ServerSetupPageState extends State<ServerSetupPage> {
             // ── Section: Recently used ────────────────────────────────────
             if (_recentUrls.isNotEmpty) ...[
               const SizedBox(height: 24),
-              _SectionLabel('Recently Used'),
+              const _SectionLabel('Recently Used'),
               const SizedBox(height: 8),
               _buildRecentList(),
             ],
@@ -647,10 +647,10 @@ class _CloudflareHint extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          _HintLine('1. Install: winget install cloudflare.cloudflared'),
-          _HintLine('2. Run: cloudflared tunnel --url http://localhost:3000'),
-          _HintLine('3. Copy the https://xxxx.trycloudflare.com URL'),
-          _HintLine('4. Generate a QR from that URL and scan above'),
+          const _HintLine('1. Install: winget install cloudflare.cloudflared'),
+          const _HintLine('2. Run: cloudflared tunnel --url http://localhost:3000'),
+          const _HintLine('3. Copy the https://xxxx.trycloudflare.com URL'),
+          const _HintLine('4. Generate a QR from that URL and scan above'),
         ],
       ),
     );

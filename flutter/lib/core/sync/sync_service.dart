@@ -728,6 +728,10 @@ class SyncService {
                   (payload['relatedChecklistInspectionIds'] as List<dynamic>?)
                       ?.whereType<int>()
                       .toList(),
+              attachmentDraftIds:
+                  (payload['attachmentDraftIds'] as List<dynamic>?)
+                      ?.whereType<String>()
+                      .toList(),
             );
             break;
 
@@ -805,6 +809,7 @@ class SyncService {
               inspectionId: payload['inspectionId'] as int,
               stageId: payload['stageId'] as int?,
               type: payload['type'] as String?,
+              observationRating: payload['observationRating'] as String?,
               photos: obsPhotos.isEmpty ? null : obsPhotos,
             );
             break;
@@ -826,6 +831,7 @@ class SyncService {
               epsNodeId: payload['epsNodeId'] as int?,
               description: payload['description'] as String,
               severity: payload['severity'] as String,
+              observationRating: payload['observationRating'] as String?,
               category: payload['category'] as String?,
               locationLabel: payload['locationLabel'] as String?,
               photoUrls: qSitePhotos,

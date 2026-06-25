@@ -40,10 +40,17 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
+    return PopScope(
       // Intercept the hardware back button to navigate up within the EPS tree
       // instead of immediately leaving the page
-      onWillPop: _handleBackPress,
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _handleBackPress();
+        if (shouldPop && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
@@ -164,7 +171,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: AppColors.warning.withOpacity(0.15),
+      color: AppColors.warning.withValues(alpha: 0.15),
       child: const Row(
         children: [
           Icon(Icons.cloud_off, size: 18, color: AppColors.warning),
@@ -251,7 +258,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
+              color: AppColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -298,7 +305,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: _getNodeColor(node.type).withOpacity(0.12),
+                  color: _getNodeColor(node.type).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -438,7 +445,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
         side: BorderSide(
           // Tinted green border for completed activities
           color: isCompleted
-              ? AppColors.success.withOpacity(0.3)
+              ? AppColors.success.withValues(alpha: 0.3)
               : AppColors.divider,
           width: 1,
         ),
@@ -459,8 +466,8 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
                 height: 48,
                 decoration: BoxDecoration(
                   color: isCompleted
-                      ? AppColors.success.withOpacity(0.12)
-                      : AppColors.primary.withOpacity(0.1),
+                      ? AppColors.success.withValues(alpha: 0.12)
+                      : AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -618,7 +625,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: chipColor.withOpacity(0.12),
+        color: chipColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -644,7 +651,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppColors.error.withOpacity(0.1),
+                color: AppColors.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -700,7 +707,7 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppColors.textSecondary.withOpacity(0.1),
+                color: AppColors.textSecondary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(

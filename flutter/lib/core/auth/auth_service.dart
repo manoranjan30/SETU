@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/token_manager.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
@@ -48,13 +49,15 @@ class AuthService {
     required String password,
   }) async {
     try {
-      print('[AuthService] Starting login for: $username');
+      if (kDebugMode) debugPrint('[AuthService] Starting login for: $username');
 
       final response = await _apiClient.login(
         username: username,
         password: password,
       );
-      print('[AuthService] Login response: $response');
+      // Note: never log the raw response here — it carries the plaintext
+      // access/refresh tokens, which must not end up in device logs even
+      // in debug builds (logcat capture, bug-report attachments, etc.).
 
       // Parse the response
       // OTP challenge — server wants a second factor before issuing a token.
@@ -71,7 +74,9 @@ class AuthService {
       final accessToken = response['access_token'] as String?;
       final refreshToken = response['refresh_token'] as String?;
       final expiresIn = response['expires_in'] as int?;
-      print('[AuthService] Access token: ${accessToken != null ? "received" : "null"}');
+      if (kDebugMode) {
+        debugPrint('[AuthService] Access token: ${accessToken != null ? "received" : "null"}');
+      }
 
       if (accessToken == null) {
         throw Exception('Invalid login response: missing access token');
@@ -80,8 +85,9 @@ class AuthService {
       // Backend returns user data nested under a 'user' key with all fields
       // including permissions, roles, and project_ids.
       final userJson = response['user'] as Map<String, dynamic>?;
-      print('[AuthService] User JSON keys: ${userJson?.keys.toList()}');
-      print('[AuthService] Permissions from login: ${userJson?['permissions']}');
+      if (kDebugMode) {
+        debugPrint('[AuthService] User JSON keys: ${userJson?.keys.toList()}');
+      }
 
       // Save tokens
       await _tokenManager.saveTokens(
@@ -90,24 +96,25 @@ class AuthService {
         expiresIn: expiresIn ?? 28800, // Default 8 hours
         userId: userJson?['id'] as int? ?? 0,
       );
-      print('[AuthService] Tokens saved successfully');
+      if (kDebugMode) debugPrint('[AuthService] Tokens saved successfully');
 
       if (userJson != null) {
         // Fast path: user data (including permissions) came inline in the
         // login response under the 'user' key.
         final user = User.fromJson(userJson);
-        print('[AuthService] User parsed: ${user.username}, '
-            'permissions count: ${user.permissions.length}, '
-            'permissions: ${user.permissions}');
+        if (kDebugMode) {
+          debugPrint('[AuthService] User parsed: ${user.username}, '
+              'permissions count: ${user.permissions.length}');
+        }
         return user;
       }
 
       // Fallback path: backend did not include user in the login response,
       // so make a dedicated profile request using the newly saved token.
-      print('[AuthService] Fetching profile separately');
+      if (kDebugMode) debugPrint('[AuthService] Fetching profile separately');
       return await getProfile();
     } catch (e) {
-      print('[AuthService] Login error: $e');
+      if (kDebugMode) debugPrint('[AuthService] Login error: $e');
       rethrow;
     }
   }

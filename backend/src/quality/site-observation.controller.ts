@@ -142,7 +142,10 @@ export class SiteObservationController {
   }
 
   @Patch(':id/reject-rectification')
-  @Permissions('QUALITY.SITE_OBS.CLOSE')
+  @Permissions(
+    'QUALITY.SITE_OBS.REJECT_RECTIFICATION',
+    'QUALITY.SITE_OBS.CLOSE',
+  )
   @Auditable('QUALITY', 'REJECT_SITE_OBS_RECTIFICATION', 'id')
   rejectRectification(
     @Param('id') id: string,

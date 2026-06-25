@@ -29,6 +29,7 @@ export const CreateTempUserWizard = ({
     email: "",
     designation: "",
     templateId: "",
+    vendorApprovalRoleLevel: 1 as 1 | 2,
     password: "",
     isActive: true,
   });
@@ -67,6 +68,7 @@ export const CreateTempUserWizard = ({
         workOrderId: Number(form.workOrderId),
         projectId: Number(projectId),
         templateId: Number(form.templateId),
+        vendorApprovalRoleLevel: form.vendorApprovalRoleLevel,
         password: form.password || undefined,
         isActive: form.isActive,
       });
@@ -379,6 +381,38 @@ export const CreateTempUserWizard = ({
                     </select>
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-semibold text-text-secondary mb-2">
+                      Vendor Approval Role
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[1, 2].map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              vendorApprovalRoleLevel: level as 1 | 2,
+                            })
+                          }
+                          className={`rounded-lg border px-3 py-3 text-left text-sm ${
+                            form.vendorApprovalRoleLevel === level
+                              ? "border-secondary bg-secondary-muted text-indigo-800"
+                              : "border-border-default bg-surface-card text-text-secondary"
+                          }`}
+                        >
+                          <span className="block font-semibold">
+                            Vendor Approver {level}
+                          </span>
+                          <span className="block text-xs text-text-muted">
+                            Same template permissions, separate release role.
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {selectedTemplate && (
                     <div className="bg-secondary-muted rounded-xl p-5 border border-indigo-100 animate-fade-in">
                       <h4 className="font-semibold text-indigo-900 mb-2">
@@ -462,6 +496,9 @@ export const CreateTempUserWizard = ({
                       <div className="w-2/3 text-sm font-medium text-indigo-700 flex items-center">
                         <span className="w-2 h-2 rounded-full bg-secondary mr-2"></span>
                         {selectedTemplate?.name}
+                        <span className="ml-2 text-text-muted">
+                          · Vendor Approver {form.vendorApprovalRoleLevel}
+                        </span>
                       </div>
                     </div>
                   </div>

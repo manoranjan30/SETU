@@ -97,6 +97,11 @@ export class CreateInspectionDto {
   relatedChecklistInspectionIds?: number[];
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  attachmentDraftIds?: string[];
+
+  @IsOptional()
   @IsString()
   @MaxLength(255)
   contractorName?: string;

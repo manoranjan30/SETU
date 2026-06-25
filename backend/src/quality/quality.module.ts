@@ -98,6 +98,9 @@ import { QualitySignatureQrSession } from './entities/quality-signature-qr-sessi
 import { QualityPourCardService } from './quality-pour-card.service';
 import { QualityPourCardController } from './quality-pour-card.controller';
 import { SiteObservationExportCron } from './site-observation-export.cron';
+import { QualityInspectionAttachment } from './entities/quality-inspection-attachment.entity';
+import { QualityInspectionAttachmentService } from './quality-inspection-attachment.service';
+import { QualityNcrSyncService } from './quality-ncr-sync.service';
 
 @Module({
   imports: [
@@ -158,6 +161,7 @@ import { SiteObservationExportCron } from './site-observation-export.cron';
       QualityCubeTestRegister,
       QualityConcreteGrade,
       QualitySignatureQrSession,
+      QualityInspectionAttachment,
       TempUser,
       User,
       Vendor,
@@ -196,6 +200,8 @@ import { SiteObservationExportCron } from './site-observation-export.cron';
     MaterialItpService,
     QualityPourCardService,
     SiteObservationExportCron,
+    QualityInspectionAttachmentService,
+    QualityNcrSyncService,
   ],
   exports: [
     QualityService,
@@ -213,6 +219,8 @@ import { SiteObservationExportCron } from './site-observation-export.cron';
     QualityRatingService,
     MaterialItpService,
     QualityPourCardService,
+    QualityInspectionAttachmentService,
+    QualityNcrSyncService,
   ],
 })
 export class QualityModule {}

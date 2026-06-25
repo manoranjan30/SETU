@@ -133,8 +133,8 @@ class _RectifySheetState extends State<RectifySheet> {
 
     // Open annotation/markup editor
     if (!mounted) return;
-    final annotatedPath = await ImageAnnotationPage.show(context, xfile.path);
-    final uploadPath = annotatedPath ?? xfile.path;
+    final annotationResult = await ImageAnnotationPage.show(context, xfile.path);
+    final uploadPath = annotationResult?.flattenedImagePath ?? xfile.path;
 
     if (!mounted) return;
     setState(() => _uploading = true);
@@ -167,7 +167,9 @@ class _RectifySheetState extends State<RectifySheet> {
       if (compressed != null && !_photoUrls.contains(compressed)) {
         await PhotoCompressor.deleteTempFile(compressed);
       }
-      if (annotatedPath != null) PhotoCompressor.deleteTempFile(annotatedPath);
+      if (annotationResult != null) {
+        PhotoCompressor.deleteTempFile(annotationResult.flattenedImagePath);
+      }
       PhotoCompressor.deleteTempFile(xfile.path);
       if (mounted) setState(() => _uploading = false);
     }

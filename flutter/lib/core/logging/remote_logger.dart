@@ -38,14 +38,6 @@ class RemoteLogger {
 
   /// Log with API tag for network requests
   void api(String message, {String? endpoint, Map<String, dynamic>? data}) {
-    final logData = {
-      'level': levelApi,
-      'timestamp': DateTime.now().toIso8601String(),
-      'endpoint': endpoint,
-      'message': message,
-      if (data != null) 'data': data,
-    };
-    
     debugPrint('══════════════════════════════════════════════════════════════');
     debugPrint('📱 [API] $message');
     if (endpoint != null) debugPrint('   Endpoint: $endpoint');

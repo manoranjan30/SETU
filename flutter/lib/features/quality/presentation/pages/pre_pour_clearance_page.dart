@@ -168,9 +168,9 @@ class _ClearanceViewState extends State<_ClearanceView> {
       },
       builder: (context, state) {
         final QualityPrePourClearanceCard? card = switch (state) {
-          ClearanceCardLoaded s => s.card,
-          ClearanceCardSaving s => s.card,
-          ClearanceCardActionSuccess s => s.card,
+          final ClearanceCardLoaded s => s.card,
+          final ClearanceCardSaving s => s.card,
+          final ClearanceCardActionSuccess s => s.card,
           _ => null,
         };
         final isLoading = state is ClearanceCardLoading;
@@ -1146,7 +1146,11 @@ class _AttachmentRowState extends State<_AttachmentRow> {
                       return InkWell(
                         onTap: widget.onChecklistSelectionChanged == null ? null : () {
                           final updated = List<int>.from(widget.selectedChecklistIds);
-                          if (isSelected) updated.remove(insp.id); else updated.add(insp.id);
+                          if (isSelected) {
+                            updated.remove(insp.id);
+                          } else {
+                            updated.add(insp.id);
+                          }
                           widget.onChecklistSelectionChanged!(updated);
                         },
                         child: Padding(
@@ -1160,7 +1164,11 @@ class _AttachmentRowState extends State<_AttachmentRow> {
                                   visualDensity: VisualDensity.compact,
                                   onChanged: widget.onChecklistSelectionChanged == null ? null : (v) {
                                     final updated = List<int>.from(widget.selectedChecklistIds);
-                                    if (v == true) updated.add(insp.id); else updated.remove(insp.id);
+                                    if (v == true) {
+                                      updated.add(insp.id);
+                                    } else {
+                                      updated.remove(insp.id);
+                                    }
                                     widget.onChecklistSelectionChanged!(updated);
                                   },
                                 ),

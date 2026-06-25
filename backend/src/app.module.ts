@@ -139,6 +139,7 @@ import { QualityPrePourClearanceCard } from './quality/entities/quality-pre-pour
 import { QualityCubeTestRegister } from './quality/entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './quality/entities/quality-concrete-grade.entity';
 import { QualitySignatureQrSession } from './quality/entities/quality-signature-qr-session.entity';
+import { QualityInspectionAttachment } from './quality/entities/quality-inspection-attachment.entity';
 
 import { DesignModule } from './design/design.module';
 import { DrawingCategory } from './design/entities/drawing-category.entity';
@@ -296,6 +297,7 @@ import { NotificationLog } from './notifications/notification-log.entity';
         QualityCubeTestRegister,
         QualityConcreteGrade,
         QualitySignatureQrSession,
+        QualityInspectionAttachment,
         QualityObservationNcr,
         QualityChecklist,
         QualityItem,

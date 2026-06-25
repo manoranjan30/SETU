@@ -195,7 +195,10 @@ export class QualityActivityController {
   }
 
   @Patch('activities/:id/observation/:obsId/reject-rectification')
-  @Permissions('QUALITY.OBSERVATION.CLOSE')
+  @Permissions(
+    'QUALITY.OBSERVATION.REJECT_RECTIFICATION',
+    'QUALITY.OBSERVATION.CLOSE',
+  )
   rejectObservationRectification(
     @Param('id', ParseIntPipe) id: number,
     @Param('obsId') obsId: string,

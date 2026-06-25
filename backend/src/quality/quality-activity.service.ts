@@ -26,6 +26,13 @@ import { QualityStageTemplate } from './entities/quality-stage-template.entity';
 import { QualityChecklistItemTemplate } from './entities/quality-checklist-item-template.entity';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { NotificationContextService } from '../notifications/notification-context.service';
+import {
+  normalizeObservationRating,
+  QualityObservationRating,
+  ratingLabel,
+} from './observation-rating';
+import { QualityNcrSyncService } from './quality-ncr-sync.service';
+import { User } from '../users/user.entity';
 import * as crypto from 'crypto';
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -96,6 +103,7 @@ export interface CsvActivityRow {
 export interface CreateObservationDto {
   observationText: string;
   type?: string;
+  observationRating?: string;
   remarks?: string;
   photos?: string[];
   checklistId?: number;
@@ -137,9 +145,12 @@ export class QualityActivityService {
     private readonly inspectionRepo: Repository<QualityInspection>,
     @InjectRepository(QualityInspectionStage)
     private readonly inspectionStageRepo: Repository<QualityInspectionStage>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly pushService: PushNotificationService,
     private readonly notificationContext: NotificationContextService,
     private readonly dataSource: DataSource,
+    private readonly ncrSyncService: QualityNcrSyncService,
   ) {}
 
   // ── Lists ──────────────────────────────────────────────────────────────
@@ -324,7 +335,7 @@ export class QualityActivityService {
     }
 
     const rows = await query.orderBy('observation.createdAt', 'DESC').getMany();
-    return rows.map((observation) => this.decorateObservation(observation)) as ActivityObservation[];
+    return this.decorateObservations(rows) as Promise<ActivityObservation[]>;
   }
 
   async createObservation(
@@ -349,7 +360,16 @@ export class QualityActivityService {
 
     const inspection = await this.inspectionRepo.findOne({
       where: { id: dto.inspectionId },
-      select: ['id', 'activityId', 'requestedById'],
+      select: [
+        'id',
+        'activityId',
+        'requestedById',
+        'projectId',
+        'epsNodeId',
+        'goLabel',
+        'elementName',
+        'drawingNo',
+      ],
     });
     if (!inspection || inspection.activityId !== id) {
       throw new BadRequestException(
@@ -368,13 +388,17 @@ export class QualityActivityService {
       }
     }
 
+    const observationRating = normalizeObservationRating(
+      dto.observationRating || dto.type,
+    );
     const obs = this.obsRepo.create({
       activityId: id,
       inspectorId: userId,
       checklistId: dto.checklistId,
       inspectionId: dto.inspectionId,
       stageId: dto.stageId ?? null,
-      type: dto.type,
+      type: ratingLabel(observationRating),
+      observationRating,
       observationText: dto.observationText,
       remarks: dto.remarks,
       photos: (dto.photos || []).map(u => this.toRelativePath(u)),
@@ -383,6 +407,31 @@ export class QualityActivityService {
     });
 
     const saved = await this.obsRepo.save(obs);
+    if (observationRating === QualityObservationRating.CRITICAL) {
+      const ncr = await this.ncrSyncService.ensureCriticalNcr({
+        projectId: inspection.projectId,
+        sourceType: 'QUALITY_CHECKLIST_OBSERVATION',
+        sourceId: saved.id,
+        sourceReference: `RFI #${inspection.id}${
+          inspection.goLabel ? ` / ${inspection.goLabel}` : ''
+        }`,
+        category: activity.activityName,
+        description: saved.observationText,
+        location: [
+          `EPS #${inspection.epsNodeId}`,
+          inspection.elementName,
+          inspection.drawingNo
+            ? `Drawing ${inspection.drawingNo}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' / '),
+        reportedBy: userId ? `User #${userId}` : 'System',
+        attachmentUrl: saved.photos?.[0],
+      });
+      saved.ncrId = ncr.id;
+      await this.obsRepo.save(saved);
+    }
 
     activity.status = QualityActivityStatus.PENDING_OBSERVATION;
     await this.activityRepo.save(activity);
@@ -392,7 +441,7 @@ export class QualityActivityService {
       // Fire-and-forget; do not fail the request if notification errors
     });
 
-    return saved;
+    return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
 
   private async notifyInspectionRaiserOfObservation(
@@ -471,7 +520,7 @@ export class QualityActivityService {
       } satisfies ActivityObservationRectificationHistoryEntry,
     ];
     const saved = await this.obsRepo.save(obs);
-
+    await this.ncrSyncService.markRectified(saved.ncrId, saved.closureText);
     const pendingCount =
       await this.countUnresolvedObservationCountForActivity(id);
 
@@ -481,7 +530,7 @@ export class QualityActivityService {
       });
     }
 
-    return saved;
+    return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
 
   async rejectObservationRectification(
@@ -504,8 +553,12 @@ export class QualityActivityService {
       );
     }
 
+    const rejectionRemarks = dto.rejectionRemarks?.trim();
+    if (!rejectionRemarks) {
+      throw new BadRequestException('Rejection remarks are required.');
+    }
     obs.status = ActivityObservationStatus.PENDING;
-    obs.rectificationRejectedRemarks = dto.rejectionRemarks?.trim() || null;
+    obs.rectificationRejectedRemarks = rejectionRemarks;
     obs.rectificationRejectedBy = userId;
     obs.rectificationRejectedAt = new Date();
     obs.rectificationHistory = [
@@ -520,8 +573,9 @@ export class QualityActivityService {
       } satisfies ActivityObservationRectificationHistoryEntry,
     ];
     const saved = await this.obsRepo.save(obs);
+    await this.ncrSyncService.markOpen(saved.ncrId);
 
-    return saved;
+    return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
 
   async closeObservation(
@@ -544,7 +598,10 @@ export class QualityActivityService {
     }
 
     obs.status = ActivityObservationStatus.CLOSED;
+    obs.closedBy = userId;
+    obs.closedAt = new Date();
     const saved = await this.obsRepo.save(obs);
+    await this.ncrSyncService.markClosed(saved.ncrId);
 
     const remainingCount =
       await this.countUnresolvedObservationCountForActivity(id);
@@ -555,7 +612,7 @@ export class QualityActivityService {
       });
     }
 
-    return saved;
+    return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
 
   async deleteObservation(activityId: number, obsId: string): Promise<void> {
@@ -564,6 +621,7 @@ export class QualityActivityService {
     });
     if (!obs) throw new NotFoundException(`Observation #${obsId} not found`);
 
+    await this.ncrSyncService.deleteLinkedNcr(obs.ncrId);
     await this.obsRepo.remove(obs);
 
     const pendingCount =
@@ -1115,9 +1173,11 @@ export class QualityActivityService {
   }
 
   private decorateObservation(observation: ActivityObservation) {
-    const endTime = observation.resolvedAt
-      ? new Date(observation.resolvedAt).getTime()
-      : Date.now();
+    const endTime = observation.closedAt
+      ? new Date(observation.closedAt).getTime()
+      : observation.resolvedAt
+        ? new Date(observation.resolvedAt).getTime()
+        : Date.now();
     const ageingMinutes = Math.max(
       0,
       Math.floor(
@@ -1131,6 +1191,56 @@ export class QualityActivityService {
       ageingHours: Number((ageingMinutes / 60).toFixed(1)),
       ageingDays: Number((ageingMinutes / 1440).toFixed(1)),
     };
+  }
+
+  private async decorateObservations(observations: ActivityObservation[]) {
+    const userIds = Array.from(
+      new Set(
+        observations
+          .flatMap((observation) => [
+            observation.inspectorId,
+            observation.resolvedBy,
+            observation.closedBy,
+          ])
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    );
+    const users = userIds.length
+      ? await this.userRepo.find({
+          where: { id: In(userIds) },
+          select: ['id', 'username', 'displayName', 'designation'],
+        })
+      : [];
+    const userMap = new Map(
+      users.map((user) => [
+        String(user.id),
+        {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName || user.username,
+          designation: user.designation || null,
+        },
+      ]),
+    );
+
+    return observations.map((observation) => ({
+      ...this.decorateObservation(observation),
+      raisedBy: observation.inspectorId
+        ? userMap.get(observation.inspectorId) || null
+        : null,
+      rectifiedBy: observation.resolvedBy
+        ? userMap.get(observation.resolvedBy) || null
+        : null,
+      closedByUser: observation.closedBy
+        ? userMap.get(observation.closedBy) || null
+        : null,
+    }));
+  }
+
+  private async decorateOneObservation(observation: ActivityObservation) {
+    const [decorated] = await this.decorateObservations([observation]);
+    return decorated;
   }
 
   private withLegacyChecklistFallback(

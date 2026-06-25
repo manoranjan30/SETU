@@ -95,6 +95,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
   );
   const canCreateCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_CREATE);
   const canUpdateCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_UPDATE);
+  const canSaveCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_SAVE);
   const canApproveCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_APPROVE);
   const canDeleteCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_DELETE);
   const canCreateGrade = hasPermission(
@@ -1158,7 +1159,7 @@ const QualityMaterialTest: React.FC<Props> = ({ projectId }) => {
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex justify-end gap-1">
-                          {canUpdateCube && (
+                          {(canUpdateCube || canSaveCube) && (
                             <button
                               type="button"
                               onClick={() => saveCubeResult(cube)}

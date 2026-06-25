@@ -1,17 +1,25 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:open_file/open_file.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/core/media/image_annotation_page.dart';
+import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/core/network/connectivity_banner.dart';
 import 'package:setu_mobile/core/widgets/offline_banner.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
+import 'package:setu_mobile/features/quality/data/models/rfi_attachment.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/checklist_item_tile.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/linked_rfi_detail_sheet.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/observation_card.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/raise_observation_sheet.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
@@ -43,71 +51,37 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
 
   bool _isPdfDownloading = false;
 
-  /// Downloads the PDF report and opens it with the system file viewer.
-  void _showExpandGoDialog(BuildContext context) {
-    int newTotal = 2;
+  /// Reserves the next GO number for this activity's floor RFI series.
+  /// A single confirmation — the backend always reserves exactly one GO at
+  /// a time (no upfront part count); the new GO is then raised from the
+  /// activity list like any other GO.
+  void _showAddGoDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Expand GO Series'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'This will create additional GO parts for:\n${widget.inspection.activityName ?? 'this RFI'}',
-                style: const TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Total parts:', style: TextStyle(fontSize: 13)),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: newTotal > 2 ? () => setDialogState(() => newTotal--) : null,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                  Text('$newTotal',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: newTotal < 20 ? () => setDialogState(() => newTotal++) : null,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Sets total GOs to $newTotal. Raise the remaining GOs from the activity list.',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                context.read<QualityApprovalBloc>().add(ExpandGoSeries(
-                  projectId: widget.inspection.projectId ?? 0,
-                  epsNodeId: widget.inspection.epsNodeId ?? 0,
-                  activityId: widget.inspection.activityId,
-                  newTotalParts: newTotal,
-                ));
-              },
-              child: Text('Create ${newTotal - 1} Part(s)'),
-            ),
-          ],
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add GO'),
+        content: Text(
+          'Reserve the next GO for:\n${widget.inspection.activityName ?? 'this RFI'}\n\n'
+          'Raise it from the activity list afterward.',
+          style: const TextStyle(fontSize: 13),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<QualityApprovalBloc>().add(AddGo(
+                projectId: widget.inspection.projectId ?? 0,
+                epsNodeId: widget.inspection.epsNodeId ?? 0,
+                activityId: widget.inspection.activityId,
+              ));
+            },
+            child: const Text('Add GO'),
+          ),
+        ],
       ),
     );
   }
@@ -148,7 +122,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
   void initState() {
     super.initState();
     // Two tabs: Checklist and Observations
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
     // Kick off the detail load immediately on construction
     context
         .read<QualityApprovalBloc>()
@@ -182,14 +156,14 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
           ],
         ),
         actions: [
-          // Expand GO Series — shown when this is a single-part FLOOR RFI
-          // and the user has permission to raise RFIs
+          // Add GO — shown when this is a single-part FLOOR RFI and the
+          // user has permission to raise RFIs
           if (PermissionService.of(context).canRaiseRfi &&
               widget.inspection.totalParts == 1)
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'Expand GO Series',
-              onPressed: () => _showExpandGoDialog(context),
+              tooltip: 'Add GO',
+              onPressed: () => _showAddGoDialog(context),
             ),
           // PDF report download
           _isPdfDownloading
@@ -219,6 +193,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
           tabs: const [
             Tab(text: 'Checklist'),
             Tab(text: 'Observations'),
+            Tab(text: 'Attachments'),
           ],
         ),
       ),
@@ -372,6 +347,8 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
                           _ChecklistTab(state: display),
                           // Tab 1: observations raised against this inspection
                           _ObservationsTab(state: display),
+                          // Tab 2: drawings/supporting docs bound to this RFI
+                          _AttachmentsTab(inspection: display.inspection),
                         ],
                       ),
                     ),
@@ -643,38 +620,13 @@ class _LinkedChecklistsSection extends StatefulWidget {
 
 class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
   bool _expanded = false;
-  List<QualityInspection>? _linkedInspections;
-  bool _loading = false;
-
-  Future<void> _load() async {
-    if (_linkedInspections != null) return;
-    setState(() => _loading = true);
-    try {
-      final insp = widget.inspection;
-      final projectId = insp.projectId;
-      final epsNodeId = insp.epsNodeId;
-      if (projectId == null || epsNodeId == null) {
-        setState(() { _linkedInspections = []; _loading = false; });
-        return;
-      }
-      final raw = await sl<SetuApiClient>().getQualityInspections(
-        projectId: projectId,
-        epsNodeId: epsNodeId,
-      );
-      final linkedIds = widget.inspection.relatedChecklistInspectionIds.toSet();
-      final result = raw
-          .whereType<Map<String, dynamic>>()
-          .map(QualityInspection.fromJson)
-          .where((i) => linkedIds.contains(i.id))
-          .toList();
-      if (mounted) setState(() { _linkedInspections = result; _loading = false; });
-    } catch (_) {
-      if (mounted) setState(() { _linkedInspections = []; _loading = false; });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    // The detail response already embeds full summaries for every linked
+    // id (see QualityInspection.relatedChecklistInspections) — no second
+    // round-trip needed to render these cards.
+    final linked = widget.inspection.relatedChecklistInspections;
     final count = widget.inspection.relatedChecklistInspectionIds.length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -689,10 +641,7 @@ class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
-              onTap: () {
-                setState(() => _expanded = !_expanded);
-                if (_expanded) _load();
-              },
+              onTap: () => setState(() => _expanded = !_expanded),
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -721,12 +670,7 @@ class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
             ),
             if (_expanded) ...[
               const Divider(height: 1),
-              if (_loading)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              else if (_linkedInspections == null || _linkedInspections!.isEmpty)
+              if (linked.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: Text(
@@ -735,7 +679,7 @@ class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
                   ),
                 )
               else
-                ..._linkedInspections!.map((linked) => _LinkedInspectionCard(linked: linked)),
+                ...linked.map((l) => _LinkedInspectionCard(linked: l)),
             ],
           ],
         ),
@@ -745,63 +689,78 @@ class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
 }
 
 class _LinkedInspectionCard extends StatelessWidget {
-  final QualityInspection linked;
+  final RelatedChecklistSummary linked;
   const _LinkedInspectionCard({required this.linked});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  linked.activityName ?? 'RFI #${linked.id}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    final status = InspectionStatus.fromString(linked.status);
+    return InkWell(
+      onTap: () => LinkedRfiDetailSheet.show(context, linked.id),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    linked.activityName,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: linked.status.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: status.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    status.label,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: status.color),
+                  ),
                 ),
-                child: Text(
-                  linked.status.label,
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: linked.status.color),
-                ),
-              ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF1D4ED8)),
+              ],
+            ),
+            const SizedBox(height: 2),
+            if (linked.goLabel != null || linked.goNo != null)
+              Row(children: [
+                Icon(Icons.water_drop_outlined, size: 11, color: Colors.blue.shade600),
+                const SizedBox(width: 3),
+                Text(linked.goLabel ?? 'GO ${linked.goNo}',
+                    style: TextStyle(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w600)),
+              ]),
+            if (linked.goDetails != null && linked.goDetails!.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(linked.goDetails!, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
             ],
-          ),
-          const SizedBox(height: 2),
-          if (linked.goLabel != null || linked.goNo != null)
-            Row(children: [
-              Icon(Icons.water_drop_outlined, size: 11, color: Colors.blue.shade600),
-              const SizedBox(width: 3),
-              Text(linked.goLabel ?? 'GO ${linked.goNo}',
-                  style: TextStyle(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w600)),
-            ]),
-          if (linked.goDetails != null && linked.goDetails!.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(linked.goDetails!, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+            if (linked.elementName != null) ...[
+              const SizedBox(height: 2),
+              Row(children: [
+                Icon(Icons.location_on_outlined, size: 11, color: Colors.grey.shade500),
+                const SizedBox(width: 3),
+                Expanded(child: Text(linked.elementName!,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    overflow: TextOverflow.ellipsis)),
+              ]),
+            ],
+            if (linked.drawingNo != null) ...[
+              const SizedBox(height: 2),
+              Row(children: [
+                Icon(Icons.description_outlined, size: 11, color: Colors.grey.shade500),
+                const SizedBox(width: 3),
+                Text(linked.drawingNo!,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ]),
+            ],
+            Text('RFI #${linked.id}  ·  ${linked.requestDate}',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+            const Divider(height: 12),
           ],
-          if (linked.locationDisplay.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Row(children: [
-              Icon(Icons.location_on_outlined, size: 11, color: Colors.grey.shade500),
-              const SizedBox(width: 3),
-              Expanded(child: Text(linked.locationDisplay,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  overflow: TextOverflow.ellipsis)),
-            ]),
-          ],
-          Text('RFI #${linked.id}  ·  ${linked.requestDate}',
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-          const Divider(height: 12),
-        ],
+        ),
       ),
     );
   }
@@ -1476,6 +1435,234 @@ class _ObservationsTab extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Attachments Tab
+// ---------------------------------------------------------------------------
+
+/// Drawings/supporting documents bound to this inspection. Unlike the
+/// pre-creation [RfiAttachmentPicker] (drafts not yet bound to any RFI),
+/// adds and deletes here go straight to the inspection via
+/// [SetuApiClient.addInspectionAttachment]/[deleteInspectionAttachment].
+/// Mutation controls are hidden per-attachment when [RfiAttachment.isLocked]
+/// is true (e.g. the RFI has been approved).
+class _AttachmentsTab extends StatefulWidget {
+  final QualityInspection inspection;
+  const _AttachmentsTab({required this.inspection});
+
+  @override
+  State<_AttachmentsTab> createState() => _AttachmentsTabState();
+}
+
+class _AttachmentsTabState extends State<_AttachmentsTab> {
+  List<RfiAttachment>? _attachments;
+  bool _uploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachments = widget.inspection.attachments;
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final raw = await sl<SetuApiClient>().getInspectionAttachments(widget.inspection.id);
+      if (mounted) {
+        setState(() => _attachments = raw.map(RfiAttachment.fromJson).toList());
+      }
+    } catch (_) {
+      // Keep showing the last known list — this is a best-effort refresh.
+    }
+  }
+
+  Future<void> _addAttachment() async {
+    final attachments = _attachments ?? const [];
+    if (attachments.length >= 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Maximum 5 attachments per RFI')),
+      );
+      return;
+    }
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo Gallery'),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('Choose PDF'),
+              onTap: () => Navigator.pop(ctx, 'pdf'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    XFile? file;
+    try {
+      if (source == 'camera') {
+        file = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 90);
+      } else if (source == 'gallery') {
+        file = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 90);
+      } else {
+        final result = await FilePicker.platform
+            .pickFiles(type: FileType.custom, allowedExtensions: const ['pdf'], withData: false);
+        if (result?.files.isNotEmpty == true && result!.files.first.path != null) {
+          file = XFile(result.files.first.path!);
+        }
+      }
+    } catch (_) {}
+    if (file == null || !mounted) return;
+
+    final isPdf = file.path.toLowerCase().endsWith('.pdf');
+    var path = file.path;
+    if (!isPdf) path = await PhotoCompressor.compress(path);
+
+    final size = await File(path).length();
+    if (size > 10 * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('File exceeds 10 MB limit')));
+      }
+      return;
+    }
+
+    setState(() => _uploading = true);
+    try {
+      await sl<SetuApiClient>().addInspectionAttachment(
+        inspectionId: widget.inspection.id,
+        clientUploadId: const Uuid().v4(),
+        attachmentType: 'SUPPORTING_DOCUMENT',
+        originalFilePath: path,
+      );
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red.shade700),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _deleteAttachment(RfiAttachment a) async {
+    try {
+      await sl<SetuApiClient>()
+          .deleteInspectionAttachment(inspectionId: widget.inspection.id, attachmentId: a.id);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red.shade700),
+        );
+      }
+    }
+  }
+
+  /// Re-opens an already-attached image in the annotation editor and
+  /// replaces it in-place (upload the edited copy, then delete the old
+  /// record) — only offered while the attachment is unlocked, i.e. before
+  /// the RFI's first approval.
+  Future<void> _editAttachment(RfiAttachment a) async {
+    if (a.isPdf || a.isLocked) return;
+    String? downloadPath;
+    String? flattenedPath;
+    String? compressedPath;
+    try {
+      final dir = await getTemporaryDirectory();
+      downloadPath = p.join(
+          dir.path, 'attach_edit_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await sl<SetuApiClient>().downloadFile(a.previewUrl, downloadPath);
+
+      if (!mounted) return;
+      final result = await ImageAnnotationPage.show(context, downloadPath);
+      if (result == null) return;
+      flattenedPath = result.flattenedImagePath;
+      compressedPath = await PhotoCompressor.compress(flattenedPath);
+
+      setState(() => _uploading = true);
+      await sl<SetuApiClient>().addInspectionAttachment(
+        inspectionId: widget.inspection.id,
+        clientUploadId: const Uuid().v4(),
+        attachmentType: a.attachmentType,
+        originalFilePath: compressedPath,
+      );
+      await sl<SetuApiClient>()
+          .deleteInspectionAttachment(inspectionId: widget.inspection.id, attachmentId: a.id);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Edit failed: $e'), backgroundColor: Colors.red.shade700),
+        );
+      }
+    } finally {
+      if (downloadPath != null) await PhotoCompressor.deleteTempFile(downloadPath);
+      if (flattenedPath != null) await PhotoCompressor.deleteTempFile(flattenedPath);
+      if (compressedPath != null) await PhotoCompressor.deleteTempFile(compressedPath);
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final attachments = _attachments ?? const [];
+    final ps = PermissionService.of(context);
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              Text('Attachments (${attachments.length}/5)',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              const Spacer(),
+              if (ps.canRaiseRfi)
+                _uploading
+                    ? const SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : TextButton.icon(
+                        onPressed: attachments.length >= 5 ? null : _addAttachment,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Add'),
+                      ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (attachments.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text('No attachments yet.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              ),
+            )
+          else
+            AttachmentGrid(
+              attachments: attachments,
+              onDelete: ps.canRaiseRfi ? _deleteAttachment : null,
+              onEdit: ps.canRaiseRfi ? _editAttachment : null,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Small stat widget showing a numeric count and label in the observations summary strip.
 class _ObsStat extends StatelessWidget {
   final String label;
@@ -1609,24 +1796,31 @@ class _ActionBar extends StatelessWidget {
                 ],
               ),
             ),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              // Reject button — opens text dialog; routes to workflow or direct reject
-              OutlinedButton.icon(
-                onPressed: isAssignedApprover
-                    ? () => useWorkflow
-                        ? _showWorkflowRejectDialog(context)
-                        : _showRejectDialog(context)
-                    : null,
-                icon: const Icon(Icons.cancel_outlined, size: 16),
-                label: const Text('Reject'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red.shade700,
-                  side: BorderSide(color: Colors.red.shade400),
-                  textStyle: const TextStyle(fontSize: 12),
+              // Reject button — requires QUALITY.INSPECTION.STAGE_APPROVE in
+              // workflow mode (matches the backend guard on
+              // POST :id/workflow/reject) or QUALITY.INSPECTION.APPROVE for
+              // direct/non-workflow inspections (matches PATCH :id/status).
+              // Hidden entirely (not just disabled) when the user lacks it,
+              // rather than showing a button that the backend will refuse.
+              if (isAssignedApprover &&
+                  (useWorkflow ? ps.canStageApprove : ps.canApproveInspection))
+                OutlinedButton.icon(
+                  onPressed: () => useWorkflow
+                      ? _showWorkflowRejectDialog(context)
+                      : _showRejectDialog(context),
+                  icon: const Icon(Icons.cancel_outlined, size: 16),
+                  label: const Text('Reject'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade400),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
               // Delegate button — only shown in workflow mode with delegate permission
               if (useWorkflow && isAssignedApprover && ps.canDelegateInspection)
                 OutlinedButton.icon(
@@ -1641,22 +1835,20 @@ class _ActionBar extends StatelessWidget {
                 ),
               // Reverse approval — requires QUALITY.INSPECTION.REVERSE permission
               if (ps.canReverseInspection)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showReverseDialog(context),
-                    icon: const Icon(Icons.undo_rounded, size: 16),
-                    label: const Text('Reverse'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.deepOrange.shade700,
-                      side: BorderSide(color: Colors.deepOrange.shade300),
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
+                OutlinedButton.icon(
+                  onPressed: () => _showReverseDialog(context),
+                  icon: const Icon(Icons.undo_rounded, size: 16),
+                  label: const Text('Reverse'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.deepOrange.shade700,
+                    side: BorderSide(color: Colors.deepOrange.shade300),
+                    textStyle: const TextStyle(fontSize: 12),
                   ),
                 ),
-              const Spacer(),
-              // Workflow advance — signature-required approve for multi-level workflow
-              if (useWorkflow && isAssignedApprover && !hasPendingObs)
+              // Workflow advance — signature-required approve for multi-level
+              // workflow. Requires QUALITY.INSPECTION.STAGE_APPROVE, matching
+              // the backend guard on POST :id/workflow/advance.
+              if (useWorkflow && isAssignedApprover && !hasPendingObs && ps.canStageApprove)
                 FilledButton.icon(
                   onPressed: () => SignatureApprovalSheet.show(context),
                   icon: const Icon(Icons.verified_outlined, size: 16),
@@ -1874,7 +2066,7 @@ class _DelegateDialogState extends State<_DelegateDialog> {
                   style: TextStyle(fontSize: 13, color: Colors.grey))
             else
               DropdownButtonFormField<Map<String, dynamic>>(
-                value: _selected,
+                initialValue: _selected,
                 isExpanded: true,
                 hint: const Text('Select approver'),
                 decoration: const InputDecoration(

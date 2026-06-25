@@ -134,11 +134,14 @@ class _EhsSiteObsPageState extends State<EhsSiteObsPage>
       onSubmit: ({
         required description,
         required severity,
+        observationRating,
         category,
         epsNodeId,
         locationLabel,
         photoUrls = const [],
       }) async {
+        // EHS has no quality-impact rating concept — observationRating is
+        // always null here (showObservationRating defaults to false above).
         // Dispatch CreateEhsSiteObs to the bloc with all form values
         context.read<EhsSiteObsBloc>().add(CreateEhsSiteObs(
               projectId: widget.projectId,
@@ -731,6 +734,29 @@ class _EhsObsCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (obs.raisedByName != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.person_outline,
+                        size: 12,
+                        color: theme.colorScheme.onSurface
+                            .withValues(alpha: 0.5)),
+                    const SizedBox(width: 2),
+                    Flexible(
+                      child: Text(
+                        'Raised by ${obs.raisedByName}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

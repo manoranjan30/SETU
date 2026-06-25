@@ -18,6 +18,7 @@ import {
   type ApprovalContextDto,
   type ApproverMode,
   type ConditionOperator,
+  type EligibleApproverDto,
   type ReleaseStrategyConditionDto,
   type ReleaseStrategyDto,
   type ReleaseStrategyStepDto,
@@ -287,18 +288,36 @@ export default function ReleaseStrategyPage() {
   );
 
   const roleOptions = useMemo(() => {
-    const roleMap = new Map<number, string>();
-    actors.forEach((actor) =>
-      actor.projectRoleIds.forEach((id: number, index: number) => {
-        roleMap.set(
-          id,
-          actor.projectRoleNames?.[index] || actor.primaryRoleLabel || `Role ${id}`,
+    const roleMap = new Map<
+      number,
+      { name: string; vendorRoleLevel?: number | null }
+    >();
+    actors.forEach((actor) => {
+      if (actor.projectRoles?.length) {
+        actor.projectRoles.forEach((role: EligibleApproverDto["projectRoles"][number]) =>
+          roleMap.set(role.id, {
+            name: role.displayName || role.name,
+            vendorRoleLevel: role.vendorRoleLevel,
+          }),
         );
-      }),
-    );
+        return;
+      }
+      actor.projectRoleIds.forEach((id: number, index: number) => {
+        roleMap.set(id, {
+          name:
+            actor.projectRoleNames?.[index] ||
+            actor.primaryRoleLabel ||
+            `Role ${id}`,
+        });
+      });
+    });
     return Array.from(roleMap.entries())
-      .sort((a, b) => a[1].localeCompare(b[1]))
-      .map(([id, name]) => ({ id, name }));
+      .sort((a, b) => {
+        const levelCompare =
+          (a[1].vendorRoleLevel || 0) - (b[1].vendorRoleLevel || 0);
+        return levelCompare || a[1].name.localeCompare(b[1].name);
+      })
+      .map(([id, value]) => ({ id, ...value }));
   }, [actors]);
 
   const readiness = useMemo(() => {
@@ -882,7 +901,9 @@ export default function ReleaseStrategyPage() {
                         <option value="">Select project role</option>
                         {roleOptions.map((role) => (
                           <option key={role.id} value={role.id}>
-                            {role.name}
+                            {role.vendorRoleLevel
+                              ? `Vendor Approver ${role.vendorRoleLevel} · ${role.name}`
+                              : role.name}
                           </option>
                         ))}
                       </select>

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/update/app_update_service.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -136,14 +137,80 @@ Future<void> downloadAndInstallUpdate(
     );
 
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
+    if (!context.mounted) return;
 
-    final result = await OpenFile.open(savePath);
-    if (result.type != ResultType.done && context.mounted) {
-      _showUpdateFallback(context, apkUrl, 'Could not launch installer: ${result.message}');
-    }
+    await _openApk(context, savePath, apkUrl);
   } catch (e) {
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
     if (context.mounted) _showUpdateFallback(context, apkUrl, 'Download failed: $e');
+  }
+}
+
+/// Opens the downloaded APK via the OS installer. On Android 8+, installing
+/// an APK requires the user to have granted the per-app "install unknown
+/// apps" permission — this is NOT a normal runtime permission dialog, it's a
+/// toggle in system Settings, so we have to send the user there ourselves
+/// the first time and retry the install once they come back.
+Future<void> _openApk(BuildContext context, String savePath, String apkUrl) async {
+  final result = await OpenFile.open(savePath);
+  if (result.type == ResultType.done) return;
+  if (!context.mounted) return;
+
+  if (result.type == ResultType.permissionDenied) {
+    await _promptInstallPermission(context, savePath, apkUrl);
+    return;
+  }
+
+  _showUpdateFallback(context, apkUrl, 'Could not launch installer: ${result.message}');
+}
+
+/// Explains why the install was blocked and sends the user to the system
+/// "install unknown apps" settings screen. [Permission.requestInstallPackages]
+/// suspends until the user backs out of that settings screen, so we can
+/// retry opening the already-downloaded APK immediately afterward without
+/// re-downloading it.
+Future<void> _promptInstallPermission(
+  BuildContext context,
+  String savePath,
+  String apkUrl,
+) async {
+  final shouldOpenSettings = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Allow Installing Updates'),
+      content: const Text(
+        'To install this update, Android needs your permission to let SETU '
+        'install apps. Tap "Open Settings" and enable "Allow from this source", '
+        'then come back here.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Open Settings'),
+        ),
+      ],
+    ),
+  );
+
+  if (shouldOpenSettings != true) return;
+
+  await Permission.requestInstallPackages.request();
+  final granted = await Permission.requestInstallPackages.isGranted;
+  if (!context.mounted) return;
+
+  if (granted) {
+    await _openApk(context, savePath, apkUrl);
+  } else {
+    _showUpdateFallback(
+      context,
+      apkUrl,
+      'Permission still not granted — could not launch installer.',
+    );
   }
 }
 

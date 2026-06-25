@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
 import {
   SiteObservation,
@@ -26,6 +26,13 @@ import {
 } from './dto/site-observation.dto';
 import { toRelativePaths } from '../common/path.utils';
 import { EpsNode } from '../eps/eps.entity';
+import {
+  normalizeObservationRating,
+  QualityObservationRating,
+  ratingToSiteSeverity,
+} from './observation-rating';
+import { QualityNcrSyncService } from './quality-ncr-sync.service';
+import { User } from '../users/user.entity';
 
 @Injectable()
 export class SiteObservationService {
@@ -38,9 +45,12 @@ export class SiteObservationService {
     private readonly configRepo: Repository<QualityRatingConfig>,
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
     private readonly notificationComposer: NotificationComposerService,
+    private readonly ncrSyncService: QualityNcrSyncService,
   ) {}
 
   private sanitizeObservationCategories(categories?: unknown): string[] {
@@ -157,9 +167,7 @@ export class SiteObservationService {
         .take(pageSize)
         .getManyAndCount();
       return {
-        data: rows.map((obs) =>
-          this.decorateObservation(this.normalizePhotos(obs)),
-        ),
+        data: await this.decorateObservations(rows.map((obs) => this.normalizePhotos(obs))),
         total,
         page,
         pageSize,
@@ -167,7 +175,7 @@ export class SiteObservationService {
     }
 
     const rows = await query.getMany();
-    return rows.map((obs) => this.decorateObservation(this.normalizePhotos(obs)));
+    return this.decorateObservations(rows.map((obs) => this.normalizePhotos(obs)));
   }
 
   async exportRegister(
@@ -225,14 +233,17 @@ export class SiteObservationService {
       }
     }
 
-    const rows = (await query.orderBy('obs.createdAt', 'DESC').getMany()).map(
-      (obs) => this.decorateObservation(this.normalizePhotos(obs)),
+    const rows = await this.decorateObservations(
+      (await query.orderBy('obs.createdAt', 'DESC').getMany()).map((obs) =>
+        this.normalizePhotos(obs),
+      ),
     );
     const projectInfo = await this.getProjectInfo(projectId);
     const registerRows = rows.map((obs, index) => ({
       'Sl No': index + 1,
       'Observation ID': obs.id,
       Status: obs.status,
+      'Observation Rating': obs.observationRating,
       Severity: obs.severity,
       Category: obs.category,
       Location: obs.locationLabel || obs.epsNode?.name || 'General Site',
@@ -240,13 +251,16 @@ export class SiteObservationService {
       Remarks: obs.remarks || '',
       'Target Date': obs.targetDate || '',
       'Raised On': obs.createdAt ? new Date(obs.createdAt).toLocaleString() : '',
+      'Raised By': obs.raisedBy?.displayName || '',
       'Ageing Days': obs.ageingDays,
       'Rectification': obs.rectificationText || '',
       'Rectified On': obs.rectifiedAt
         ? new Date(obs.rectifiedAt).toLocaleString()
         : '',
+      'Rectified By': obs.rectifiedBy?.displayName || '',
       'Closure Remarks': obs.closureRemarks || '',
       'Closed On': obs.closedAt ? new Date(obs.closedAt).toLocaleString() : '',
+      'Closed By': obs.closedBy?.displayName || '',
       'Hold Reason': obs.holdReason || '',
       'Photo Count': obs.photos?.length || 0,
       'Rectification Photo Count': obs.rectificationPhotos?.length || 0,
@@ -270,10 +284,11 @@ export class SiteObservationService {
       { Metric: 'Open / Held', Value: rows.filter((r) => ['OPEN', 'HELD'].includes(r.status)).length },
       { Metric: 'Rectified', Value: rows.filter((r) => r.status === 'RECTIFIED').length },
       { Metric: 'Closed', Value: rows.filter((r) => r.status === 'CLOSED').length },
-      { Metric: 'Critical', Value: rows.filter((r) => r.severity === 'CRITICAL').length },
-      { Metric: 'Major', Value: rows.filter((r) => r.severity === 'MAJOR').length },
-      { Metric: 'Minor', Value: rows.filter((r) => r.severity === 'MINOR').length },
-      { Metric: 'Info', Value: rows.filter((r) => r.severity === 'INFO').length },
+      { Metric: 'Critical', Value: rows.filter((r) => r.observationRating === 'CRITICAL').length },
+      { Metric: 'Major', Value: rows.filter((r) => r.observationRating === 'MAJOR').length },
+      { Metric: 'Moderate', Value: rows.filter((r) => r.observationRating === 'MODERATE').length },
+      { Metric: 'Minor', Value: rows.filter((r) => r.observationRating === 'MINOR').length },
+      { Metric: 'OFI', Value: rows.filter((r) => r.observationRating === 'OFI').length },
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -336,7 +351,7 @@ export class SiteObservationService {
       relations: ['epsNode'],
     });
     if (!obs) throw new NotFoundException('Site observation not found');
-    return this.decorateObservation(this.normalizePhotos(obs));
+    return this.decorateOneObservation(this.normalizePhotos(obs));
   }
 
   private normalizePhotos(obs: SiteObservation): SiteObservation {
@@ -360,6 +375,48 @@ export class SiteObservationService {
       ageingDays: Number((ageingMinutes / 1440).toFixed(1)),
       isHeld: obs.status === SiteObservationStatus.HELD,
     };
+  }
+
+  private async decorateObservations(observations: SiteObservation[]) {
+    const userIds = Array.from(
+      new Set(
+        observations
+          .flatMap((obs) => [obs.raisedById, obs.rectifiedById, obs.closedById])
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    );
+    const users = userIds.length
+      ? await this.userRepo.find({
+          where: { id: In(userIds) },
+          select: ['id', 'username', 'displayName', 'designation'],
+        })
+      : [];
+    const userMap = new Map(
+      users.map((user) => [
+        String(user.id),
+        {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName || user.username,
+          designation: user.designation || null,
+        },
+      ]),
+    );
+
+    return observations.map((obs) => ({
+      ...this.decorateObservation(obs),
+      raisedBy: obs.raisedById ? userMap.get(obs.raisedById) || null : null,
+      rectifiedBy: obs.rectifiedById
+        ? userMap.get(obs.rectifiedById) || null
+        : null,
+      closedBy: obs.closedById ? userMap.get(obs.closedById) || null : null,
+    }));
+  }
+
+  private async decorateOneObservation(observation: SiteObservation) {
+    const [decorated] = await this.decorateObservations([observation]);
+    return decorated;
   }
 
   private calculateAgeingMinutes(obs: SiteObservation) {
@@ -421,8 +478,13 @@ export class SiteObservationService {
       delete cleanedDto.targetDate;
     }
 
+    const observationRating = normalizeObservationRating(
+      cleanedDto.observationRating || cleanedDto.severity,
+    );
     const obs = this.observationRepo.create({
       ...cleanedDto,
+      observationRating,
+      severity: ratingToSiteSeverity(observationRating),
       locationLabel:
         (await this.resolveLocationLabel(
           cleanedDto.epsNodeId,
@@ -435,6 +497,22 @@ export class SiteObservationService {
     });
 
     const saved = await this.observationRepo.save(obs);
+    if (observationRating === QualityObservationRating.CRITICAL) {
+      const ncr = await this.ncrSyncService.ensureCriticalNcr({
+        projectId: saved.projectId,
+        sourceType: 'QUALITY_SITE_OBSERVATION',
+        sourceId: saved.id,
+        sourceReference: `Quality Site Observation ${saved.id}`,
+        category: saved.category,
+        description: saved.description,
+        location: saved.locationLabel,
+        reportedBy: userId ? `User #${userId}` : 'System',
+        targetDate: saved.targetDate,
+        attachmentUrl: saved.photos?.[0],
+      });
+      saved.ncrId = ncr.id;
+      await this.observationRepo.save(saved);
+    }
 
     {
       const notification =
@@ -474,7 +552,7 @@ export class SiteObservationService {
       );
     }
 
-    return this.decorateObservation(this.normalizePhotos(saved));
+    return this.decorateOneObservation(this.normalizePhotos(saved));
   }
 
   async rectify(id: string, dto: RectifySiteObservationDto, userId?: string) {
@@ -501,6 +579,10 @@ export class SiteObservationService {
     });
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
+    await this.ncrSyncService.markRectified(
+      saved.ncrId,
+      saved.rectificationText,
+    );
 
     if (obs.raisedById) {
       const notification =
@@ -542,7 +624,7 @@ export class SiteObservationService {
       );
     }
 
-    return this.decorateObservation(saved);
+    return this.decorateOneObservation(saved);
   }
 
   async rejectRectification(
@@ -559,8 +641,12 @@ export class SiteObservationService {
       );
     }
 
+    const rejectionRemarks = dto.rejectionRemarks?.trim();
+    if (!rejectionRemarks) {
+      throw new BadRequestException('Rejection remarks are required.');
+    }
     obs.status = SiteObservationStatus.OPEN;
-    obs.rectificationRejectedRemarks = dto.rejectionRemarks?.trim() || null;
+    obs.rectificationRejectedRemarks = rejectionRemarks;
     obs.rectificationRejectedById = userId || null;
     obs.rectificationRejectedAt = new Date();
     this.appendRectificationHistory(obs, {
@@ -573,6 +659,7 @@ export class SiteObservationService {
     });
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
+    await this.ncrSyncService.markOpen(saved.ncrId);
 
     if (obs.raisedById) {
       const notification =
@@ -622,7 +709,7 @@ export class SiteObservationService {
       );
     }
 
-    return this.decorateObservation(saved);
+    return this.decorateOneObservation(saved);
   }
 
   async hold(id: string, dto: HoldSiteObservationDto, userId?: string) {
@@ -642,7 +729,7 @@ export class SiteObservationService {
     obs.heldById = userId || null;
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
-    return this.decorateObservation(saved);
+    return this.decorateOneObservation(saved);
   }
 
   async unhold(id: string, userId?: string) {
@@ -669,7 +756,7 @@ export class SiteObservationService {
     }
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
-    return this.decorateObservation(saved);
+    return this.decorateOneObservation(saved);
   }
 
   async close(id: string, dto: CloseSiteObservationDto, userId?: string) {
@@ -699,6 +786,7 @@ export class SiteObservationService {
     obs.closedAt = new Date();
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
+    await this.ncrSyncService.markClosed(saved.ncrId);
 
     if (obs.raisedById) {
       const notification =
@@ -740,13 +828,14 @@ export class SiteObservationService {
       );
     }
 
-    return this.decorateObservation(saved);
+    return this.decorateOneObservation(saved);
   }
 
   async delete(id: string, userId?: string) {
     const obs = await this.observationRepo.findOne({ where: { id } });
     if (!obs) throw new NotFoundException('Site observation not found');
 
+    await this.ncrSyncService.deleteLinkedNcr(obs.ncrId);
     await this.observationRepo.remove(obs);
 
     if (userId) {

@@ -53,8 +53,7 @@ export class TempRoleService {
     });
     const savedTemplate = await this.repo.save(template);
 
-    // Sync underlying Role
-    await this.syncRole(savedTemplate);
+    await this.syncRoles(savedTemplate);
 
     return savedTemplate;
   }
@@ -78,7 +77,7 @@ export class TempRoleService {
 
     // Sync underlying Role
     if (template.isActive) {
-      await this.syncRole(savedTemplate);
+      await this.syncRoles(savedTemplate);
     }
     return savedTemplate;
   }
@@ -98,10 +97,19 @@ export class TempRoleService {
     return template;
   }
 
-  private async syncRole(template: TempRoleTemplate) {
-    const roleName = `TEMP_ROLE_${template.id}`;
+  private async syncRoles(template: TempRoleTemplate) {
+    await this.syncRole(template, 1);
+    await this.syncRole(template, 2);
+  }
+
+  private async syncRole(template: TempRoleTemplate, level: 1 | 2) {
+    const roleName =
+      level === 1 ? `TEMP_ROLE_${template.id}` : `TEMP_ROLE_${template.id}_L2`;
     let role = await this.roleRepo.findOne({
-      where: { name: roleName },
+      where: [
+        { tempRoleTemplateId: template.id, vendorRoleLevel: level },
+        { name: roleName },
+      ],
       relations: ['permissions'],
     });
 
@@ -116,11 +124,18 @@ export class TempRoleService {
     if (!role) {
       role = this.roleRepo.create({
         name: roleName,
-        description: `Auto-generated Role for TempRoleTemplate: ${template.name}`,
+        description: `Auto-generated Vendor Approver ${level} role for TempRoleTemplate: ${template.name}`,
+        tempRoleTemplateId: template.id,
+        vendorRoleLevel: level,
+        isActive: template.isActive,
         permissions,
       });
     } else {
-      role.description = `Auto-generated Role for TempRoleTemplate: ${template.name}`;
+      role.name = roleName;
+      role.description = `Auto-generated Vendor Approver ${level} role for TempRoleTemplate: ${template.name}`;
+      role.tempRoleTemplateId = template.id;
+      role.vendorRoleLevel = level;
+      role.isActive = template.isActive;
       role.permissions = permissions;
     }
 

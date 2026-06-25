@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
@@ -187,12 +185,8 @@ class BackgroundDownloadService {
   /// Initialise the WorkManager framework with our [callbackDispatcher].
   ///
   /// Must be called once at app startup (before registering tasks).
-  /// [isInDebugMode] enables WorkManager's verbose logging in debug builds.
   static Future<void> initWorkManager() async {
-    await Workmanager().initialize(
-      callbackDispatcher,
-      isInDebugMode: kDebugMode,
-    );
+    await Workmanager().initialize(callbackDispatcher);
   }
 
   /// Register periodic background task (WiFi only, battery not low, every 6h).
