@@ -8,6 +8,7 @@ import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/pour_card_bloc.dart';
+import 'package:setu_mobile/shared/utils/date_picker_util.dart';
 
 class PourCardPage extends StatelessWidget {
   final int inspectionId;
@@ -133,9 +134,9 @@ class _PourCardViewState extends State<_PourCardView> {
       },
       builder: (context, state) {
         final QualityPourCard? card = switch (state) {
-          PourCardLoaded s => s.card,
-          PourCardSaving s => s.card,
-          PourCardActionSuccess s => s.card,
+          final PourCardLoaded s => s.card,
+          final PourCardSaving s => s.card,
+          final PourCardActionSuccess s => s.card,
           _ => null,
         };
 
@@ -712,7 +713,8 @@ class _PourEntryRowState extends State<_PourEntryRow> {
             ],
           ),
           const SizedBox(height: 8),
-          _RowField('Pour Date', _pourDateCtrl, widget.isEditable, _push, hint: 'DD/MM/YYYY'),
+          _RowField('Pour Date', _pourDateCtrl, widget.isEditable, _push,
+              hint: 'DD/MM/YYYY', isDate: true, dateFormat: 'dd/MM/yyyy'),
           _RowField('Truck No.', _truckNoCtrl, widget.isEditable, _push),
           _RowField('Delivery Challan No.', _challanCtrl, widget.isEditable, _push),
           // Grade — dropdown when grades are available, text field otherwise
@@ -785,6 +787,8 @@ class _RowField extends StatelessWidget {
   final VoidCallback onChanged;
   final TextInputType keyboardType;
   final String? hint;
+  final bool isDate;
+  final String dateFormat;
 
   const _RowField(
     this.label,
@@ -793,6 +797,8 @@ class _RowField extends StatelessWidget {
     this.onChanged, {
     this.keyboardType = TextInputType.text,
     this.hint,
+    this.isDate = false,
+    this.dateFormat = 'yyyy-MM-dd',
   });
 
   @override
@@ -810,6 +816,10 @@ class _RowField extends StatelessWidget {
               controller: controller,
               enabled: enabled,
               keyboardType: keyboardType,
+              readOnly: isDate,
+              onTap: isDate && enabled
+                  ? () => pickDateInto(context, controller, format: dateFormat, onPicked: onChanged)
+                  : null,
               onChanged: (_) => onChanged(),
               style: const TextStyle(fontSize: 12),
               decoration: InputDecoration(
@@ -817,6 +827,9 @@ class _RowField extends StatelessWidget {
                 border: const OutlineInputBorder(),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 isDense: true,
+                suffixIcon: isDate
+                    ? const Icon(Icons.calendar_today_outlined, size: 16)
+                    : null,
               ),
             ),
           ),

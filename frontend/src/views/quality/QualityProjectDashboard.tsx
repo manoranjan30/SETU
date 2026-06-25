@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   FileText,
   ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 import api from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
@@ -29,6 +30,7 @@ import QualityApprovalDashboard from "./subviews/QualityApprovalDashboard";
 import InspectionRequestPage from "./InspectionRequestPage";
 import QualityApprovalsPage from "./QualityApprovalsPage";
 import ActivityListsPage from "./ActivityListsPage";
+import QualityObservationNcr from "./subviews/QualityObservationNcr";
 
 const QualityProjectDashboard = () => {
   const { projectId } = useParams();
@@ -116,6 +118,12 @@ const QualityProjectDashboard = () => {
       visible: hasPermission(PermissionCode.QUALITY_SITE_OBS_READ),
     },
     {
+      id: "nc-register",
+      label: "NC Register",
+      icon: AlertCircle,
+      visible: hasPermission(PermissionCode.QUALITY_NCR_READ),
+    },
+    {
       id: "rating-config",
       label: "Rating Config",
       icon: ShieldCheck,
@@ -192,6 +200,8 @@ const QualityProjectDashboard = () => {
         return <QualityMaterialTest projectId={numericProjectId} />;
       case "observation-ncr":
         return <SiteObservationPanel projectId={numericProjectId} />;
+      case "nc-register":
+        return <QualityObservationNcr projectId={numericProjectId} ncrOnly />;
       case "checklists":
         return <QualityChecklist projectId={numericProjectId} />;
       case "snags":
@@ -216,6 +226,7 @@ const QualityProjectDashboard = () => {
     "inspections",
     "materials",
     "observation-ncr",
+    "nc-register",
     "project-rating",
     "checklists",
     "snags",

@@ -76,6 +76,12 @@ export class MaterialItpController {
     return this.materialItpService.updateTemplate(Number(id), body);
   }
 
+  @Delete('material-itps/:id')
+  @Permissions('QUALITY.MATERIAL_ITP.DELETE')
+  deleteTemplate(@Param('id') id: number) {
+    return this.materialItpService.deleteTemplate(Number(id));
+  }
+
   @Post('material-itps/:id/copy')
   @Permissions('QUALITY.MATERIAL_ITP.CREATE')
   copyTemplate(
@@ -146,6 +152,15 @@ export class MaterialItpController {
   @Permissions('QUALITY.MATERIAL_RECEIPT.CREATE')
   createReceipt(@Param('projectId') projectId: number, @Body() body: CreateMaterialReceiptDto) {
     return this.materialItpService.createReceipt(Number(projectId), body);
+  }
+
+  @Put('material-receipts/:id')
+  @Permissions('QUALITY.MATERIAL_RECEIPT.UPDATE')
+  updateReceipt(
+    @Param('id') id: number,
+    @Body() body: Partial<CreateMaterialReceiptDto>,
+  ) {
+    return this.materialItpService.updateReceipt(Number(id), body);
   }
 
   @Post('material-receipts/:id/generate-obligations')
@@ -224,7 +239,7 @@ export class MaterialItpController {
   }
 
   @Put('cube-test-register/:id')
-  @Permissions('QUALITY.CUBE_TEST.UPDATE')
+  @Permissions('QUALITY.CUBE_TEST.UPDATE', 'QUALITY.CUBE_TEST.SAVE')
   updateCubeTestRegister(
     @Param('id') id: number,
     @Body() body: any,
@@ -326,6 +341,12 @@ export class MaterialItpController {
       file,
       this.getUserId(req),
     );
+  }
+
+  @Delete('material-evidence/:id')
+  @Permissions('QUALITY.MATERIAL_EVIDENCE.DELETE')
+  deleteEvidence(@Param('id') id: number) {
+    return this.materialItpService.deleteEvidence(Number(id));
   }
 
   private getUserId(req: any): number {

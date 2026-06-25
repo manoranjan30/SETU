@@ -26,8 +26,8 @@ export class QualityObservationNcr {
   @Column({ type: 'text' })
   issueDescription: string;
 
-  @Column({ nullable: true })
-  location: string;
+  @Column({ type: 'varchar', nullable: true })
+  location: string | null;
 
   @Column({ type: 'date' })
   reportedDate: string;
@@ -35,26 +35,35 @@ export class QualityObservationNcr {
   @Column()
   reportedBy: string;
 
-  @Column({ nullable: true })
-  assignedTo: string;
+  @Column({ type: 'varchar', nullable: true })
+  assignedTo: string | null;
 
   @Column({ default: 'Open' })
   status: string; // Open, In Progress, Resolved, Verified, Closed
 
   @Column({ type: 'text', nullable: true })
-  rootCause: string;
+  rootCause: string | null;
 
   @Column({ type: 'text', nullable: true })
-  correctiveAction: string;
+  correctiveAction: string | null;
 
   @Column({ type: 'date', nullable: true })
-  targetDate: string;
+  targetDate: string | null;
 
   @Column({ type: 'date', nullable: true })
-  closedDate: string;
+  closedDate: string | null;
 
-  @Column({ nullable: true })
-  attachmentUrl: string;
+  @Column({ type: 'varchar', nullable: true })
+  attachmentUrl: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  sourceType: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  sourceId: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  sourceReference: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

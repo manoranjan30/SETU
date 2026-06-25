@@ -10,10 +10,13 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
+import 'package:setu_mobile/core/media/photo_edit_helper.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart' as proj;
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
+import 'package:setu_mobile/features/quality/data/models/observation_rating.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/observation_rating_selector.dart';
 import 'package:setu_mobile/injection_container.dart';
 
 /// Generic bottom sheet for raising a new site observation.
@@ -29,11 +32,18 @@ class RaiseSiteObsSheet extends StatefulWidget {
   /// Category options shown in a chip group.
   final List<String> categories;
 
+  /// When true, replaces the legacy 4-value severity chips with the
+  /// five-option [ObservationRatingSelector] (Quality module only — EHS has
+  /// no quality-impact rating concept and keeps the plain severity chips).
+  final bool showObservationRating;
+
   /// Callback when the user submits — receives description, severity,
-  /// optional category, optional EPS node id + label, and uploaded photo URLs.
+  /// optional rating (Quality only), optional category, optional EPS node
+  /// id + label, and uploaded photo URLs.
   final Future<void> Function({
     required String description,
     required String severity,
+    String? observationRating,
     String? category,
     int? epsNodeId,
     String? locationLabel,
@@ -45,6 +55,7 @@ class RaiseSiteObsSheet extends StatefulWidget {
     required this.title,
     required this.projectId,
     required this.categories,
+    this.showObservationRating = false,
     required this.onSubmit,
   });
 
@@ -54,9 +65,11 @@ class RaiseSiteObsSheet extends StatefulWidget {
     required String title,
     required int projectId,
     required List<String> categories,
+    bool showObservationRating = false,
     required Future<void> Function({
       required String description,
       required String severity,
+      String? observationRating,
       String? category,
       int? epsNodeId,
       String? locationLabel,
@@ -75,6 +88,7 @@ class RaiseSiteObsSheet extends StatefulWidget {
         title: title,
         projectId: projectId,
         categories: categories,
+        showObservationRating: showObservationRating,
         onSubmit: onSubmit,
       ),
     );
@@ -89,6 +103,7 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
   final _descCtrl = TextEditingController();
 
   String _severity = 'MINOR';
+  QualityObservationRating? _rating;
   String? _category;
   int? _epsNodeId;
   String? _locationLabel;
@@ -132,6 +147,16 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
     return dest.path;
   }
 
+  /// Re-opens an already-added photo in the annotation editor — lets the
+  /// user touch it up again before the observation itself is submitted.
+  /// See [editAddedPhoto] for how local-vs-already-uploaded photos differ.
+  Future<void> _editPhoto(int index, String url) async {
+    final newUrl = await editAddedPhoto(context, url);
+    if (newUrl != null && mounted) {
+      setState(() => _photoUrls[index] = newUrl);
+    }
+  }
+
   /// Shows camera/gallery picker → markup editor → compresses → uploads.
   /// When offline the compressed file is saved locally and added as a local
   /// path placeholder — [SyncService._resolvePhotos] uploads it on next sync.
@@ -160,8 +185,8 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
 
     // Open annotation/markup editor
     if (!mounted) return;
-    final annotatedPath = await ImageAnnotationPage.show(context, xfile.path);
-    final uploadPath = annotatedPath ?? xfile.path;
+    final annotationResult = await ImageAnnotationPage.show(context, xfile.path);
+    final uploadPath = annotationResult?.flattenedImagePath ?? xfile.path;
 
     if (!mounted) return;
     setState(() => _uploading = true);
@@ -198,7 +223,9 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
       if (compressed != null && !savedLocally) {
         PhotoCompressor.deleteTempFile(compressed);
       }
-      if (annotatedPath != null) PhotoCompressor.deleteTempFile(annotatedPath);
+      if (annotationResult != null) {
+        PhotoCompressor.deleteTempFile(annotationResult.flattenedImagePath);
+      }
       PhotoCompressor.deleteTempFile(xfile.path);
       if (mounted) setState(() => _uploading = false);
     }
@@ -267,6 +294,10 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
           'Connect to the internet to load locations before saving.');
       return;
     }
+    if (widget.showObservationRating && _rating == null) {
+      setState(() => _errorMessage = 'Select an observation rating.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _errorMessage = null;
@@ -274,7 +305,12 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
     try {
       await widget.onSubmit(
         description: _descCtrl.text.trim(),
-        severity: _severity,
+        // The backend derives severity from observationRating when present
+        // — this is only the fallback value for non-Quality (EHS) callers.
+        severity: widget.showObservationRating
+            ? _rating!.legacySiteSeverity
+            : _severity,
+        observationRating: widget.showObservationRating ? _rating!.apiValue : null,
         category: _category,
         epsNodeId: _epsNodeId,
         locationLabel: _locationLabel,
@@ -348,38 +384,46 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Severity chips
-                    Text('Severity',
-                        style: theme.textTheme.labelLarge
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: _severities.map((s) {
-                        final color = _severityColors[s]!;
-                        final selected = _severity == s;
-                        return FilterChip(
-                          label: Text(_severityLabels[s]!),
-                          selected: selected,
-                          onSelected: (_) => setState(() => _severity = s),
-                          selectedColor: color.withValues(alpha: 0.15),
-                          checkmarkColor: color,
-                          side: BorderSide(
-                              color: selected ? color : theme.dividerColor,
-                              width: selected ? 1.5 : 1.0),
-                          labelStyle: TextStyle(
-                            color: selected
-                                ? color
-                                : theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.7),
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                    // Severity chips (EHS) or the five-option observation
+                    // rating selector (Quality) — never both.
+                    if (widget.showObservationRating)
+                      ObservationRatingSelector(
+                        value: _rating,
+                        onChanged: (r) => setState(() => _rating = r),
+                      )
+                    else ...[
+                      Text('Severity',
+                          style: theme.textTheme.labelLarge
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: _severities.map((s) {
+                          final color = _severityColors[s]!;
+                          final selected = _severity == s;
+                          return FilterChip(
+                            label: Text(_severityLabels[s]!),
+                            selected: selected,
+                            onSelected: (_) => setState(() => _severity = s),
+                            selectedColor: color.withValues(alpha: 0.15),
+                            checkmarkColor: color,
+                            side: BorderSide(
+                                color: selected ? color : theme.dividerColor,
+                                width: selected ? 1.5 : 1.0),
+                            labelStyle: TextStyle(
+                              color: selected
+                                  ? color
+                                  : theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.7),
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
                     const SizedBox(height: 12),
 
                     // Category chips (if provided)
@@ -527,6 +571,7 @@ class _RaiseSiteObsSheetState extends State<RaiseSiteObsSheet> {
                         canDelete: true,
                         onDelete: (url) =>
                             setState(() => _photoUrls.remove(url)),
+                        onEdit: (index, url) => _editPhoto(index, url),
                       ),
                     ],
 
@@ -711,10 +756,12 @@ class _EpsPickerDialogState extends State<_EpsPickerDialog> {
       if (nodes.isEmpty && _nodes != null && _nodes!.isNotEmpty) {
         return;
       }
-      if (mounted) setState(() {
-        _nodes = nodes;
-        _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _nodes = nodes;
+          _error = null;
+        });
+      }
     } catch (_) {
       // Live refresh failed — if the cache load above also found nothing,
       // surface the unavailable state now.

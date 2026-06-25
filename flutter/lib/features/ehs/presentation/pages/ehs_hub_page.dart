@@ -5,6 +5,7 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/ehs/data/models/ehs_dashboard_models.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_dashboard_bloc.dart';
+import 'package:setu_mobile/shared/utils/date_picker_util.dart';
 
 class EhsHubPage extends StatelessWidget {
   final int projectId;
@@ -90,9 +91,9 @@ class _EhsHubViewState extends State<_EhsHubView> with SingleTickerProviderState
       },
       builder: (context, state) {
         final EhsDashboardLoaded? loaded = switch (state) {
-          EhsDashboardLoaded s => s,
-          EhsDashboardTabLoading s => s.base,
-          EhsDashboardActionSuccess s => s.data,
+          final EhsDashboardLoaded s => s,
+          final EhsDashboardTabLoading s => s.base,
+          final EhsDashboardActionSuccess s => s.data,
           _ => null,
         };
 
@@ -223,7 +224,7 @@ class _OverviewTab extends StatelessWidget {
                   color: Colors.orange.shade700, icon: Icons.remove_circle_outline),
               _KpiCard(label: 'Pending Inspections', value: '${s.inspections.pending}',
                   color: Colors.blue.shade700, icon: Icons.visibility_outlined),
-              _KpiCard(label: 'Cumulative Manpower', value: '${s.cumulativeManpower.toStringAsFixed(0)}',
+              _KpiCard(label: 'Cumulative Manpower', value: s.cumulativeManpower.toStringAsFixed(0),
                   color: Colors.indigo.shade700, icon: Icons.groups_outlined),
             ],
           ),
@@ -634,11 +635,19 @@ class _LegalTab extends StatelessWidget {
                 labelText: 'Responsibility *', border: OutlineInputBorder(),
                 hintText: 'e.g. Contractor, Client')),
             const SizedBox(height: 8),
-            TextField(controller: certifiedCtrl, decoration: const InputDecoration(
-                labelText: 'Certified Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: certifiedCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, certifiedCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Certified Date',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 8),
-            TextField(controller: expiryCtrl, decoration: const InputDecoration(
-                labelText: 'Expiry Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: expiryCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, expiryCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Expiry Date',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -648,7 +657,9 @@ class _LegalTab extends StatelessWidget {
                 FilledButton(
                   onPressed: () {
                     if (requirementCtrl.text.trim().isEmpty ||
-                        responsibilityCtrl.text.trim().isEmpty) return;
+                        responsibilityCtrl.text.trim().isEmpty) {
+                      return;
+                    }
                     context.read<EhsDashboardBloc>().add(CreateEhsLegal(projectId, {
                       'requirement': requirementCtrl.text.trim(),
                       'responsibility': responsibilityCtrl.text.trim(),
@@ -742,11 +753,19 @@ class _MachineryTab extends StatelessWidget {
             TextField(controller: locationCtrl, decoration: const InputDecoration(
                 labelText: 'Location *', border: OutlineInputBorder())),
             const SizedBox(height: 8),
-            TextField(controller: certifiedCtrl, decoration: const InputDecoration(
-                labelText: 'Certified Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: certifiedCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, certifiedCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Certified Date',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 8),
-            TextField(controller: expiryCtrl, decoration: const InputDecoration(
-                labelText: 'Expiry Date (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: expiryCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, expiryCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Expiry Date',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -852,14 +871,26 @@ class _VehiclesTab extends StatelessWidget {
             TextField(controller: numberCtrl, decoration: const InputDecoration(
                 labelText: 'Vehicle Number *', border: OutlineInputBorder())),
             const SizedBox(height: 8),
-            TextField(controller: fitnessCtrl, decoration: const InputDecoration(
-                labelText: 'Fitness Cert. Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: fitnessCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, fitnessCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Fitness Cert. Expiry',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 8),
-            TextField(controller: pollutionCtrl, decoration: const InputDecoration(
-                labelText: 'Pollution (PUC) Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: pollutionCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, pollutionCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Pollution (PUC) Expiry',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 8),
-            TextField(controller: insCtrl, decoration: const InputDecoration(
-                labelText: 'Insurance Expiry (YYYY-MM-DD)', border: OutlineInputBorder())),
+            TextField(controller: insCtrl, readOnly: true,
+                onTap: () => pickDateInto(ctx, insCtrl),
+                decoration: const InputDecoration(
+                    labelText: 'Insurance Expiry',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18))),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -986,37 +1017,6 @@ class _ComplianceBar extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TrendRow extends StatelessWidget {
-  final String month;
-  final int count;
-  const _TrendRow({required this.month, required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(width: 70, child: Text(month, style: const TextStyle(fontSize: 12))),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: count == 0 ? 0 : (count / 10.0).clamp(0, 1),
-                minHeight: 16,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade400),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('$count', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
     );
   }
 }

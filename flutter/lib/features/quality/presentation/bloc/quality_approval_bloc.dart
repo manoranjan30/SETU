@@ -117,16 +117,18 @@ class ApproveStage extends QualityApprovalEvent {
 class RaiseObservation extends QualityApprovalEvent {
   final String observationText;
   final String type;
+  final String? observationRating;
   final List<String> photos;
   final int? stageId; // which stage this observation belongs to
   const RaiseObservation({
     required this.observationText,
     this.type = 'Minor',
+    this.observationRating,
     this.photos = const [],
     this.stageId,
   });
   @override
-  List<Object?> get props => [observationText, type, stageId];
+  List<Object?> get props => [observationText, type, observationRating, stageId];
 }
 
 /// Upload a photo for a new observation being composed by the QC inspector.
@@ -204,20 +206,18 @@ class ReverseWorkflowStep extends QualityApprovalEvent {
   List<Object?> get props => [reason];
 }
 
-/// Expand an existing floor RFI series to a higher total-part count.
-class ExpandGoSeries extends QualityApprovalEvent {
+/// Reserves the next GO number for an existing floor RFI series.
+class AddGo extends QualityApprovalEvent {
   final int projectId;
   final int epsNodeId;
   final int activityId;
-  final int newTotalParts;
-  const ExpandGoSeries({
+  const AddGo({
     required this.projectId,
     required this.epsNodeId,
     required this.activityId,
-    required this.newTotalParts,
   });
   @override
-  List<Object?> get props => [projectId, epsNodeId, activityId, newTotalParts];
+  List<Object?> get props => [projectId, epsNodeId, activityId];
 }
 
 /// Load only inspections where MY approval is currently pending.
@@ -459,7 +459,7 @@ class QualityApprovalBloc
     on<ApproveInspection>(_onApproveInspection);
     on<ProvisionallyApproveInspection>(_onProvisionallyApproveInspection);
     on<RejectInspection>(_onRejectInspection);
-    on<ExpandGoSeries>(_onExpandGoSeries);
+    on<AddGo>(_onAddGo);
     on<AdvanceWorkflowStep>(_onAdvanceWorkflowStep);
     on<RejectWorkflowStep>(_onRejectWorkflowStep);
     on<DelegateWorkflowStep>(_onDelegateWorkflowStep);
@@ -859,7 +859,7 @@ class QualityApprovalBloc
         toUserId: event.toUserId,
         comments: event.comments,
       );
-      emit(ApprovalActionQueued(
+      emit(const ApprovalActionQueued(
         action: 'delegate',
         isOffline: false,
         pendingSyncCount: 0,
@@ -883,7 +883,7 @@ class QualityApprovalBloc
         inspectionId: current.inspection.id,
         reason: event.reason,
       );
-      emit(ApprovalActionQueued(
+      emit(const ApprovalActionQueued(
         action: 'reverse',
         isOffline: false,
         pendingSyncCount: 0,
@@ -893,22 +893,22 @@ class QualityApprovalBloc
     }
   }
 
-  /// Expands a single-GO floor RFI into multiple parts (Part 2, Part 3 …).
-  /// Calls the backend which creates the new inspection records, then emits
-  /// [ApprovalActionQueued] so the listener pops the detail page.
-  Future<void> _onExpandGoSeries(
-      ExpandGoSeries event,
+  /// Reserves the next GO number for this activity's floor RFI series.
+  /// Calls the backend, then emits [ApprovalActionQueued] so the listener
+  /// pops the detail page — the reserved GO is then raised from the
+  /// activity list, same as any other GO.
+  Future<void> _onAddGo(
+      AddGo event,
       Emitter<QualityApprovalState> emit) async {
     emit(QualityApprovalLoading());
     try {
-      await _apiClient.expandGoSeries(
+      await _apiClient.addGo(
         projectId: event.projectId,
         epsNodeId: event.epsNodeId,
         activityId: event.activityId,
-        newTotalParts: event.newTotalParts,
       );
-      emit(ApprovalActionQueued(
-        action: 'expand_go',
+      emit(const ApprovalActionQueued(
+        action: 'add_go',
         isOffline: false,
         pendingSyncCount: 0,
       ));
@@ -1181,6 +1181,7 @@ class QualityApprovalBloc
           if (event.stageId != null) 'stageId': event.stageId,
           'observationText': event.observationText,
           'type': event.type,
+          if (event.observationRating != null) 'observationRating': event.observationRating,
           if (event.photos.isNotEmpty) 'photos': event.photos,
         },
         priority: 2,

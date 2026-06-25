@@ -32,6 +32,7 @@ export interface TempUser {
     name: string;
   };
   expiryDate: string;
+  vendorApprovalRoleLevel: 1 | 2;
   status: "ACTIVE" | "SUSPENDED" | "EXPIRED";
   suspensionReason?: string;
   suspendedAt?: string;
@@ -85,6 +86,15 @@ export const tempUserService = {
   },
   updateStatus: async (id: number, isActive: boolean) => {
     const res = await api.put(`/temp-users/${id}/status`, { isActive });
+    return res.data;
+  },
+  updateVendorApprovalRole: async (
+    id: number,
+    vendorApprovalRoleLevel: 1 | 2,
+  ) => {
+    const res = await api.put(`/temp-users/${id}/vendor-approval-role`, {
+      vendorApprovalRoleLevel,
+    });
     return res.data;
   },
   resetPassword: async (id: number, password: string) => {

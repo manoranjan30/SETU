@@ -31,6 +31,8 @@ import {
 } from './entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
 import { User } from '../users/user.entity';
+import { unlink } from 'fs/promises';
+import { resolve, sep } from 'path';
 
 const ITP_DOCUMENT_TYPE = 'MATERIAL_ITP_TEMPLATE';
 const RESULT_DOCUMENT_TYPE = 'MATERIAL_TEST_RESULT';
@@ -128,6 +130,31 @@ export class MaterialItpService {
     await this.checkpointRepo.delete({ templateId: id });
     const saved = await this.templateRepo.save(template);
     return this.getTemplate(saved.id);
+  }
+
+  async deleteTemplate(id: number) {
+    const template = await this.getTemplate(id);
+    if (
+      ![
+        MATERIAL_ITP_STATUS.DRAFT,
+        MATERIAL_ITP_STATUS.REJECTED,
+        MATERIAL_ITP_STATUS.INACTIVE,
+      ].includes(template.status as any)
+    ) {
+      throw new BadRequestException(
+        'Only draft, rejected, or inactive ITP templates can be deleted.',
+      );
+    }
+    const receiptCount = await this.receiptRepo.count({
+      where: { itpTemplateId: id },
+    });
+    if (receiptCount > 0) {
+      throw new BadRequestException(
+        'This ITP is already used by material receipts and cannot be deleted.',
+      );
+    }
+    await this.templateRepo.remove(template);
+    return { deleted: true };
   }
 
   async copyTemplate(id: number, targetProjectId: number, userId?: number) {
@@ -609,6 +636,34 @@ export class MaterialItpService {
     });
   }
 
+  async updateReceipt(id: number, dto: Partial<CreateMaterialReceiptDto>) {
+    const receipt = await this.receiptRepo.findOne({ where: { id } });
+    if (!receipt) throw new NotFoundException('Material receipt not found');
+    const editableFields: Array<keyof CreateMaterialReceiptDto> = [
+      'materialName',
+      'materialCode',
+      'brand',
+      'grade',
+      'supplier',
+      'manufacturer',
+      'batchNumber',
+      'lotNumber',
+      'challanNumber',
+      'quantity',
+      'uom',
+      'receivedDate',
+      'manufactureDate',
+      'packingWeekNo',
+    ];
+    for (const field of editableFields) {
+      const value = dto[field];
+      if (value === undefined) continue;
+      (receipt as any)[field] =
+        typeof value === 'string' ? value.trim() || null : value;
+    }
+    return this.receiptRepo.save(receipt);
+  }
+
   async generateObligations(receiptId: number) {
     const receipt = await this.receiptRepo.findOne({
       where: { id: receiptId },
@@ -829,6 +884,22 @@ export class MaterialItpService {
       metadata: body.metadata ? this.parseMaybeJson(body.metadata) : null,
     });
     return this.evidenceRepo.save(evidence);
+  }
+
+  async deleteEvidence(id: number) {
+    const evidence = await this.evidenceRepo.findOne({ where: { id } });
+    if (!evidence) throw new NotFoundException('Material evidence not found');
+    if (evidence.isLocked) {
+      throw new BadRequestException('Locked material evidence cannot be deleted.');
+    }
+    const uploadRoot = resolve(process.env.UPLOAD_DIR || resolve(process.cwd(), 'uploads'));
+    const relativePath = String(evidence.relativeUrl || '').replace(/^[/\\]+/, '');
+    const filePath = resolve(process.cwd(), relativePath);
+    if (filePath === uploadRoot || filePath.startsWith(`${uploadRoot}${sep}`)) {
+      await unlink(filePath).catch(() => undefined);
+    }
+    await this.evidenceRepo.remove(evidence);
+    return { deleted: true };
   }
 
   private async startApprovalRun(input: {

@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
 import {
   EhsObservation,
@@ -26,6 +26,7 @@ import {
 } from './dto/ehs-observation.dto';
 import { toRelativePaths } from '../common/path.utils';
 import { EpsNode } from '../eps/eps.entity';
+import { User } from '../users/user.entity';
 
 @Injectable()
 export class EhsObservationService {
@@ -38,6 +39,8 @@ export class EhsObservationService {
     private readonly configRepo: Repository<EhsProjectConfig>,
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
     private readonly notificationComposer: NotificationComposerService,
@@ -158,8 +161,8 @@ export class EhsObservationService {
         .take(pageSize)
         .getManyAndCount();
       return {
-        data: rows.map((obs) =>
-          this.decorateObservation(this.normalizePhotos(obs)),
+        data: await this.decorateObservationRaisers(
+          rows.map((obs) => this.normalizePhotos(obs)),
         ),
         total,
         page,
@@ -168,7 +171,9 @@ export class EhsObservationService {
     }
 
     const rows = await query.getMany();
-    return rows.map((obs) => this.decorateObservation(this.normalizePhotos(obs)));
+    return this.decorateObservationRaisers(
+      rows.map((obs) => this.normalizePhotos(obs)),
+    );
   }
 
   async exportRegister(
@@ -361,6 +366,40 @@ export class EhsObservationService {
       ageingDays: Number((ageingMinutes / 1440).toFixed(1)),
       isHeld: obs.status === EhsObservationStatus.HELD,
     };
+  }
+
+  private async decorateObservationRaisers(observations: EhsObservation[]) {
+    const userIds = Array.from(
+      new Set(
+        observations
+          .map((observation) => Number(observation.raisedById))
+          .filter((userId) => Number.isInteger(userId) && userId > 0),
+      ),
+    );
+    const users = userIds.length
+      ? await this.userRepo.find({
+          where: { id: In(userIds) },
+          select: ['id', 'username', 'displayName', 'designation'],
+        })
+      : [];
+    const userMap = new Map(
+      users.map((user) => [
+        String(user.id),
+        {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName || user.username,
+          designation: user.designation || null,
+        },
+      ]),
+    );
+
+    return observations.map((observation) => ({
+      ...this.decorateObservation(observation),
+      raisedBy: observation.raisedById
+        ? userMap.get(observation.raisedById) || null
+        : null,
+    }));
   }
 
   private calculateAgeingMinutes(obs: EhsObservation) {
@@ -563,8 +602,12 @@ export class EhsObservationService {
       );
     }
 
+    const rejectionRemarks = dto.rejectionRemarks?.trim();
+    if (!rejectionRemarks) {
+      throw new BadRequestException('Rejection remarks are required.');
+    }
     obs.status = EhsObservationStatus.OPEN;
-    obs.rectificationRejectedRemarks = dto.rejectionRemarks?.trim() || null;
+    obs.rectificationRejectedRemarks = rejectionRemarks;
     obs.rectificationRejectedById = userId || null;
     obs.rectificationRejectedAt = new Date();
     this.appendRectificationHistory(obs, {

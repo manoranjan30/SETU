@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsNumber,
   IsString,
   IsNotEmpty,
@@ -18,6 +19,11 @@ export class CreateTempUserDto {
 
   @IsNumber()
   templateId: number;
+
+  @IsNumber()
+  @IsOptional()
+  @IsIn([1, 2])
+  vendorApprovalRoleLevel?: number;
 
   @IsString()
   @IsNotEmpty()

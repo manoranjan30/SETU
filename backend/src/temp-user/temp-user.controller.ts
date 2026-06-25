@@ -81,4 +81,18 @@ export class TempUserController {
   resetPassword(@Param('id') id: string, @Body('password') password: string) {
     return this.service.adminResetPassword(+id, password);
   }
+
+  @Put(':id/vendor-approval-role')
+  @Permissions('TEMP_USER.CREATE')
+  updateVendorApprovalRole(
+    @Param('id') id: string,
+    @Body('vendorApprovalRoleLevel') vendorApprovalRoleLevel: number,
+    @Request() req,
+  ) {
+    return this.service.updateVendorApprovalRoleLevel(
+      +id,
+      +vendorApprovalRoleLevel,
+      req.user.id,
+    );
+  }
 }

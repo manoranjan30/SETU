@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -5,27 +6,54 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data model
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _AnnotationTool { pen, circle, arrow, text }
+enum _AnnotationTool { pen, rectangle, circle, arrow, text }
 
 class _Stroke {
+  final String id;
   final _AnnotationTool tool;
   final Color color;
   final double width;
-  // pen: all points;  circle/arrow: [start, end];  text: [tap position]
+  // pen: all points;  rectangle/circle/arrow: [start, end];  text: [tap position]
   final List<Offset> points;
   final String? text; // text tool only
 
-  const _Stroke({
+  _Stroke({
     required this.tool,
     required this.color,
     required this.width,
     required this.points,
     this.text,
+    String? id,
+  }) : id = id ?? const Uuid().v4();
+}
+
+/// Result of [ImageAnnotationPage] — both the flattened raster image (for
+/// upload/preview) and the normalized vector shape data (for re-editing or
+/// audit) using the *original* image's pixel coordinate space, independent
+/// of whatever zoom/pan the user applied while drawing.
+class AnnotationResult {
+  /// Flattened PNG combining the original image and all annotations.
+  final String flattenedImagePath;
+
+  /// Path to a JSON file with the same shape data as [shapesJson] — written
+  /// to disk so callers that only deal in file paths (e.g. multipart upload
+  /// helpers) don't need to re-serialize it themselves.
+  final String shapesJsonPath;
+
+  /// Parsed shape data — see module docs for the schema. Coordinates are in
+  /// original-image pixels, not screen/widget pixels.
+  final Map<String, dynamic> shapesJson;
+
+  const AnnotationResult({
+    required this.flattenedImagePath,
+    required this.shapesJsonPath,
+    required this.shapesJson,
   });
 }
 
@@ -35,17 +63,20 @@ class _Stroke {
 
 /// Full-screen photo annotation editor.
 ///
-/// Shows the photo with drawing tools: pen, circle, arrow, text.
-/// Crop launches the native OS crop UI via [image_cropper].
-/// Returns the path to the exported annotated PNG, or null if cancelled.
+/// Shows the photo with drawing tools: pen, rectangle, circle, arrow, text.
+/// Supports undo/redo, pinch-zoom/pan (toggled separately from drawing so
+/// the two gestures don't fight each other), and exports both a flattened
+/// PNG and a normalized-coordinate JSON shape list. [imagePath] itself is
+/// never modified or deleted — only read.
 class ImageAnnotationPage extends StatefulWidget {
   final String imagePath;
 
   const ImageAnnotationPage({super.key, required this.imagePath});
 
-  /// Push the annotation editor and return the exported annotated image path.
-  static Future<String?> show(BuildContext context, String imagePath) {
-    return Navigator.of(context).push<String>(
+  /// Push the annotation editor and return the export result, or null if
+  /// the user cancelled.
+  static Future<AnnotationResult?> show(BuildContext context, String imagePath) {
+    return Navigator.of(context).push<AnnotationResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => ImageAnnotationPage(imagePath: imagePath),
@@ -63,9 +94,17 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
   double _strokeWidth = 3.0;
 
   final List<_Stroke> _strokes = [];
+  final List<_Stroke> _redoStack = [];
   _Stroke? _currentStroke;
   final GlobalKey _repaintKey = GlobalKey();
+  final TransformationController _viewController = TransformationController();
   bool _busy = false;
+  bool _panZoomMode = false;
+
+  // Natural pixel size of the source image — needed to convert on-screen
+  // drawing coordinates into the original image's coordinate space.
+  int? _imageWidth;
+  int? _imageHeight;
 
   static const _colorOptions = [
     Colors.red,
@@ -76,10 +115,32 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
     Colors.white,
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadImageDimensions();
+  }
+
+  @override
+  void dispose() {
+    _viewController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadImageDimensions() async {
+    final bytes = await File(widget.imagePath).readAsBytes();
+    final image = await decodeImageFromList(bytes);
+    if (!mounted) return;
+    setState(() {
+      _imageWidth = image.width;
+      _imageHeight = image.height;
+    });
+  }
+
   // ── Gesture handling ─────────────────────────────────────────────────────
 
   void _onPanStart(DragStartDetails d) {
-    if (_tool == _AnnotationTool.text) return;
+    if (_panZoomMode || _tool == _AnnotationTool.text) return;
     setState(() {
       _currentStroke = _Stroke(
         tool: _tool,
@@ -95,14 +156,16 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
     setState(() {
       if (_tool == _AnnotationTool.pen) {
         _currentStroke = _Stroke(
+          id: _currentStroke!.id,
           tool: _currentStroke!.tool,
           color: _currentStroke!.color,
           width: _currentStroke!.width,
           points: [..._currentStroke!.points, d.localPosition],
         );
       } else {
-        // Circle / Arrow: only track start + end
+        // Rectangle / Circle / Arrow: only track start + end
         _currentStroke = _Stroke(
+          id: _currentStroke!.id,
           tool: _currentStroke!.tool,
           color: _currentStroke!.color,
           width: _currentStroke!.width,
@@ -118,13 +181,14 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
       if (_currentStroke!.points.length >= 2 ||
           _tool == _AnnotationTool.pen) {
         _strokes.add(_currentStroke!);
+        _redoStack.clear(); // a fresh stroke invalidates any pending redo
       }
       _currentStroke = null;
     });
   }
 
   void _onTapDown(TapDownDetails d) async {
-    if (_tool != _AnnotationTool.text) return;
+    if (_panZoomMode || _tool != _AnnotationTool.text) return;
     final text = await _promptText();
     if (text == null || text.trim().isEmpty || !mounted) return;
     setState(() {
@@ -135,6 +199,7 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
         points: [d.localPosition],
         text: text.trim(),
       ));
+      _redoStack.clear();
     });
   }
 
@@ -161,9 +226,143 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
     );
   }
 
+  void _undo() {
+    if (_strokes.isEmpty) return;
+    setState(() => _redoStack.add(_strokes.removeLast()));
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    setState(() => _strokes.add(_redoStack.removeLast()));
+  }
+
+  void _clear() {
+    if (_strokes.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear all annotations?'),
+        content: const Text('This removes every shape drawn on this photo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                _redoStack
+                  ..clear()
+                  ..addAll(_strokes.reversed);
+                _strokes.clear();
+              });
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _resetZoom() => _viewController.value = Matrix4.identity();
+
+  // ── Coordinate mapping (screen px → original-image px) ──────────────────
+
+  /// Maps a point in the drawing canvas's local coordinate space to the
+  /// equivalent pixel position in the *original* (un-zoomed, full-resolution)
+  /// image, accounting for the BoxFit.contain letterboxing.
+  Offset? _toImageSpace(Offset canvasPoint, Size canvasSize) {
+    final iw = _imageWidth?.toDouble();
+    final ih = _imageHeight?.toDouble();
+    if (iw == null || ih == null || iw == 0 || ih == 0) return null;
+    final scale = min(canvasSize.width / iw, canvasSize.height / ih);
+    final displayedW = iw * scale;
+    final displayedH = ih * scale;
+    final offsetX = (canvasSize.width - displayedW) / 2;
+    final offsetY = (canvasSize.height - displayedH) / 2;
+    return Offset(
+      ((canvasPoint.dx - offsetX) / scale).clamp(0, iw),
+      ((canvasPoint.dy - offsetY) / scale).clamp(0, ih),
+    );
+  }
+
+  String _colorToHex(Color c) =>
+      '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+
+  /// Builds the normalized shapes JSON in original-image coordinates.
+  Map<String, dynamic>? _buildShapesJson(Size canvasSize) {
+    if (_imageWidth == null || _imageHeight == null) return null;
+    final shapes = <Map<String, dynamic>>[];
+    for (final s in _strokes) {
+      final mapped = s.points
+          .map((p) => _toImageSpace(p, canvasSize))
+          .whereType<Offset>()
+          .toList();
+      if (mapped.isEmpty) continue;
+      final base = {
+        'id': s.id,
+        'color': _colorToHex(s.color),
+        'strokeWidth': s.width,
+      };
+      switch (s.tool) {
+        case _AnnotationTool.pen:
+          shapes.add({
+            ...base,
+            'type': 'pen',
+            'points': mapped.map((p) => {'x': p.dx, 'y': p.dy}).toList(),
+          });
+        case _AnnotationTool.rectangle:
+          if (mapped.length < 2) continue;
+          final rect = Rect.fromPoints(mapped[0], mapped[1]);
+          shapes.add({
+            ...base,
+            'type': 'rectangle',
+            'x': rect.left,
+            'y': rect.top,
+            'width': rect.width,
+            'height': rect.height,
+          });
+        case _AnnotationTool.circle:
+          if (mapped.length < 2) continue;
+          final rect = Rect.fromPoints(mapped[0], mapped[1]);
+          shapes.add({
+            ...base,
+            'type': 'circle',
+            'x': rect.left,
+            'y': rect.top,
+            'width': rect.width,
+            'height': rect.height,
+          });
+        case _AnnotationTool.arrow:
+          if (mapped.length < 2) continue;
+          shapes.add({
+            ...base,
+            'type': 'arrow',
+            'x1': mapped[0].dx,
+            'y1': mapped[0].dy,
+            'x2': mapped[1].dx,
+            'y2': mapped[1].dy,
+          });
+        case _AnnotationTool.text:
+          shapes.add({
+            ...base,
+            'type': 'text',
+            'x': mapped[0].dx,
+            'y': mapped[0].dy,
+            'text': s.text,
+          });
+      }
+    }
+    return {
+      'version': 1,
+      'imageWidth': _imageWidth,
+      'imageHeight': _imageHeight,
+      'shapes': shapes,
+    };
+  }
+
   // ── Export helpers ────────────────────────────────────────────────────────
 
-  Future<String?> _exportCurrentView() async {
+  Future<String?> _exportFlattenedPng() async {
     final boundary = _repaintKey.currentContext?.findRenderObject()
         as RenderRepaintBoundary?;
     if (boundary == null) return null;
@@ -180,12 +379,25 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
 
   Future<void> _done() async {
     setState(() => _busy = true);
-    final path = await _exportCurrentView();
-    if (path != null && mounted) {
-      Navigator.of(context).pop(path);
-    } else {
+    final boundary = _repaintKey.currentContext?.findRenderObject()
+        as RenderRepaintBoundary?;
+    final canvasSize = boundary?.size ?? Size.zero;
+    final flattenedPath = await _exportFlattenedPng();
+    final shapesJson = _buildShapesJson(canvasSize);
+    if (flattenedPath == null || shapesJson == null || !mounted) {
       setState(() => _busy = false);
+      return;
     }
+    final dir = await getTemporaryDirectory();
+    final jsonPath =
+        '${dir.path}/ann_shapes_${DateTime.now().millisecondsSinceEpoch}.json';
+    await File(jsonPath).writeAsString(jsonEncode(shapesJson));
+    if (!mounted) return;
+    Navigator.of(context).pop(AnnotationResult(
+      flattenedImagePath: flattenedPath,
+      shapesJsonPath: jsonPath,
+      shapesJson: shapesJson,
+    ));
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -210,12 +422,24 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
               ),
             )
           else ...[
-            if (_strokes.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.undo),
-                tooltip: 'Undo last',
-                onPressed: () => setState(() => _strokes.removeLast()),
-              ),
+            _AppBarActionBtn(
+              icon: Icons.undo,
+              tooltip: 'Undo',
+              enabled: _strokes.isNotEmpty,
+              onPressed: _undo,
+            ),
+            _AppBarActionBtn(
+              icon: Icons.redo,
+              tooltip: 'Redo',
+              enabled: _redoStack.isNotEmpty,
+              onPressed: _redo,
+            ),
+            _AppBarActionBtn(
+              icon: Icons.delete_sweep_outlined,
+              tooltip: 'Clear all',
+              enabled: _strokes.isNotEmpty,
+              onPressed: _clear,
+            ),
             FilledButton(
               onPressed: _done,
               style: FilledButton.styleFrom(
@@ -230,27 +454,40 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
         children: [
           // ── Drawing canvas ──────────────────────────────────────────────
           Expanded(
-            child: GestureDetector(
-              onPanStart: _onPanStart,
-              onPanUpdate: _onPanUpdate,
-              onPanEnd: _onPanEnd,
-              onTapDown: _onTapDown,
-              child: RepaintBoundary(
-                key: _repaintKey,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.file(
-                      File(widget.imagePath),
-                      fit: BoxFit.contain,
-                    ),
-                    CustomPaint(
-                      painter: _AnnotationPainter(
-                        strokes: _strokes,
-                        current: _currentStroke,
+            child: InteractiveViewer(
+              transformationController: _viewController,
+              panEnabled: _panZoomMode,
+              scaleEnabled: _panZoomMode,
+              minScale: 1.0,
+              maxScale: 5.0,
+              child: GestureDetector(
+                // Drawing gestures must be fully unregistered (not just a
+                // no-op inside the callback) while pan/zoom mode is active —
+                // a GestureDetector with non-null onPan* callbacks wins the
+                // gesture arena over InteractiveViewer's own recognizers
+                // regardless of what the callback body does, which is why
+                // pinch-zoom/pan silently did nothing before this fix.
+                onPanStart: _panZoomMode ? null : _onPanStart,
+                onPanUpdate: _panZoomMode ? null : _onPanUpdate,
+                onPanEnd: _panZoomMode ? null : _onPanEnd,
+                onTapDown: _panZoomMode ? null : _onTapDown,
+                child: RepaintBoundary(
+                  key: _repaintKey,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.file(
+                        File(widget.imagePath),
+                        fit: BoxFit.contain,
                       ),
-                    ),
-                  ],
+                      CustomPaint(
+                        painter: _AnnotationPainter(
+                          strokes: _strokes,
+                          current: _currentStroke,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -307,33 +544,62 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
                     _ToolBtn(
                       icon: Icons.draw_outlined,
                       label: 'Pen',
-                      selected: _tool == _AnnotationTool.pen,
-                      onTap: () =>
-                          setState(() => _tool = _AnnotationTool.pen),
+                      selected: !_panZoomMode && _tool == _AnnotationTool.pen,
+                      onTap: () => setState(() {
+                        _panZoomMode = false;
+                        _tool = _AnnotationTool.pen;
+                      }),
+                    ),
+                    _ToolBtn(
+                      icon: Icons.crop_square_outlined,
+                      label: 'Rect',
+                      selected: !_panZoomMode && _tool == _AnnotationTool.rectangle,
+                      onTap: () => setState(() {
+                        _panZoomMode = false;
+                        _tool = _AnnotationTool.rectangle;
+                      }),
                     ),
                     _ToolBtn(
                       icon: Icons.circle_outlined,
                       label: 'Circle',
-                      selected: _tool == _AnnotationTool.circle,
-                      onTap: () =>
-                          setState(() => _tool = _AnnotationTool.circle),
+                      selected: !_panZoomMode && _tool == _AnnotationTool.circle,
+                      onTap: () => setState(() {
+                        _panZoomMode = false;
+                        _tool = _AnnotationTool.circle;
+                      }),
                     ),
                     _ToolBtn(
                       icon: Icons.arrow_forward,
                       label: 'Arrow',
-                      selected: _tool == _AnnotationTool.arrow,
-                      onTap: () =>
-                          setState(() => _tool = _AnnotationTool.arrow),
+                      selected: !_panZoomMode && _tool == _AnnotationTool.arrow,
+                      onTap: () => setState(() {
+                        _panZoomMode = false;
+                        _tool = _AnnotationTool.arrow;
+                      }),
                     ),
                     _ToolBtn(
                       icon: Icons.text_fields,
                       label: 'Text',
-                      selected: _tool == _AnnotationTool.text,
-                      onTap: () =>
-                          setState(() => _tool = _AnnotationTool.text),
+                      selected: !_panZoomMode && _tool == _AnnotationTool.text,
+                      onTap: () => setState(() {
+                        _panZoomMode = false;
+                        _tool = _AnnotationTool.text;
+                      }),
                     ),
-                    Container(
-                        width: 1, height: 36, color: Colors.white24),
+                    _ToolBtn(
+                      icon: Icons.pan_tool_alt_outlined,
+                      label: 'Pan/Zoom',
+                      selected: _panZoomMode,
+                      onTap: () => setState(() => _panZoomMode = !_panZoomMode),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(width: 1, height: 30, color: Colors.white24),
+                    const SizedBox(width: 10),
                     // Stroke widths
                     _WidthBtn(
                       dotSize: 3,
@@ -349,6 +615,13 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
                       dotSize: 8,
                       selected: _strokeWidth == 7,
                       onTap: () => setState(() => _strokeWidth = 7),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton.icon(
+                      onPressed: _resetZoom,
+                      icon: const Icon(Icons.zoom_out_map, size: 16, color: Colors.white70),
+                      label: const Text('Reset zoom',
+                          style: TextStyle(color: Colors.white70, fontSize: 12)),
                     ),
                   ],
                 ),
@@ -396,6 +669,10 @@ class _AnnotationPainter extends CustomPainter {
           path.lineTo(s.points[i].dx, s.points[i].dy);
         }
         canvas.drawPath(path, paint);
+
+      case _AnnotationTool.rectangle:
+        if (s.points.length < 2) return;
+        canvas.drawRect(Rect.fromPoints(s.points[0], s.points[1]), paint);
 
       case _AnnotationTool.circle:
         if (s.points.length < 2) return;
@@ -453,6 +730,52 @@ class _AnnotationPainter extends CustomPainter {
 // ─────────────────────────────────────────────────────────────────────────────
 // Toolbar micro-widgets
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// AppBar action button with a clearly visible highlighted background while
+/// [enabled] — a plain color change between white/white24 wasn't visible
+/// enough against the dark app bar to tell at a glance whether undo/redo/
+/// clear had anything to act on.
+class _AppBarActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  const _AppBarActionBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: enabled ? Colors.white.withValues(alpha: 0.18) : Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 22,
+              color: enabled ? Colors.white : Colors.white24,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ToolBtn extends StatelessWidget {
   final IconData icon;

@@ -54,6 +54,7 @@ class CreateQualitySiteObs extends QualitySiteObsEvent {
   final int? epsNodeId;
   final String description;
   final String severity;
+  final String? observationRating;
   final String? category;
   final String? locationLabel;
   final List<String> photoUrls;
@@ -63,6 +64,7 @@ class CreateQualitySiteObs extends QualitySiteObsEvent {
     this.epsNodeId,
     required this.description,
     required this.severity,
+    this.observationRating,
     this.category,
     this.locationLabel,
     this.photoUrls = const [],
@@ -386,7 +388,7 @@ class QualitySiteObsBloc
           hasMore: false,
         ));
       } catch (cacheErr) {
-        emit(QualitySiteObsError('Failed to load observations. No cached data available.'));
+        emit(const QualitySiteObsError('Failed to load observations. No cached data available.'));
       }
     }
   }
@@ -408,6 +410,7 @@ class QualitySiteObsBloc
         if (event.epsNodeId != null) 'epsNodeId': event.epsNodeId,
         'description': event.description,
         'severity': event.severity,
+        if (event.observationRating != null) 'observationRating': event.observationRating,
         if (event.category != null) 'category': event.category,
         if (event.locationLabel != null) 'locationLabel': event.locationLabel,
         if (event.photoUrls.isNotEmpty) 'photoUrls': event.photoUrls,

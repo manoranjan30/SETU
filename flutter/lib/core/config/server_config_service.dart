@@ -119,14 +119,14 @@ class ServerConfigService {
       isEditable: false,
       icon:       'code',
     ),
-    ServerPreset(
+    const ServerPreset(
       label:      'Cloudflare Tunnel',
       url:        '',
       isEditable: true,
       hint:       'https://xxxx.trycloudflare.com',
       icon:       'cloud',
     ),
-    ServerPreset(
+    const ServerPreset(
       label:      'Custom / LAN IP',
       url:        '',
       isEditable: true,

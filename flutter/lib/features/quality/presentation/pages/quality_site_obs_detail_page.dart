@@ -5,8 +5,8 @@ import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/shared/widgets/obs_status_badge.dart';
 import 'package:setu_mobile/shared/widgets/photo_gallery_strip.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/observation_rating_selector.dart';
 import 'package:setu_mobile/shared/widgets/rectify_sheet.dart';
-import 'package:setu_mobile/shared/widgets/severity_badge.dart';
 
 /// Detail view for a single Quality Site Observation.
 /// Provides Rectify / Close actions gated by permissions.
@@ -64,13 +64,35 @@ class QualitySiteObsDetailPage extends StatelessWidget {
               children: [
                 ObsStatusBadge(status: obs.status.label),
                 const SizedBox(width: 8),
-                SeverityBadge(severity: obs.severity),
+                ObservationRatingBadge(
+                  observationRating: obs.observationRating,
+                  legacySeverity: obs.severity,
+                ),
                 if (obs.category != null) ...[
                   const SizedBox(width: 8),
                   _Chip(obs.category!),
                 ],
               ],
             ),
+            if (obs.ncrId != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.crisis_alert_rounded, size: 14, color: Colors.red.shade700),
+                    const SizedBox(width: 6),
+                    Text('Linked NCR #${obs.ncrId}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.red.shade700)),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // ── Description ─────────────────────────────────────────────────
@@ -101,7 +123,7 @@ class QualitySiteObsDetailPage extends StatelessWidget {
                   Text(obs.raisedByName ?? 'Unknown',
                       style: theme.textTheme.bodyMedium),
                   const Spacer(),
-                  Text(_fmtDate(obs.createdAt),
+                  Text(_fmtDateTime(obs.createdAt),
                       style: TextStyle(
                           fontSize: 12,
                           color: theme.colorScheme.onSurface
@@ -134,11 +156,15 @@ class QualitySiteObsDetailPage extends StatelessWidget {
                           style: theme.textTheme.bodyMedium),
                     if (obs.rectifiedAt != null) ...[
                       const SizedBox(height: 4),
-                      Text('Rectified on ${_fmtDate(obs.rectifiedAt!)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.5))),
+                      Text(
+                        obs.rectifiedByName != null
+                            ? 'By ${obs.rectifiedByName} on ${_fmtDateTime(obs.rectifiedAt!)}'
+                            : 'Rectified on ${_fmtDateTime(obs.rectifiedAt!)}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5)),
+                      ),
                     ],
                     if (obs.rectificationPhotoUrls.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -162,11 +188,15 @@ class QualitySiteObsDetailPage extends StatelessWidget {
                         style: theme.textTheme.bodyMedium),
                     if (obs.closedAt != null) ...[
                       const SizedBox(height: 4),
-                      Text('Closed on ${_fmtDate(obs.closedAt!)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.5))),
+                      Text(
+                        obs.closedByName != null
+                            ? 'By ${obs.closedByName} on ${_fmtDateTime(obs.closedAt!)}'
+                            : 'Closed on ${_fmtDateTime(obs.closedAt!)}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5)),
+                      ),
                     ],
                   ],
                 ),
@@ -305,8 +335,14 @@ class QualitySiteObsDetailPage extends StatelessWidget {
     );
   }
 
-  String _fmtDate(DateTime dt) =>
-      '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+  String _fmtDateTime(DateTime dt) {
+    final date =
+        '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    final time = '$hour12:${dt.minute.toString().padLeft(2, '0')} $period';
+    return '$date · $time';
+  }
 
   String _successMessage(String action) {
     switch (action) {

@@ -30,6 +30,9 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   const canCreate = hasPermission(PermissionCode.EHS_SITE_OBS_CREATE);
   const canRectify = hasPermission(PermissionCode.EHS_SITE_OBS_RECTIFY);
   const canClose = hasPermission(PermissionCode.EHS_SITE_OBS_CLOSE);
+  const canRejectRectification =
+    hasPermission(PermissionCode.EHS_SITE_OBS_REJECT_RECTIFICATION) ||
+    hasPermission(PermissionCode.EHS_SITE_OBS_CLOSE);
   const canExport = hasPermission(PermissionCode.EHS_SITE_OBS_EXPORT);
   const canDelete = hasPermission(PermissionCode.EHS_SITE_OBS_DELETE);
 
@@ -332,6 +335,10 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
   };
 
   const handleRejectRectification = async () => {
+    if (!rejectionRemarks.trim()) {
+      alert("Enter the reason for rejecting this rectification.");
+      return;
+    }
     if (!confirm("Reject this rectification and reopen the observation?")) return;
     setUploading(true);
     try {
@@ -747,6 +754,7 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-left">Location</th>
                   <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-left">Raised By</th>
                   <th className="px-4 py-3 text-left">Aging</th>
                   <th className="px-4 py-3 text-left">Target</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -815,6 +823,24 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                       </td>
                       <td className="max-w-[320px] truncate px-4 py-3 font-medium text-text-primary">
                         {item.description}
+                      </td>
+                      <td className="min-w-[180px] px-4 py-3">
+                        <div className="text-xs font-semibold text-text-primary">
+                          {item.raisedBy?.displayName ||
+                            (item.raisedById
+                              ? `User #${item.raisedById}`
+                              : "System")}
+                        </div>
+                        {item.raisedBy?.designation && (
+                          <div className="text-[11px] text-text-muted">
+                            {item.raisedBy.designation}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-text-muted">
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleString()
+                            : "-"}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className={`text-xs ${age.color}`}>{age.text}</div>
@@ -1453,7 +1479,8 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                 )}
 
               {/* Close Action Area */}
-              {((selectedRecord.status === "RECTIFIED" && canClose) ||
+              {((selectedRecord.status === "RECTIFIED" &&
+                (canClose || canRejectRectification)) ||
                 (selectedRecord.status === "OPEN" &&
                   selectedRecord.severity === "INFO" &&
                   canClose)) && (
@@ -1468,7 +1495,8 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     value={closureRemarks}
                     onChange={(e) => setClosureRemarks(e.target.value)}
                   />
-                  {selectedRecord.status === "RECTIFIED" && (
+                  {selectedRecord.status === "RECTIFIED" &&
+                    canRejectRectification && (
                     <textarea
                       rows={2}
                       placeholder="Reason for rejecting this rectification..."
@@ -1478,15 +1506,16 @@ const EhsSiteObservationPanel: React.FC<SiteObservationPanelProps> = ({
                     />
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row">
-                    <button
+                    {canClose && <button
                       onClick={handleCloseSubmit}
                       disabled={uploading}
                       className="flex-1 py-3 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       <CheckCircle2 className="w-5 h-5" /> Formally Close
                       Observation
-                    </button>
-                    {selectedRecord.status === "RECTIFIED" && (
+                    </button>}
+                    {selectedRecord.status === "RECTIFIED" &&
+                      canRejectRectification && (
                       <button
                         onClick={handleRejectRectification}
                         disabled={uploading}

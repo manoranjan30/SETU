@@ -1,9 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:signature/signature.dart';
+import 'package:setu_mobile/core/media/signature_cleanup.dart';
 import 'package:setu_mobile/core/update/update_dialog_helper.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
@@ -91,6 +95,131 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final bytes = await _sigCtrl.toPngBytes();
     if (bytes == null || !mounted) return;
     context.read<ProfileBloc>().add(SaveSignature(bytes));
+  }
+
+  /// Lets the user photograph (or pick) a paper signature, runs it through
+  /// [SignatureCleanup] entirely on-device, then shows a preview before
+  /// uploading — the raw photo is never sent to the server, only the
+  /// cleaned transparent PNG, and only after the user confirms.
+  Future<void> _uploadSignaturePhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final xfile = await ImagePicker().pickImage(source: source);
+    if (xfile == null || !mounted) return;
+
+    // Let the user crop tightly to the signature and straighten it before
+    // the cleanup pipeline runs — a photographed paper signature is rarely
+    // framed/aligned well straight out of the camera.
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: xfile.path,
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 95,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Signature',
+          toolbarColor: Theme.of(context).colorScheme.primary,
+          toolbarWidgetColor: Colors.white,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(title: 'Crop Signature'),
+      ],
+    );
+    if (cropped == null || !mounted) return;
+
+    SignatureCleanupResult result;
+    try {
+      result = await SignatureCleanup.process(cropped.path);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red.shade700),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final confirmed = await _showSignaturePreview(result);
+    if (confirmed == true && mounted) {
+      context.read<ProfileBloc>().add(SaveSignature(result.pngBytes));
+    }
+    // The cropped photo and cleaned PNG were only ever temp files for
+    // preview/upload — clean them up either way (discarded or already read
+    // into the upload payload).
+    try {
+      await File(result.pngPath).delete();
+    } catch (_) {}
+    try {
+      await File(cropped.path).delete();
+    } catch (_) {}
+  }
+
+  Future<bool?> _showSignaturePreview(SignatureCleanupResult result) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Signature'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Review the cleaned signature below. The original photo is '
+              'discarded — only this transparent version is saved.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 120,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+                // Checkerboard-style mid-gray backdrop makes the PNG's
+                // transparency visually obvious in the preview.
+                color: Colors.grey.shade200,
+              ),
+              padding: const EdgeInsets.all(8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(result.pngBytes, fit: BoxFit.contain),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm and Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _changePassword() {
@@ -183,6 +312,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   hasSignatureDrawn: _hasSignatureDrawn,
                   onSaveProfile: _saveProfile,
                   onSaveSignature: _saveSignature,
+                  onUploadSignaturePhoto: _uploadSignaturePhoto,
                   onClearSignature: () {
                     _sigCtrl.clear();
                     setState(() => _hasSignatureDrawn = false);
@@ -222,6 +352,7 @@ class _ProfileBody extends StatelessWidget {
   final bool hasSignatureDrawn;
   final VoidCallback onSaveProfile;
   final Future<void> Function() onSaveSignature;
+  final Future<void> Function() onUploadSignaturePhoto;
   final VoidCallback onClearSignature;
   // Password change
   final GlobalKey<FormState> pwFormKey;
@@ -249,6 +380,7 @@ class _ProfileBody extends StatelessWidget {
     required this.hasSignatureDrawn,
     required this.onSaveProfile,
     required this.onSaveSignature,
+    required this.onUploadSignaturePhoto,
     required this.onClearSignature,
     required this.pwFormKey,
     required this.currentPwCtrl,
@@ -413,6 +545,28 @@ class _ProfileBody extends StatelessWidget {
               color: Theme.of(
                 context,
               ).colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: Divider(color: Theme.of(context).dividerColor)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text('or',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4))),
+              ),
+              Expanded(child: Divider(color: Theme.of(context).dividerColor)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: isSaving ? null : onUploadSignaturePhoto,
+              icon: const Icon(Icons.document_scanner_outlined, size: 16),
+              label: const Text('Upload a Photo of Your Signature'),
             ),
           ),
           const SizedBox(height: 10),

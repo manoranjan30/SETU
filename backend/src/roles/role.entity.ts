@@ -31,6 +31,12 @@ export class Role {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ type: 'int', nullable: true })
+  tempRoleTemplateId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  vendorRoleLevel: number | null;
+
   @ManyToMany(() => Permission, { eager: true, cascade: true })
   @JoinTable()
   permissions: Permission[];

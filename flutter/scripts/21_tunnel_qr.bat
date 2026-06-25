@@ -22,20 +22,30 @@ for %%I in ("%~dp0..") do set "PROJECT_ROOT=%%~fI"
 set "CFLOG=%TEMP%\setu_cf_tunnel.log"
 set "CFERR=%TEMP%\setu_cf_stderr.log"
 set "CFURL_PS=%TEMP%\setu_cf_url.ps1"
+set "LTLOG=%TEMP%\setu_localtunnel.log"
+set "LTERR=%TEMP%\setu_localtunnel_stderr.log"
+set "LTPID=%TEMP%\setu_localtunnel.pid"
 set "APK_TEMP=%TEMP%\setu_mobile_latest.apk"
 set "APK_SRC=%PROJECT_ROOT%\build\app\outputs\flutter-apk\app-release.apk"
 set "QR_BIN=%APPDATA%\npm\node_modules\qrcode-terminal\bin\qrcode-terminal.js"
 
 set "DO_TUNNEL=1"
 set "DO_UPLOAD=1"
+set "CF_ATTEMPT=0"
+set "CF_MAX_ATTEMPTS=3"
 :: Pipe character via delayed expansion - avoids cmd parse-time pipe interpretation
 set "P=|"
 if /i "%~1"=="tunnel" set "DO_UPLOAD=0"
 if /i "%~1"=="upload" set "DO_TUNNEL=0"
 
 if /i "%~1"=="stop" (
-  echo Stopping cloudflared...
+  echo Stopping tunnel processes...
   taskkill /im cloudflared.exe /f >nul 2>&1
+  if exist "!LTPID!" (
+    set /p LT_PID=<"!LTPID!"
+    if defined LT_PID taskkill /pid !LT_PID! /t /f >nul 2>&1
+    del "!LTPID!" >nul 2>&1
+  )
   echo Done.
   exit /b 0
 )
@@ -81,8 +91,8 @@ pause & exit /b 1
 :curl_ok
 echo  [OK] curl
 
-:: ---- Backend health check
-powershell -NoProfile -Command "try { $null = Invoke-WebRequest 'http://localhost:3000/api' -TimeoutSec 3 -UseBasicParsing; Write-Host '  [OK] Backend on :3000' } catch { Write-Host '  [!!] Backend not on :3000 -- start NestJS before testing' }"
+:: ---- Backend port check. A 404 API response still proves NestJS is reachable.
+powershell -NoProfile -Command "if (Test-NetConnection -ComputerName localhost -Port 3000 -InformationLevel Quiet) { Write-Host '  [OK] Backend port :3000 is reachable' } else { Write-Host '  [!!] Backend port :3000 is not reachable -- start NestJS before testing' }"
 echo.
 
 
@@ -90,6 +100,7 @@ echo.
 ::  SECTION 2 - Cloudflare Tunnel + QR
 :: ============================================================
 set "TUNNEL_URL="
+set "TUNNEL_PROVIDER="
 if "!DO_TUNNEL!"=="0" goto :skip_tunnel
 
 :: Kill leftover cloudflared
@@ -100,7 +111,9 @@ taskkill /im cloudflared.exe /f >nul 2>&1
 timeout /t 2 /nobreak >nul
 
 :cf_start
+set /a CF_ATTEMPT+=1
 echo  Starting Cloudflare Quick Tunnel...
+echo  Attempt !CF_ATTEMPT! of !CF_MAX_ATTEMPTS!
 echo  Waiting for URL  (10-30 s)...
 echo.
 
@@ -118,24 +131,54 @@ if exist "!CFERR!" del "!CFERR!"
 
 powershell -NoProfile -Command "Start-Process cloudflared -ArgumentList @('tunnel','--url','http://localhost:3000') -RedirectStandardOutput '!CFLOG!' -RedirectStandardError '!CFERR!' -NoNewWindow"
 
-<nul set /p "  ["
+<nul set /p "=  ["
 set /a WAITS=0
 
 :wait_url
 set /a WAITS+=1
 if !WAITS! gtr 30 goto :tunnel_timeout
 timeout /t 2 /nobreak >nul
-<nul set /p "="
+<nul set /p "=."
+findstr /c:"error code: 1101" "!CFERR!" >nul 2>&1
+if not errorlevel 1 goto :quick_tunnel_failed
 for /f "tokens=*" %%U in ('powershell -NoProfile -File "!CFURL_PS!" 2^>nul') do set "TUNNEL_URL=%%U"
 if "!TUNNEL_URL!"=="" goto :wait_url
 
 :: Append /api so the QR gives Dio the correct NestJS base URL directly
+set "TUNNEL_PROVIDER=Cloudflare Quick Tunnel"
+goto :tunnel_ready
+
+:start_localtunnel
+taskkill /im cloudflared.exe /f >nul 2>&1
+echo ]
+echo.
+echo  [WARN] TryCloudflare is unavailable. Starting LocalTunnel fallback...
+echo  Waiting for fallback URL...
+echo.
+if exist "!LTLOG!" del "!LTLOG!"
+if exist "!LTERR!" del "!LTERR!"
+if exist "!LTPID!" del "!LTPID!"
+powershell -NoProfile -Command "$p=Start-Process cmd.exe -ArgumentList @('/d','/c','npx --yes localtunnel --port 3000') -RedirectStandardOutput '!LTLOG!' -RedirectStandardError '!LTERR!' -WindowStyle Hidden -PassThru; [IO.File]::WriteAllText('!LTPID!', [string]$p.Id)"
+set /a LT_WAITS=0
+<nul set /p "=  ["
+
+:wait_localtunnel
+set /a LT_WAITS+=1
+if !LT_WAITS! gtr 45 goto :fallback_timeout
+timeout /t 1 /nobreak >nul
+<nul set /p "=."
+for /f "tokens=4" %%U in ('findstr /r /c:"your url is: https://.*\.loca\.lt" "!LTLOG!" 2^>nul') do set "TUNNEL_URL=%%U"
+if "!TUNNEL_URL!"=="" goto :wait_localtunnel
+set "TUNNEL_PROVIDER=LocalTunnel fallback"
+
+:tunnel_ready
 set "TUNNEL_API_URL=!TUNNEL_URL!/api"
 
 echo ]
 echo.
 echo  ============================================================
 echo   [1/2] TUNNEL ACTIVE
+echo   Provider: !TUNNEL_PROVIDER!
 echo   !TUNNEL_URL!
 echo  ============================================================
 echo.
@@ -300,7 +343,13 @@ echo.
 :alive_loop
 timeout /t 20 /nobreak >nul
 if "!DO_TUNNEL!"=="0" goto :alive_loop
-tasklist /fi "imagename eq cloudflared.exe" /fo csv 2>nul | findstr /i "cloudflared" >nul
+if /i "!TUNNEL_PROVIDER!"=="Cloudflare Quick Tunnel" (
+  tasklist /fi "imagename eq cloudflared.exe" /fo csv 2>nul | findstr /i "cloudflared" >nul
+) else (
+  set "LT_PID="
+  if exist "!LTPID!" set /p LT_PID=<"!LTPID!"
+  if defined LT_PID tasklist /fi "pid eq !LT_PID!" /fo csv 2>nul | findstr /i "!LT_PID!" >nul
+)
 if errorlevel 1 (
   echo.
   echo  [!] Tunnel stopped unexpectedly. Re-run to get a new URL.
@@ -333,19 +382,38 @@ goto :eof
 ::  Tunnel timeout
 :: ============================================================
 :tunnel_timeout
+if !CF_ATTEMPT! lss !CF_MAX_ATTEMPTS! goto :retry_quick_tunnel
+goto :start_localtunnel
+
+:fallback_timeout
 echo ]
 echo.
-echo  [X] Timed out waiting for tunnel URL (60 s).
+echo  [X] Cloudflare and LocalTunnel could not issue a tunnel URL.
 echo.
 echo  Common causes:
-echo    - cloudflared not installed correctly
 echo    - No internet connection on this PC
-echo    - Cloudflare rate-limited  (wait 1 min and retry)
+echo    - Cloudflare and LocalTunnel are temporarily unavailable
+echo    - Corporate firewall or proxy blocks public tunnel services
 echo.
 echo  Raw cloudflared output:
 echo  ------------------------------------------------------------
 type "!CFLOG!" 2>nul
 type "!CFERR!" 2>nul
+type "!LTLOG!" 2>nul
+type "!LTERR!" 2>nul
 echo  ------------------------------------------------------------
 echo.
 pause & exit /b 1
+
+:quick_tunnel_failed
+if !CF_ATTEMPT! lss !CF_MAX_ATTEMPTS! goto :retry_quick_tunnel
+goto :start_localtunnel
+
+:retry_quick_tunnel
+echo ]
+echo.
+echo  [WARN] Cloudflare Quick Tunnel provisioning failed.
+echo      Retrying after 5 seconds...
+taskkill /im cloudflared.exe /f >nul 2>&1
+timeout /t 5 /nobreak >nul
+goto :cf_start

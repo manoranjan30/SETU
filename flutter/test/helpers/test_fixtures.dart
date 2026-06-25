@@ -1,7 +1,7 @@
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
 
 /// Canonical fake user for all auth tests.
-final fakeUser = User(
+const fakeUser = User(
   id: 1,
   username: 'test_user',
   email: 'test@setu.com',

@@ -42,6 +42,13 @@ type EligibleApproverDto = {
   sourceType: 'PERMANENT' | 'TEMP_VENDOR';
   projectRoleIds: number[];
   projectRoleNames: string[];
+  projectRoles: Array<{
+    id: number;
+    name: string;
+    displayName: string;
+    tempRoleTemplateId: number | null;
+    vendorRoleLevel: number | null;
+  }>;
   companyLabel: string;
   primaryRoleLabel: string | null;
   vendorId?: number | null;
@@ -303,12 +310,27 @@ export class ReleaseStrategyService {
       const roleIds = assignment.roles?.map((role) => role.id) || [];
       const roleNames =
         assignment.roles?.map((role) => role.name).filter(Boolean) || [];
+      const projectRoles = (assignment.roles || []).map((role) => ({
+        id: role.id,
+        name: role.name,
+        displayName: role.name,
+        tempRoleTemplateId: role.tempRoleTemplateId,
+        vendorRoleLevel: role.vendorRoleLevel,
+      }));
       if (existing) {
         existing.projectRoleIds = Array.from(
           new Set([...existing.projectRoleIds, ...roleIds]),
         );
         existing.projectRoleNames = Array.from(
           new Set([...existing.projectRoleNames, ...roleNames]),
+        );
+        existing.projectRoles = Array.from(
+          new Map(
+            [...existing.projectRoles, ...projectRoles].map((role) => [
+              role.id,
+              role,
+            ]),
+          ).values(),
         );
         existing.primaryRoleLabel =
           existing.primaryRoleLabel || roleNames[0] || null;
@@ -321,6 +343,7 @@ export class ReleaseStrategyService {
         sourceType: assignment.user.isTempUser ? 'TEMP_VENDOR' : 'PERMANENT',
         projectRoleIds: roleIds,
         projectRoleNames: roleNames,
+        projectRoles,
         companyLabel: 'Internal Team',
         primaryRoleLabel: roleNames[0] || null,
         activeStatus: 'ACTIVE',
@@ -343,16 +366,29 @@ export class ReleaseStrategyService {
 
       const assigned = permanentMap.get(temp.userId);
       const roleIds = assigned?.projectRoleIds || [];
-      const roleNames = assigned?.projectRoleNames || [];
       const tempRoleName = temp.tempRoleTemplate?.name || null;
+      const projectRoles = (assigned?.projectRoles || []).map((role) => ({
+        ...role,
+        displayName:
+          role.tempRoleTemplateId === temp.tempRoleTemplateId &&
+          role.vendorRoleLevel
+            ? `${tempRoleName || 'Vendor'} - Vendor Approver ${role.vendorRoleLevel}`
+            : role.displayName,
+      }));
+      const roleNames = projectRoles.map((role) => role.displayName);
       permanentMap.set(temp.userId, {
         userId: temp.userId,
         displayName: temp.user.displayName || temp.user.username || 'Temp User',
         sourceType: 'TEMP_VENDOR',
         projectRoleIds: roleIds,
         projectRoleNames: roleNames,
+        projectRoles,
         companyLabel: temp.vendor?.name || 'Vendor',
-        primaryRoleLabel: roleNames[0] || tempRoleName,
+        primaryRoleLabel:
+          roleNames[0] ||
+          (tempRoleName
+            ? `${tempRoleName} - Vendor Approver ${temp.vendorApprovalRoleLevel || 1}`
+            : null),
         vendorId: temp.vendorId ?? null,
         workOrderId: temp.workOrderId ?? null,
         activeStatus: temp.status,

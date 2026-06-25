@@ -56,6 +56,9 @@ export class TempUser {
   @JoinColumn({ name: 'temp_role_template_id' })
   tempRoleTemplate: TempRoleTemplate;
 
+  @Column({ type: 'int', name: 'vendor_approval_role_level', default: 1 })
+  vendorApprovalRoleLevel: number;
+
   @Column({ type: 'date', name: 'expiry_date' })
   expiryDate: Date;
 

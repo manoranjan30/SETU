@@ -96,7 +96,7 @@ void main() {
 
   group('User.toJson round-trip', () {
     test('toJson output can be parsed back to equal User', () {
-      final original = User(
+      const original = User(
         id: 7,
         username: 'roundtrip',
         email: 'rt@test.com',
@@ -111,7 +111,7 @@ void main() {
   });
 
   group('User helper methods', () {
-    final user = User(
+    const user = User(
       id: 1,
       username: 'u',
       email: 'u@x.com',
@@ -158,12 +158,12 @@ void main() {
     });
 
     test('initials returns one letter for a single-word name', () {
-      final singleName = User(id: 1, username: 'u', email: 'u@x.com', fullName: 'Ravi');
+      const singleName = User(id: 1, username: 'u', email: 'u@x.com', fullName: 'Ravi');
       expect(singleName.initials, 'R');
     });
 
     test('initials falls back to username first letter when fullName is empty', () {
-      final noName = User(id: 1, username: 'ravi', email: 'u@x.com', fullName: '');
+      const noName = User(id: 1, username: 'ravi', email: 'u@x.com', fullName: '');
       expect(noName.initials, 'R');
     });
   });

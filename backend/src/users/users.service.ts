@@ -240,6 +240,7 @@ export class UsersService {
       const normalizedSignatureData = this.normalizeSignatureImageSource(
         signatureData || signatureImageUrl,
       );
+      this.validateSignatureImageSource(normalizedSignatureData);
       const updateData: any = {
         signatureData: normalizedSignatureData,
         signatureUpdatedAt: new Date(),
@@ -276,6 +277,22 @@ export class UsersService {
       return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
     }
     return text;
+  }
+
+  private validateSignatureImageSource(value?: string | null) {
+    if (!value) {
+      throw new BadRequestException('Signature image is required');
+    }
+    if (value.length > 3_000_000) {
+      throw new BadRequestException('Signature image is too large');
+    }
+    if (
+      !/^data:image\/(png|jpeg|webp);base64,/i.test(value) &&
+      !/^https?:\/\//i.test(value) &&
+      !/^\/uploads\//i.test(value)
+    ) {
+      throw new BadRequestException('Unsupported signature image format');
+    }
   }
 
   // ============================

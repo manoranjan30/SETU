@@ -52,6 +52,7 @@ import {
 } from './entities/inspection-workflow-run.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
+import { QualityInspectionAttachmentService } from './quality-inspection-attachment.service';
 
 export interface CreateInspectionDto {
   projectId: number;
@@ -74,6 +75,7 @@ export interface CreateInspectionDto {
   goLabel?: string;
   goDetails?: string;
   relatedChecklistInspectionIds?: number[];
+  attachmentDraftIds?: string[];
   contractorName?: string;
   processCode?: string;
   documentType?: string;
@@ -149,6 +151,7 @@ export class QualityInspectionService {
     private readonly notificationComposer: NotificationComposerService,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
     private readonly customerMilestoneService: CustomerMilestoneService,
+    private readonly attachmentService: QualityInspectionAttachmentService,
   ) {}
 
   private deriveInspectionProcessCode(dto: CreateInspectionDto): string {
@@ -292,8 +295,25 @@ export class QualityInspectionService {
           .filter((id): id is number => typeof id === 'number'),
       ),
     );
+    const relatedInspectionIds = Array.from(
+      new Set(
+        inspections.flatMap((inspection) =>
+          this.normalizeRelatedChecklistInspectionIds(
+            inspection.relatedChecklistInspectionIds,
+          ),
+        ),
+      ),
+    );
 
-    const [allEpsNodes, units, rooms] = await Promise.all([
+    const requestedByIds = Array.from(
+      new Set(
+        inspections
+          .map((inspection) => inspection.requestedById)
+          .filter((id): id is number => typeof id === 'number'),
+      ),
+    );
+    const [allEpsNodes, units, rooms, relatedInspections, requesters] =
+      await Promise.all([
       this.epsNodeRepo.find(),
       unitIds.length
         ? this.qualityUnitRepo.find({ where: { id: In(unitIds) } })
@@ -301,11 +321,24 @@ export class QualityInspectionService {
       roomIds.length
         ? this.qualityRoomRepo.find({ where: { id: In(roomIds) } })
         : Promise.resolve([]),
+      relatedInspectionIds.length
+        ? this.inspectionRepo.find({
+            where: { id: In(relatedInspectionIds), projectId },
+            relations: ['activity'],
+          })
+        : Promise.resolve([]),
+      requestedByIds.length
+        ? this.userRepo.find({ where: { id: In(requestedByIds) } })
+        : Promise.resolve([]),
     ]);
 
     const epsById = new Map<number, EpsNode>(allEpsNodes.map((n) => [n.id, n]));
     const unitsById = new Map<number, QualityUnit>(units.map((u) => [u.id, u]));
     const roomsById = new Map<number, QualityRoom>(rooms.map((r) => [r.id, r]));
+    const relatedById = new Map(
+      relatedInspections.map((inspection) => [inspection.id, inspection]),
+    );
+    const requesterById = new Map(requesters.map((user) => [user.id, user]));
 
     const inspectionsWithWorkflow = await this.attachWorkflowSummary(
       inspections,
@@ -341,6 +374,9 @@ export class QualityInspectionService {
       const epsRoomName = ancestry.find(
         (n) => n.type === EpsNodeType.ROOM,
       )?.name;
+      const requester = inspection.requestedById
+        ? requesterById.get(inspection.requestedById)
+        : undefined;
 
       return {
         ...inspection,
@@ -350,6 +386,41 @@ export class QualityInspectionService {
         floorName,
         unitName: qualityUnit?.name || epsUnitName || null,
         roomName: qualityRoom?.name || epsRoomName || null,
+        raisedBy: requester
+          ? {
+              id: requester.id,
+              username: requester.username,
+              displayName: requester.displayName || requester.username,
+              designation: requester.designation || null,
+            }
+          : inspection.requestedById
+            ? {
+                id: inspection.requestedById,
+                username: `User #${inspection.requestedById}`,
+                displayName: `User #${inspection.requestedById}`,
+                designation: null,
+              }
+            : null,
+        relatedChecklistInspections:
+          this.normalizeRelatedChecklistInspectionIds(
+            inspection.relatedChecklistInspectionIds,
+          )
+            .map((id) => relatedById.get(id))
+            .filter(Boolean)
+            .map((related: any) => ({
+              id: related.id,
+              activityName:
+                related.activity?.activityName || `RFI #${related.id}`,
+              status: related.status,
+              requestDate: related.requestDate,
+              goNo: related.goNo,
+              goLabel: related.goLabel,
+              partNo: related.partNo,
+              partLabel: related.partLabel,
+              drawingNo: related.drawingNo,
+              elementName: related.elementName,
+              goDetails: related.goDetails,
+            })),
       };
     });
 
@@ -398,7 +469,11 @@ export class QualityInspectionService {
       viewerUserId,
       viewerIsAdmin,
     );
-    return this.attachRelatedChecklistSummaries(withWorkflow);
+    const withRelated = await this.attachRelatedChecklistSummaries(withWorkflow);
+    return {
+      ...withRelated,
+      attachments: await this.attachmentService.listForInspection(id),
+    };
   }
 
   async getApprovalDashboard(projectId: number, userId: number) {
@@ -525,8 +600,19 @@ export class QualityInspectionService {
       }
     }
 
-    const raisedUnitIds = Array.from(latestByUnit.keys()).sort((a, b) => a - b);
-    const pendingUnitIds = unitIds.filter((id) => !latestByUnit.has(id));
+    const isActiveSubmission = (inspection?: QualityInspection) =>
+      Boolean(
+        inspection &&
+          inspection.status !== InspectionStatus.REJECTED &&
+          inspection.status !== InspectionStatus.CANCELED,
+      );
+    const raisedUnitIds = Array.from(latestByUnit.entries())
+      .filter(([, inspection]) => isActiveSubmission(inspection))
+      .map(([unitId]) => unitId)
+      .sort((a, b) => a - b);
+    const pendingUnitIds = unitIds.filter(
+      (id) => !isActiveSubmission(latestByUnit.get(id)),
+    );
 
     return {
       activityId,
@@ -712,6 +798,11 @@ export class QualityInspectionService {
     const { goNo, goLabel } = this.deriveGoFields(dto, applicability);
     const relatedChecklistInspectionIds =
       await this.validateRelatedChecklistInspectionIds(dto);
+    await this.attachmentService.validateDrafts(
+      dto.projectId,
+      dto.attachmentDraftIds,
+      userId,
+    );
 
     // 7. Create Inspection
     const inspection = this.inspectionRepo.create({
@@ -748,6 +839,11 @@ export class QualityInspectionService {
     inspection.listId = activity.listId;
 
     const savedInspection = await this.inspectionRepo.save(inspection);
+    await this.attachmentService.bindDrafts(
+      savedInspection,
+      dto.attachmentDraftIds,
+      userId,
+    );
 
     // 7. Initialize Stages from ALL assigned checklists
     if (effectiveChecklistIds.length > 0) {
@@ -1089,6 +1185,9 @@ export class QualityInspectionService {
     }
 
     const saved = await this.inspectionRepo.save(inspection);
+    if (saved.status === InspectionStatus.APPROVED) {
+      await this.attachmentService.lockForInspection(saved.id);
+    }
 
     // ─── Audit Logging ──────────────────────────────────────────────────
     if (
@@ -1346,6 +1445,9 @@ export class QualityInspectionService {
         inspection.inspectedBy = signer.displayName;
       }
       await this.inspectionRepo.save(inspection);
+      if (inspection.status === InspectionStatus.APPROVED) {
+        await this.attachmentService.lockForInspection(inspection.id);
+      }
 
       await this.auditService.log(
         userId,
@@ -1495,6 +1597,9 @@ export class QualityInspectionService {
       inspection.inspectedBy = signer.displayName;
     }
     await this.inspectionRepo.save(inspection);
+    if (inspection.status === InspectionStatus.APPROVED) {
+      await this.attachmentService.lockForInspection(inspection.id);
+    }
 
     if (approvedStages === totalStages && totalStages > 0 && run) {
       run.status = WorkflowRunStatus.COMPLETED as any;
@@ -1721,6 +1826,7 @@ export class QualityInspectionService {
     inspection.lockedByUserId = userId;
     if (comments) inspection.comments = comments;
     await this.inspectionRepo.save(inspection);
+    await this.attachmentService.lockForInspection(inspection.id);
 
     // Keep approval response fast; post-commit audit/notification work is non-blocking.
     void this.auditService
@@ -1931,13 +2037,17 @@ export class QualityInspectionService {
     }
 
     const related = await this.inspectionRepo.find({
-      where: { id: In(ids), projectId: dto.projectId },
+      where: {
+        id: In(ids),
+        projectId: dto.projectId,
+        epsNodeId: dto.epsNodeId,
+      },
     });
     const foundIds = new Set(related.map((inspection) => inspection.id));
     const missingIds = ids.filter((id) => !foundIds.has(id));
     if (missingIds.length > 0) {
       throw new BadRequestException(
-        `Related checklist RFI(s) not found in this project: ${missingIds.join(', ')}.`,
+        `Related checklist RFI(s) not found at the selected project location: ${missingIds.join(', ')}.`,
       );
     }
     return ids;
@@ -1953,7 +2063,7 @@ export class QualityInspectionService {
 
     const related = await this.inspectionRepo.find({
       where: { id: In(ids) },
-      relations: ['activity'],
+      relations: ['activity', 'activity.list'],
     });
     const relatedById = new Map(related.map((item) => [item.id, item]));
 
@@ -1966,6 +2076,7 @@ export class QualityInspectionService {
           id: item.id,
           activityId: item.activityId,
           activityName: item.activity?.activityName || `RFI #${item.id}`,
+          listName: item.activity?.list?.name || null,
           status: item.status,
           requestDate: item.requestDate,
           goNo: item.goNo,
@@ -1974,8 +2085,131 @@ export class QualityInspectionService {
           partLabel: item.partLabel,
           drawingNo: item.drawingNo,
           elementName: item.elementName,
+          goDetails: item.goDetails,
         })),
     };
+  }
+
+  async getRelatedChecklistOptions(projectId: number, epsNodeId: number) {
+    const inspections = await this.inspectionRepo.find({
+      where: {
+        projectId,
+        epsNodeId,
+      },
+      relations: ['activity', 'activity.list'],
+      order: { requestDate: 'DESC', id: 'DESC' },
+    });
+    const eligible = inspections.filter(
+      (inspection) =>
+        inspection.status !== InspectionStatus.CANCELED &&
+        inspection.status !== InspectionStatus.REJECTED,
+    );
+    const checklistIds = Array.from(
+      new Set(
+        eligible.flatMap((inspection) =>
+          this.getEffectiveChecklistIdsForActivity(inspection.activity),
+        ),
+      ),
+    );
+    const templates = checklistIds.length
+      ? await this.checklistTemplateRepo.find({
+          where: { id: In(checklistIds), projectId },
+        })
+      : [];
+    const templateMap = new Map(templates.map((template) => [template.id, template]));
+    const groups = new Map<string, any>();
+
+    for (const inspection of eligible) {
+      const activity = inspection.activity;
+      const effectiveIds = this.getEffectiveChecklistIdsForActivity(activity);
+      for (const checklistId of effectiveIds) {
+        const template = templateMap.get(checklistId);
+        if (!template) continue;
+        const key = `${checklistId}:${inspection.activityId}`;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            checklistId,
+            checklistName: template.name,
+            checklistNo: template.checklistNo,
+            activityId: inspection.activityId,
+            activityName: activity?.activityName || `Activity ${inspection.activityId}`,
+            listName: activity?.list?.name || null,
+            children: [],
+          });
+        }
+        groups.get(key).children.push({
+          inspectionId: inspection.id,
+          rfiNumber: `RFI #${inspection.id}`,
+          goNo: inspection.goNo,
+          goLabel:
+            inspection.goLabel ||
+            inspection.partLabel ||
+            `GO ${inspection.partNo || 1}`,
+          goDetails: inspection.goDetails,
+          elementName: inspection.elementName,
+          drawingNo: inspection.drawingNo,
+          status: inspection.status,
+          requestDate: inspection.requestDate,
+        });
+      }
+    }
+    return Array.from(groups.values()).sort((a, b) =>
+      `${a.checklistName} ${a.activityName}`.localeCompare(
+        `${b.checklistName} ${b.activityName}`,
+      ),
+    );
+  }
+
+  async addGo(dto: Omit<ExpandGoSeriesDto, 'newTotalParts'>) {
+    return this.inspectionRepo.manager.transaction(async (manager) => {
+      const query = manager
+        .getRepository(QualityInspection)
+        .createQueryBuilder('inspection')
+        .setLock('pessimistic_write')
+        .where('inspection.projectId = :projectId', {
+          projectId: dto.projectId,
+        })
+        .andWhere('inspection.epsNodeId = :epsNodeId', {
+          epsNodeId: dto.epsNodeId,
+        })
+        .andWhere('inspection.activityId = :activityId', {
+          activityId: dto.activityId,
+        });
+      if (typeof dto.qualityUnitId === 'number') {
+        query.andWhere('inspection.qualityUnitId = :qualityUnitId', {
+          qualityUnitId: dto.qualityUnitId,
+        });
+      }
+      if (typeof dto.qualityRoomId === 'number') {
+        query.andWhere('inspection.qualityRoomId = :qualityRoomId', {
+          qualityRoomId: dto.qualityRoomId,
+        });
+      }
+      const scoped = await query
+        .orderBy('inspection.partNo', 'ASC')
+        .getMany();
+      if (scoped.length === 0) {
+        throw new BadRequestException(
+          'Raise GO 1 before adding another GO.',
+        );
+      }
+      const currentTotal = scoped.reduce(
+        (max, inspection) =>
+          Math.max(max, inspection.totalParts || 1, inspection.partNo || 1),
+        1,
+      );
+      const nextGoNo = currentTotal + 1;
+      for (const inspection of scoped) {
+        inspection.totalParts = nextGoNo;
+      }
+      await manager.getRepository(QualityInspection).save(scoped);
+      return {
+        previousTotalParts: currentTotal,
+        newTotalParts: nextGoNo,
+        nextGoNo,
+        nextGoLabel: `GO ${nextGoNo}`,
+      };
+    });
   }
 
   private getEffectiveChecklistIdsForActivity(activity?: {
@@ -2857,6 +3091,7 @@ export class QualityInspectionService {
     await this.cubeRegisterRepo.delete({ inspectionId: id });
     this.logger.log(`Cascade deleted cube test register rows for inspection #${id}`);
 
+    await this.attachmentService.purgeForInspection(id);
     await this.inspectionRepo.remove(inspection);
 
     const remaining = await this.inspectionRepo.count({

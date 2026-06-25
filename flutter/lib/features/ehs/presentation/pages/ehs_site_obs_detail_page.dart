@@ -99,7 +99,7 @@ class EhsSiteObsDetailPage extends StatelessWidget {
                   Text(obs.raisedByName ?? 'Unknown',
                       style: theme.textTheme.bodyMedium),
                   const Spacer(),
-                  Text(_fmtDate(obs.createdAt),
+                  Text(_fmtDateTime(obs.createdAt),
                       style: TextStyle(
                           fontSize: 12,
                           color: theme.colorScheme.onSurface
@@ -132,11 +132,15 @@ class EhsSiteObsDetailPage extends StatelessWidget {
                           style: theme.textTheme.bodyMedium),
                     if (obs.rectifiedAt != null) ...[
                       const SizedBox(height: 4),
-                      Text('Rectified on ${_fmtDate(obs.rectifiedAt!)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.5))),
+                      Text(
+                        obs.rectifiedByName != null
+                            ? 'By ${obs.rectifiedByName} on ${_fmtDateTime(obs.rectifiedAt!)}'
+                            : 'Rectified on ${_fmtDateTime(obs.rectifiedAt!)}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5)),
+                      ),
                     ],
                     if (obs.rectificationPhotoUrls.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -160,11 +164,15 @@ class EhsSiteObsDetailPage extends StatelessWidget {
                         style: theme.textTheme.bodyMedium),
                     if (obs.closedAt != null) ...[
                       const SizedBox(height: 4),
-                      Text('Closed on ${_fmtDate(obs.closedAt!)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.5))),
+                      Text(
+                        obs.closedByName != null
+                            ? 'By ${obs.closedByName} on ${_fmtDateTime(obs.closedAt!)}'
+                            : 'Closed on ${_fmtDateTime(obs.closedAt!)}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5)),
+                      ),
                     ],
                   ],
                 ),
@@ -297,8 +305,14 @@ class EhsSiteObsDetailPage extends StatelessWidget {
     );
   }
 
-  String _fmtDate(DateTime dt) =>
-      '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+  String _fmtDateTime(DateTime dt) {
+    final date =
+        '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    final time = '$hour12:${dt.minute.toString().padLeft(2, '0')} $period';
+    return '$date · $time';
+  }
 
   String _successMessage(String action) {
     switch (action) {

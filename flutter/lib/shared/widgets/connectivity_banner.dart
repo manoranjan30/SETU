@@ -85,18 +85,18 @@ class _ConnectivityBannerState extends State<ConnectivityBanner> {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
           child: _isOffline
-              ? _Banner(
+              ? const _Banner(
                   icon: Icons.cloud_off_rounded,
                   message: 'You\'re offline — showing cached data',
-                  color: const Color(0xFFD97706),
-                  bg: const Color(0xFFFEF3C7),
+                  color: Color(0xFFD97706),
+                  bg: Color(0xFFFEF3C7),
                 )
               : _showOnlineBriefly
-                  ? _Banner(
+                  ? const _Banner(
                       icon: Icons.cloud_done_rounded,
                       message: 'Back online',
-                      color: const Color(0xFF16A34A),
-                      bg: const Color(0xFFF0FDF4),
+                      color: Color(0xFF16A34A),
+                      bg: Color(0xFFF0FDF4),
                     )
                   : const SizedBox.shrink(),
         ),

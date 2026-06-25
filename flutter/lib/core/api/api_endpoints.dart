@@ -442,6 +442,18 @@ class ApiEndpoints {
   static String qualitySiteObservation(String id) =>
       '/quality/site-observations/$id';
 
+  /// GET /quality/:projectId/observation-ncr — full register (Observation +
+  /// NCR rows); mobile filters client-side for `type == NCR`.
+  static String observationNcrRegister(int projectId) =>
+      '/quality/$projectId/observation-ncr';
+
+  /// PUT /quality/observation-ncr/:id — manual NCR field edits (root cause,
+  /// corrective action, target date, status).
+  static String observationNcr(int id) => '/quality/observation-ncr/$id';
+
+  /// DELETE /quality/observation-ncr/:id
+  static String deleteObservationNcr(int id) => '/quality/observation-ncr/$id';
+
   /// PATCH /quality/site-observations/:id/rectify
   /// Site team submits rectification notes + photos for a quality observation.
   static String rectifyQualitySiteObs(String id) =>
@@ -490,9 +502,41 @@ class ApiEndpoints {
   static const String eligibleApprovers =
       '/quality/inspections/eligible-approvers/list';
 
-  /// POST /quality/inspections/expand-go
-  /// Expands a single-GO floor RFI into a multi-part series (Part 1, Part 2 …).
-  static const String expandGoSeries = '/quality/inspections/expand-go';
+  /// GET /quality/inspections/related-options?projectId=X&epsNodeId=Y
+  /// Returns checklist/activity groups with selectable RFI children for the
+  /// "Link Previous Checklist RFIs" tree picker.
+  static const String relatedChecklistOptions =
+      '/quality/inspections/related-options';
+
+  /// POST /quality/inspections/attachment-drafts (multipart)
+  /// Uploads an RFI attachment before the RFI itself exists — the returned
+  /// draft id is bound to the inspection at create time via
+  /// `attachmentDraftIds`.
+  static const String attachmentDrafts =
+      '/quality/inspections/attachment-drafts';
+
+  /// DELETE /quality/inspections/attachment-drafts/:attachmentId
+  static String deleteAttachmentDraft(String attachmentId) =>
+      '/quality/inspections/attachment-drafts/$attachmentId';
+
+  /// GET /quality/inspections/:id/attachments
+  static String inspectionAttachments(int inspectionId) =>
+      '/quality/inspections/$inspectionId/attachments';
+
+  /// POST /quality/inspections/:id/attachments (multipart)
+  static String addInspectionAttachment(int inspectionId) =>
+      '/quality/inspections/$inspectionId/attachments';
+
+  /// DELETE /quality/inspections/:id/attachments/:attachmentId
+  static String deleteInspectionAttachment(int inspectionId, String attachmentId) =>
+      '/quality/inspections/$inspectionId/attachments/$attachmentId';
+
+  /// POST /quality/inspections/add-go
+  /// Reserves the next single GO number for a floor RFI series (GO 1 → GO 2,
+  /// GO 2 → GO 3, …). The caller raises the reserved GO immediately
+  /// afterward via the existing inspection-create flow rather than picking
+  /// an upfront part count (the old `/expand-go` bulk endpoint).
+  static const String addGo = '/quality/inspections/add-go';
 
   // ==================== USER PROFILE ENDPOINTS ====================
 

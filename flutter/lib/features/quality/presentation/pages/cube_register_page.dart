@@ -5,6 +5,7 @@ import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/cube_register_bloc.dart';
+import 'package:setu_mobile/shared/utils/date_picker_util.dart';
 import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 class CubeRegisterPage extends StatelessWidget {
@@ -648,8 +649,8 @@ class _CubeDetailSheetState extends State<_CubeDetailSheet> {
                         _EditField('Tested By', _testedByCtrl,
                             hint: 'Lab technician name'),
                         const SizedBox(height: 8),
-                        _EditField('Test Date (YYYY-MM-DD)', _testedDateCtrl,
-                            hint: 'e.g. 2026-06-10'),
+                        _EditField('Test Date', _testedDateCtrl,
+                            hint: 'e.g. 2026-06-10', isDate: true),
                         const SizedBox(height: 8),
                         _EditField('Remarks', _remarksCtrl, maxLines: 2),
                       ],
@@ -821,6 +822,7 @@ class _EditField extends StatelessWidget {
   final TextInputType keyboardType;
   final String? hint;
   final int maxLines;
+  final bool isDate;
 
   const _EditField(
     this.label,
@@ -828,6 +830,7 @@ class _EditField extends StatelessWidget {
     this.keyboardType = TextInputType.text,
     this.hint,
     this.maxLines = 1,
+    this.isDate = false,
   });
 
   @override
@@ -836,12 +839,15 @@ class _EditField extends StatelessWidget {
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      readOnly: isDate,
+      onTap: isDate ? () => pickDateInto(context, controller) : null,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         border: const OutlineInputBorder(),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        suffixIcon: isDate ? const Icon(Icons.calendar_today_outlined, size: 18) : null,
       ),
     );
   }

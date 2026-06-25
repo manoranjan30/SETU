@@ -40,6 +40,12 @@
                 <data android:scheme="setu"/>
             </intent-filter>
         </activity>
+        <!-- Required by image_cropper for the native crop/rotate UI used in
+             the signature-photo upload flow. -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Ucrop.CropTheme"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

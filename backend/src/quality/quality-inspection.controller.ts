@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -10,6 +11,8 @@ import {
   Request,
   ParseIntPipe,
   UseGuards,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
 import { QualityInspectionService } from './quality-inspection.service';
 import { QualityReportService } from './quality-report.service';
@@ -24,6 +27,21 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { Res } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { QualityInspectionAttachmentService } from './quality-inspection-attachment.service';
+
+const rfiAttachmentUpload = FileFieldsInterceptor(
+  [
+    { name: 'originalFile', maxCount: 1 },
+    { name: 'annotatedFile', maxCount: 1 },
+    { name: 'file', maxCount: 1 },
+  ],
+  {
+    storage: memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 2 },
+  },
+);
 
 @Controller('quality/inspections')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -32,6 +50,7 @@ export class QualityInspectionController {
     private readonly service: QualityInspectionService,
     private readonly reportService: QualityReportService,
     private readonly workflowService: InspectionWorkflowService,
+    private readonly attachmentService: QualityInspectionAttachmentService,
   ) {}
 
   private getSignatureRequestMeta(req: any) {
@@ -122,6 +141,63 @@ export class QualityInspectionController {
     return this.service.getUnitProgress(projectId, epsNodeId, activityId);
   }
 
+  @Get('related-options')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getRelatedOptions(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Query('epsNodeId', ParseIntPipe) epsNodeId: number,
+  ) {
+    return this.service.getRelatedChecklistOptions(projectId, epsNodeId);
+  }
+
+  @Post('attachment-drafts')
+  @Permissions('QUALITY.INSPECTION.RAISE')
+  @UseInterceptors(rfiAttachmentUpload)
+  createAttachmentDraft(
+    @UploadedFiles()
+    files: {
+      originalFile?: Express.Multer.File[];
+      annotatedFile?: Express.Multer.File[];
+      file?: Express.Multer.File[];
+    },
+    @Body()
+    body: {
+      projectId: string;
+      clientUploadId?: string;
+      attachmentType?: string;
+      annotationData?: string;
+    },
+    @Request() req,
+  ) {
+    const original = files?.originalFile?.[0] || files?.file?.[0];
+    if (!original) {
+      throw new BadRequestException('Attachment file is required.');
+    }
+    const projectId = Number(body.projectId);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      throw new BadRequestException('A valid projectId is required.');
+    }
+    return this.attachmentService.createDraft(
+      projectId,
+      req.user?.userId || req.user?.id,
+      { original, annotated: files?.annotatedFile?.[0] },
+      body,
+    );
+  }
+
+  @Delete('attachment-drafts/:attachmentId')
+  @Permissions('QUALITY.INSPECTION.RAISE')
+  deleteAttachmentDraft(
+    @Param('attachmentId') attachmentId: string,
+    @Request() req,
+  ) {
+    return this.attachmentService.deleteAttachment(
+      attachmentId,
+      req.user?.userId || req.user?.id,
+      this.isAdminRequest(req),
+    );
+  }
+
   @Get(':id')
   @Permissions('QUALITY.INSPECTION.READ')
   getInspectionDetails(@Param('id', ParseIntPipe) id: number, @Request() req) {
@@ -159,6 +235,72 @@ export class QualityInspectionController {
   @Auditable('QUALITY', 'EXPAND_GO_SERIES')
   expandGoSeries(@Body() dto: ExpandGoSeriesDto) {
     return this.service.expandGoSeries(dto);
+  }
+
+  @Post('add-go')
+  @Permissions('QUALITY.INSPECTION.RAISE')
+  @Auditable('QUALITY', 'ADD_GO')
+  addGo(@Body() dto: Omit<ExpandGoSeriesDto, 'newTotalParts'>) {
+    return this.service.addGo(dto);
+  }
+
+  @Get(':id/attachments')
+  @Permissions('QUALITY.INSPECTION.READ')
+  async getAttachments(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
+    await this.service.getInspectionDetails(
+      id,
+      req?.user?.userId || req?.user?.id,
+      this.isAdminRequest(req),
+    );
+    return this.attachmentService.listForInspection(id);
+  }
+
+  @Post(':id/attachments')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
+  @UseInterceptors(rfiAttachmentUpload)
+  addAttachment(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFiles()
+    files: {
+      originalFile?: Express.Multer.File[];
+      annotatedFile?: Express.Multer.File[];
+      file?: Express.Multer.File[];
+    },
+    @Body()
+    body: {
+      clientUploadId?: string;
+      attachmentType?: string;
+      annotationData?: string;
+    },
+    @Request() req,
+  ) {
+    const original = files?.originalFile?.[0] || files?.file?.[0];
+    if (!original) {
+      throw new BadRequestException('Attachment file is required.');
+    }
+    return this.attachmentService.addToInspection(
+      id,
+      req.user?.userId || req.user?.id,
+      { original, annotated: files?.annotatedFile?.[0] },
+      body,
+      this.isAdminRequest(req),
+    );
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
+  deleteAttachment(
+    @Param('attachmentId') attachmentId: string,
+    @Request() req,
+  ) {
+    return this.attachmentService.deleteAttachment(
+      attachmentId,
+      req.user?.userId || req.user?.id,
+      this.isAdminRequest(req),
+    );
   }
 
   @Patch(':id/status')

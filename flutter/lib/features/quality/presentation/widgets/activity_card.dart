@@ -458,12 +458,12 @@ class _MultiGoProgress extends StatelessWidget {
                       color: Colors.blue.shade700,
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.add, size: 11, color: Colors.white),
-                        const SizedBox(width: 3),
-                        const Text('Add GO',
+                        Icon(Icons.add, size: 11, color: Colors.white),
+                        SizedBox(width: 3),
+                        Text('Add GO',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -507,7 +507,9 @@ class _MultiGoProgress extends StatelessWidget {
                           size: 12, color: Colors.green.shade700),
                       const SizedBox(width: 3),
                       Text(
-                        '$goLabel Raised',
+                        matchInsp != null
+                            ? '$goLabel · RFI #${matchInsp.id} Raised'
+                            : '$goLabel Raised',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.green.shade700,
@@ -645,8 +647,8 @@ class _UnitWiseProgress extends StatelessWidget {
                 final unitId = e.key;
                 final insp = e.value;
                 final label = insp.unitName?.isNotEmpty == true
-                    ? insp.unitName!
-                    : 'Unit $unitId';
+                    ? '${insp.unitName} · RFI #${insp.id}'
+                    : 'Unit $unitId · RFI #${insp.id}';
                 return Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 4),

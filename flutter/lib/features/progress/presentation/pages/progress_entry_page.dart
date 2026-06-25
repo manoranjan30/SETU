@@ -461,14 +461,14 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.primary.withOpacity(0.1),
-            AppColors.primary.withOpacity(0.05),
+            AppColors.primary.withValues(alpha: 0.1),
+            AppColors.primary.withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,7 +480,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.15),
+                  color: AppColors.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.assignment_rounded,
@@ -508,7 +508,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.12),
+                  color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text('$progressPercent%',
@@ -594,9 +594,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.error.withOpacity(0.08),
+          color: AppColors.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.error.withOpacity(0.3)),
+          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
         ),
         child: Row(children: [
           const Icon(Icons.error_outline, color: AppColors.error),
@@ -616,9 +616,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.warning.withOpacity(0.08),
+          color: AppColors.warning.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+          border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
         ),
         child: const Row(children: [
           Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 20),
@@ -641,9 +641,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.08),
+            color: Colors.blue.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.blue.withOpacity(0.25)),
+            border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
           ),
           child: const Row(children: [
             Icon(Icons.account_tree_rounded, color: Colors.blue, size: 16),
@@ -711,7 +711,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontSize: 11,
                           color: theme.colorScheme.onSecondaryContainer
-                              .withOpacity(0.7),
+                              .withValues(alpha: 0.7),
                         ),
                       ),
                   ],
@@ -764,7 +764,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(boqBd.uom!,
@@ -855,7 +855,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: dotColor.withOpacity(0.12),
+                color: dotColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -890,9 +890,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.07),
+                color: AppColors.success.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
               ),
               child: const Row(children: [
                 Icon(Icons.check_circle_outline_rounded,
@@ -946,9 +946,9 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.warning.withOpacity(0.08),
+          color: AppColors.warning.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+          border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
         ),
         child: const Row(children: [
           Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 20),
@@ -1006,7 +1006,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
             color: fullyUsed
-                ? AppColors.success.withOpacity(0.4)
+                ? AppColors.success.withValues(alpha: 0.4)
                 : AppColors.divider),
       ),
       child: Padding(
@@ -1026,7 +1026,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(plan.uom!,
@@ -1047,7 +1047,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                   value: pendingPct.toDouble(),
                   backgroundColor: AppColors.divider,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.warning.withOpacity(0.5)),
+                      AppColors.warning.withValues(alpha: 0.5)),
                   minHeight: 7,
                 ),
               ),
@@ -1090,10 +1090,10 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.08),
+                  color: AppColors.warning.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                   border:
-                      Border.all(color: AppColors.warning.withOpacity(0.25)),
+                      Border.all(color: AppColors.warning.withValues(alpha: 0.25)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.hourglass_top_rounded,
@@ -1118,10 +1118,10 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.info.withOpacity(0.08),
+                  color: AppColors.info.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                   border:
-                      Border.all(color: AppColors.info.withOpacity(0.25)),
+                      Border.all(color: AppColors.info.withValues(alpha: 0.25)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.cloud_upload_outlined,
@@ -1149,10 +1149,10 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.07),
+                  color: AppColors.success.withValues(alpha: 0.07),
                   borderRadius: BorderRadius.circular(8),
                   border:
-                      Border.all(color: AppColors.success.withOpacity(0.3)),
+                      Border.all(color: AppColors.success.withValues(alpha: 0.3)),
                 ),
                 child: const Row(children: [
                   Icon(Icons.check_circle_outline_rounded,
@@ -1208,7 +1208,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         decoration: BoxDecoration(
-          color: (color ?? AppColors.primary).withOpacity(0.07),
+          color: (color ?? AppColors.primary).withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -1300,7 +1300,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.info.withOpacity(0.1),
+        color: AppColors.info.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(children: [
@@ -1339,7 +1339,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.15),
+                color: AppColors.success.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(Icons.check_circle_rounded,
@@ -1392,8 +1392,8 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
               decoration: BoxDecoration(
                 // Amber background for offline save, green for online
                 color: state.isOffline
-                    ? AppColors.warning.withOpacity(0.15)
-                    : AppColors.success.withOpacity(0.15),
+                    ? AppColors.warning.withValues(alpha: 0.15)
+                    : AppColors.success.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
@@ -1427,7 +1427,7 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.1),
+                  color: AppColors.warning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(

@@ -19,11 +19,136 @@ import type {
   QualityMaterialTestResult,
   QualityCubeTestRegister,
   QualityConcreteGrade,
+  QualityInspectionAttachment,
+  RelatedChecklistOption,
 } from "../types/quality";
 
 const BASE_URL = "/quality";
 
 export const qualityService = {
+  getRelatedChecklistOptions: async (
+    projectId: number,
+    epsNodeId: number,
+  ): Promise<RelatedChecklistOption[]> => {
+    const res = await api.get(`${BASE_URL}/inspections/related-options`, {
+      params: { projectId, epsNodeId },
+    });
+    return res.data;
+  },
+
+  addInspectionGo: async (data: {
+    projectId: number;
+    epsNodeId: number;
+    activityId: number;
+    qualityUnitId?: number;
+    qualityRoomId?: number;
+  }) => {
+    const res = await api.post(`${BASE_URL}/inspections/add-go`, data);
+    return res.data as {
+      previousTotalParts: number;
+      newTotalParts: number;
+      nextGoNo: number;
+      nextGoLabel: string;
+    };
+  },
+
+  uploadInspectionAttachmentDraft: async (
+    projectId: number,
+    originalFile: File,
+    options?: {
+      annotatedFile?: File | Blob;
+      annotationData?: Record<string, unknown> | null;
+      attachmentType?: "DRAWING_MARKUP" | "SUPPORTING_DOCUMENT";
+      clientUploadId?: string;
+    },
+  ): Promise<QualityInspectionAttachment> => {
+    const formData = new FormData();
+    formData.append("projectId", String(projectId));
+    formData.append("originalFile", originalFile);
+    if (options?.annotatedFile) {
+      formData.append(
+        "annotatedFile",
+        options.annotatedFile,
+        `annotated-${originalFile.name.replace(/\.[^.]+$/, "")}.png`,
+      );
+    }
+    formData.append(
+      "attachmentType",
+      options?.attachmentType || "SUPPORTING_DOCUMENT",
+    );
+    formData.append("clientUploadId", options?.clientUploadId || crypto.randomUUID());
+    if (options?.annotationData) {
+      formData.append("annotationData", JSON.stringify(options.annotationData));
+    }
+    const res = await api.post(
+      `${BASE_URL}/inspections/attachment-drafts`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
+  },
+
+  deleteInspectionAttachmentDraft: async (attachmentId: string) => {
+    const res = await api.delete(
+      `${BASE_URL}/inspections/attachment-drafts/${attachmentId}`,
+    );
+    return res.data;
+  },
+
+  getInspectionAttachments: async (
+    inspectionId: number,
+  ): Promise<QualityInspectionAttachment[]> => {
+    const res = await api.get(
+      `${BASE_URL}/inspections/${inspectionId}/attachments`,
+    );
+    return res.data;
+  },
+
+  uploadInspectionAttachment: async (
+    inspectionId: number,
+    originalFile: File,
+    options?: {
+      annotatedFile?: File | Blob;
+      annotationData?: Record<string, unknown> | null;
+      attachmentType?: "DRAWING_MARKUP" | "SUPPORTING_DOCUMENT";
+      clientUploadId?: string;
+    },
+  ): Promise<QualityInspectionAttachment> => {
+    const formData = new FormData();
+    formData.append("originalFile", originalFile);
+    if (options?.annotatedFile) {
+      formData.append(
+        "annotatedFile",
+        options.annotatedFile,
+        `annotated-${originalFile.name.replace(/\.[^.]+$/, "")}.png`,
+      );
+    }
+    formData.append(
+      "attachmentType",
+      options?.attachmentType || "SUPPORTING_DOCUMENT",
+    );
+    formData.append("clientUploadId", options?.clientUploadId || crypto.randomUUID());
+    if (options?.annotationData) {
+      formData.append("annotationData", JSON.stringify(options.annotationData));
+    }
+    const res = await api.post(
+      `${BASE_URL}/inspections/${inspectionId}/attachments`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return res.data;
+  },
+
+  deleteInspectionAttachment: async (
+    inspectionId: number,
+    attachmentId: string,
+  ) => {
+    const res = await api.delete(
+      `${BASE_URL}/inspections/${inspectionId}/attachments/${attachmentId}`,
+    );
+    return res.data;
+  },
+
   getFloorStructure: async (
     projectId: number,
     floorId: number,

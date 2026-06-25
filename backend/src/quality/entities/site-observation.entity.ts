@@ -59,6 +59,9 @@ export class SiteObservation {
   })
   severity: SiteObservationSeverity;
 
+  @Column({ type: 'varchar', length: 20, default: 'MINOR' })
+  observationRating: string;
+
   @Column({ type: 'text', default: 'General' })
   category: string;
 
@@ -128,6 +131,9 @@ export class SiteObservation {
 
   @Column({ type: 'date', nullable: true })
   targetDate: string;
+
+  @Column({ type: 'int', nullable: true })
+  ncrId: number | null;
 
   @CreateDateColumn()
   createdAt: Date;

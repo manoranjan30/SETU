@@ -51,7 +51,7 @@ class _FloorLegendBarState extends State<FloorLegendBar> {
           final floor = floors[idx];
           final isSelected = widget.selectedFloorIndex == idx;
           final topColor = widget.model.resolveTopColor(idx);
-          final chipColor = topColor.alpha == 0
+          final chipColor = topColor.a == 0
               ? const Color(0xFF374151)
               : topColor;
 

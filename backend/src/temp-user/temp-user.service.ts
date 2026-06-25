@@ -15,6 +15,7 @@ import { Vendor } from '../workdoc/entities/vendor.entity';
 import { ProjectAssignmentService } from '../projects/project-assignment.service';
 import { Role } from '../roles/role.entity';
 import { ProjectScopeType } from '../projects/entities/user-project-assignment.entity';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class TempUserService {
@@ -32,22 +33,33 @@ export class TempUserService {
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     private readonly projectAssignmentService: ProjectAssignmentService,
+    private readonly auditService: AuditService,
   ) {}
 
   private async ensureProjectTeamAssignment(
     projectId: number | null | undefined,
     userId: number | null | undefined,
     templateId: number | null | undefined,
+    vendorApprovalRoleLevel: number = 1,
     performedByUserId?: number,
   ) {
     if (!projectId || !userId || !templateId) return;
 
-    const roleName = `TEMP_ROLE_${templateId}`;
-    let role = await this.roleRepo.findOneBy({ name: roleName });
+    const level = vendorApprovalRoleLevel === 2 ? 2 : 1;
+    const roleName =
+      level === 1 ? `TEMP_ROLE_${templateId}` : `TEMP_ROLE_${templateId}_L2`;
+    let role = await this.roleRepo.findOne({
+      where: [
+        { tempRoleTemplateId: templateId, vendorRoleLevel: level },
+        { name: roleName },
+      ],
+    });
     if (!role) {
       role = this.roleRepo.create({
         name: roleName,
-        description: 'Auto-generated fallback',
+        description: `Auto-generated Vendor Approver ${level} fallback`,
+        tempRoleTemplateId: templateId,
+        vendorRoleLevel: level,
       });
       role = await this.roleRepo.save(role);
     }
@@ -198,6 +210,8 @@ export class TempUserService {
       workOrder: { id: dto.workOrderId },
       project: { id: dto.projectId } as any,
       tempRoleTemplate: template,
+      vendorApprovalRoleLevel:
+        dto.vendorApprovalRoleLevel === 2 ? 2 : 1,
       expiryDate,
       status: dto.isActive === false ? 'SUSPENDED' : 'ACTIVE',
       createdById: createdByUserId,
@@ -208,6 +222,7 @@ export class TempUserService {
       dto.projectId,
       user.id,
       template.id,
+      tempUser.vendorApprovalRoleLevel,
       createdByUserId,
     );
 
@@ -280,6 +295,7 @@ export class TempUserService {
       tempUser.projectId,
       tempUser.userId,
       tempUser.tempRoleTemplateId,
+      tempUser.vendorApprovalRoleLevel,
       reactivatedByUserId,
     );
     return saved;
@@ -315,6 +331,7 @@ export class TempUserService {
         tempUser.projectId,
         tempUser.userId,
         tempUser.tempRoleTemplateId,
+        tempUser.vendorApprovalRoleLevel,
         updatedByUserId,
       );
     }
@@ -335,5 +352,49 @@ export class TempUserService {
     tempUser.user.isFirstLogin = false; // Admin reset is usually final
     await this.userRepo.save(tempUser.user);
     return { success: true };
+  }
+
+  async updateVendorApprovalRoleLevel(
+    id: number,
+    vendorApprovalRoleLevel: number,
+    updatedByUserId: number,
+  ) {
+    if (![1, 2].includes(Number(vendorApprovalRoleLevel))) {
+      throw new BadRequestException(
+        'Vendor approval role level must be either 1 or 2',
+      );
+    }
+    const tempUser = await this.repo.findOne({
+      where: { id },
+      relations: ['user', 'project', 'tempRoleTemplate'],
+    });
+    if (!tempUser) throw new NotFoundException('Temp user entry not found');
+
+    const previousLevel = tempUser.vendorApprovalRoleLevel || 1;
+    tempUser.vendorApprovalRoleLevel = Number(vendorApprovalRoleLevel);
+    await this.repo.save(tempUser);
+    await this.ensureProjectTeamAssignment(
+      tempUser.projectId || tempUser.project?.id,
+      tempUser.userId || tempUser.user?.id,
+      tempUser.tempRoleTemplateId || tempUser.tempRoleTemplate?.id,
+      tempUser.vendorApprovalRoleLevel,
+      updatedByUserId,
+    );
+    await this.auditService.log(
+      updatedByUserId,
+      'TEMP_USER',
+      'UPDATE_VENDOR_APPROVAL_ROLE',
+      tempUser.id,
+      tempUser.projectId || tempUser.project?.id,
+      {
+        userId: tempUser.userId || tempUser.user?.id,
+        previousLevel,
+        newLevel: tempUser.vendorApprovalRoleLevel,
+      },
+    );
+    return this.repo.findOne({
+      where: { id },
+      relations: ['user', 'vendor', 'workOrder', 'tempRoleTemplate'],
+    });
   }
 }

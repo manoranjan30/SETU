@@ -168,6 +168,15 @@ class EhsSiteObservation extends Equatable {
   final EhsObsStatus status;
   final List<String> photoUrls;
   final String? raisedByName;
+
+  /// Populated only if the backend ever starts decorating EHS observations
+  /// with resolved user info the way Quality site observations already are
+  /// (see QualitySiteObservation) — currently the EHS API only returns raw
+  /// rectifiedById/closedById, so these stay null. Parsed defensively so the
+  /// UI picks them up automatically if that backend gap is closed later.
+  final String? rectifiedByName;
+  final String? closedByName;
+
   final String? rectificationNotes;
   final List<String> rectificationPhotoUrls;
   final String? closureNotes;
@@ -186,6 +195,8 @@ class EhsSiteObservation extends Equatable {
     required this.status,
     this.photoUrls = const [],
     this.raisedByName,
+    this.rectifiedByName,
+    this.closedByName,
     this.rectificationNotes,
     this.rectificationPhotoUrls = const [],
     this.closureNotes,
@@ -213,8 +224,13 @@ class EhsSiteObservation extends Equatable {
       return DateTime.tryParse(raw.toString());
     }
 
-    // raisedBy may be a nested user object or a flat name string.
+    // raisedBy/rectifiedBy/closedBy are nested user objects shaped
+    // {id, username, displayName, designation} when the backend decorates
+    // them (matching QualitySiteObservation) — falls back to a flat *Name
+    // field for any alternate response shape.
     final raisedBy = json['raisedBy'] as Map<String, dynamic>?;
+    final rectifiedBy = json['rectifiedBy'] as Map<String, dynamic>?;
+    final closedBy = json['closedBy'] as Map<String, dynamic>?;
     return EhsSiteObservation(
       id: json['id'].toString(),
       projectId: json['projectId'] as int? ?? 0,
@@ -226,8 +242,16 @@ class EhsSiteObservation extends Equatable {
       status: EhsObsStatus.fromString(json['status'] as String? ?? 'OPEN'),
       // Support both 'photoUrls' and legacy 'photos' field names.
       photoUrls: resolvePhotos(json['photoUrls'] ?? json['photos']),
-      raisedByName:
-          raisedBy?['name'] as String? ?? json['raisedByName'] as String?,
+      raisedByName: raisedBy?['displayName'] as String? ??
+          raisedBy?['username'] as String? ??
+          raisedBy?['name'] as String? ??
+          json['raisedByName'] as String?,
+      rectifiedByName: rectifiedBy?['displayName'] as String? ??
+          rectifiedBy?['username'] as String? ??
+          json['rectifiedByName'] as String?,
+      closedByName: closedBy?['displayName'] as String? ??
+          closedBy?['username'] as String? ??
+          json['closedByName'] as String?,
       rectificationNotes: json['rectificationNotes'] as String?,
       rectificationPhotoUrls: resolvePhotos(
           json['rectificationPhotoUrls'] ?? json['rectificationPhotos']),
@@ -266,6 +290,8 @@ class EhsSiteObservation extends Equatable {
       status: status ?? this.status,
       photoUrls: photoUrls,
       raisedByName: raisedByName,
+      rectifiedByName: rectifiedByName,
+      closedByName: closedByName,
       rectificationNotes: rectificationNotes ?? this.rectificationNotes,
       rectificationPhotoUrls:
           rectificationPhotoUrls ?? this.rectificationPhotoUrls,

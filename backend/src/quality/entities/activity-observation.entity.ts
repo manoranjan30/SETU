@@ -64,6 +64,9 @@ export class ActivityObservation {
   @Column({ type: 'text', nullable: true })
   type: string; // e.g. Major, Minor, Critical
 
+  @Column({ type: 'varchar', length: 20, default: 'MINOR' })
+  observationRating: string;
+
   @Column({ type: 'text' })
   observationText: string;
 
@@ -93,6 +96,12 @@ export class ActivityObservation {
   resolvedAt: Date;
 
   @Column({ type: 'text', nullable: true })
+  closedBy: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  closedAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
   rectificationRejectedRemarks: string | null;
 
   @Column({ type: 'text', nullable: true })
@@ -103,6 +112,9 @@ export class ActivityObservation {
 
   @Column({ type: 'jsonb', default: () => "'[]'" })
   rectificationHistory: ActivityObservationRectificationHistoryEntry[];
+
+  @Column({ type: 'int', nullable: true })
+  ncrId: number | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -281,6 +281,12 @@ export const EHS_PERMISSIONS: PermissionDef[] = [
     'EHS',
     U,
   ),
+  perm(
+    'EHS.SITE_OBS.REJECT_RECTIFICATION',
+    'Reject EHS Observation Rectification',
+    'EHS',
+    S,
+  ),
   perm('EHS.SITE_OBS.CLOSE', 'Close EHS Observation', 'EHS', S),
   perm('EHS.SITE_OBS.EXPORT', 'Export EHS Observation Register', 'EHS', S),
   perm('EHS.SITE_OBS.DELETE', 'Delete EHS Observation (Admin)', 'EHS', D),
@@ -375,6 +381,12 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     S,
   ),
   perm(
+    'QUALITY.OBSERVATION.REJECT_RECTIFICATION',
+    'Reject Activity Observation Rectification',
+    'QUALITY',
+    S,
+  ),
+  perm(
     'QUALITY.OBSERVATION.DELETE',
     'Delete Activity Observation',
     'QUALITY',
@@ -401,25 +413,12 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
   perm('QUALITY.RATING_SNAPSHOT.DELETE', 'Delete Quality Rating Snapshot', 'QUALITY', D),
   ...crud('QUALITY', 'MATERIAL_ITP', 'Material ITP Template'),
   perm('QUALITY.MATERIAL_ITP.APPROVE', 'Approve Material ITP Template', 'QUALITY', S),
-  perm(
-    'QUALITY.MATERIAL_ITP.REVERSE_APPROVAL',
-    'Reverse Material ITP Approval',
-    'QUALITY',
-    S,
-  ),
   perm('QUALITY.MATERIAL_RECEIPT.READ', 'View Material Receipts', 'QUALITY', R),
   perm('QUALITY.MATERIAL_RECEIPT.CREATE', 'Create Material Receipts', 'QUALITY', C),
   perm('QUALITY.MATERIAL_RECEIPT.UPDATE', 'Update Material Receipts', 'QUALITY', U),
   perm('QUALITY.MATERIAL_TEST.READ', 'View ITP Test Obligations', 'QUALITY', R),
   perm('QUALITY.MATERIAL_TEST.LOG', 'Log ITP Test Result', 'QUALITY', C),
-  perm('QUALITY.MATERIAL_TEST.REVIEW', 'Review ITP Test Result', 'QUALITY', U),
   perm('QUALITY.MATERIAL_TEST.APPROVE', 'Approve ITP Test Result', 'QUALITY', S),
-  perm(
-    'QUALITY.MATERIAL_TEST.REVERSE_APPROVAL',
-    'Reverse ITP Test Result Approval',
-    'QUALITY',
-    S,
-  ),
   perm('QUALITY.CUBE_TEST.READ', 'View Cube Test Register', 'QUALITY', R),
   perm('QUALITY.CUBE_TEST.CREATE', 'Create Cube Test Result', 'QUALITY', C),
   perm('QUALITY.CUBE_TEST.UPDATE', 'Update Cube Test Result', 'QUALITY', U),
@@ -439,6 +438,12 @@ export const QUALITY_PERMISSIONS: PermissionDef[] = [
     'Submit Rectification for Site Observation',
     'QUALITY',
     U,
+  ),
+  perm(
+    'QUALITY.SITE_OBS.REJECT_RECTIFICATION',
+    'Reject Site Observation Rectification',
+    'QUALITY',
+    S,
   ),
   perm('QUALITY.SITE_OBS.CLOSE', 'Close Site Observation', 'QUALITY', S),
   perm('QUALITY.SITE_OBS.EXPORT', 'Export Site Observation Register', 'QUALITY', S),
@@ -811,6 +816,18 @@ export function buildDependencyMap(
         'QUALITY.POUR_CARD.APPROVE',
         'QUALITY.POUR_CLEARANCE.APPROVE',
       );
+    }
+
+    if (p.code === 'QUALITY.OBSERVATION.CLOSE') {
+      implied.push('QUALITY.OBSERVATION.REJECT_RECTIFICATION');
+    }
+
+    if (p.code === 'QUALITY.SITE_OBS.CLOSE') {
+      implied.push('QUALITY.SITE_OBS.REJECT_RECTIFICATION');
+    }
+
+    if (p.code === 'EHS.SITE_OBS.CLOSE') {
+      implied.push('EHS.SITE_OBS.REJECT_RECTIFICATION');
     }
 
     if (p.code === 'EHS.SITE_OBS.READ') {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/observation_rating_selector.dart';
 
 /// Card showing a single activity observation with its status badge
 /// and optional action buttons (Close / View Rectification).
@@ -89,29 +90,27 @@ class ObservationCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (obs.type.isNotEmpty) ...[
-                  const SizedBox(width: 8),
+                const SizedBox(width: 8),
+                ObservationRatingBadge(
+                  observationRating: obs.observationRating,
+                  legacySeverity: obs.type,
+                ),
+                if (obs.ncrId != null) ...[
+                  const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.red.shade200),
                     ),
-                    child: Text(
-                      obs.type,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color:
-                            theme.colorScheme.onSecondaryContainer,
-                      ),
-                    ),
+                    child: Text('NCR #${obs.ncrId}',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.red.shade700)),
                   ),
                 ],
                 const Spacer(),
                 Text(
-                    _formatDate(obs.createdAt),
+                    _formatDateTime(obs.createdAt),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface
                           .withValues(alpha: 0.5),
@@ -127,6 +126,15 @@ class ObservationCard extends StatelessWidget {
               obs.observationText,
               style: theme.textTheme.bodyMedium,
             ),
+            if (obs.raisedByName != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                'Raised by ${obs.raisedByName}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
 
             // Observation photos
             if (obs.photos.isNotEmpty) ...[
@@ -163,6 +171,30 @@ class ObservationCard extends StatelessWidget {
                                 color: Colors.blue.shade800,
                               ),
                             ),
+                          if (obs.rectifiedAt != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              obs.rectifiedByName != null
+                                  ? 'By ${obs.rectifiedByName} on ${_formatDateTime(obs.rectifiedAt!)}'
+                                  : 'Rectified on ${_formatDateTime(obs.rectifiedAt!)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.blue.shade600,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                          if (obs.isClosed && obs.closedAt != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              obs.closedByName != null
+                                  ? 'Closed by ${obs.closedByName} on ${_formatDateTime(obs.closedAt!)}'
+                                  : 'Closed on ${_formatDateTime(obs.closedAt!)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.green.shade700,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                           if (obs.closureEvidence.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             PhotoThumbnailStrip(
@@ -232,7 +264,12 @@ class ObservationCard extends StatelessWidget {
     );
   }
 
-  String _formatDate(DateTime dt) {
-    return '${dt.day}/${dt.month}/${dt.year}';
+  String _formatDateTime(DateTime dt) {
+    final date = '${dt.day.toString().padLeft(2, '0')}/'
+        '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    final time = '$hour12:${dt.minute.toString().padLeft(2, '0')} $period';
+    return '$date · $time';
   }
 }

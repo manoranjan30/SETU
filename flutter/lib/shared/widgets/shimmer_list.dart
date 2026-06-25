@@ -48,30 +48,30 @@ class _ShimmerCard extends StatelessWidget {
           border: Border.all(color: base),
         ),
         padding: const EdgeInsets.all(12),
-        child: Column(
+        child: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Badge row
             Row(
               children: [
                 _Rect(width: 62, height: 20, radius: 20),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 _Rect(width: 52, height: 20, radius: 20),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 _Rect(width: 70, height: 20, radius: 20),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             // Description
             _Rect(width: double.infinity, height: 14, radius: 4),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             _Rect(width: 220, height: 12, radius: 4),
-            const Spacer(),
+            Spacer(),
             // Meta row
             Row(
               children: [
                 _Rect(width: 90, height: 11, radius: 4),
-                const Spacer(),
+                Spacer(),
                 _Rect(width: 64, height: 11, radius: 4),
               ],
             ),

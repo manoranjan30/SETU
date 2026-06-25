@@ -133,6 +133,15 @@ class PermissionService {
   bool get canSaveCubeTest      => can('QUALITY.CUBE_TEST.SAVE');
   bool get canApproveCubeTest   => can('QUALITY.CUBE_TEST.APPROVE');
 
+  // ── NC Register ──────────────────────────────────────────────────────────
+  // Non-Conformance Reports — auto-created when a Quality observation
+  // (site or checklist) is raised with a CRITICAL rating, but also support
+  // manual CRUD from the register itself.
+  bool get canReadNcr     => can('QUALITY.NCR.READ');
+  bool get canCreateNcr   => can('QUALITY.NCR.CREATE');
+  bool get canUpdateNcr   => can('QUALITY.NCR.UPDATE');
+  bool get canDeleteNcr   => can('QUALITY.NCR.DELETE');
+
   // ── EHS ──────────────────────────────────────────────────────────────────
   // EHS (Environment, Health & Safety) permissions mirror the quality
   // observation lifecycle but for safety-related findings on site.

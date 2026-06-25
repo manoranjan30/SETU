@@ -19,7 +19,13 @@ import { PermissionCode } from "../../config/permissions";
 import { qualityService } from "../../services/quality.service";
 import SignatureModal from "../../components/quality/SignatureModal";
 import ClearanceDocumentAttachments from "../../components/quality/ClearanceDocumentAttachments";
-import type { QualityUnitNode } from "../../types/quality";
+import RelatedChecklistTree from "../../components/quality/RelatedChecklistTree";
+import RfiAttachmentManager from "../../components/quality/RfiAttachmentManager";
+import type {
+  QualityInspectionAttachment,
+  QualityUnitNode,
+  RelatedChecklistOption,
+} from "../../types/quality";
 import {
   isActivityVisibleForFloorScope,
   resolveFloorScope,
@@ -59,8 +65,31 @@ interface ActivityObservation {
   photos?: string[];
   closureText?: string;
   closureEvidence?: string[];
+  raisedBy?: ObservationActor | null;
+  rectifiedBy?: ObservationActor | null;
+  closedByUser?: ObservationActor | null;
+  inspectorId?: string | null;
+  resolvedBy?: string | null;
+  resolvedAt?: string | null;
+  closedBy?: string | null;
+  closedAt?: string | null;
+  rectificationHistory?: Array<{
+    type: "RECTIFIED" | "REJECTED";
+    text?: string | null;
+    photos?: string[];
+    rejectionRemarks?: string | null;
+    actorId?: string | null;
+    at: string;
+  }>;
   status: "OPEN" | "PENDING" | "RECTIFIED" | "RESOLVED" | "CLOSED";
   createdAt: string;
+}
+
+interface ObservationActor {
+  id: number;
+  username: string;
+  displayName: string;
+  designation?: string | null;
 }
 
 interface QualityInspection {
@@ -86,6 +115,15 @@ interface QualityInspection {
   goLabel?: string;
   goDetails?: string | null;
   relatedChecklistInspectionIds?: number[];
+  relatedChecklistInspections?: Array<{
+    id: number;
+    activityName: string;
+    status: string;
+    goLabel?: string | null;
+    elementName?: string | null;
+    drawingNo?: string | null;
+  }>;
+  attachments?: QualityInspectionAttachment[];
   unitName?: string | null;
   roomName?: string | null;
   drawingNo?: string;
@@ -271,13 +309,19 @@ export default function InspectionRequestPage() {
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
   const [rfiModalActivity, setRfiModalActivity] =
     useState<QualityActivity | null>(null);
-  const [rfiMode, setRfiMode] = useState<"SINGLE" | "MULTIPLE">("SINGLE");
-  const [rfiParts, setRfiParts] = useState(2);
   const [drawingNo, setDrawingNo] = useState("");
   const [elementName, setElementName] = useState("");
   const [goDetails, setGoDetails] = useState("");
   const [relatedChecklistInspectionIds, setRelatedChecklistInspectionIds] =
     useState<number[]>([]);
+  const [relatedChecklistGroups, setRelatedChecklistGroups] = useState<
+    RelatedChecklistOption[]
+  >([]);
+  const [loadingRelatedChecklists, setLoadingRelatedChecklists] =
+    useState(false);
+  const [rfiAttachments, setRfiAttachments] = useState<
+    QualityInspectionAttachment[]
+  >([]);
   const [qualityUnits, setQualityUnits] = useState<QualityUnitNode[]>([]);
   const [selectedUnitIds, setSelectedUnitIds] = useState<number[]>([]);
   const [raisingBatch, setRaisingBatch] = useState(false);
@@ -339,6 +383,7 @@ export default function InspectionRequestPage() {
   const openCardModal = async (
     inspection: QualityInspection,
     kind: "CLEARANCE" | "POUR_CARD",
+    requiresPourClearance = false,
   ) => {
     if (
       (kind === "CLEARANCE" && !canReadPourClearance) ||
@@ -361,6 +406,7 @@ export default function InspectionRequestPage() {
     }
     if (
       kind === "POUR_CARD" &&
+      requiresPourClearance &&
       !inspection.cardSummary?.prePourClearanceApproved
     ) {
       alert("Concrete pour card will open only after pour clearance approval.");
@@ -923,6 +969,7 @@ export default function InspectionRequestPage() {
       number,
       { totalParts: number; existingPartNos: number[] }
     > = {};
+    const latestByActivityAndGo = new Map<string, QualityInspection>();
     for (const insp of inspections) {
       const aid = insp.activityId;
       const partNo = insp.partNo || 1;
@@ -931,6 +978,17 @@ export default function InspectionRequestPage() {
         map[aid] = { totalParts, existingPartNos: [] };
       }
       map[aid].totalParts = Math.max(map[aid].totalParts, totalParts);
+      const scopeKey = `${aid}:${partNo}`;
+      if (!latestByActivityAndGo.has(scopeKey)) {
+        latestByActivityAndGo.set(scopeKey, insp);
+      }
+    }
+    for (const insp of latestByActivityAndGo.values()) {
+      if (insp.status === "REJECTED" || insp.status === "CANCELED") {
+        continue;
+      }
+      const aid = insp.activityId;
+      const partNo = insp.partNo || 1;
       if (!map[aid].existingPartNos.includes(partNo)) {
         map[aid].existingPartNos.push(partNo);
       }
@@ -938,53 +996,6 @@ export default function InspectionRequestPage() {
     Object.values(map).forEach((v) => v.existingPartNos.sort((a, b) => a - b));
     return map;
   }, [inspections]);
-
-  const relatedChecklistOptions = useMemo(() => {
-    return inspections
-      .filter(
-        (inspection) =>
-          inspection.epsNodeId === selectedNodeId &&
-          inspection.status !== "CANCELED" &&
-          inspection.status !== "REJECTED",
-      )
-      .map((inspection) => {
-        const activityName =
-          activities.find((activity) => activity.id === inspection.activityId)
-            ?.activityName || `RFI #${inspection.id}`;
-        const goName =
-          inspection.goLabel ||
-          inspection.partLabel?.replace(/^Part/i, "GO") ||
-          (inspection.goNo ? `GO ${inspection.goNo}` : "");
-        const elementLabel = inspection.elementName
-          ? `Element ${inspection.elementName}`
-          : "";
-        const scope = [
-          goName,
-          inspection.unitName,
-          inspection.roomName,
-          elementLabel,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return {
-          id: inspection.id,
-          label: [goName, elementLabel, `RFI #${inspection.id}`]
-            .filter(Boolean)
-            .join(" · "),
-          meta: [scope, activityName, inspection.status]
-            .filter(Boolean)
-            .join(" · "),
-          tooltip: [
-            activityName,
-            inspection.goDetails,
-            inspection.drawingNo ? `Drawing ${inspection.drawingNo}` : "",
-            `RFI #${inspection.id}`,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        };
-      });
-  }, [activities, inspections, selectedNodeId]);
 
   const buildInspectionRequestPayload = (
     activity: QualityActivity,
@@ -1005,6 +1016,7 @@ export default function InspectionRequestPage() {
           : "FLOOR_RFI",
     goDetails: goDetails.trim() || undefined,
     relatedChecklistInspectionIds,
+    attachmentDraftIds: rfiAttachments.map((attachment) => attachment.id),
     ...extra,
   });
 
@@ -1197,17 +1209,24 @@ export default function InspectionRequestPage() {
       setSelectedUnitIds([]);
     }
 
-    if (quickConfig?.mode === "GO_SINGLE") {
-      setRfiMode("MULTIPLE");
-      setRfiParts(Math.max(quickConfig.totalParts || 2, 2));
-    } else {
-      setRfiMode("SINGLE");
-      setRfiParts(2);
-    }
     setDrawingNo("");
     setElementName("");
     setGoDetails("");
     setRelatedChecklistInspectionIds([]);
+    setRfiAttachments([]);
+    setLoadingRelatedChecklists(true);
+    try {
+      setRelatedChecklistGroups(
+        await qualityService.getRelatedChecklistOptions(
+          Number(projectId),
+          selectedNodeId,
+        ),
+      );
+    } catch {
+      setRelatedChecklistGroups([]);
+    } finally {
+      setLoadingRelatedChecklists(false);
+    }
     setQuickRaiseConfig(quickConfig || { mode: "NONE" });
     setRfiModalActivity(activity);
   };
@@ -1220,27 +1239,14 @@ export default function InspectionRequestPage() {
       return;
     }
 
-    const defaultValue = String(Math.max(progress.totalParts + 1, 2));
-    const input = window.prompt(
-      `Current GO count is ${progress.totalParts}. Enter the new total GO count:`,
-      defaultValue,
-    );
-    if (!input) return;
-
-    const newTotalParts = Number(input);
-    if (!Number.isInteger(newTotalParts) || newTotalParts <= progress.totalParts) {
-      alert(`Please enter a whole number greater than ${progress.totalParts}.`);
-      return;
-    }
-
     setExpandingGoActivityId(activity.id);
     try {
-      await api.post("/quality/inspections/expand-go", {
+      const result = await qualityService.addInspectionGo({
         projectId: Number(projectId),
         epsNodeId: selectedNodeId,
         activityId: activity.id,
-        newTotalParts,
       });
+      alert(`${result.nextGoLabel} is ready to raise.`);
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to expand GO count");
@@ -1272,6 +1278,17 @@ export default function InspectionRequestPage() {
     const node = findNodeById(epsNodes, selectedNodeId);
     const nodeType = getNodeType(node);
     if (!nodeType) return;
+    if (
+      rfiAttachments.length > 0 &&
+      (quickRaiseConfig.mode === "UNIT_BATCH" ||
+        (rfiModalActivity.applicabilityLevel === "UNIT" &&
+          selectedUnitIds.length > 1))
+    ) {
+      alert(
+        "Attachments must be submitted against one RFI at a time. Select a single unit for this evidence.",
+      );
+      return;
+    }
 
     setRaisingBatch(true);
     try {
@@ -1279,7 +1296,7 @@ export default function InspectionRequestPage() {
         await raiseRfiPart(
           rfiModalActivity,
           quickRaiseConfig.partNo,
-          quickRaiseConfig.totalParts || Math.max(2, Number(rfiParts) || 2),
+          quickRaiseConfig.totalParts || quickRaiseConfig.partNo,
         );
       } else if (
         quickRaiseConfig.mode === "UNIT_SINGLE" &&
@@ -1289,21 +1306,16 @@ export default function InspectionRequestPage() {
       } else if (quickRaiseConfig.mode === "UNIT_BATCH") {
         await raiseAllPendingUnitRfis(rfiModalActivity);
       } else if (rfiModalActivity.applicabilityLevel === "FLOOR") {
-        const totalParts =
-          rfiMode === "MULTIPLE" ? Math.max(2, Number(rfiParts) || 2) : 1;
         const firstPartNo = 1;
         await api.post(
           "/quality/inspections",
           buildInspectionRequestPayload(rfiModalActivity, {
             partNo: firstPartNo,
-            totalParts,
-            partLabel: totalParts > 1 ? `GO ${firstPartNo}` : "GO 1",
+            totalParts: 1,
+            partLabel: "GO 1",
             goNo: firstPartNo,
             goLabel: `GO ${firstPartNo}`,
-            comments:
-              totalParts > 1
-                ? `Requested via Web (GO ${firstPartNo}/${totalParts})`
-                : "Requested via Web",
+            comments: "Requested via Web (GO 1)",
             vendorId: selectedVendorId,
           }),
         );
@@ -1330,6 +1342,8 @@ export default function InspectionRequestPage() {
       setQuickRaiseConfig({ mode: "NONE" });
       setGoDetails("");
       setRelatedChecklistInspectionIds([]);
+      setRelatedChecklistGroups([]);
+      setRfiAttachments([]);
       setRefreshKey((k) => k + 1);
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to raise RFI");
@@ -1688,15 +1702,31 @@ export default function InspectionRequestPage() {
                                   </span>
                                 </div>
                               )}
-                              {item.inspection.relatedChecklistInspectionIds
+                              {item.inspection.relatedChecklistInspections
                                 ?.length ? (
                                 <div className="col-span-2 text-text-muted">
-                                  Linked Checklists:{" "}
-                                  <span className="text-text-primary font-medium">
-                                    {item.inspection.relatedChecklistInspectionIds
-                                      .map((id) => `RFI #${id}`)
-                                      .join(", ")}
+                                  <span className="mb-1 block text-xs font-semibold uppercase">
+                                    Linked Checklists
                                   </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {item.inspection.relatedChecklistInspections.map(
+                                      (related) => (
+                                        <span
+                                          key={related.id}
+                                          className="rounded-md border border-border-default bg-surface-card px-2 py-1 text-xs font-medium text-text-primary"
+                                        >
+                                          {[
+                                            related.activityName,
+                                            related.goLabel,
+                                            related.elementName,
+                                            `RFI #${related.id}`,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" · ")}
+                                        </span>
+                                      ),
+                                    )}
+                                  </div>
                                 </div>
                               ) : null}
                             </div>
@@ -1737,6 +1767,7 @@ export default function InspectionRequestPage() {
                                       openCardModal(
                                         item.inspection!,
                                         "POUR_CARD",
+                                        Boolean(item.requiresPourClearanceCard),
                                       )
                                     }
                                     className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-100"
@@ -1878,7 +1909,9 @@ export default function InspectionRequestPage() {
                                       />
                                       GO {p}
                                       <span className="text-[10px] opacity-80">
-                                        Raise
+                                        {goInspection?.status === "REJECTED"
+                                          ? "Re-raise"
+                                          : "Raise"}
                                       </span>
                                     </button>
                                   );
@@ -2041,12 +2074,59 @@ export default function InspectionRequestPage() {
                                                 <span className="text-xs font-medium text-rose-500">
                                                   {new Date(
                                                     obs.createdAt,
-                                                  ).toLocaleDateString()}
+                                                  ).toLocaleString()}
                                                 </span>
                                               </div>
                                               <p className="rounded border border-rose-100 bg-surface-card p-2 text-sm italic text-rose-800">
                                                 "{obs.observationText}"
                                               </p>
+                                              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                                                {[
+                                                  {
+                                                    label: "Raised by",
+                                                    actor: obs.raisedBy,
+                                                    actorId: obs.inspectorId,
+                                                    at: obs.createdAt,
+                                                  },
+                                                  {
+                                                    label: "Rectified by",
+                                                    actor: obs.rectifiedBy,
+                                                    actorId: obs.resolvedBy,
+                                                    at: obs.resolvedAt,
+                                                  },
+                                                  {
+                                                    label: "Closed by",
+                                                    actor: obs.closedByUser,
+                                                    actorId: obs.closedBy,
+                                                    at: obs.closedAt,
+                                                  },
+                                                ].map((audit) => (
+                                                  <div
+                                                    key={audit.label}
+                                                    className="rounded border border-rose-100 bg-white px-2 py-1.5"
+                                                  >
+                                                    <div className="text-[10px] font-semibold uppercase text-rose-500">
+                                                      {audit.label}
+                                                    </div>
+                                                    <div className="text-xs font-semibold text-text-primary">
+                                                      {audit.actor?.displayName ||
+                                                        (audit.actorId
+                                                          ? `User #${audit.actorId}`
+                                                          : "Pending")}
+                                                    </div>
+                                                    {audit.actor?.designation && (
+                                                      <div className="text-[11px] text-text-muted">
+                                                        {audit.actor.designation}
+                                                      </div>
+                                                    )}
+                                                    {audit.at && (
+                                                      <div className="text-[11px] text-text-muted">
+                                                        {new Date(audit.at).toLocaleString()}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
 
                                               {obs.photos &&
                                                 obs.photos.length > 0 && (
@@ -2070,6 +2150,51 @@ export default function InspectionRequestPage() {
                                                         </a>
                                                       ),
                                                     )}
+                                                  </div>
+                                                )}
+                                              {obs.rectificationHistory &&
+                                                obs.rectificationHistory.length >
+                                                  0 && (
+                                                  <div className="mt-3 rounded border border-rose-100 bg-white p-3">
+                                                    <div className="text-[10px] font-semibold uppercase text-rose-600">
+                                                      Rectification History
+                                                    </div>
+                                                    <div className="mt-2 space-y-2">
+                                                      {obs.rectificationHistory.map(
+                                                        (entry, historyIndex) => (
+                                                          <div
+                                                            key={`${entry.at}-${historyIndex}`}
+                                                            className="rounded border border-border-subtle bg-surface-base p-2"
+                                                          >
+                                                            <div className="flex items-center justify-between gap-2">
+                                                              <span className="text-[11px] font-bold text-text-secondary">
+                                                                {entry.type}
+                                                              </span>
+                                                              <span className="text-[10px] text-text-muted">
+                                                                {entry.at
+                                                                  ? new Date(
+                                                                      entry.at,
+                                                                    ).toLocaleString()
+                                                                  : ""}
+                                                              </span>
+                                                            </div>
+                                                            {entry.text && (
+                                                              <p className="mt-1 text-xs text-text-secondary">
+                                                                {entry.text}
+                                                              </p>
+                                                            )}
+                                                            {entry.rejectionRemarks && (
+                                                              <p className="mt-1 text-xs text-rose-700">
+                                                                Reason:{" "}
+                                                                {
+                                                                  entry.rejectionRemarks
+                                                                }
+                                                              </p>
+                                                            )}
+                                                          </div>
+                                                        ),
+                                                      )}
+                                                    </div>
                                                   </div>
                                                 )}
 
@@ -2168,7 +2293,9 @@ export default function InspectionRequestPage() {
                             className="flex items-center gap-1.5 bg-secondary hover:bg-secondary-dark text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
                           >
                             <ShieldAlert className="w-4 h-4" />
-                            Raise RFI
+                            {item.statusState === "REJECTED"
+                              ? "Re-raise RFI"
+                              : "Raise RFI"}
                           </button>
                         )}
                       </div>
@@ -2822,60 +2949,30 @@ export default function InspectionRequestPage() {
 
       {rfiModalActivity && (
         <div className="fixed inset-0 bg-surface-overlay z-50 flex items-center justify-center p-4">
-          <div className="bg-surface-card rounded-xl shadow-xl w-full max-w-lg">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-surface-card shadow-xl">
             <div className="p-5 border-b">
               <h3 className="text-lg font-bold text-text-primary">Raise RFI</h3>
               <p className="text-sm text-text-muted mt-1">
                 {rfiModalActivity.activityName}
               </p>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="space-y-4 overflow-y-auto p-5">
               {rfiModalActivity.applicabilityLevel === "FLOOR" && (
-                <>
-                  <div className="text-sm font-medium text-text-secondary">
-                    Floor-level execution mode
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      disabled={quickRaiseConfig.mode === "GO_SINGLE"}
-                      onClick={() => setRfiMode("SINGLE")}
-                      className={`px-3 py-2 rounded-lg text-sm border ${rfiMode === "SINGLE" ? "bg-secondary-muted border-indigo-300 text-indigo-700" : "border-border-default text-text-secondary"}`}
-                    >
-                      One Go
-                    </button>
-                    <button
-                      disabled={quickRaiseConfig.mode === "GO_SINGLE"}
-                      onClick={() => setRfiMode("MULTIPLE")}
-                      className={`px-3 py-2 rounded-lg text-sm border ${rfiMode === "MULTIPLE" ? "bg-secondary-muted border-indigo-300 text-indigo-700" : "border-border-default text-text-secondary"}`}
-                    >
-                      Multiple Go
-                    </button>
-                  </div>
-                  {rfiMode === "MULTIPLE" && (
-                    <div>
-                      <label className="text-xs font-semibold text-text-secondary">
-                        How many GOs?
-                      </label>
-                      <input
-                        type="number"
-                        min={2}
-                        value={rfiParts}
-                        disabled={quickRaiseConfig.mode === "GO_SINGLE"}
-                        onChange={(e) => setRfiParts(Number(e.target.value))}
-                        className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
-                  )}
+                <div className="rounded-md border border-indigo-200 bg-secondary-muted px-3 py-2 text-sm text-indigo-800">
+                  <span className="font-semibold">
+                    {quickRaiseConfig.mode === "GO_SINGLE" &&
+                    quickRaiseConfig.partNo
+                      ? `GO ${quickRaiseConfig.partNo}`
+                      : "GO 1"}
+                  </span>
+                  <span className="ml-1">
+                    {quickRaiseConfig.mode === "GO_SINGLE"
+                      ? "is being raised for this activity."
+                      : "starts this activity. Add later GOs individually from the activity card."}
+                  </span>
                   {quickRaiseConfig.mode === "GO_SINGLE" &&
-                    quickRaiseConfig.partNo && (
-                      <div className="rounded-lg border border-indigo-200 bg-secondary-muted px-3 py-2 text-sm text-indigo-800">
-                        Raising checklist for{" "}
-                        <span className="font-semibold">
-                          GO {quickRaiseConfig.partNo}
-                        </span>
-                      </div>
-                    )}
-                </>
+                    quickRaiseConfig.partNo ? null : null}
+                </div>
               )}
 
               <div>
@@ -2934,47 +3031,29 @@ export default function InspectionRequestPage() {
                 <label className="text-xs font-semibold text-text-secondary">
                   Link Previous Checklist RFIs
                 </label>
-                <div className="mt-1 max-h-44 overflow-auto rounded-lg border border-border-default p-2">
-                  {relatedChecklistOptions.length === 0 ? (
-                    <div className="p-2 text-xs text-text-disabled">
-                      No previous checklist RFIs are available for this
-                      location yet.
-                    </div>
-                  ) : (
-                    relatedChecklistOptions.map((option) => (
-                      <label
-                        key={option.id}
-                        title={option.tooltip || option.meta}
-                        className="flex items-start gap-2 rounded p-1.5 text-sm hover:bg-surface-base"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={relatedChecklistInspectionIds.includes(
-                            option.id,
-                          )}
-                          onChange={(e) => {
-                            setRelatedChecklistInspectionIds((prev) =>
-                              e.target.checked
-                                ? [...prev, option.id]
-                                : prev.filter((id) => id !== option.id),
-                            );
-                          }}
-                        />
-                        <span>
-                          <span className="block font-medium text-text-primary">
-                            {option.label}
-                          </span>
-                          {option.meta ? (
-                            <span className="block text-xs text-text-muted">
-                              {option.meta}
-                            </span>
-                          ) : null}
-                        </span>
-                      </label>
-                    ))
-                  )}
+                <div className="mt-1">
+                  <RelatedChecklistTree
+                    groups={relatedChecklistGroups}
+                    selectedIds={relatedChecklistInspectionIds}
+                    onChange={setRelatedChecklistInspectionIds}
+                    loading={loadingRelatedChecklists}
+                  />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-text-secondary">
+                  Additional Documents
+                </label>
+                <p className="mb-2 mt-1 text-xs text-text-muted">
+                  Attach supporting PDFs or images. Images can be marked up
+                  before they are attached.
+                </p>
+                <RfiAttachmentManager
+                  projectId={Number(projectId)}
+                  attachments={rfiAttachments}
+                  onChange={setRfiAttachments}
+                />
               </div>
 
               {rfiModalActivity.applicabilityLevel === "UNIT" && (
@@ -3025,6 +3104,8 @@ export default function InspectionRequestPage() {
                   setQuickRaiseConfig({ mode: "NONE" });
                   setGoDetails("");
                   setRelatedChecklistInspectionIds([]);
+                  setRelatedChecklistGroups([]);
+                  setRfiAttachments([]);
                 }}
                 className="px-4 py-2 text-sm rounded-lg hover:bg-surface-raised"
               >

@@ -93,6 +93,10 @@ class RaiseRfi extends QualityRequestEvent {
   // IDs of previously approved RFIs that are referenced by this inspection
   final List<int> relatedChecklistInspectionIds;
 
+  // IDs of attachment drafts (already uploaded before this RFI existed) to
+  // bind to the new inspection — see RfiAttachmentDraft.
+  final List<String> attachmentDraftIds;
+
   const RaiseRfi({
     required this.projectId,
     required this.epsNodeId,
@@ -110,6 +114,7 @@ class RaiseRfi extends QualityRequestEvent {
     this.elementName,
     this.goDetails,
     this.relatedChecklistInspectionIds = const [],
+    this.attachmentDraftIds = const [],
   });
   @override
   List<Object?> get props => [
@@ -769,6 +774,8 @@ class QualityRequestBloc
             'goDetails': event.goDetails,
           if (event.relatedChecklistInspectionIds.isNotEmpty)
             'relatedChecklistInspectionIds': event.relatedChecklistInspectionIds,
+          if (event.attachmentDraftIds.isNotEmpty)
+            'attachmentDraftIds': event.attachmentDraftIds,
         },
         priority: 2,
       );

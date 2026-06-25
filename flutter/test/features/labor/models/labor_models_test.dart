@@ -5,7 +5,7 @@ void main() {
   group('LaborCategory.fromJson', () {
     test('parses id and name', () {
       // projectId is not a field on LaborCategory — it is ignored during parsing
-      final cat = LaborCategory.fromJson({'id': 1, 'name': 'Masons'});
+      final cat = LaborCategory.fromJson(const {'id': 1, 'name': 'Masons'});
       expect(cat.id, 1);
       expect(cat.name, 'Masons');
     });
@@ -14,7 +14,7 @@ void main() {
   group('DailyLaborEntry', () {
     test('fromJson parses count and categoryName from nested category object', () {
       // categoryName is read from json['category']['name'], not json['categoryName']
-      final entry = DailyLaborEntry.fromJson({
+      final entry = DailyLaborEntry.fromJson(const {
         'categoryId': 1,
         'category': {'name': 'Masons'},
         'count': 5,
@@ -26,7 +26,7 @@ void main() {
     });
 
     test('copyWith updates count and keeps other fields', () {
-      final original = DailyLaborEntry(
+      const original = DailyLaborEntry(
         categoryId: 1,
         categoryName: 'Masons',
         count: 3,
@@ -37,7 +37,7 @@ void main() {
     });
 
     test('toJson includes the date string passed in', () {
-      final entry = DailyLaborEntry(
+      const entry = DailyLaborEntry(
         categoryId: 1,
         categoryName: 'Masons',
         count: 5,

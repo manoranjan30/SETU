@@ -6,6 +6,7 @@ export class CreateSiteObservationDto {
   /** Human-readable breadcrumb path, e.g. "Block A › Tower 1 › Floor 3". */
   locationLabel?: string;
   severity: SiteObservationSeverity;
+  observationRating?: string;
   category: string;
   description: string;
   remarks?: string;

@@ -51,6 +51,22 @@ export const VendorUserManagementPage = () => {
     }
   };
 
+  const handleRoleLevelChange = async (
+    user: TempUser,
+    level: 1 | 2,
+  ) => {
+    if (level === (user.vendorApprovalRoleLevel || 1)) return;
+    if (!confirm(`Assign Vendor Approver ${level} to ${user.user.displayName}?`)) {
+      return;
+    }
+    try {
+      await tempUserService.updateVendorApprovalRole(user.id, level);
+      await loadUsers();
+    } catch (e: any) {
+      alert(e.response?.data?.message || "Error updating vendor approval role");
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center bg-surface-card p-4 rounded-xl shadow-sm border border-border-subtle mb-6">
@@ -117,6 +133,19 @@ export const VendorUserManagementPage = () => {
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-info-muted text-blue-800">
                     {u.tempRoleTemplate?.name || "Unknown"}
                   </span>
+                  <select
+                    value={u.vendorApprovalRoleLevel || 1}
+                    onChange={(event) =>
+                      void handleRoleLevelChange(
+                        u,
+                        Number(event.target.value) as 1 | 2,
+                      )
+                    }
+                    className="mt-2 block rounded-md border border-border-default bg-surface-card px-2 py-1 text-xs font-semibold text-text-secondary"
+                  >
+                    <option value={1}>Vendor Approver 1</option>
+                    <option value={2}>Vendor Approver 2</option>
+                  </select>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span

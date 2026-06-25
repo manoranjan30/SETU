@@ -32,7 +32,10 @@ import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
 import SignatureModal from "../../components/quality/SignatureModal";
 import ClearanceDocumentAttachments from "../../components/quality/ClearanceDocumentAttachments";
+import RfiAttachmentManager from "../../components/quality/RfiAttachmentManager";
 import { qualityService } from "../../services/quality.service";
+import type { QualityInspectionAttachment } from "../../types/quality";
+import { QUALITY_OBSERVATION_RATINGS } from "../../config/qualityObservationRatings";
 
 interface QualityInspection {
   id: number;
@@ -88,6 +91,7 @@ interface QualityInspection {
     drawingNo?: string;
     elementName?: string | null;
   }>;
+  attachments?: QualityInspectionAttachment[];
   drawingNo?: string;
   elementName?: string | null;
   partNo?: number;
@@ -104,6 +108,8 @@ interface QualityInspection {
   pendingApprovalDisplay?: string;
   pendingApproverNames?: string[];
   pendingApprovalBy?: number | string;
+  requestedById?: number;
+  raisedBy?: ObservationActor | null;
   workflowSummary?: {
     runStatus?: string;
     releaseStrategyId?: number;
@@ -179,12 +185,34 @@ interface ActivityObservation {
   closureEvidence?: string[];
   rectificationRejectedRemarks?: string;
   rectificationRejectedAt?: string;
+  rectificationHistory?: Array<{
+    type: "RECTIFIED" | "REJECTED";
+    text?: string | null;
+    photos?: string[];
+    rejectionRemarks?: string | null;
+    actorId?: string | null;
+    at: string;
+  }>;
+  raisedBy?: ObservationActor | null;
+  rectifiedBy?: ObservationActor | null;
+  closedByUser?: ObservationActor | null;
+  inspectorId?: string | null;
+  resolvedBy?: string | null;
+  closedBy?: string | null;
   createdAt: string;
   resolvedAt?: string;
+  closedAt?: string;
   ageingMinutes?: number;
   ageingHours?: number;
   ageingDays?: number;
   status: "OPEN" | "PENDING" | "RECTIFIED" | "RESOLVED" | "CLOSED";
+}
+
+interface ObservationActor {
+  id: number;
+  username: string;
+  displayName: string;
+  designation?: string | null;
 }
 
 type ApprovalTab = "PENDING" | "ALL" | "APPROVED" | "REJECTED" | "DASHBOARD";
@@ -571,9 +599,37 @@ export default function QualityApprovalsPage() {
   >(null);
   const [jumpToConcreteCards, setJumpToConcreteCards] = useState(false);
   const [inspectionDetail, setInspectionDetail] = useState<any>(null);
+  const [relatedInspectionDetail, setRelatedInspectionDetail] =
+    useState<any>(null);
+  const [loadingRelatedInspection, setLoadingRelatedInspection] =
+    useState(false);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const openRelatedInspection = async (inspectionId: number) => {
+    setLoadingRelatedInspection(true);
+    try {
+      const response = await api.get(`/quality/inspections/${inspectionId}`);
+      const detail = response.data;
+      const observationResponse = await api
+        .get(`/quality/activities/${detail.activityId}/observations`, {
+          params: { inspectionId },
+        })
+        .catch(() => ({ data: [] }));
+      setRelatedInspectionDetail({
+        ...detail,
+        observations: (observationResponse.data || []).filter(
+          (observation: any) =>
+            Number(observation.inspectionId) === inspectionId,
+        ),
+      });
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to open linked RFI.");
+    } finally {
+      setLoadingRelatedInspection(false);
+    }
+  };
 
   // Workflow State
   const [workflowState, setWorkflowState] = useState<any>(null);
@@ -598,7 +654,7 @@ export default function QualityApprovalsPage() {
     null,
   );
   const [obsText, setObsText] = useState("");
-  const [obsType, setObsType] = useState("Minor");
+  const [obsType, setObsType] = useState("MINOR");
   const [currentPhotos, setCurrentPhotos] = useState<string[]>([]);
   const [savingObs, setSavingObs] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -694,6 +750,9 @@ export default function QualityApprovalsPage() {
   const canCloseChecklistObservation = hasPermission(
     PermissionCode.QUALITY_OBSERVATION_CLOSE,
   );
+  const canRejectChecklistObservationRectification =
+    hasPermission(PermissionCode.QUALITY_OBSERVATION_REJECT_RECTIFICATION) ||
+    hasPermission(PermissionCode.QUALITY_OBSERVATION_CLOSE);
 
   // Helper for correct image URLs.
   // Strips the /api suffix from VITE_API_URL so uploads (served at the server
@@ -2677,7 +2736,11 @@ export default function QualityApprovalsPage() {
         `/quality/activities/${inspectionDetail.activityId}/observation`,
         {
           observationText: obsText,
-          type: obsType,
+          observationRating: obsType,
+          type:
+            QUALITY_OBSERVATION_RATINGS.find(
+              (rating) => rating.value === obsType,
+            )?.label || obsType,
           photos: currentPhotos,
           inspectionId: inspectionDetail.id,
           stageId: selectedObservationStageId,
@@ -2709,6 +2772,11 @@ export default function QualityApprovalsPage() {
   };
 
   const handleRejectObservationRectification = async (obsId: string) => {
+    const rejectionRemarks = rejectionTexts[obsId]?.trim();
+    if (!rejectionRemarks) {
+      alert("Enter the reason for rejecting this rectification.");
+      return;
+    }
     if (!confirm("Reject this rectification and reopen the observation?")) {
       return;
     }
@@ -2716,7 +2784,7 @@ export default function QualityApprovalsPage() {
       await api.patch(
         `/quality/activities/${inspectionDetail.activityId}/observation/${obsId}/reject-rectification`,
         {
-          rejectionRemarks: rejectionTexts[obsId]?.trim() || undefined,
+          rejectionRemarks,
         },
       );
       setRejectionTexts((prev) => {
@@ -3634,6 +3702,38 @@ export default function QualityApprovalsPage() {
                         {insp.activity?.activityName ||
                           `Activity #${insp.activityId}`}
                       </h4>
+                      <div className="mb-2 grid grid-cols-1 gap-1 text-[11px] text-text-secondary">
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          <span className="font-semibold text-text-primary">
+                            RFI #{insp.id}
+                          </span>
+                          <span>
+                            Stage:{" "}
+                            <strong>
+                              {insp.pendingApprovalDisplay ||
+                                insp.pendingApprovalLabel ||
+                                (insp.status === "APPROVED"
+                                  ? "Final approval complete"
+                                  : insp.status === "REJECTED"
+                                    ? "Rejected - awaiting re-raise"
+                                    : `Level ${insp.stageApprovalSummary?.activeLevel || insp.pendingApprovalLevel || 1}`)}
+                            </strong>
+                          </span>
+                        </div>
+                        <span>
+                          Raised by:{" "}
+                          <strong>
+                            {insp.raisedBy?.displayName ||
+                              insp.raisedBy?.username ||
+                              (insp.requestedById
+                                ? `User #${insp.requestedById}`
+                                : "Unknown")}
+                          </strong>
+                          {insp.raisedBy?.designation
+                            ? ` (${insp.raisedBy.designation})`
+                            : ""}
+                        </span>
+                      </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-text-secondary">
                         {scopeTokens.map((token, tokenIdx) => (
                           <span
@@ -4452,7 +4552,8 @@ export default function QualityApprovalsPage() {
                       ) : null}
                     </div>
                     {(inspectionDetail.goDetails ||
-                      inspectionDetail.relatedChecklistInspections?.length) && (
+                      inspectionDetail.relatedChecklistInspections?.length ||
+                      inspectionDetail.attachments?.length) && (
                       <div className="mt-3 max-w-4xl rounded-lg border border-border-subtle bg-surface-base p-3 text-sm">
                         {inspectionDetail.goDetails ? (
                           <div>
@@ -4486,7 +4587,7 @@ export default function QualityApprovalsPage() {
                                     key={related.id}
                                     type="button"
                                     onClick={() =>
-                                      openInspectionDetail(related.id)
+                                      void openRelatedInspection(related.id)
                                     }
                                     className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-left text-xs hover:bg-surface-raised"
                                   >
@@ -4508,6 +4609,25 @@ export default function QualityApprovalsPage() {
                                 ),
                               )}
                             </div>
+                          </div>
+                        ) : null}
+                        {inspectionDetail.attachments?.length ? (
+                          <div className="mt-3 border-t border-border-subtle pt-3">
+                            <div className="mb-2 text-xs font-semibold uppercase text-text-muted">
+                              Attached Documents
+                            </div>
+                            <RfiAttachmentManager
+                              inspectionId={inspectionDetail.id}
+                              attachments={inspectionDetail.attachments}
+                              onChange={(attachments) =>
+                                setInspectionDetail((current: any) =>
+                                  current
+                                    ? { ...current, attachments }
+                                    : current,
+                                )
+                              }
+                              readOnly
+                            />
                           </div>
                         ) : null}
                       </div>
@@ -7074,6 +7194,69 @@ export default function QualityApprovalsPage() {
                           <p className="text-sm font-medium text-text-primary mt-2">
                             {obs.observationText}
                           </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                            <div className="rounded border border-border-subtle bg-surface-base px-3 py-2">
+                              <div className="text-[10px] font-semibold uppercase text-text-muted">
+                                Raised by
+                              </div>
+                              <div className="text-xs font-semibold text-text-primary">
+                                {obs.raisedBy?.displayName ||
+                                  (obs.inspectorId
+                                    ? `User #${obs.inspectorId}`
+                                    : "System")}
+                              </div>
+                              {obs.raisedBy?.designation && (
+                                <div className="text-[11px] text-text-muted">
+                                  {obs.raisedBy.designation}
+                                </div>
+                              )}
+                              <div className="text-[11px] text-text-muted">
+                                {new Date(obs.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="rounded border border-border-subtle bg-surface-base px-3 py-2">
+                              <div className="text-[10px] font-semibold uppercase text-text-muted">
+                                Rectified by
+                              </div>
+                              <div className="text-xs font-semibold text-text-primary">
+                                {obs.rectifiedBy?.displayName ||
+                                  (obs.resolvedBy
+                                    ? `User #${obs.resolvedBy}`
+                                    : "Pending")}
+                              </div>
+                              {obs.rectifiedBy?.designation && (
+                                <div className="text-[11px] text-text-muted">
+                                  {obs.rectifiedBy.designation}
+                                </div>
+                              )}
+                              {obs.resolvedAt && (
+                                <div className="text-[11px] text-text-muted">
+                                  {new Date(obs.resolvedAt).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                            <div className="rounded border border-border-subtle bg-surface-base px-3 py-2">
+                              <div className="text-[10px] font-semibold uppercase text-text-muted">
+                                Closed by
+                              </div>
+                              <div className="text-xs font-semibold text-text-primary">
+                                {obs.closedByUser?.displayName ||
+                                  (obs.closedBy
+                                    ? `User #${obs.closedBy}`
+                                    : "Pending")}
+                              </div>
+                              {obs.closedByUser?.designation && (
+                                <div className="text-[11px] text-text-muted">
+                                  {obs.closedByUser.designation}
+                                </div>
+                              )}
+                              {obs.closedAt && (
+                                <div className="text-[11px] text-text-muted">
+                                  {new Date(obs.closedAt).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
 
                           {obs.photos && obs.photos.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
@@ -7094,6 +7277,69 @@ export default function QualityApprovalsPage() {
                               ))}
                             </div>
                           )}
+
+                          {obs.rectificationHistory &&
+                            obs.rectificationHistory.length > 0 && (
+                              <div className="mt-4 rounded-lg border border-border-subtle bg-surface-base p-3">
+                                <div className="text-xs font-bold uppercase text-text-secondary">
+                                  Rectification History
+                                </div>
+                                <div className="mt-2 space-y-2">
+                                  {obs.rectificationHistory.map((entry, historyIndex) => (
+                                    <div
+                                      key={`${entry.at}-${historyIndex}`}
+                                      className="rounded border border-border-subtle bg-surface-card p-3"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span
+                                          className={`text-xs font-bold uppercase ${
+                                            entry.type === "REJECTED"
+                                              ? "text-rose-700"
+                                              : "text-blue-700"
+                                          }`}
+                                        >
+                                          {entry.type}
+                                        </span>
+                                        <span className="text-[11px] text-text-muted">
+                                          {entry.at
+                                            ? new Date(entry.at).toLocaleString()
+                                            : ""}
+                                        </span>
+                                      </div>
+                                      {entry.text && (
+                                        <p className="mt-2 text-sm text-text-secondary">
+                                          {entry.text}
+                                        </p>
+                                      )}
+                                      {entry.rejectionRemarks && (
+                                        <p className="mt-2 text-sm text-rose-700">
+                                          Reason: {entry.rejectionRemarks}
+                                        </p>
+                                      )}
+                                      {entry.photos && entry.photos.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {entry.photos.map((url, photoIndex) => (
+                                            <a
+                                              key={`${url}-${photoIndex}`}
+                                              href={getFileUrl(url)}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="h-12 w-12 overflow-hidden rounded border border-border-subtle"
+                                            >
+                                              <img
+                                                src={getFileUrl(url)}
+                                                alt="Historical rectification evidence"
+                                                className="h-full w-full object-cover"
+                                              />
+                                            </a>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                           {(obs.status === "RECTIFIED" ||
                             obs.status === "RESOLVED") && (
@@ -7129,34 +7375,41 @@ export default function QualityApprovalsPage() {
                                 )}
 
                               <div className="mt-3">
-                                {canCloseChecklistObservation ? (
+                                {canCloseChecklistObservation ||
+                                canRejectChecklistObservationRectification ? (
                                   <div className="space-y-3">
-                                    <textarea
-                                      className="w-full rounded-md border border-rose-200 bg-white p-3 text-xs focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
-                                      placeholder="Reason for rejecting this rectification..."
-                                      value={rejectionTexts[obs.id] || ""}
-                                      onChange={(e) =>
-                                        setRejectionTexts((prev) => ({
-                                          ...prev,
-                                          [obs.id]: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        onClick={() => handleCloseObservation(obs.id)}
-                                        className="px-4 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-dark shadow-sm transition-all"
-                                      >
-                                        Verify & Close Observation
-                                      </button>
-                                      <button
-                                        onClick={() =>
-                                          handleRejectObservationRectification(obs.id)
+                                    {canRejectChecklistObservationRectification && (
+                                      <textarea
+                                        className="w-full rounded-md border border-rose-200 bg-white p-3 text-xs focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                                        placeholder="Reason for rejecting this rectification..."
+                                        value={rejectionTexts[obs.id] || ""}
+                                        onChange={(e) =>
+                                          setRejectionTexts((prev) => ({
+                                            ...prev,
+                                            [obs.id]: e.target.value,
+                                          }))
                                         }
-                                        className="px-4 py-1.5 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 shadow-sm transition-all"
-                                      >
-                                        Reject Rectification
-                                      </button>
+                                      />
+                                    )}
+                                    <div className="flex flex-wrap gap-2">
+                                      {canCloseChecklistObservation && (
+                                        <button
+                                          onClick={() => handleCloseObservation(obs.id)}
+                                          className="px-4 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-dark shadow-sm transition-all"
+                                        >
+                                          Verify & Close Observation
+                                        </button>
+                                      )}
+                                      {canRejectChecklistObservationRectification && (
+                                        <button
+                                          onClick={() =>
+                                            handleRejectObservationRectification(obs.id)
+                                          }
+                                          className="px-4 py-1.5 bg-rose-600 text-white rounded text-xs font-medium hover:bg-rose-700 shadow-sm transition-all"
+                                        >
+                                          Reject Rectification
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 ) : (
@@ -7289,18 +7542,39 @@ export default function QualityApprovalsPage() {
 
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-text-secondary mb-1">
-                        Severity Type
+                      <label className="block text-xs font-medium text-text-secondary mb-2">
+                        Category of Observation
                       </label>
-                      <select
-                        value={obsType}
-                        onChange={(e) => setObsType(e.target.value)}
-                        className="w-full sm:w-1/3 border-border-strong rounded-lg text-sm focus:ring-amber-500 focus:border-amber-500"
-                      >
-                        <option value="Minor">Minor</option>
-                        <option value="Major">Major</option>
-                        <option value="Critical">Critical</option>
-                      </select>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                        {QUALITY_OBSERVATION_RATINGS.map((rating) => (
+                          <button
+                            key={rating.value}
+                            type="button"
+                            title={rating.description}
+                            onClick={() => setObsType(rating.value)}
+                            className={`min-h-20 rounded-lg border px-3 py-2 text-left ${
+                              obsType === rating.value
+                                ? rating.value === "CRITICAL"
+                                  ? "border-error bg-error-muted text-red-800"
+                                  : "border-amber-400 bg-amber-50 text-amber-900"
+                                : "border-border-default bg-surface-card text-text-secondary hover:bg-surface-raised"
+                            }`}
+                          >
+                            <span className="block text-xs font-bold">
+                              {rating.label} ({rating.shortLabel})
+                            </span>
+                            <span className="mt-1 block text-[10px] leading-4 text-text-muted">
+                              {rating.description}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {obsType === "CRITICAL" && (
+                        <p className="mt-2 text-xs font-semibold text-error">
+                          This observation will automatically create an entry
+                          in the NC Register.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-text-secondary mb-1">
@@ -7371,6 +7645,131 @@ export default function QualityApprovalsPage() {
       </div>
 
       {/* Reversal Modal */}
+      {(loadingRelatedInspection || relatedInspectionDetail) && (
+        <div className="fixed inset-0 z-[11000] flex justify-end bg-gray-950/35">
+          <button
+            type="button"
+            aria-label="Close linked RFI"
+            className="flex-1 cursor-default"
+            onClick={() => setRelatedInspectionDetail(null)}
+          />
+          <aside className="flex h-full w-full max-w-2xl flex-col border-l border-border-default bg-surface-card shadow-2xl">
+            <div className="flex items-start justify-between border-b border-border-default px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  {loadingRelatedInspection
+                    ? "Loading linked RFI..."
+                    : `RFI #${relatedInspectionDetail?.id}`}
+                </h3>
+                <p className="text-sm text-text-muted">
+                  {relatedInspectionDetail?.activity?.activityName}
+                </p>
+              </div>
+              <button
+                type="button"
+                title="Close"
+                onClick={() => setRelatedInspectionDetail(null)}
+                className="rounded-md p-2 hover:bg-surface-raised"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {!loadingRelatedInspection && relatedInspectionDetail && (
+              <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                <div className="grid grid-cols-2 gap-3 rounded-md border border-border-default bg-surface-base p-4 text-sm">
+                  <div><span className="text-text-muted">Status</span><div className="font-semibold">{relatedInspectionDetail.status}</div></div>
+                  <div><span className="text-text-muted">GO</span><div className="font-semibold">{getGoLabel(relatedInspectionDetail)}</div></div>
+                  <div><span className="text-text-muted">Element</span><div className="font-semibold">{relatedInspectionDetail.elementName || "-"}</div></div>
+                  <div><span className="text-text-muted">Drawing</span><div className="font-semibold">{relatedInspectionDetail.drawingNo || "-"}</div></div>
+                </div>
+                {relatedInspectionDetail.goDetails && (
+                  <section>
+                    <h4 className="text-xs font-semibold uppercase text-text-muted">GO Details</h4>
+                    <p className="mt-1 text-sm text-text-secondary">{relatedInspectionDetail.goDetails}</p>
+                  </section>
+                )}
+                {relatedInspectionDetail.stages?.map((stage: any) => (
+                  <section key={stage.id} className="rounded-md border border-border-default">
+                    <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
+                      <h4 className="font-semibold text-text-primary">{stage.stageTemplate?.name || stage.name}</h4>
+                      <span className="text-xs font-semibold text-text-muted">{stage.status}</span>
+                    </div>
+                    <div className="divide-y divide-border-subtle">
+                      {stage.items?.map((item: any) => (
+                        <div key={item.id} className="flex gap-3 px-3 py-2 text-sm">
+                          <span className="font-semibold">{item.isOk === true ? "✓" : item.isOk === false ? "No" : "-"}</span>
+                          <span>{item.itemTemplate?.itemText || item.itemText}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {stage.signatures?.length > 0 && (
+                      <div className="border-t border-border-subtle px-3 py-2 text-xs text-text-muted">
+                        {stage.signatures
+                          .filter((signature: any) => !signature.isReversed)
+                          .map((signature: any) => (
+                            <div key={signature.id}>
+                              Signed by{" "}
+                              <span className="font-semibold text-text-secondary">
+                                {signature.signerDisplayName ||
+                                  signature.signedBy}
+                              </span>
+                              {signature.signerRoleLabel
+                                ? ` · ${signature.signerRoleLabel}`
+                                : ""}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </section>
+                ))}
+                {relatedInspectionDetail.observations?.length > 0 && (
+                  <section>
+                    <h4 className="mb-2 text-xs font-semibold uppercase text-text-muted">
+                      Observations
+                    </h4>
+                    <div className="space-y-2">
+                      {relatedInspectionDetail.observations.map(
+                        (observation: any) => (
+                          <div
+                            key={observation.id}
+                            className="rounded-md border border-border-default p-3 text-sm"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium text-text-primary">
+                                {observation.observationText}
+                              </span>
+                              <span className="text-xs font-semibold text-text-muted">
+                                {observation.status}
+                              </span>
+                            </div>
+                            {observation.remarks && (
+                              <p className="mt-1 text-text-muted">
+                                {observation.remarks}
+                              </p>
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </section>
+                )}
+                {relatedInspectionDetail.attachments?.length > 0 && (
+                  <section>
+                    <h4 className="mb-2 text-xs font-semibold uppercase text-text-muted">Evidence</h4>
+                    <RfiAttachmentManager
+                      inspectionId={relatedInspectionDetail.id}
+                      attachments={relatedInspectionDetail.attachments}
+                      onChange={() => undefined}
+                      readOnly
+                    />
+                  </section>
+                )}
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
       {showReversalModal && inspectionDetail && (
         <div className="fixed inset-0 bg-surface-overlay flex items-center justify-center p-4 z-50">
           <div className="bg-surface-card rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
