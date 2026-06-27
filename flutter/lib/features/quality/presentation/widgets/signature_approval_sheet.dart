@@ -298,6 +298,11 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
             height: 180,
             child: TabBarView(
               controller: _tabCtrl,
+              // Swiping left/right to switch tabs would fight the Signature
+              // pad's own horizontal drag-to-draw gesture, making it hard to
+              // sign without the panel sliding out from under the stroke.
+              // Tabs are still switchable by tapping the TabBar above.
+              physics: const NeverScrollableScrollPhysics(),
               children: [
                 // Tab 0: Saved signature from profile
                 _loadingSaved

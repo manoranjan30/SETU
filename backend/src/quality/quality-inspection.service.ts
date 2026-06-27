@@ -1131,6 +1131,15 @@ export class QualityInspectionService {
     });
     if (!inspection) throw new NotFoundException('Inspection not found');
 
+    if (
+      dto.status === InspectionStatus.REJECTED &&
+      (inspection.status === InspectionStatus.APPROVED || inspection.isLocked)
+    ) {
+      throw new BadRequestException(
+        'Final approved checklist cannot be rejected. Only admin can reverse or delete it.',
+      );
+    }
+
     if (dto.status === InspectionStatus.APPROVED) {
       // Validate all checklist items are checked (isOk === true)
       let allItemsChecked = true;
