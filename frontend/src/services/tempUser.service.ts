@@ -97,6 +97,12 @@ export const tempUserService = {
     });
     return res.data;
   },
+  updateRoleTemplate: async (id: number, tempRoleTemplateId: number) => {
+    const res = await api.put<TempUser>(`/temp-users/${id}/role-template`, {
+      tempRoleTemplateId,
+    });
+    return res.data;
+  },
   resetPassword: async (id: number, password: string) => {
     const res = await api.put(`/temp-users/${id}/reset-password`, { password });
     return res.data;

@@ -397,4 +397,67 @@ export class TempUserService {
       relations: ['user', 'vendor', 'workOrder', 'tempRoleTemplate'],
     });
   }
+
+  async updateRoleTemplate(
+    id: number,
+    tempRoleTemplateId: number,
+    updatedByUserId: number,
+  ) {
+    if (!Number.isFinite(Number(tempRoleTemplateId))) {
+      throw new BadRequestException('Valid role template is required');
+    }
+
+    const tempUser = await this.repo.findOne({
+      where: { id },
+      relations: ['user', 'project', 'tempRoleTemplate'],
+    });
+    if (!tempUser) throw new NotFoundException('Temp user entry not found');
+
+    const template = await this.templateRepo.findOneBy({
+      id: Number(tempRoleTemplateId),
+      isActive: true,
+    });
+    if (!template) {
+      throw new BadRequestException('Template not found or inactive');
+    }
+
+    const previousTemplateId =
+      tempUser.tempRoleTemplateId || tempUser.tempRoleTemplate?.id || null;
+    if (previousTemplateId === template.id) {
+      return this.repo.findOne({
+        where: { id },
+        relations: ['user', 'vendor', 'workOrder', 'tempRoleTemplate'],
+      });
+    }
+
+    tempUser.tempRoleTemplate = template;
+    tempUser.tempRoleTemplateId = template.id;
+    const saved = await this.repo.save(tempUser);
+
+    await this.ensureProjectTeamAssignment(
+      saved.projectId || tempUser.project?.id,
+      saved.userId || tempUser.user?.id,
+      template.id,
+      saved.vendorApprovalRoleLevel,
+      updatedByUserId,
+    );
+
+    await this.auditService.log(
+      updatedByUserId,
+      'TEMP_USER',
+      'UPDATE_ROLE_TEMPLATE',
+      saved.id,
+      saved.projectId || tempUser.project?.id,
+      {
+        userId: saved.userId || tempUser.user?.id,
+        previousTemplateId,
+        newTemplateId: template.id,
+      },
+    );
+
+    return this.repo.findOne({
+      where: { id },
+      relations: ['user', 'vendor', 'workOrder', 'tempRoleTemplate'],
+    });
+  }
 }
