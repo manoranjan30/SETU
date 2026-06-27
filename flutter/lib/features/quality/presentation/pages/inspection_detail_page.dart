@@ -1018,6 +1018,7 @@ class _StageSectionState extends State<_StageSection> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final ps = PermissionService.of(context);
     final stage = widget.stage;
     final resolvedCount = stage.resolvedCount;
     final totalCount = stage.totalCount;
@@ -1156,7 +1157,10 @@ class _StageSectionState extends State<_StageSection> {
                     ),
                   ),
                   // Per-stage approve button — only shown when canApprove
-                  if (stage.canApprove) ...[
+                  // (server-computed: is this the next stage in sequence)
+                  // AND the user actually holds the approve permission —
+                  // status alone isn't a permission check.
+                  if (stage.canApprove && ps.canStageApprove) ...[
                     const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: () =>
@@ -1397,8 +1401,10 @@ class _ObservationsTab extends StatelessWidget {
                     final o = obs[i];
                     return ObservationCard(
                       obs: o,
-                      // Fix button shown only for PENDING observations
-                      onRectify: o.isPending
+                      // Fix button shown only for PENDING observations AND
+                      // when the user holds QUALITY.OBSERVATION.RESOLVE —
+                      // status alone is not a permission check.
+                      onRectify: o.isPending && ps.canResolveActivityObs
                           ? () => RectifySheet.show(
                                 context,
                                 title: 'Fix Observation',
@@ -1413,8 +1419,9 @@ class _ObservationsTab extends StatelessWidget {
                                 },
                               )
                           : null,
-                      // Close button shown for all RECTIFIED observations.
-                      onClose: o.isRectified
+                      // Close button shown for RECTIFIED observations AND
+                      // when the user holds QUALITY.OBSERVATION.CLOSE.
+                      onClose: o.isRectified && ps.canCloseActivityObs
                           ? () => context
                               .read<QualityApprovalBloc>()
                               .add(CloseObservation(o.id))
