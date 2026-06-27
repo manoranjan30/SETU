@@ -1,10 +1,11 @@
 import React, { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import { PluginRuntimeProvider } from "./context/PluginRuntimeContext";
+import MobileApp, { MobileLogin } from "./mobile/MobileApp";
 
 const UserManagement = lazy(() => import("./pages/UserManagement"));
 const RoleManagement = lazy(() => import("./pages/RoleManagement"));
@@ -79,9 +80,12 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute = ({ children, permission }: ProtectedRouteProps) => {
   const { isAuthenticated, isLoading, hasPermission } = useAuth();
+  const location = useLocation();
 
   if (isLoading) return <div>Loading...</div>;
-  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!isAuthenticated) {
+    return <Navigate to={location.pathname.startsWith("/m") ? "/m/login" : "/login"} />;
+  }
 
   if (permission && !hasPermission(permission)) {
     return (
@@ -113,6 +117,15 @@ const AppRoutes = () => {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/m/login" element={<MobileLogin />} />
+      <Route
+        path="/m/*"
+        element={
+          <ProtectedRoute>
+            <MobileApp />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard"
         element={
