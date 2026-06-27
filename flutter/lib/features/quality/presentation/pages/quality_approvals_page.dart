@@ -458,13 +458,19 @@ class _InspectionCard extends StatelessWidget {
     final age = _ageLabel(inspection.requestDateTime);
     final overdue = _isOverdue(inspection);
 
+    final goText = [
+      if (inspection.goLabel?.isNotEmpty ?? false) inspection.goLabel,
+      if (inspection.goDetails?.isNotEmpty ?? false) inspection.goDetails,
+    ].join(' — ');
+
     return Card(
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: status.color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Theme.of(context).dividerColor),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -483,55 +489,55 @@ class _InspectionCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _MiniChip(
-                  text: status.label, color: status.color, icon: status.icon),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(status.icon, size: 14, color: status.color),
+                const SizedBox(width: 3),
+                Text(status.label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: status.color)),
+              ]),
             ]),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: inspection.locationHierarchy.isEmpty
-                  ? const [
-                      _MiniChip(
-                          text: 'Location unavailable',
-                          icon: Icons.location_off_outlined)
-                    ]
-                  : inspection.locationHierarchy
-                      .take(4)
-                      .map((e) =>
-                          _MiniChip(text: e, icon: Icons.location_on_outlined))
-                      .toList(),
+            _detailRow(
+              context,
+              Icons.location_on_outlined,
+              inspection.locationHierarchy.isEmpty
+                  ? 'Location unavailable'
+                  : inspection.locationHierarchy.join(' > '),
             ),
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              _MiniChip(
-                  text: inspection.inspectedBy ?? 'Pending inspector',
-                  icon: Icons.person_outline),
-              if (inspection.requestDate.isNotEmpty)
-                _MiniChip(
-                    text: inspection.requestDate,
-                    icon: Icons.calendar_today_outlined),
-              if (pendingLabel != null)
-                _MiniChip(
-                    text: pendingLabel,
-                    icon: Icons.pending_actions_outlined,
-                    color: Colors.blue.shade700),
-              if (age != null)
-                _MiniChip(
-                  text: overdue ? 'Overdue $age' : 'Age $age',
-                  icon: overdue
-                      ? Icons.warning_amber_rounded
-                      : Icons.timer_outlined,
-                  color: overdue ? Colors.red.shade700 : null,
-                ),
-              if (inspection.pendingObservationCount > 0)
-                _MiniChip(
-                    text: '${inspection.pendingObservationCount} open obs',
-                    icon: Icons.report_problem_outlined,
-                    color: Colors.red.shade700),
-            ]),
+            if (inspection.elementName?.isNotEmpty ?? false)
+              _detailRow(context, Icons.category_outlined,
+                  'Element: ${inspection.elementName}'),
+            if (inspection.drawingNo?.isNotEmpty ?? false)
+              _detailRow(context, Icons.architecture_outlined,
+                  'Drawing: ${inspection.drawingNo}'),
+            if (goText.isNotEmpty)
+              _detailRow(context, Icons.water_drop_outlined, 'GO: $goText'),
+            if (inspection.isMultiPart)
+              _detailRow(context, Icons.layers_outlined,
+                  'Checklist: ${inspection.partDisplay}'),
+            _detailRow(context, Icons.person_outline,
+                inspection.inspectedBy ?? 'Pending inspector'),
+            if (inspection.requestDate.isNotEmpty)
+              _detailRow(context, Icons.calendar_today_outlined,
+                  'Raised ${inspection.requestDate}'),
+            if (pendingLabel != null)
+              _detailRow(context, Icons.pending_actions_outlined, pendingLabel,
+                  color: Colors.blue.shade700),
+            if (age != null)
+              _detailRow(
+                context,
+                overdue ? Icons.warning_amber_rounded : Icons.timer_outlined,
+                overdue ? 'Overdue $age' : 'Age $age',
+                color: overdue ? Colors.red.shade700 : null,
+              ),
+            if (inspection.pendingObservationCount > 0)
+              _detailRow(context, Icons.report_problem_outlined,
+                  '${inspection.pendingObservationCount} open observation(s)',
+                  color: Colors.red.shade700),
             if (inspection.totalStages > 0) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               LinearProgressIndicator(value: progress, minHeight: 5),
               const SizedBox(height: 4),
               Text(
@@ -540,26 +546,62 @@ class _InspectionCard extends StatelessWidget {
             ],
             // Pour card / clearance status indicators
             if (inspection.requiresPourCard || inspection.requiresPourClearanceCard) ...[
-              const SizedBox(height: 8),
-              Wrap(spacing: 6, runSpacing: 4, children: [
-                if (inspection.requiresPourCard)
-                  _CardStatusChip(
-                    label: 'Pour Card',
-                    status: inspection.pourCardStatus,
-                    approved: inspection.pourCardApproved,
-                  ),
-                if (inspection.requiresPourClearanceCard)
-                  _CardStatusChip(
-                    label: 'Clearance',
-                    status: inspection.prePourClearanceStatus,
-                    approved: inspection.prePourClearanceApproved,
-                  ),
-              ]),
+              const SizedBox(height: 6),
+              if (inspection.requiresPourCard)
+                _detailRow(
+                  context,
+                  Icons.description_outlined,
+                  'Pour Card: ${_cardStatusText(inspection.pourCardStatus, inspection.pourCardApproved)}',
+                  color: _cardStatusColor(inspection.pourCardStatus, inspection.pourCardApproved),
+                ),
+              if (inspection.requiresPourClearanceCard)
+                _detailRow(
+                  context,
+                  Icons.fact_check_outlined,
+                  'Clearance: ${_cardStatusText(inspection.prePourClearanceStatus, inspection.prePourClearanceApproved)}',
+                  color: _cardStatusColor(
+                      inspection.prePourClearanceStatus, inspection.prePourClearanceApproved),
+                ),
             ],
           ]),
         ),
       ),
     );
+  }
+
+  Widget _detailRow(BuildContext context, IconData icon, String text,
+      {Color? color}) {
+    final c = color ??
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 13, color: c),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 12, color: c)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _cardStatusText(String? status, bool approved) {
+    if (approved) return 'Approved';
+    if (status == null || status == 'DRAFT') return 'Draft';
+    if (status == 'SUBMITTED') return 'Pending';
+    if (status == 'REJECTED') return 'Rejected';
+    return status;
+  }
+
+  Color _cardStatusColor(String? status, bool approved) {
+    if (approved) return Colors.green.shade700;
+    if (status == null || status == 'DRAFT') return Colors.grey.shade600;
+    if (status == 'SUBMITTED') return Colors.orange.shade700;
+    if (status == 'REJECTED') return Colors.red.shade700;
+    return Colors.blue.shade700;
   }
 }
 
@@ -593,59 +635,6 @@ class _MiniChip extends StatelessWidget {
   }
 }
 
-/// Compact status chip showing the state of a Pour Card or Pre-Pour Clearance Card.
-/// Shows a green tick when approved, orange warning when draft/submitted, grey when absent.
-class _CardStatusChip extends StatelessWidget {
-  final String label;
-  final String? status;
-  final bool approved;
-
-  const _CardStatusChip({required this.label, this.status, required this.approved});
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color;
-    final IconData icon;
-    final String text;
-
-    if (approved) {
-      color = Colors.green.shade700;
-      icon = Icons.check_circle_outline;
-      text = label;
-    } else if (status == null || status == 'DRAFT') {
-      color = Colors.grey.shade500;
-      icon = Icons.radio_button_unchecked;
-      text = '$label: Draft';
-    } else if (status == 'SUBMITTED') {
-      color = Colors.orange.shade700;
-      icon = Icons.pending_outlined;
-      text = '$label: Pending';
-    } else if (status == 'REJECTED') {
-      color = Colors.red.shade700;
-      icon = Icons.cancel_outlined;
-      text = '$label: Rejected';
-    } else {
-      color = Colors.blue.shade700;
-      icon = Icons.info_outline;
-      text = '$label: $status';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 11, color: color),
-        const SizedBox(width: 3),
-        Text(text,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
-      ]),
-    );
-  }
-}
 
 class _ApprovalDashboard extends StatelessWidget {
   final List<QualityInspection> inspections;

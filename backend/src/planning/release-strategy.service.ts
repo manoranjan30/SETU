@@ -396,6 +396,35 @@ export class ReleaseStrategyService {
       });
     }
 
+    const vendorTemplateRoles = await this.roleRepo.find({
+      where: { isActive: true } as any,
+      order: { tempRoleTemplateId: 'ASC', vendorRoleLevel: 'ASC', name: 'ASC' },
+    });
+    const syntheticRoles = vendorTemplateRoles
+      .filter((role) => role.tempRoleTemplateId && role.vendorRoleLevel === 1)
+      .map((role) => ({
+        id: role.id,
+        name: role.name,
+        displayName:
+          role.description?.match(/TempRoleTemplate: (.+)$/)?.[1] ||
+          role.name.replace(/^TEMP_ROLE_/, 'Vendor Template '),
+        tempRoleTemplateId: role.tempRoleTemplateId,
+        vendorRoleLevel: null,
+      }));
+    if (syntheticRoles.length) {
+      permanentMap.set(-1, {
+        userId: -1,
+        displayName: 'Vendor access templates',
+        sourceType: 'TEMP_VENDOR',
+        projectRoleIds: syntheticRoles.map((role) => role.id),
+        projectRoleNames: syntheticRoles.map((role) => role.displayName),
+        projectRoles: syntheticRoles,
+        companyLabel: 'Vendor Templates',
+        primaryRoleLabel: 'Selectable vendor access templates',
+        activeStatus: 'TEMPLATE_ROLE_ONLY',
+      });
+    }
+
     return Array.from(permanentMap.values()).sort((a, b) =>
       a.displayName.localeCompare(b.displayName),
     );

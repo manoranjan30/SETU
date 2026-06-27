@@ -521,6 +521,10 @@ class QualityInspection extends Equatable {
   final String? goLabel;
   final String? goDetails;
 
+  // Checklist-raise details captured on the RFI itself
+  final String? drawingNo;
+  final String? elementName;
+
   /// IDs of related checklist inspections linked to this RFI (e.g. for pre-pour clearance attachment tracking).
   final List<int> relatedChecklistInspectionIds;
 
@@ -572,6 +576,8 @@ class QualityInspection extends Equatable {
     this.goNo,
     this.goLabel,
     this.goDetails,
+    this.drawingNo,
+    this.elementName,
     this.relatedChecklistInspectionIds = const [],
     this.relatedChecklistInspections = const [],
     this.attachments = const [],
@@ -682,6 +688,8 @@ class QualityInspection extends Equatable {
       goNo: json['goNo'] as int?,
       goLabel: json['goLabel'] as String?,
       goDetails: json['goDetails'] as String?,
+      drawingNo: json['drawingNo'] as String?,
+      elementName: json['elementName'] as String?,
       relatedChecklistInspectionIds: (json['relatedChecklistInspectionIds'] as List<dynamic>?)
               ?.whereType<int>()
               .toList() ??
@@ -786,6 +794,9 @@ class QualityInspection extends Equatable {
         prePourClearanceApproved,
         goNo,
         goLabel,
+        goDetails,
+        drawingNo,
+        elementName,
         relatedChecklistInspectionIds,
       ];
 }
