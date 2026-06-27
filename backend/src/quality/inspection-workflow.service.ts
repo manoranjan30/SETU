@@ -770,11 +770,21 @@ export class InspectionWorkflowService {
   ): Promise<InspectionWorkflowRun> {
     const run = await this.getWorkflowState(inspectionId);
     if (!run) throw new NotFoundException('Workflow run not found');
+
+    const inspection = await this.getInspectionOrThrow(inspectionId);
+    if (
+      run.status === WorkflowRunStatus.COMPLETED ||
+      inspection.status === InspectionStatus.APPROVED ||
+      inspection.isLocked
+    ) {
+      throw new BadRequestException(
+        'Final approved checklist cannot be rejected. Only admin can reverse or delete it.',
+      );
+    }
     if (run.status !== WorkflowRunStatus.IN_PROGRESS) {
       throw new BadRequestException('Workflow is not in progress');
     }
 
-    const inspection = await this.getInspectionOrThrow(inspectionId);
     const currentStep = run.steps.find(
       (step) => step.stepOrder === run.currentStepOrder,
     );
@@ -786,84 +796,59 @@ export class InspectionWorkflowService {
 
     const sortedSteps = [...run.steps].sort((a, b) => a.stepOrder - b.stepOrder);
     const firstStep = sortedSteps[0];
+    if (!firstStep) {
+      throw new NotFoundException('Workflow approval levels are not configured');
+    }
     const restartPolicy = await this.getRestartPolicy(inspection, run);
-    const restartStep =
-      restartPolicy === RestartPolicy.NO_RESTART ? currentStep : firstStep;
+    const approvalStepIdsToReverse = sortedSteps
+      .filter((step) => step.stepOrder <= currentStep.stepOrder)
+      .map((step) => step.id);
 
-    currentStep.status = WorkflowStepStatus.REJECTED;
-    currentStep.comments = comments || 'Rejected';
-    await this.stepRepo.save(currentStep);
+    await this.signatureRepo
+      .createQueryBuilder()
+      .update(QualitySignature)
+      .set({
+        isReversed: true,
+        reversedAt: new Date(),
+        reversedByUserId: userId,
+        reversalReason: comments || 'Rejected',
+      })
+      .where('"inspectionId" = :inspectionId', { inspectionId })
+      .andWhere('"isReversed" = false')
+      .andWhere('"actionType" = :actionType', { actionType: 'FINAL_APPROVE' })
+      .andWhere(
+        approvalStepIdsToReverse.length > 0
+          ? '("workflowStepId" IN (:...approvalStepIdsToReverse) OR ("approvalLevelOrder" IS NOT NULL AND "approvalLevelOrder" <= :currentStepOrder))'
+          : '("approvalLevelOrder" IS NOT NULL AND "approvalLevelOrder" <= :currentStepOrder)',
+        {
+          approvalStepIdsToReverse,
+          currentStepOrder: currentStep.stepOrder,
+        },
+      )
+      .execute();
 
     for (const step of sortedSteps) {
-      if (!restartStep) break;
-
-      if (step.id === restartStep.id) {
-        step.status = WorkflowStepStatus.PENDING;
-        step.completedAt = null;
-        step.signatureId = null;
-        step.currentApprovalCount = 0;
-        step.approvedUserIds = [];
-        step.signedBy = null;
-        step.signerDisplayName = null;
-        step.signerCompany = null;
-        step.signerRole = null;
-        step.comments =
-          restartPolicy === RestartPolicy.NO_RESTART
-            ? `Rework required at level ${step.stepOrder}: ${comments || 'Rejected'}`
-            : `Restarted after rejection: ${comments || 'Rejected'}`;
-        await this.stepRepo.save(step);
-        continue;
-      }
-
-      if (restartPolicy === RestartPolicy.NO_RESTART) {
-        if (step.stepOrder > currentStep.stepOrder) {
-          step.status = WorkflowStepStatus.WAITING;
-          step.completedAt = null;
-          step.signatureId = null;
-          step.currentApprovalCount = 0;
-          step.approvedUserIds = [];
-          step.signedBy = null;
-          step.signerDisplayName = null;
-          step.signerCompany = null;
-          step.signerRole = null;
-          await this.stepRepo.save(step);
-        }
-        continue;
-      }
-
-      if (step.stepOrder > restartStep.stepOrder || step.id === currentStep.id) {
-        step.status = WorkflowStepStatus.WAITING;
-        step.completedAt = null;
-        step.signatureId = null;
-        step.currentApprovalCount = 0;
-        step.approvedUserIds = [];
-        step.signedBy = null;
-        step.signerDisplayName = null;
-        step.signerCompany = null;
-        step.signerRole = null;
-        if (step.id !== restartStep.id) {
-          step.comments = null;
-        }
-        await this.stepRepo.save(step);
-        continue;
-      }
-
-      if (step.stepOrder < restartStep.stepOrder) {
-        step.status = WorkflowStepStatus.WAITING;
-        step.completedAt = null;
-        step.signatureId = null;
-        step.currentApprovalCount = 0;
-        step.approvedUserIds = [];
-        step.signedBy = null;
-        step.signerDisplayName = null;
-        step.signerCompany = null;
-        step.signerRole = null;
-        step.comments = null;
-        await this.stepRepo.save(step);
-      }
+      step.status =
+        step.id === firstStep.id
+          ? WorkflowStepStatus.PENDING
+          : WorkflowStepStatus.WAITING;
+      step.completedAt = null;
+      step.signatureId = null;
+      step.currentApprovalCount = 0;
+      step.approvedUserIds = [];
+      step.signedBy = null;
+      step.signerDisplayName = null;
+      step.signerCompany = null;
+      step.signerRole = null;
+      step.comments =
+        step.id === firstStep.id
+          ? `Restarted after rejection at level ${currentStep.stepOrder}: ${comments || 'Rejected'}`
+          : null;
     }
+    await this.stepRepo.save(sortedSteps);
 
-    run.currentStepOrder = restartStep?.stepOrder || run.currentStepOrder;
+    run.currentStepOrder = firstStep.stepOrder;
+    run.status = WorkflowRunStatus.IN_PROGRESS;
     inspection.status = InspectionStatus.PENDING;
     inspection.isLocked = false;
     inspection.lockedAt = null;
@@ -882,11 +867,7 @@ export class InspectionWorkflowService {
           decisionLabel: 'RFI Workflow Rejected',
           comments:
             comments +
-            `. Workflow resumes from ${
-              restartPolicy === RestartPolicy.NO_RESTART
-                ? `level ${currentStep.stepOrder}`
-                : 'level 1'
-            }`,
+            '. Workflow resumes from level 1 for re-approval.',
         });
       this.pushService
         .sendToProjectUsers(
@@ -911,10 +892,13 @@ export class InspectionWorkflowService {
         comments,
         restartPolicy,
         restartFromStep: run.currentStepOrder,
+        reversedApprovalLevelsThrough: currentStep.stepOrder,
       },
     );
 
-    return this.runRepo.save(run);
+    const savedRun = await this.runRepo.save(run);
+    await this.notifyStep(inspection, firstStep, 'Level 1');
+    return savedRun;
   }
 
   async reverseWorkflow(
