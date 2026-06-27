@@ -194,6 +194,33 @@ function useRecentInspections(projectId?: string) {
   return items;
 }
 
+const uploadMobileFiles = async (files: FileList | File[]): Promise<string[]> => {
+  const rows = Array.from(files || []);
+  const uploaded: string[] = [];
+  for (const file of rows) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post("/files/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    const url = response.data?.url || response.data?.path || response.data?.fileUrl;
+    if (url) uploaded.push(url);
+  }
+  return uploaded;
+};
+
+const evidencePhotos = (item: AnyRecord | null | undefined) =>
+  [
+    ...((item?.photos as string[]) || []),
+    ...((item?.photoUrls as string[]) || []),
+    ...((item?.rectificationPhotos as string[]) || []),
+    ...((item?.closureEvidence as string[]) || []),
+    ...((item?.evidenceUrls as string[]) || []),
+  ].filter(Boolean);
+
+const actorLine = (label: string, actor: AnyRecord | string | null | undefined, at?: string | null) =>
+  `${label}: ${typeof actor === "string" ? actor || "Pending" : pickName(actor as AnyRecord)} / ${at ? new Date(at).toLocaleString() : "Pending"}`;
+
 function useMobileNotifications(projectId?: string) {
   const [items, setItems] = useState<AnyRecord[]>([]);
 
@@ -1020,6 +1047,60 @@ function MobileLocationTree({
   );
 }
 
+function MobileLocationPickerTree({
+  node,
+  childrenMap,
+  selectedId,
+  onSelect,
+}: {
+  node: EpsNode;
+  childrenMap: Map<number | null, EpsNode[]>;
+  selectedId?: string;
+  onSelect: (node: EpsNode) => void;
+}) {
+  const children = childrenMap.get(node.id) || [];
+  const selectable = ["FLOOR", "UNIT", "ROOM"].includes(String(node.type || "").toUpperCase());
+  const selected = String(node.id) === String(selectedId || "");
+  return (
+    <details className={`mobile-tree-node picker ${selected ? "selected" : ""}`} open>
+      <summary title={`${node.name} (${node.type})`}>
+        <span>
+          <MapPin size={15} />
+          <strong>{node.name}</strong>
+          <small>{nodeTypeLabel(node)}</small>
+        </span>
+        {selectable ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect(node);
+            }}
+          >
+            {selected ? "Selected" : "Select"}
+          </button>
+        ) : (
+          <small>Open</small>
+        )}
+      </summary>
+      {children.length > 0 && (
+        <div className="mobile-tree-children">
+          {children.map((child) => (
+            <MobileLocationPickerTree
+              key={child.id}
+              node={child}
+              childrenMap={childrenMap}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}
+
 function InspectionCard({ item }: { item: AnyRecord }) {
   const { projectId } = useParams();
   return (
@@ -1432,6 +1513,13 @@ function RaiseRfiPage() {
 
   const selectedLocation = locations.find((location) => location.id === Number(form.epsNodeId));
   const selectedActivity = activities.find((activity) => activity.id === Number(form.activityId));
+  const locationTreeNodes = useMemo(() => locations, [locations]);
+  const locationChildrenMap = useMemo(() => buildChildrenMap(locationTreeNodes), [locationTreeNodes]);
+  const locationIds = useMemo(() => new Set(locationTreeNodes.map((node) => node.id)), [locationTreeNodes]);
+  const locationRoots = useMemo(
+    () => locationTreeNodes.filter((node) => !node.parentId || !locationIds.has(node.parentId)),
+    [locationIds, locationTreeNodes],
+  );
 
   useEffect(() => {
     if (!projectId) return;
@@ -1638,7 +1726,7 @@ function RaiseRfiPage() {
           <h3 className="mobile-title" style={{ marginTop: 8 }}>Attachments</h3>
           <label className="mobile-button secondary">
             <Camera size={18} /> Add image/PDF
-            <input hidden type="file" accept="image/*,.pdf" onChange={(e) => e.target.files?.[0] && uploadDraft(e.target.files[0])} />
+            <input hidden type="file" accept="image/*,.pdf" capture="environment" onChange={(e) => e.target.files?.[0] && uploadDraft(e.target.files[0])} />
           </label>
           {drafts.map((draft) => <p key={draft.id} className="mobile-subtitle">{draft.originalName}</p>)}
         </div>
@@ -1649,23 +1737,40 @@ function RaiseRfiPage() {
         <MobileSheet title="Select location" onClose={() => setActiveSheet(null)}>
           <div className="mobile-stack">
             <input className="mobile-input" placeholder="Search floor, unit, room" value={locationSearch} onChange={(event) => setLocationSearch(event.target.value)} />
-            {filteredLocations.map((location) => (
-              <button
-                className="mobile-card mobile-card-pad mobile-row"
-                key={location.id}
-                type="button"
-                onClick={() => {
-                  setForm((current) => ({ ...current, epsNodeId: String(location.id) }));
-                  setActiveSheet(null);
-                }}
-              >
-                <span>
-                  <strong>{location.name}</strong>
-                  <span className="mobile-subtitle" style={{ display: "block" }}>{location.type}</span>
-                </span>
-                <span className="mobile-chip">Select</span>
-              </button>
-            ))}
+            {locationSearch.trim() ? (
+              filteredLocations.map((location) => (
+                <button
+                  className="mobile-card mobile-card-pad mobile-row"
+                  key={location.id}
+                  type="button"
+                  onClick={() => {
+                    setForm((current) => ({ ...current, epsNodeId: String(location.id) }));
+                    setActiveSheet(null);
+                  }}
+                >
+                  <span>
+                    <strong>{location.name}</strong>
+                    <span className="mobile-subtitle" style={{ display: "block" }}>{location.type}</span>
+                  </span>
+                  <span className="mobile-chip">Select</span>
+                </button>
+              ))
+            ) : (
+              <div className="mobile-tree-list">
+                {locationRoots.map((node) => (
+                  <MobileLocationPickerTree
+                    key={node.id}
+                    node={node}
+                    childrenMap={locationChildrenMap}
+                    selectedId={form.epsNodeId}
+                    onSelect={(location) => {
+                      setForm((current) => ({ ...current, epsNodeId: String(location.id) }));
+                      setActiveSheet(null);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </MobileSheet>
       )}
@@ -1825,6 +1930,9 @@ function InspectionDetailPageFull() {
   const [observationText, setObservationText] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [stageToApprove, setStageToApprove] = useState<AnyRecord | null>(null);
+  const [linkedPreview, setLinkedPreview] = useState<AnyRecord | null>(null);
+  const [linkedPreviewAttachments, setLinkedPreviewAttachments] = useState<AnyRecord[]>([]);
+  const [linkedPreviewObservations, setLinkedPreviewObservations] = useState<AnyRecord[]>([]);
 
   const activeStage = useMemo(() => {
     const stages = detail?.stages || [];
@@ -2036,6 +2144,35 @@ function InspectionDetailPageFull() {
     }
   };
 
+  const openLinkedChecklistPreview = async (item: AnyRecord) => {
+    const id = Number(item.inspectionId || item.id);
+    if (!id) return;
+    setLinkedPreview(item);
+    setLinkedPreviewAttachments([]);
+    setLinkedPreviewObservations([]);
+    try {
+      const [detailRes, attachmentRes] = await Promise.allSettled([
+        api.get(`/quality/inspections/${id}`),
+        qualityService.getInspectionAttachments(id),
+      ]);
+      const detailData = detailRes.status === "fulfilled" ? detailRes.value.data : item;
+      setLinkedPreview({ ...item, ...detailData });
+      if (attachmentRes.status === "fulfilled") setLinkedPreviewAttachments(attachmentRes.value);
+      if (detailData?.activityId) {
+        try {
+          const obsRes = await api.get(`/quality/activities/${detailData.activityId}/observations`, {
+            params: { inspectionId: id },
+          });
+          setLinkedPreviewObservations(obsRes.data || []);
+        } catch {
+          setLinkedPreviewObservations([]);
+        }
+      }
+    } catch {
+      setLinkedPreview(item);
+    }
+  };
+
   return (
     <MobileShell title={detail?.rfiNumber || `RFI #${inspectionId}`} subtitle={detail?.status || "Checklist detail"}>
       <div className="mobile-stack">
@@ -2050,6 +2187,15 @@ function InspectionDetailPageFull() {
               <p className="mobile-subtitle">Drawing: {detail.drawingNo || "Not entered"}</p>
               <p className="mobile-subtitle">Raised by: {pickName(detail.raisedBy || detail.createdByUser)}</p>
               <p className="mobile-subtitle">Workflow: {workflow?.status || "Not started"} {workflow?.currentStepOrder ? `/ Level ${workflow.currentStepOrder}` : ""}</p>
+              {isRejectedInspection(detail) && (
+                <Link
+                  className="mobile-button danger"
+                  style={{ marginTop: 10 }}
+                  to={`/m/projects/${projectId}/quality/requests/new?epsNodeId=${detail.epsNodeId || detail.locationId || ""}&activityId=${detail.activityId || ""}&listId=${detail.listId || detail.activityListId || ""}`}
+                >
+                  Re-raise corrected RFI
+                </Link>
+              )}
               <div className={signatureData ? "mobile-signature-ready" : "mobile-signature-missing"}>
                 <span>{signatureData ? "Profile signature ready" : "Profile signature missing"}</span>
                 <small>{signatureData ? "Approval will use saved signature with logged user/session evidence." : "Open Profile and upload/draw signature before approving."}</small>
@@ -2189,6 +2335,13 @@ function InspectionDetailPageFull() {
                   <span className={statusChipClass(obs.status || obs.observationRating)}>{obs.observationRating || obs.status || "Observation"}</span>
                   <p className="mobile-subtitle">{obs.observationText || obs.description}</p>
                   <p className="mobile-subtitle">Raised by {pickName(obs.raisedBy)} - {dateText(obs.createdAt)}</p>
+                  {evidencePhotos(obs).length > 0 && (
+                    <div className="mobile-photo-strip">
+                      {evidencePhotos(obs).map((photo, index) => (
+                        <img key={`${obs.id}-photo-${index}`} src={getPublicFileUrl(photo)} alt="Checklist observation evidence" />
+                      ))}
+                    </div>
+                  )}
                   {String(obs.status || "").toUpperCase() !== "CLOSED" && (
                     <button className="mobile-button secondary" type="button" onClick={() => closeObservation(Number(obs.id))}>
                       Close observation
@@ -2204,7 +2357,19 @@ function InspectionDetailPageFull() {
               <h3 className="mobile-title">Linked checklists</h3>
               {(detail.relatedChecklistInspections || []).length === 0 && <p className="mobile-subtitle">No linked checklist.</p>}
               {(detail.relatedChecklistInspections || []).map((item: AnyRecord) => (
-                <p key={item.id || item.inspectionId} className="mobile-subtitle">{item.rfiNumber || `RFI #${item.id || item.inspectionId}`} / {item.goLabel}</p>
+                <button
+                  key={item.id || item.inspectionId}
+                  className="mobile-linked-card"
+                  type="button"
+                  onClick={() => openLinkedChecklistPreview(item)}
+                >
+                  <div>
+                    <strong>{item.rfiNumber || `RFI #${item.id || item.inspectionId}`}</strong>
+                    <small>{item.activityName || item.checklistName || "Linked checklist"} / {item.goLabel || item.goName || "GO"}</small>
+                    <small>{item.elementName || item.goDetails || item.drawingNo || "Tap to inspect checklist evidence"}</small>
+                  </div>
+                  <ChevronRight size={17} />
+                </button>
               ))}
               </div>
             )}
@@ -2261,6 +2426,65 @@ function InspectionDetailPageFull() {
                       Cancel
                     </button>
                   </div>
+                </div>
+              </MobileSheet>
+            )}
+            {linkedPreview && (
+              <MobileSheet title={linkedPreview.rfiNumber || `RFI #${linkedPreview.id || linkedPreview.inspectionId}`} onClose={() => setLinkedPreview(null)}>
+                <div className="mobile-stack">
+                  <div className="mobile-card mobile-card-pad">
+                    <span className={statusChipClass(linkedPreview.status)}>{linkedPreview.status || "Linked RFI"}</span>
+                    <h3 className="mobile-title" style={{ marginTop: 8 }}>{linkedPreview.activityName || linkedPreview.checklistName || "Checklist"}</h3>
+                    <p className="mobile-subtitle">{linkedPreview.goLabel || linkedPreview.goName || "GO"} / {linkedPreview.elementName || "Element not set"}</p>
+                    <p className="mobile-subtitle">GO details: {linkedPreview.goDetails || "Not entered"}</p>
+                    <p className="mobile-subtitle">Drawing: {linkedPreview.drawingNo || "Not entered"}</p>
+                    <p className="mobile-subtitle">Raised by: {pickName(linkedPreview.raisedBy || linkedPreview.createdByUser)}</p>
+                  </div>
+                  {(linkedPreview.stages || []).length > 0 && (
+                    <div className="mobile-card mobile-card-pad">
+                      <h3 className="mobile-title">Checklist responses</h3>
+                      {(linkedPreview.stages || []).map((stage: AnyRecord, stageIndex: number) => (
+                        <div className="mobile-history-row" key={stage.id || stageIndex}>
+                          <span className={statusChipClass(stage.status)}>{stage.status || "Stage"}</span>
+                          <p>{stage.stageTemplate?.name || stage.name || `Stage ${stageIndex + 1}`}</p>
+                          <small>{(stage.items || []).filter(itemIsChecked).length}/{(stage.items || []).length} completed</small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {linkedPreviewObservations.length > 0 && (
+                    <div className="mobile-card mobile-card-pad">
+                      <h3 className="mobile-title">Observations</h3>
+                      {linkedPreviewObservations.map((obs) => (
+                        <div className="mobile-history-row" key={obs.id}>
+                          <span className={statusChipClass(obs.status || obs.observationRating)}>{obs.observationRating || obs.status || "Observation"}</span>
+                          <p>{obs.observationText || obs.description}</p>
+                          <small>{actorLine("Raised", obs.raisedBy || obs.inspectorId, obs.createdAt)}</small>
+                          {evidencePhotos(obs).length > 0 && (
+                            <div className="mobile-photo-strip">
+                              {evidencePhotos(obs).map((photo, index) => (
+                                <img key={`${obs.id}-${index}`} src={getPublicFileUrl(photo)} alt="Linked observation evidence" />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {linkedPreviewAttachments.length > 0 && (
+                    <div className="mobile-attachment-grid">
+                      {linkedPreviewAttachments.map((file) => (
+                        <a key={file.id} className="mobile-attachment-tile" href={getPublicFileUrl(file.annotatedUrl || file.originalUrl)} target="_blank" rel="noreferrer">
+                          {String(file.mimeType || "").startsWith("image/") ? (
+                            <img src={getPublicFileUrl(file.annotatedUrl || file.originalUrl)} alt={file.originalName || "Attachment"} />
+                          ) : (
+                            <Paperclip size={22} />
+                          )}
+                          <span>{file.originalName || "Attachment"}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </MobileSheet>
             )}
@@ -2567,6 +2791,9 @@ function QualityObservationsPage({ ncrOnly = false }: { ncrOnly?: boolean }) {
   const { projectId } = useParams();
   const [items, setItems] = useState<AnyRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<AnyRecord | null>(null);
+  const [draft, setDraft] = useState<AnyRecord>({});
+  const [message, setMessage] = useState("");
   useEffect(() => {
     if (!projectId) return;
     const url = ncrOnly ? `/quality/${projectId}/observation-ncr` : "/quality/site-observations";
@@ -2579,6 +2806,92 @@ function QualityObservationsPage({ ncrOnly = false }: { ncrOnly?: boolean }) {
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
   }, [projectId, ncrOnly]);
+
+  const openNcrRecord = (item: AnyRecord) => {
+    setSelected(item);
+    setDraft({
+      status: item.status || "Open",
+      description: item.description || item.observationText || "",
+      rootCause: item.rootCause || "",
+      correctiveAction: item.correctiveAction || "",
+      preventiveAction: item.preventiveAction || "",
+      closureRemarks: item.closureRemarks || "",
+    });
+  };
+
+  const saveNcrRecord = async () => {
+    if (!selected) return;
+    try {
+      const res = await api.put(`/quality/observation-ncr/${selected.id}`, { ...selected, ...draft });
+      setSelected(res.data);
+      setItems((current) => current.map((item) => (String(item.id) === String(selected.id) ? res.data : item)));
+      setMessage("NCR updated.");
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "NCR update failed.");
+    }
+  };
+
+  const deleteNcrRecord = async () => {
+    if (!selected || !window.confirm("Delete this NCR record?")) return;
+    try {
+      await api.delete(`/quality/observation-ncr/${selected.id}`);
+      setItems((current) => current.filter((item) => String(item.id) !== String(selected.id)));
+      setSelected(null);
+      setMessage("NCR deleted.");
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "NCR delete failed.");
+    }
+  };
+
+  if (ncrOnly) {
+    return (
+      <MobileShell title="NC Register" subtitle="Critical/non-conformance records">
+        <div className="mobile-stack">
+          {message && <div className={message.includes("failed") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
+          {loading && <LoadingCard />}
+          {items.map((item) => (
+            <button className="mobile-card mobile-card-pad mobile-observation-card" key={item.id} type="button" onClick={() => openNcrRecord(item)}>
+              <div className="mobile-row">
+                <div>
+                  <span className={statusChipClass(item.status || item.severity || item.observationRating)}>{item.status || item.observationRating || "NCR"}</span>
+                  <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.sourceReference || item.title || "NCR"}</h3>
+                  <p className="mobile-subtitle">{item.description || item.observationText || "No description"}</p>
+                  <p className="mobile-subtitle">Reported by {item.reportedBy || pickName(item.raisedBy || item.createdByUser)}</p>
+                </div>
+                <ChevronRight size={18} />
+              </div>
+            </button>
+          ))}
+          {!loading && items.length === 0 && <div className="mobile-card mobile-empty">No NCR records found.</div>}
+          {selected && (
+            <MobileSheet title={selected.sourceReference || selected.title || "NCR detail"} onClose={() => setSelected(null)}>
+              <div className="mobile-stack">
+                <div className="mobile-card mobile-card-pad">
+                  <span className={statusChipClass(selected.status || selected.severity || selected.observationRating)}>{selected.status || selected.observationRating || "NCR"}</span>
+                  <h3 className="mobile-title" style={{ marginTop: 8 }}>{selected.description || selected.observationText || "NCR"}</h3>
+                  <p className="mobile-subtitle">{selected.sourceReference || "Source not set"}</p>
+                </div>
+                <select className="mobile-select" value={draft.status || ""} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
+                  <option>Open</option>
+                  <option>In Progress</option>
+                  <option>Closed</option>
+                </select>
+                <textarea className="mobile-textarea" placeholder="Description" value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+                <textarea className="mobile-textarea" placeholder="Root cause" value={draft.rootCause || ""} onChange={(event) => setDraft({ ...draft, rootCause: event.target.value })} />
+                <textarea className="mobile-textarea" placeholder="Corrective action" value={draft.correctiveAction || ""} onChange={(event) => setDraft({ ...draft, correctiveAction: event.target.value })} />
+                <textarea className="mobile-textarea" placeholder="Preventive action" value={draft.preventiveAction || ""} onChange={(event) => setDraft({ ...draft, preventiveAction: event.target.value })} />
+                <textarea className="mobile-textarea" placeholder="Closure remarks" value={draft.closureRemarks || ""} onChange={(event) => setDraft({ ...draft, closureRemarks: event.target.value })} />
+                <div className="mobile-action-row">
+                  <button className="mobile-button" type="button" onClick={saveNcrRecord}>Save NCR</button>
+                  <button className="mobile-button danger" type="button" onClick={deleteNcrRecord}>Delete</button>
+                </div>
+              </div>
+            </MobileSheet>
+          )}
+        </div>
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell title={ncrOnly ? "NC Register" : "Quality Observations"} subtitle={ncrOnly ? "Critical/non-conformance records" : "Site quality observations"}>
@@ -2606,8 +2919,11 @@ function QualityObservationsPageFull() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [showRaise, setShowRaise] = useState(false);
+  const [showObservationLocationPicker, setShowObservationLocationPicker] = useState(false);
   const [selected, setSelected] = useState<AnyRecord | null>(null);
   const [mode, setMode] = useState<"rectify" | "close" | "reject" | null>(null);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [actionFiles, setActionFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     epsNodeId: "",
     category: "Structural",
@@ -2617,6 +2933,13 @@ function QualityObservationsPageFull() {
     targetDate: "",
   });
   const [actionText, setActionText] = useState("");
+  const observationChildrenMap = useMemo(() => buildChildrenMap(locations), [locations]);
+  const observationLocationIds = useMemo(() => new Set(locations.map((node) => node.id)), [locations]);
+  const observationLocationRoots = useMemo(
+    () => locations.filter((node) => !node.parentId || !observationLocationIds.has(node.parentId)),
+    [locations, observationLocationIds],
+  );
+  const selectedObservationLocation = locations.find((location) => location.id === Number(form.epsNodeId));
 
   const load = async () => {
     if (!projectId) return;
@@ -2637,6 +2960,7 @@ function QualityObservationsPageFull() {
 
   const create = async () => {
     try {
+      const photos = photoFiles.length ? await uploadMobileFiles(photoFiles) : [];
       await api.post("/quality/site-observations", {
         projectId: Number(projectId),
         epsNodeId: form.epsNodeId ? Number(form.epsNodeId) : null,
@@ -2647,9 +2971,10 @@ function QualityObservationsPageFull() {
         description: form.description,
         remarks: form.remarks,
         targetDate: form.targetDate,
-        photos: [],
+        photos,
       });
       setShowRaise(false);
+      setPhotoFiles([]);
       setMessage("Observation raised.");
       await load();
     } catch (err: any) {
@@ -2665,9 +2990,10 @@ function QualityObservationsPageFull() {
     }
     try {
       if (mode === "rectify") {
+        const rectificationPhotos = actionFiles.length ? await uploadMobileFiles(actionFiles) : [];
         await api.patch(`/quality/site-observations/${selected.id}/rectify`, {
           rectificationText: actionText,
-          rectificationPhotos: [],
+          rectificationPhotos,
         });
       } else if (mode === "close") {
         await api.patch(`/quality/site-observations/${selected.id}/close`, {
@@ -2681,6 +3007,7 @@ function QualityObservationsPageFull() {
       setSelected(null);
       setMode(null);
       setActionText("");
+      setActionFiles([]);
       setMessage("Action saved.");
       await load();
     } catch (err: any) {
@@ -2697,28 +3024,43 @@ function QualityObservationsPageFull() {
         {message && <div className={message.includes("failed") || message.includes("mandatory") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
         {loading && <LoadingCard />}
         {items.map((item) => (
-          <div className="mobile-card mobile-card-pad" key={item.id}>
-            <span className={statusChipClass(item.status || item.severity || item.observationRating)}>{item.observationRating || item.severity || item.status || "Observation"}</span>
-            <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.description || item.observationText || "Observation"}</h3>
-            <p className="mobile-subtitle">Raised by {pickName(item.raisedBy || item.createdByUser)} - {dateText(item.createdAt)}</p>
-            <p className="mobile-subtitle">Rectifier: {pickName(item.rectifiedBy)} - {item.rectifiedAt ? dateText(item.rectifiedAt) : "Pending"}</p>
-            <p className="mobile-subtitle">Closer: {pickName(item.closedByUser || item.closedBy)} - {item.closedAt ? dateText(item.closedAt) : "Pending"}</p>
-            <div className="mobile-grid-2" style={{ marginTop: 10 }}>
-              <button className="mobile-button secondary" type="button" onClick={() => { setSelected(item); setMode("rectify"); }}>Rectify</button>
-              <button className="mobile-button secondary" type="button" onClick={() => { setSelected(item); setMode("close"); }}>Close</button>
-              <button className="mobile-button danger" type="button" onClick={() => { setSelected(item); setMode("reject"); }}>Reject rect.</button>
+          <button
+            className="mobile-card mobile-card-pad mobile-observation-card"
+            key={item.id}
+            type="button"
+            onClick={() => {
+              setSelected(item);
+              setMode(null);
+              setActionText("");
+              setActionFiles([]);
+            }}
+          >
+            <div className="mobile-row">
+              <div>
+                <span className={statusChipClass(item.status || item.severity || item.observationRating)}>{item.observationRating || item.severity || item.status || "Observation"}</span>
+                <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.description || item.observationText || "Observation"}</h3>
+                <p className="mobile-subtitle">{actorLine("Raised by", item.raisedBy || item.createdByUser || item.raisedById, item.createdAt)}</p>
+                <p className="mobile-subtitle">{item.locationLabel || "Location not set"}</p>
+              </div>
+              <ChevronRight size={18} />
             </div>
-          </div>
+            {evidencePhotos(item).length > 0 && (
+              <div className="mobile-photo-strip">
+                {evidencePhotos(item).slice(0, 3).map((photo, index) => (
+                  <img key={`${item.id}-${index}`} src={getPublicFileUrl(photo)} alt="Observation evidence" />
+                ))}
+              </div>
+            )}
+          </button>
         ))}
         {!loading && items.length === 0 && <div className="mobile-card mobile-empty">No observations found.</div>}
       </div>
       {showRaise && (
         <MobileSheet title="Raise quality observation" onClose={() => setShowRaise(false)}>
           <div className="mobile-stack">
-            <select className="mobile-select" value={form.epsNodeId} onChange={(event) => setForm({ ...form, epsNodeId: event.target.value })}>
-              <option value="">Select location</option>
-              {locations.map((location) => <option key={location.id} value={location.id}>{location.name} ({location.type})</option>)}
-            </select>
+            <button className="mobile-button secondary" type="button" onClick={() => setShowObservationLocationPicker(true)}>
+              {selectedObservationLocation ? `${selectedObservationLocation.name} (${selectedObservationLocation.type})` : "Select location from tree"}
+            </button>
             <select className="mobile-select" value={form.observationRating} onChange={(event) => setForm({ ...form, observationRating: event.target.value })}>
               <option value="OFI">OFI</option>
               <option value="MINOR">Minor</option>
@@ -2730,16 +3072,93 @@ function QualityObservationsPageFull() {
             <textarea className="mobile-textarea" placeholder="Observation description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
             <input className="mobile-input" type="date" value={form.targetDate} onChange={(event) => setForm({ ...form, targetDate: event.target.value })} />
             <textarea className="mobile-textarea" placeholder="Remarks" value={form.remarks} onChange={(event) => setForm({ ...form, remarks: event.target.value })} />
+            <label className="mobile-button secondary">
+              <Camera size={18} /> Add observation photos
+              <input hidden type="file" accept="image/*" capture="environment" multiple onChange={(event) => setPhotoFiles(Array.from(event.target.files || []))} />
+            </label>
+            {photoFiles.length > 0 && <p className="mobile-subtitle">{photoFiles.length} photo(s) selected</p>}
             <button className="mobile-button" type="button" onClick={create}>Submit observation</button>
           </div>
         </MobileSheet>
       )}
-      {selected && mode && (
-        <MobileSheet title={`${mode === "rectify" ? "Rectify" : mode === "close" ? "Close" : "Reject rectification"}`} onClose={() => { setSelected(null); setMode(null); }}>
+      {showObservationLocationPicker && (
+        <MobileSheet title="Select observation location" onClose={() => setShowObservationLocationPicker(false)}>
+          <div className="mobile-tree-list">
+            {observationLocationRoots.map((node) => (
+              <MobileLocationPickerTree
+                key={node.id}
+                node={node}
+                childrenMap={observationChildrenMap}
+                selectedId={form.epsNodeId}
+                onSelect={(location) => {
+                  setForm((current) => ({ ...current, epsNodeId: String(location.id) }));
+                  setShowObservationLocationPicker(false);
+                }}
+              />
+            ))}
+          </div>
+        </MobileSheet>
+      )}
+      {selected && (
+        <MobileSheet
+          title={mode ? `${mode === "rectify" ? "Rectify" : mode === "close" ? "Close" : "Reject rectification"}` : "Observation detail"}
+          onClose={() => { setSelected(null); setMode(null); setActionText(""); setActionFiles([]); }}
+        >
           <div className="mobile-stack">
-            <p className="mobile-subtitle">{selected.description || selected.observationText}</p>
-            <textarea className="mobile-textarea" placeholder={mode === "reject" ? "Rejection reason" : "Remarks"} value={actionText} onChange={(event) => setActionText(event.target.value)} />
-            <button className={mode === "reject" ? "mobile-button danger" : "mobile-button"} type="button" onClick={submitAction}>Save action</button>
+            <div className="mobile-card mobile-card-pad">
+              <span className={statusChipClass(selected.status || selected.severity || selected.observationRating)}>{selected.observationRating || selected.severity || selected.status || "Observation"}</span>
+              <h3 className="mobile-title" style={{ marginTop: 8 }}>{selected.description || selected.observationText || "Observation"}</h3>
+              {selected.remarks && <p className="mobile-subtitle">Remarks: {selected.remarks}</p>}
+              <p className="mobile-subtitle">{actorLine("Raised by", selected.raisedBy || selected.createdByUser || selected.raisedById, selected.createdAt)}</p>
+              <p className="mobile-subtitle">{actorLine("Rectifier", selected.rectifiedBy || selected.rectifiedById, selected.rectifiedAt)}</p>
+              <p className="mobile-subtitle">{actorLine("Closer", selected.closedByUser || selected.closedBy || selected.closedById, selected.closedAt)}</p>
+              {selected.rectificationText && <p className="mobile-subtitle">Rectification: {selected.rectificationText}</p>}
+              {selected.rectificationRejectedRemarks && <p className="mobile-subtitle">Rejected reason: {selected.rectificationRejectedRemarks}</p>}
+            </div>
+            {evidencePhotos(selected).length > 0 && (
+              <div className="mobile-attachment-grid">
+                {evidencePhotos(selected).map((photo, index) => (
+                  <a key={`${selected.id}-photo-${index}`} className="mobile-attachment-tile" href={getPublicFileUrl(photo)} target="_blank" rel="noreferrer">
+                    <img src={getPublicFileUrl(photo)} alt="Observation evidence" />
+                    <span>Evidence {index + 1}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+            {(selected.rectificationHistory || []).length > 0 && (
+              <div className="mobile-card mobile-card-pad">
+                <h3 className="mobile-title">Rectification history</h3>
+                {(selected.rectificationHistory || []).map((entry: AnyRecord, index: number) => (
+                  <div className="mobile-history-row" key={`${selected.id}-history-${index}`}>
+                    <span className={statusChipClass(entry.type)}>{entry.type}</span>
+                    <p>{entry.text || entry.rejectionRemarks || "No remarks"}</p>
+                    <small>{entry.at ? new Date(entry.at).toLocaleString() : ""}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+            {mode ? (
+              <>
+                <textarea className="mobile-textarea" placeholder={mode === "reject" ? "Rejection reason" : "Remarks"} value={actionText} onChange={(event) => setActionText(event.target.value)} />
+                {mode === "rectify" && (
+                  <>
+                    <label className="mobile-button secondary">
+                      <Camera size={18} /> Add rectification photos
+                      <input hidden type="file" accept="image/*" capture="environment" multiple onChange={(event) => setActionFiles(Array.from(event.target.files || []))} />
+                    </label>
+                    {actionFiles.length > 0 && <p className="mobile-subtitle">{actionFiles.length} photo(s) selected</p>}
+                  </>
+                )}
+                <button className={mode === "reject" ? "mobile-button danger" : "mobile-button"} type="button" onClick={submitAction}>Save action</button>
+                <button className="mobile-button secondary" type="button" onClick={() => { setMode(null); setActionText(""); setActionFiles([]); }}>Back to detail</button>
+              </>
+            ) : (
+              <div className="mobile-action-row">
+                <button className="mobile-button secondary" type="button" onClick={() => setMode("rectify")}>Rectify</button>
+                <button className="mobile-button secondary" type="button" onClick={() => setMode("close")}>Close</button>
+                <button className="mobile-button danger" type="button" onClick={() => setMode("reject")}>Reject rectification</button>
+              </div>
+            )}
           </div>
         </MobileSheet>
       )}
@@ -2750,10 +3169,163 @@ function QualityObservationsPageFull() {
 function CubeRegisterPage() {
   const { projectId } = useParams();
   const [items, setItems] = useState<AnyRecord[]>([]);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("ALL");
+  const [selected, setSelected] = useState<AnyRecord | null>(null);
+  const [draft, setDraft] = useState<AnyRecord>({});
+  const [evidence, setEvidence] = useState<AnyRecord[]>([]);
+  const [message, setMessage] = useState("");
   useEffect(() => {
     if (!projectId) return;
     qualityService.getCubeTestRegister(Number(projectId)).then(setItems).catch(() => setItems([]));
   }, [projectId]);
+
+  const openCube = async (cube: AnyRecord) => {
+    setSelected(cube);
+    setDraft({
+      loadKn: cube.loadKn || "",
+      requiredStrengthMpa: cube.requiredStrengthMpa || "",
+      testedDate: cube.testedDate || new Date().toISOString().slice(0, 10),
+      remarks: cube.remarks || "",
+      specimenSize: cube.specimenSize || "150 x 150 x 150 mm",
+    });
+    setEvidence([]);
+    if (projectId) {
+      qualityService
+        .getMaterialEvidence(Number(projectId), "CUBE_TEST_REGISTER", Number(cube.id))
+        .then(setEvidence)
+        .catch(() => setEvidence([]));
+    }
+  };
+
+  const saveCube = async (approve = false) => {
+    if (!selected) return;
+    try {
+      const payload = {
+        ...draft,
+        loadKn: draft.loadKn || undefined,
+        requiredStrengthMpa: draft.requiredStrengthMpa || undefined,
+      };
+      const updated = approve
+        ? await qualityService.approveCubeTestRegister(Number(selected.id), payload)
+        : await qualityService.updateCubeTestRegister(Number(selected.id), payload);
+      setSelected(updated);
+      setItems((current) => current.map((item) => (Number(item.id) === Number(updated.id) ? updated : item)));
+      setMessage(approve ? "Cube result approved." : "Cube result saved.");
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Cube action failed.");
+    }
+  };
+
+  const deleteCube = async () => {
+    if (!selected || !window.confirm("Delete this cube test register row?")) return;
+    try {
+      await qualityService.deleteCubeTestRegister(Number(selected.id));
+      setItems((current) => current.filter((item) => Number(item.id) !== Number(selected.id)));
+      setSelected(null);
+      setMessage("Cube row deleted.");
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Delete failed.");
+    }
+  };
+
+  const uploadEvidence = async (file?: File | null) => {
+    if (!file || !selected || !projectId) return;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("ownerType", "CUBE_TEST_REGISTER");
+      formData.append("ownerId", String(selected.id));
+      formData.append("evidenceType", file.type.startsWith("image/") ? "PHOTO" : "LAB_REPORT");
+      formData.append("description", `Cube evidence for ${selected.cubeId || selected.id}`);
+      const uploaded = await qualityService.uploadMaterialEvidence(Number(projectId), formData);
+      setEvidence((current) => [uploaded, ...current]);
+      setMessage("Evidence uploaded.");
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Evidence upload failed.");
+    }
+  };
+
+  const visible = items
+    .filter((item) => filter === "ALL" || String(item.status || "").toUpperCase() === filter)
+    .filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <MobileShell title="Cube Register" subtitle="Concrete cube tests">
+      <div className="mobile-stack">
+        <div className="mobile-search-card">
+          <Search size={17} />
+          <input placeholder="Search cube, RFI, GO, location, grade" value={search} onChange={(event) => setSearch(event.target.value)} />
+        </div>
+        <div className="mobile-pill-tabs">
+          {["ALL", "PENDING", "DUE_TODAY", "OVERDUE", "FAILED", "APPROVED"].map((key) => (
+            <button key={key} className={filter === key ? "active" : ""} type="button" onClick={() => setFilter(key)}>
+              {key.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+        {message && <div className={message.includes("failed") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
+        {visible.map((item) => (
+          <button className="mobile-card mobile-card-pad mobile-observation-card" key={item.id} type="button" onClick={() => openCube(item)}>
+            <div className="mobile-row">
+              <div>
+                <span className={statusChipClass(item.status)}>{item.status || "Pending"}</span>
+                <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.cubeId}</h3>
+                <p className="mobile-subtitle">{item.mixIdOrGrade} / {item.testAge?.replace("_", " ") || "Age"} / Due {dateText(item.dueDate)}</p>
+                <p className="mobile-subtitle">{item.locationText || "-"} / {item.goLabel || "GO"} / RFI #{item.inspectionId || "-"}</p>
+                <p className="mobile-subtitle">Load {item.loadKn || "-"} kN / MPa {item.compressiveStrengthMpa || item.mpa || "Auto"}</p>
+              </div>
+              <ChevronRight size={18} />
+            </div>
+          </button>
+        ))}
+        {visible.length === 0 && <div className="mobile-card mobile-empty">No cube tests found.</div>}
+        {selected && (
+          <MobileSheet title={selected.cubeId || "Cube result"} onClose={() => setSelected(null)}>
+            <div className="mobile-stack">
+              <div className="mobile-card mobile-card-pad">
+                <span className={statusChipClass(selected.status)}>{selected.status || "Pending"}</span>
+                <h3 className="mobile-title" style={{ marginTop: 8 }}>{selected.mixIdOrGrade || "Concrete grade"}</h3>
+                <p className="mobile-subtitle">{selected.locationText || "-"} / {selected.elementName || "-"} / {selected.goLabel || "GO"}</p>
+                <p className="mobile-subtitle">Due {dateText(selected.dueDate)} / Cast {dateText(selected.castDate)}</p>
+                <p className="mobile-subtitle">Strength: {selected.compressiveStrengthMpa || selected.mpa || "Auto"} MPa / Required {selected.requiredStrengthMpa || "-"}</p>
+              </div>
+              <input className="mobile-input" inputMode="decimal" placeholder="Load kN" value={draft.loadKn || ""} onChange={(event) => setDraft({ ...draft, loadKn: event.target.value })} />
+              <input className="mobile-input" inputMode="decimal" placeholder="Required MPa" value={draft.requiredStrengthMpa || ""} onChange={(event) => setDraft({ ...draft, requiredStrengthMpa: event.target.value })} />
+              <input className="mobile-input" type="date" value={draft.testedDate || ""} onChange={(event) => setDraft({ ...draft, testedDate: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Remarks" value={draft.remarks || ""} onChange={(event) => setDraft({ ...draft, remarks: event.target.value })} />
+              <div className="mobile-action-row">
+                <button className="mobile-button secondary" type="button" onClick={() => saveCube(false)}>Save result</button>
+                <button className="mobile-button" type="button" disabled={String(selected.status || "").toUpperCase() === "APPROVED"} onClick={() => saveCube(true)}>
+                  {String(selected.status || "").toUpperCase() === "APPROVED" ? "Approved" : "Approve"}
+                </button>
+                <button className="mobile-button danger" type="button" onClick={deleteCube}>Delete</button>
+              </div>
+              <label className="mobile-button secondary">
+                <Camera size={18} /> Upload evidence
+                <input hidden type="file" accept="image/*,.pdf" capture="environment" onChange={(event) => uploadEvidence(event.target.files?.[0])} />
+              </label>
+              {evidence.length > 0 && (
+                <div className="mobile-attachment-grid">
+                  {evidence.map((file) => (
+                    <a key={file.id} className="mobile-attachment-tile" href={getPublicFileUrl(file.relativeUrl || file.url)} target="_blank" rel="noreferrer">
+                      {String(file.mimeType || "").startsWith("image/") ? (
+                        <img src={getPublicFileUrl(file.relativeUrl || file.url)} alt={file.originalName || "Evidence"} />
+                      ) : (
+                        <Paperclip size={22} />
+                      )}
+                      <span>{file.originalName || file.fileName || "Evidence"}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </MobileSheet>
+        )}
+      </div>
+    </MobileShell>
+  );
+
   return (
     <MobileShell title="Cube Register" subtitle="Concrete cube tests">
       <div className="mobile-stack">
@@ -2832,9 +3404,12 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [selected, setSelected] = useState<AnyRecord | null>(null);
   const [mode, setMode] = useState<"rectify" | "close" | "reject" | null>(null);
   const [actionText, setActionText] = useState("");
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [actionFiles, setActionFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     epsNodeId: "",
     category: "Safety",
@@ -2844,6 +3419,13 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
     incidentType: "First Aid",
     date: new Date().toISOString().slice(0, 10),
   });
+  const ehsChildrenMap = useMemo(() => buildChildrenMap(locations), [locations]);
+  const ehsLocationIds = useMemo(() => new Set(locations.map((node) => node.id)), [locations]);
+  const ehsLocationRoots = useMemo(
+    () => locations.filter((node) => !node.parentId || !ehsLocationIds.has(node.parentId)),
+    [ehsLocationIds, locations],
+  );
+  const selectedLocation = locations.find((location) => location.id === Number(form.epsNodeId));
 
   const load = async () => {
     if (!projectId) return;
@@ -2876,6 +3458,7 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
           date: form.date,
         });
       } else {
+        const photos = photoFiles.length ? await uploadMobileFiles(photoFiles) : [];
         await api.post("/ehs/site-observations", {
           projectId: Number(projectId),
           epsNodeId: form.epsNodeId ? Number(form.epsNodeId) : null,
@@ -2884,10 +3467,11 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
           severity: form.severity,
           description: form.description,
           targetDate: form.targetDate,
-          photos: [],
+          photos,
         });
       }
       setShowCreate(false);
+      setPhotoFiles([]);
       setMessage("Record created.");
       await load();
     } catch (err: any) {
@@ -2903,9 +3487,10 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
     }
     try {
       if (mode === "rectify") {
+        const rectificationPhotos = actionFiles.length ? await uploadMobileFiles(actionFiles) : [];
         await api.patch(`/ehs/site-observations/${selected.id}/rectify`, {
           rectificationText: actionText,
-          rectificationPhotos: [],
+          rectificationPhotos,
         });
       } else if (mode === "close") {
         await api.patch(`/ehs/site-observations/${selected.id}/close`, {
@@ -2919,6 +3504,7 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
       setSelected(null);
       setMode(null);
       setActionText("");
+      setActionFiles([]);
       setMessage("Action saved.");
       await load();
     } catch (err: any) {
@@ -2935,18 +3521,34 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
         {message && <div className={message.includes("failed") || message.includes("mandatory") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
         {loading && <LoadingCard />}
         {items.map((item) => (
-          <div className="mobile-card mobile-card-pad" key={item.id}>
-            <span className={statusChipClass(item.status || item.severity || item.incidentType)}>{item.status || item.severity || item.incidentType || "Record"}</span>
-            <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.description || item.observation || item.incidentDescription || "EHS record"}</h3>
-            <p className="mobile-subtitle">{dateText(item.createdAt || item.date || item.incidentDate)} - Raised by {pickName(item.raisedBy || item.createdByUser)}</p>
-            {!incidents && (
-              <div className="mobile-grid-2" style={{ marginTop: 10 }}>
-                <button className="mobile-button secondary" type="button" onClick={() => { setSelected(item); setMode("rectify"); }}>Rectify</button>
-                <button className="mobile-button secondary" type="button" onClick={() => { setSelected(item); setMode("close"); }}>Close</button>
-                <button className="mobile-button danger" type="button" onClick={() => { setSelected(item); setMode("reject"); }}>Reject rect.</button>
+          <button
+            className="mobile-card mobile-card-pad mobile-observation-card"
+            key={item.id}
+            type="button"
+            onClick={() => {
+              setSelected(item);
+              setMode(null);
+              setActionText("");
+              setActionFiles([]);
+            }}
+          >
+            <div className="mobile-row">
+              <div>
+                <span className={statusChipClass(item.status || item.severity || item.incidentType)}>{item.status || item.severity || item.incidentType || "Record"}</span>
+                <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.description || item.observation || item.incidentDescription || "EHS record"}</h3>
+                <p className="mobile-subtitle">{actorLine("Raised by", item.raisedBy || item.createdByUser || item.raisedById, item.createdAt || item.date || item.incidentDate)}</p>
+                <p className="mobile-subtitle">{item.locationLabel || "Location not set"}</p>
+              </div>
+              <ChevronRight size={18} />
+            </div>
+            {evidencePhotos(item).length > 0 && (
+              <div className="mobile-photo-strip">
+                {evidencePhotos(item).slice(0, 3).map((photo, index) => (
+                  <img key={`${item.id}-${index}`} src={getPublicFileUrl(photo)} alt="EHS evidence" />
+                ))}
               </div>
             )}
-          </div>
+          </button>
         ))}
         {!loading && items.length === 0 && <div className="mobile-card mobile-empty">No records found.</div>}
       </div>
@@ -2954,10 +3556,9 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
         <MobileSheet title={incidents ? "Report incident" : "Raise EHS observation"} onClose={() => setShowCreate(false)}>
           <div className="mobile-stack">
             {!incidents && (
-              <select className="mobile-select" value={form.epsNodeId} onChange={(event) => setForm({ ...form, epsNodeId: event.target.value })}>
-                <option value="">Select location</option>
-                {locations.map((location) => <option key={location.id} value={location.id}>{location.name} ({location.type})</option>)}
-              </select>
+              <button className="mobile-button secondary" type="button" onClick={() => setShowLocationPicker(true)}>
+                {selectedLocation ? `${selectedLocation.name} (${selectedLocation.type})` : "Select location from tree"}
+              </button>
             )}
             <input className="mobile-input" placeholder="Category" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
             {incidents ? (
@@ -2979,16 +3580,84 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
             )}
             <textarea className="mobile-textarea" placeholder="Description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
             <input className="mobile-input" type="date" value={incidents ? form.date : form.targetDate} onChange={(event) => setForm(incidents ? { ...form, date: event.target.value } : { ...form, targetDate: event.target.value })} />
+            {!incidents && (
+              <>
+                <label className="mobile-button secondary">
+                  <Camera size={18} /> Add observation photos
+                  <input hidden type="file" accept="image/*" capture="environment" multiple onChange={(event) => setPhotoFiles(Array.from(event.target.files || []))} />
+                </label>
+                {photoFiles.length > 0 && <p className="mobile-subtitle">{photoFiles.length} photo(s) selected</p>}
+              </>
+            )}
             <button className="mobile-button" type="button" onClick={create}>Submit</button>
           </div>
         </MobileSheet>
       )}
-      {selected && mode && (
-        <MobileSheet title={`${mode === "rectify" ? "Rectify" : mode === "close" ? "Close" : "Reject rectification"}`} onClose={() => { setSelected(null); setMode(null); }}>
+      {showLocationPicker && (
+        <MobileSheet title="Select EHS location" onClose={() => setShowLocationPicker(false)}>
+          <div className="mobile-tree-list">
+            {ehsLocationRoots.map((node) => (
+              <MobileLocationPickerTree
+                key={node.id}
+                node={node}
+                childrenMap={ehsChildrenMap}
+                selectedId={form.epsNodeId}
+                onSelect={(location) => {
+                  setForm((current) => ({ ...current, epsNodeId: String(location.id) }));
+                  setShowLocationPicker(false);
+                }}
+              />
+            ))}
+          </div>
+        </MobileSheet>
+      )}
+      {selected && (
+        <MobileSheet
+          title={mode ? `${mode === "rectify" ? "Rectify" : mode === "close" ? "Close" : "Reject rectification"}` : incidents ? "Incident detail" : "EHS observation detail"}
+          onClose={() => { setSelected(null); setMode(null); setActionText(""); setActionFiles([]); }}
+        >
           <div className="mobile-stack">
-            <p className="mobile-subtitle">{selected.description || selected.observation}</p>
-            <textarea className="mobile-textarea" placeholder={mode === "reject" ? "Rejection reason" : "Remarks"} value={actionText} onChange={(event) => setActionText(event.target.value)} />
-            <button className={mode === "reject" ? "mobile-button danger" : "mobile-button"} type="button" onClick={submitAction}>Save action</button>
+            <div className="mobile-card mobile-card-pad">
+              <span className={statusChipClass(selected.status || selected.severity || selected.incidentType)}>{selected.status || selected.severity || selected.incidentType || "Record"}</span>
+              <h3 className="mobile-title" style={{ marginTop: 8 }}>{selected.description || selected.observation || selected.incidentDescription || "EHS record"}</h3>
+              <p className="mobile-subtitle">{actorLine("Raised by", selected.raisedBy || selected.createdByUser || selected.raisedById, selected.createdAt || selected.date || selected.incidentDate)}</p>
+              <p className="mobile-subtitle">{actorLine("Rectifier", selected.rectifiedBy || selected.rectifiedById, selected.rectifiedAt)}</p>
+              <p className="mobile-subtitle">{actorLine("Closer", selected.closedByUser || selected.closedBy || selected.closedById, selected.closedAt)}</p>
+              {selected.rectificationText && <p className="mobile-subtitle">Rectification: {selected.rectificationText}</p>}
+              {selected.rectificationRejectedRemarks && <p className="mobile-subtitle">Rejected reason: {selected.rectificationRejectedRemarks}</p>}
+            </div>
+            {evidencePhotos(selected).length > 0 && (
+              <div className="mobile-attachment-grid">
+                {evidencePhotos(selected).map((photo, index) => (
+                  <a key={`${selected.id}-photo-${index}`} className="mobile-attachment-tile" href={getPublicFileUrl(photo)} target="_blank" rel="noreferrer">
+                    <img src={getPublicFileUrl(photo)} alt="EHS evidence" />
+                    <span>Evidence {index + 1}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+            {!incidents && mode ? (
+              <>
+                <textarea className="mobile-textarea" placeholder={mode === "reject" ? "Rejection reason" : "Remarks"} value={actionText} onChange={(event) => setActionText(event.target.value)} />
+                {mode === "rectify" && (
+                  <>
+                    <label className="mobile-button secondary">
+                      <Camera size={18} /> Add rectification photos
+                      <input hidden type="file" accept="image/*" capture="environment" multiple onChange={(event) => setActionFiles(Array.from(event.target.files || []))} />
+                    </label>
+                    {actionFiles.length > 0 && <p className="mobile-subtitle">{actionFiles.length} photo(s) selected</p>}
+                  </>
+                )}
+                <button className={mode === "reject" ? "mobile-button danger" : "mobile-button"} type="button" onClick={submitAction}>Save action</button>
+                <button className="mobile-button secondary" type="button" onClick={() => { setMode(null); setActionText(""); setActionFiles([]); }}>Back to detail</button>
+              </>
+            ) : !incidents ? (
+              <div className="mobile-action-row">
+                <button className="mobile-button secondary" type="button" onClick={() => setMode("rectify")}>Rectify</button>
+                <button className="mobile-button secondary" type="button" onClick={() => setMode("close")}>Close</button>
+                <button className="mobile-button danger" type="button" onClick={() => setMode("reject")}>Reject rectification</button>
+              </div>
+            ) : null}
           </div>
         </MobileSheet>
       )}

@@ -288,18 +288,34 @@ export default function ReleaseStrategyPage() {
   );
 
   const roleOptions = useMemo(() => {
+    const templateRoleMap = new Map<
+      number,
+      { id: number; name: string; vendorRoleLevel?: number | null }
+    >();
     const roleMap = new Map<
       number,
       { name: string; vendorRoleLevel?: number | null }
     >();
     actors.forEach((actor) => {
       if (actor.projectRoles?.length) {
-        actor.projectRoles.forEach((role: EligibleApproverDto["projectRoles"][number]) =>
+        actor.projectRoles.forEach((role: EligibleApproverDto["projectRoles"][number]) => {
+          const roleName = role.displayName || role.name;
+          if (role.tempRoleTemplateId) {
+            const existing = templateRoleMap.get(role.tempRoleTemplateId);
+            if (!existing || (role.vendorRoleLevel || 1) < (existing.vendorRoleLevel || 1)) {
+              templateRoleMap.set(role.tempRoleTemplateId, {
+                id: role.id,
+                name: roleName.replace(/^Vendor Approver\s+\d+\s*[·-]\s*/i, ""),
+                vendorRoleLevel: role.vendorRoleLevel,
+              });
+            }
+            return;
+          }
           roleMap.set(role.id, {
-            name: role.displayName || role.name,
+            name: roleName,
             vendorRoleLevel: role.vendorRoleLevel,
-          }),
-        );
+          });
+        });
         return;
       }
       actor.projectRoleIds.forEach((id: number, index: number) => {
@@ -309,6 +325,12 @@ export default function ReleaseStrategyPage() {
             actor.primaryRoleLabel ||
             `Role ${id}`,
         });
+      });
+    });
+    templateRoleMap.forEach((role) => {
+      roleMap.set(role.id, {
+        name: role.name,
+        vendorRoleLevel: null,
       });
     });
     return Array.from(roleMap.entries())

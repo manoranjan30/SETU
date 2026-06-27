@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
+import 'package:setu_mobile/core/update/android_apk_downloader.dart';
 import 'package:setu_mobile/core/update/app_update_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 
@@ -92,11 +93,19 @@ Future<void> showUpdateAvailableDialog(BuildContext context, UpdateCheckResult r
   );
 }
 
-/// Downloads the APK from [apkUrl] to a temp file with a live progress
-/// dialog, then hands it to the OS package installer via [OpenFile.open].
-/// Falls back to showing the raw URL in a SnackBar if either step fails
-/// (e.g. server unreachable, or "install unknown apps" not yet granted —
-/// the system itself prompts for that permission when the installer opens).
+/// Downloads the APK from [apkUrl] with a live progress dialog, then hands
+/// it to the OS package installer via [OpenFile.open]. Falls back to showing
+/// the raw URL in a SnackBar if either step fails (e.g. server unreachable,
+/// or "install unknown apps" not yet granted — the system itself prompts for
+/// that permission when the installer opens).
+///
+/// The download itself runs via Android's native `DownloadManager`
+/// ([AndroidApkDownloader]) rather than a plain in-process HTTP request —
+/// DownloadManager is an OS-level service, so it keeps downloading even if
+/// the user minimizes the app mid-update. A Dio/Dart-isolate download would
+/// get throttled or frozen the moment the app leaves the foreground on
+/// several Android OEMs' aggressive battery optimizers, which is what was
+/// previously pausing the update.
 Future<void> downloadAndInstallUpdate(
   BuildContext context,
   String apkUrl,
@@ -117,30 +126,61 @@ Future<void> downloadAndInstallUpdate(
             LinearProgressIndicator(value: value),
             const SizedBox(height: 12),
             Text(value != null ? '${(value * 100).toStringAsFixed(0)}%' : 'Starting…'),
+            const SizedBox(height: 4),
+            Text(
+              'You can minimize the app — the download will continue.',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
           ],
         ),
       ),
     ),
   );
 
+  Timer? poller;
   try {
-    final dir = await getTemporaryDirectory();
-    final savePath = p.join(dir.path,
-        'setu_update_${versionLabel ?? DateTime.now().millisecondsSinceEpoch}.apk');
-
-    await sl<SetuApiClient>().downloadFile(
-      apkUrl,
-      savePath,
-      onProgress: (received, total) {
-        if (total > 0) progress.value = received / total;
-      },
+    final fileName =
+        'setu_update_${versionLabel ?? DateTime.now().millisecondsSinceEpoch}.apk';
+    final downloadId = await AndroidApkDownloader.enqueue(
+      url: ApiEndpoints.resolveUrl(apkUrl),
+      fileName: fileName,
+      title: 'SETU update${versionLabel != null ? ' v$versionLabel' : ''}',
     );
+
+    final completer = Completer<ApkDownloadSnapshot>();
+    poller = Timer.periodic(const Duration(milliseconds: 700), (timer) async {
+      final snapshot = await AndroidApkDownloader.query(downloadId);
+      if (snapshot == null) {
+        timer.cancel();
+        if (!completer.isCompleted) {
+          completer.completeError('Download record not found');
+        }
+        return;
+      }
+      if (snapshot.progress != null) progress.value = snapshot.progress;
+      if (snapshot.status == ApkDownloadStatus.successful ||
+          snapshot.status == ApkDownloadStatus.failed) {
+        timer.cancel();
+        if (!completer.isCompleted) completer.complete(snapshot);
+      }
+    });
+
+    final result = await completer.future;
+    poller.cancel();
 
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
     if (!context.mounted) return;
 
+    if (result.status != ApkDownloadStatus.successful || result.localUri == null) {
+      await AndroidApkDownloader.remove(downloadId);
+      if (context.mounted) _showUpdateFallback(context, apkUrl, 'Download failed.');
+      return;
+    }
+
+    final savePath = Uri.parse(result.localUri!).toFilePath();
     await _openApk(context, savePath, apkUrl);
   } catch (e) {
+    poller?.cancel();
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
     if (context.mounted) _showUpdateFallback(context, apkUrl, 'Download failed: $e');
   }
