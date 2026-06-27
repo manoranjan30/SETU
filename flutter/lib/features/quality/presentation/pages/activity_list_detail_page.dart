@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/media/image_annotation_page.dart';
 import 'package:setu_mobile/core/media/photo_compressor.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
@@ -197,6 +198,7 @@ class _ActivityListBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = state.rows;
+    final ps = PermissionService.of(context);
 
     return Column(
       children: [
@@ -237,11 +239,14 @@ class _ActivityListBody extends StatelessWidget {
                       final status = row.displayStatus;
 
                       // Determine which CTA is available based on status
-                      final canRaiseRfi =
+                      // AND the user's QUALITY.INSPECTION.RAISE permission —
+                      // status alone is not enough, a viewer-only user must
+                      // not see Raise RFI/GO buttons regardless of status.
+                      final canRaiseRfi = ps.canRaiseRfi &&
                           status == ActivityDisplayStatus.ready;
                       // Allow raising additional parts / units when the
                       // activity isn't locked or fully approved.
-                      final canRaiseMore =
+                      final canRaiseMore = ps.canRaiseRfi &&
                           status != ActivityDisplayStatus.locked &&
                               status != ActivityDisplayStatus.approved;
 

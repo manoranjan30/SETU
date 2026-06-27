@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
@@ -223,6 +224,7 @@ class _ProgressApprovalsView extends StatelessWidget {
 
           final items = state.items;
           final selected = state.selected;
+          final ps = PermissionService.of(context);
 
           // All-clear empty state
           if (items.isEmpty) {
@@ -268,8 +270,9 @@ class _ProgressApprovalsView extends StatelessWidget {
                       style: const TextStyle(fontSize: 13),
                     ),
                     const Spacer(),
-                    // Bulk action buttons — only visible when items are selected
-                    if (selected.isNotEmpty) ...[
+                    // Bulk action buttons — only visible when items are
+                    // selected AND the user holds EXECUTION.ENTRY.APPROVE.
+                    if (selected.isNotEmpty && ps.canApproveProgress) ...[
                       // Reject button — opens dialog to capture reason
                       OutlinedButton(
                         onPressed: () =>

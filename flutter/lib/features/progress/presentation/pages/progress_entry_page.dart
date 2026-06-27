@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/core/theme/app_dimensions.dart';
@@ -347,13 +348,17 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final ps = PermissionService.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Progress Entry'),
         actions: [
-          // Mark as Complete — shown only when activity is not already COMPLETED.
+          // Mark as Complete — shown only when activity is not already
+          // COMPLETED AND the user holds EXECUTION.ENTRY.CREATE (same
+          // permission as submitting progress — completing is just the
+          // terminal progress update).
           // Mirrors the web app's "Mark Complete" button on each activity card.
-          if (widget.activity.status != 'COMPLETED')
+          if (widget.activity.status != 'COMPLETED' && ps.canEntryProgress)
             _markCompleteLoading
                 ? const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
@@ -1257,8 +1262,11 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     // Loading state differs between micro (local flag) and master (bloc state)
     final bool isLoading =
         isMicro ? _microSubmitting : state is ProgressLoading;
-    // Disable the button while mode is undetermined or a request is running
-    final bool isDisabled = _hasMicro == null || isLoading;
+    // Disable the button while mode is undetermined, a request is running,
+    // or the user lacks EXECUTION.ENTRY.CREATE.
+    final bool isDisabled = _hasMicro == null ||
+        isLoading ||
+        !PermissionService.of(context).canEntryProgress;
 
     return SizedBox(
       width: double.infinity,

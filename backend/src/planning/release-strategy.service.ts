@@ -295,6 +295,30 @@ export class ReleaseStrategyService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const vendorTemplateRoles = await this.roleRepo.find({
+      where: { isActive: true } as any,
+      order: { tempRoleTemplateId: 'ASC', vendorRoleLevel: 'ASC', name: 'ASC' },
+    });
+    const templateRoleAliases = new Map<number, Role[]>();
+    for (const role of vendorTemplateRoles) {
+      if (!role.tempRoleTemplateId) continue;
+      const current = templateRoleAliases.get(role.tempRoleTemplateId) || [];
+      current.push(role);
+      templateRoleAliases.set(role.tempRoleTemplateId, current);
+    }
+
+    const expandVendorTemplateRoles = (roles: Role[] = []) => {
+      const expanded = new Map<number, Role>();
+      for (const role of roles) {
+        expanded.set(role.id, role);
+        if (!role.tempRoleTemplateId) continue;
+        for (const alias of templateRoleAliases.get(role.tempRoleTemplateId) || []) {
+          expanded.set(alias.id, alias);
+        }
+      }
+      return Array.from(expanded.values());
+    };
+
     const assignments = await this.assignmentRepo.find({
       where: {
         project: { id: projectId },
@@ -306,11 +330,12 @@ export class ReleaseStrategyService {
     const permanentMap = new Map<number, EligibleApproverDto>();
     for (const assignment of assignments) {
       if (!assignment.user?.isActive) continue;
+      const expandedRoles = expandVendorTemplateRoles(assignment.roles || []);
       const existing = permanentMap.get(assignment.user.id);
-      const roleIds = assignment.roles?.map((role) => role.id) || [];
+      const roleIds = expandedRoles.map((role) => role.id);
       const roleNames =
-        assignment.roles?.map((role) => role.name).filter(Boolean) || [];
-      const projectRoles = (assignment.roles || []).map((role) => ({
+        expandedRoles.map((role) => role.name).filter(Boolean) || [];
+      const projectRoles = expandedRoles.map((role) => ({
         id: role.id,
         name: role.name,
         displayName: role.name,
@@ -396,10 +421,6 @@ export class ReleaseStrategyService {
       });
     }
 
-    const vendorTemplateRoles = await this.roleRepo.find({
-      where: { isActive: true } as any,
-      order: { tempRoleTemplateId: 'ASC', vendorRoleLevel: 'ASC', name: 'ASC' },
-    });
     const syntheticRoles = vendorTemplateRoles
       .filter((role) => role.tempRoleTemplateId && role.vendorRoleLevel === 1)
       .map((role) => ({

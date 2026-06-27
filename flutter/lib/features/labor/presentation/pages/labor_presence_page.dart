@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/features/labor/data/models/labor_models.dart';
 import 'package:setu_mobile/features/labor/presentation/bloc/labor_bloc.dart';
 
@@ -142,8 +143,13 @@ class _LaborPresencePageState extends State<LaborPresencePage> {
         builder: (context, state) {
           final isSaving = state is LaborSaving;
           final isLoaded = state is LaborLoaded;
-          // Hide FAB when the register hasn't loaded yet
-          if (!isLoaded && !isSaving) return const SizedBox.shrink();
+          // Hide FAB when the register hasn't loaded yet, or when the user
+          // lacks LABOR.ENTRY.CREATE — a viewer should not see a Save button
+          // for an action the backend will reject.
+          if ((!isLoaded && !isSaving) ||
+              !PermissionService.of(context).canCreateLabor) {
+            return const SizedBox.shrink();
+          }
           return FloatingActionButton.extended(
             // Disable button while save is in progress to prevent double-tap
             onPressed: isSaving ? null : _save,
