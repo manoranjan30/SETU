@@ -12,3 +12,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </ThemeProvider>
   </React.StrictMode>,
 );
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/setu-mobile-sw.js").catch(() => {
+      // Service worker is an enhancement; keep the app usable if registration fails.
+    });
+  });
+}
