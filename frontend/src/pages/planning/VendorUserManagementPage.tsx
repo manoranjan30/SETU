@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import {
   tempUserService,
+  type TempRoleTemplate,
   type TempUser,
 } from "../../services/tempUser.service";
 import { CreateTempUserWizard } from "../../components/temp-user/CreateTempUserWizard";
@@ -11,6 +12,7 @@ export const VendorUserManagementPage = () => {
   const pId = Number(projectId);
 
   const [users, setUsers] = useState<TempUser[]>([]);
+  const [templates, setTemplates] = useState<TempRoleTemplate[]>([]);
   const [showWizard, setShowWizard] = useState(false);
 
   const loadUsers = async () => {
@@ -23,8 +25,18 @@ export const VendorUserManagementPage = () => {
     }
   };
 
+  const loadTemplates = async () => {
+    try {
+      const data = await tempUserService.getTemplates();
+      setTemplates((data || []).filter((template) => template.isActive));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
-    loadUsers();
+    void loadUsers();
+    void loadTemplates();
   }, [pId]);
 
   const handleToggleStatus = async (user: TempUser) => {
@@ -51,19 +63,27 @@ export const VendorUserManagementPage = () => {
     }
   };
 
-  const handleRoleLevelChange = async (
+  const handleTemplateChange = async (
     user: TempUser,
-    level: 1 | 2,
+    tempRoleTemplateId: number,
   ) => {
-    if (level === (user.vendorApprovalRoleLevel || 1)) return;
-    if (!confirm(`Assign Vendor Approver ${level} to ${user.user.displayName}?`)) {
+    if (!tempRoleTemplateId || tempRoleTemplateId === user.tempRoleTemplate?.id) {
+      return;
+    }
+    const template = templates.find((item) => item.id === tempRoleTemplateId);
+    const templateName = template?.name || "the selected template";
+    if (
+      !confirm(
+        `Update ${user.user.displayName}'s vendor access template to ${templateName}?`,
+      )
+    ) {
       return;
     }
     try {
-      await tempUserService.updateVendorApprovalRole(user.id, level);
+      await tempUserService.updateRoleTemplate(user.id, tempRoleTemplateId);
       await loadUsers();
     } catch (e: any) {
-      alert(e.response?.data?.message || "Error updating vendor approval role");
+      alert(e.response?.data?.message || "Error updating vendor access template");
     }
   };
 
@@ -130,22 +150,26 @@ export const VendorUserManagementPage = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-info-muted text-blue-800">
-                    {u.tempRoleTemplate?.name || "Unknown"}
-                  </span>
                   <select
-                    value={u.vendorApprovalRoleLevel || 1}
+                    value={u.tempRoleTemplate?.id || ""}
                     onChange={(event) =>
-                      void handleRoleLevelChange(
+                      void handleTemplateChange(
                         u,
-                        Number(event.target.value) as 1 | 2,
+                        Number(event.target.value),
                       )
                     }
-                    className="mt-2 block rounded-md border border-border-default bg-surface-card px-2 py-1 text-xs font-semibold text-text-secondary"
+                    className="block min-w-48 rounded-md border border-border-default bg-surface-card px-2 py-1.5 text-xs font-semibold text-text-secondary"
                   >
-                    <option value={1}>Vendor Approver 1</option>
-                    <option value={2}>Vendor Approver 2</option>
+                    <option value="">Select template</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
                   </select>
+                  <div className="mt-1 text-xs text-text-disabled">
+                    {u.tempRoleTemplate?.name || "No template assigned"}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
@@ -207,7 +231,7 @@ export const VendorUserManagementPage = () => {
           onClose={() => setShowWizard(false)}
           onSuccess={() => {
             setShowWizard(false);
-            loadUsers();
+            void loadUsers();
           }}
         />
       )}

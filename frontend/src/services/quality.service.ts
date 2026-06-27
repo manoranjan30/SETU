@@ -25,6 +25,12 @@ import type {
 
 const BASE_URL = "/quality";
 
+const annotatedExtensionFor = (file: File | Blob) => {
+  if (file.type === "image/jpeg") return ".jpg";
+  if (file.type === "image/webp") return ".webp";
+  return ".png";
+};
+
 export const qualityService = {
   getRelatedChecklistOptions: async (
     projectId: number,
@@ -69,7 +75,7 @@ export const qualityService = {
       formData.append(
         "annotatedFile",
         options.annotatedFile,
-        `annotated-${originalFile.name.replace(/\.[^.]+$/, "")}.png`,
+        `annotated-${originalFile.name.replace(/\.[^.]+$/, "")}${annotatedExtensionFor(options.annotatedFile)}`,
       );
     }
     formData.append(
@@ -120,7 +126,7 @@ export const qualityService = {
       formData.append(
         "annotatedFile",
         options.annotatedFile,
-        `annotated-${originalFile.name.replace(/\.[^.]+$/, "")}.png`,
+        `annotated-${originalFile.name.replace(/\.[^.]+$/, "")}${annotatedExtensionFor(options.annotatedFile)}`,
       );
     }
     formData.append(

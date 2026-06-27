@@ -56,6 +56,39 @@ interface Props {
 }
 
 const colors = ["#dc2626", "#2563eb", "#16a34a", "#f59e0b", "#111827"];
+const PDF_RENDER_SCALE = 3;
+const MAX_EXPORT_SIDE = 4096;
+const TARGET_MAX_ANNOTATED_BYTES = 9.5 * 1024 * 1024;
+
+const canvasToBlob = (
+  canvas: HTMLCanvasElement,
+  type = "image/png",
+  quality?: number,
+) =>
+  new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (value) => (value ? resolve(value) : reject(new Error("Image export failed"))),
+      type,
+      quality,
+    ),
+  );
+
+const exportReadableBlob = async (
+  stage: Konva.Stage,
+  imageWidth: number,
+  imageHeight: number,
+  displayScale: number,
+) => {
+  const maxSide = Math.max(imageWidth, imageHeight);
+  const ratio = maxSide > MAX_EXPORT_SIDE ? MAX_EXPORT_SIDE / maxSide : 1;
+  const pixelRatio = ratio / displayScale;
+  const canvas = stage.toCanvas({ pixelRatio });
+  const png = await canvasToBlob(canvas, "image/png");
+  if (png.size <= TARGET_MAX_ANNOTATED_BYTES) {
+    return png;
+  }
+  return canvasToBlob(canvas, "image/jpeg", 0.92);
+};
 
 export default function ImageAnnotationEditor({
   file,
@@ -113,20 +146,14 @@ export default function ImageAnnotationEditor({
     pdfDocument
       .getPage(pdfPageNumber)
       .then(async (page) => {
-        const viewport = page.getViewport({ scale: 1.75 });
+        const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
         const canvas = document.createElement("canvas");
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
         const context = canvas.getContext("2d");
         if (!context) throw new Error("Canvas is unavailable");
         await page.render({ canvasContext: context, viewport }).promise;
-        const blob = await new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob(
-            (value) =>
-              value ? resolve(value) : reject(new Error("PDF render failed")),
-            "image/png",
-          ),
-        );
+        const blob = await canvasToBlob(canvas, "image/png");
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         const nextImage = new Image();
@@ -279,7 +306,7 @@ export default function ImageAnnotationEditor({
     setFuture((current) => current.slice(1));
   };
 
-  const exportAnnotation = () => {
+  const exportAnnotation = async () => {
     const stage = stageRef.current;
     if (!stage || !image) return;
     const previous = {
@@ -290,24 +317,36 @@ export default function ImageAnnotationEditor({
     };
     stage.position({ x: 0, y: 0 });
     stage.scale({ x: viewport.scale, y: viewport.scale });
-    stage.toBlob({
-      pixelRatio: 1 / viewport.scale,
-      callback: (blob) => {
-        stage.position({ x: previous.x, y: previous.y });
-        stage.scale({ x: previous.scaleX, y: previous.scaleY });
-        if (blob) {
-          onComplete(blob, {
-            version: 1,
-            imageWidth: image.width,
-            imageHeight: image.height,
-            sourceMimeType: file.type,
-            pdfPageNumber: isPdf ? pdfPageNumber : undefined,
-            pdfPageCount: isPdf ? pdfDocument?.numPages : undefined,
-            shapes,
-          });
-        }
-      },
-    });
+    try {
+      const blob = await exportReadableBlob(
+        stage,
+        image.width,
+        image.height,
+        viewport.scale,
+      );
+      onComplete(blob, {
+        version: 1,
+        imageWidth: image.width,
+        imageHeight: image.height,
+        sourceMimeType: file.type,
+        pdfPageNumber: isPdf ? pdfPageNumber : undefined,
+        pdfPageCount: isPdf ? pdfDocument?.numPages : undefined,
+        exportWidth: Math.round(
+          image.width *
+            Math.min(1, MAX_EXPORT_SIDE / Math.max(image.width, image.height)),
+        ),
+        exportHeight: Math.round(
+          image.height *
+            Math.min(1, MAX_EXPORT_SIDE / Math.max(image.width, image.height)),
+        ),
+        shapes,
+      });
+    } catch {
+      alert("Unable to export the marked-up drawing. Please try again.");
+    } finally {
+      stage.position({ x: previous.x, y: previous.y });
+      stage.scale({ x: previous.scaleX, y: previous.scaleY });
+    }
   };
 
   const toolButtons: Array<[Tool, typeof Pencil, string]> = [

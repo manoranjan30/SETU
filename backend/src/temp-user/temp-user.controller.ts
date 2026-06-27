@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { TempUserService } from './temp-user.service';
 import { CreateTempUserDto } from './dto/create-temp-user.dto';
+import { UpdateTempUserTemplateDto } from './dto/update-temp-user-template.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
@@ -92,6 +93,20 @@ export class TempUserController {
     return this.service.updateVendorApprovalRoleLevel(
       +id,
       +vendorApprovalRoleLevel,
+      req.user.id,
+    );
+  }
+
+  @Put(':id/role-template')
+  @Permissions('TEMP_USER.CREATE')
+  updateRoleTemplate(
+    @Param('id') id: string,
+    @Body() dto: UpdateTempUserTemplateDto,
+    @Request() req,
+  ) {
+    return this.service.updateRoleTemplate(
+      +id,
+      +dto.tempRoleTemplateId,
       req.user.id,
     );
   }
