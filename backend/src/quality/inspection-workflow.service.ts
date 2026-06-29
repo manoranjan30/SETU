@@ -28,7 +28,10 @@ import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { NotificationComposerService } from '../notifications/notification-composer.service';
 import { ReleaseStrategyService } from '../planning/release-strategy.service';
-import { StageStatus } from './entities/quality-inspection-stage.entity';
+import {
+  QualityInspectionStage,
+  StageStatus,
+} from './entities/quality-inspection-stage.entity';
 import { RestartPolicy } from '../planning/entities/release-strategy.entity';
 import { ApprovalRuntimeService, ProjectApprovalActor } from '../common/approval-runtime.service';
 import { QualityPourCardService } from './quality-pour-card.service';
@@ -47,6 +50,8 @@ export class InspectionWorkflowService {
     private readonly signatureRepo: Repository<QualitySignature>,
     @InjectRepository(QualityInspection)
     private readonly inspectionRepo: Repository<QualityInspection>,
+    @InjectRepository(QualityInspectionStage)
+    private readonly stageRepo: Repository<QualityInspectionStage>,
     private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly auditService: AuditService,
     private readonly pushService: PushNotificationService,
@@ -922,6 +927,20 @@ export class InspectionWorkflowService {
     inspection.lockedAt = null;
     inspection.lockedByUserId = null;
     await this.inspectionRepo.save(inspection);
+
+    const stagesToReopen = (inspection.stages || []).filter(
+      (stage) => stage.status === StageStatus.APPROVED || stage.isLocked,
+    );
+    for (const stage of stagesToReopen) {
+      stage.status = StageStatus.COMPLETED;
+      stage.isLocked = false;
+      stage.lockedAt = null;
+      stage.lockedByUserId = null;
+    }
+    if (stagesToReopen.length > 0) {
+      await this.stageRepo.save(stagesToReopen);
+    }
+
     await this.qualityPourCardService.unlockForInspection(inspectionId);
     await this.attachmentService.unlockForInspection(inspectionId);
 
