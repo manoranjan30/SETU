@@ -917,11 +917,13 @@ export class InspectionWorkflowService {
     const inspection = await this.getInspectionOrThrow(inspectionId);
     const now = new Date();
 
-    inspection.status = InspectionStatus.REVERSED;
+    inspection.status = InspectionStatus.PENDING;
     inspection.isLocked = false;
     inspection.lockedAt = null;
     inspection.lockedByUserId = null;
     await this.inspectionRepo.save(inspection);
+    await this.qualityPourCardService.unlockForInspection(inspectionId);
+    await this.attachmentService.unlockForInspection(inspectionId);
 
     const sortedSteps = [...run.steps].sort((a, b) => a.stepOrder - b.stepOrder);
     const firstStep = sortedSteps[0];
@@ -939,7 +941,10 @@ export class InspectionWorkflowService {
       step.signerDisplayName = null;
       step.signerCompany = null;
       step.signerRole = null;
-      step.comments = step.stepOrder === firstStep?.stepOrder ? `REVERSED: ${reason}` : null;
+      step.comments =
+        step.stepOrder === firstStep?.stepOrder
+          ? `Reopened after admin reversal: ${reason}`
+          : null;
       await this.stepRepo.save(step);
     }
 
@@ -953,7 +958,7 @@ export class InspectionWorkflowService {
       },
     );
 
-    run.status = WorkflowRunStatus.REVERSED;
+    run.status = WorkflowRunStatus.IN_PROGRESS;
     run.currentStepOrder = firstStep?.stepOrder || 1;
     const savedRun = await this.runRepo.save(run);
 
@@ -966,8 +971,8 @@ export class InspectionWorkflowService {
           activityLabel: inspection.activity?.activityName || null,
           subjectLabel: `RFI #${inspectionId}`,
           inspectionId,
-          decisionLabel: 'RFI Approval Reversed',
-          comments: reason,
+          decisionLabel: 'RFI Approval Reversed and Reopened',
+          comments: `${reason}. Workflow reopened from level 1 for re-approval.`,
         });
       this.pushService
         .sendToProjectUsers(
@@ -988,8 +993,17 @@ export class InspectionWorkflowService {
       'REVERSE_RFI',
       String(inspectionId),
       inspection.epsNodeId,
-      { reason, previousStatus: 'APPROVED' },
+      {
+        reason,
+        previousStatus: 'APPROVED',
+        newStatus: InspectionStatus.PENDING,
+        reopenedFromStep: run.currentStepOrder,
+      },
     );
+
+    if (firstStep) {
+      await this.notifyStep(inspection, firstStep, 'Level 1');
+    }
 
     return savedRun;
   }

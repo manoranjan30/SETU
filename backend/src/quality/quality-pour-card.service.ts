@@ -2185,5 +2185,22 @@ export class QualityPourCardService {
       await this.clearanceRepo.save(clearance);
     }
   }
+
+  async unlockForInspection(inspectionId: number) {
+    const [pourCard, clearance] = await Promise.all([
+      this.pourCardRepo.findOne({ where: { inspectionId } }),
+      this.clearanceRepo.findOne({ where: { inspectionId } }),
+    ]);
+
+    if (pourCard && pourCard.status === QualityCardStatus.LOCKED) {
+      pourCard.status = QualityCardStatus.APPROVED;
+      await this.pourCardRepo.save(pourCard);
+    }
+
+    if (clearance && clearance.status === QualityCardStatus.LOCKED) {
+      clearance.status = QualityCardStatus.APPROVED;
+      await this.clearanceRepo.save(clearance);
+    }
+  }
 }
 
