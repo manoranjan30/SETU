@@ -75,6 +75,11 @@ export const MENU_CONFIG: MenuItem[] = [
         permission: PermissionCode.AUDIT_READ,
       },
       {
+        label: "Data Maintenance",
+        path: "/dashboard/admin/data-maintenance",
+        permission: PermissionCode.ADMIN_DATA_EDITOR_READ,
+      },
+      {
         label: "Vendor Access Templates",
         path: "/dashboard/admin/vendor-access-templates",
         permission: PermissionCode.TEMP_ROLE_VIEW,

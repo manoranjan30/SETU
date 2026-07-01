@@ -672,7 +672,11 @@ class QualityDashboardBloc
               allInsp.any((i) => i.status == InspectionStatus.rejected);
           final anyPending = allInsp.any((i) =>
               i.status == InspectionStatus.pending ||
-              i.status == InspectionStatus.partiallyApproved);
+              i.status == InspectionStatus.partiallyApproved ||
+              // A reversed inspection is reopened for first-level approval
+              // again by the backend — treat it like a pending approval,
+              // not as "not yet raised".
+              i.status == InspectionStatus.reversed);
 
           if (allApproved && allPartsRaised) {
             displayStatus = ActivityDisplayStatus.approved;
@@ -699,6 +703,12 @@ class QualityDashboardBloc
               break;
             case InspectionStatus.rejected:
               displayStatus = ActivityDisplayStatus.rejected;
+              break;
+            case InspectionStatus.reversed:
+              // Reversing a previously-approved inspection reopens it for
+              // first-level approval again on the backend — show it the
+              // same as a freshly pending approval, not locked.
+              displayStatus = ActivityDisplayStatus.pending;
               break;
             default:
               displayStatus = ActivityDisplayStatus.locked;

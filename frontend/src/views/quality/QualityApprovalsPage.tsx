@@ -7787,9 +7787,9 @@ export default function QualityApprovalsPage() {
               </div>
             </div>
             <div className="bg-warning-muted border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
-              <strong>Warning:</strong> Reversing will change the status to
-              REVERSED. The raiser will be notified. All signatures are
-              preserved for audit.
+              <strong>Warning:</strong> Reversing will reopen this RFI from
+              approval level 1. The raiser will be notified, and old signatures
+              will be preserved as reversed audit evidence.
             </div>
             <div>
               <label className="block text-sm font-bold text-text-secondary mb-1">
@@ -7822,10 +7822,15 @@ export default function QualityApprovalsPage() {
                       `/quality/inspections/${inspectionDetail.id}/workflow/reverse`,
                       { reason: reversalReason },
                     );
-                    alert("RFI reversed. Raiser notified.");
+                    const [detailRes, workflowRes] = await Promise.all([
+                      api.get(`/quality/inspections/${inspectionDetail.id}`),
+                      api.get(`/quality/inspections/${inspectionDetail.id}/workflow`),
+                    ]);
+                    setInspectionDetail(detailRes.data);
+                    setWorkflowState(workflowRes.data);
+                    alert("RFI reversed and reopened from level 1.");
                     setShowReversalModal(false);
                     setReversalReason("");
-                    setSelectedInspectionId(null);
                     setRefreshKey((k) => k + 1);
                   } catch (err: any) {
                     alert(err.response?.data?.message || "Reversal failed.");

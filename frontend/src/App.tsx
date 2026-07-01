@@ -64,6 +64,9 @@ const ReportDesigner = lazy(() => import("./views/dashboard-builder/ReportDesign
 const ReportViewer = lazy(() => import("./views/dashboard-builder/ReportViewer"));
 const DashboardRouter = lazy(() => import("./DashboardRouter"));
 const PluginRegistryPage = lazy(() => import("./pages/admin/PluginRegistryPage"));
+const DataMaintenanceConsole = lazy(
+  () => import("./pages/admin/DataMaintenanceConsole"),
+);
 const PluginHostPage = lazy(() => import("./pages/plugins/PluginHostPage"));
 const IssueTrackerDepartmentsPage = lazy(
   () => import("./pages/admin/IssueTrackerDepartmentsPage"),
@@ -204,6 +207,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute permission="AUDIT.READ">
               <SystemLogs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/data-maintenance"
+          element={
+            <ProtectedRoute permission="ADMIN.DATA_EDITOR.READ">
+              <DataMaintenanceConsole />
             </ProtectedRoute>
           }
         />

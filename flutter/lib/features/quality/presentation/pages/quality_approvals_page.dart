@@ -1217,7 +1217,10 @@ _StatusVisual _statusVisual(InspectionStatus status) {
 
 bool _isPendingStatus(QualityInspection i) {
   return i.status == InspectionStatus.pending ||
-      i.status == InspectionStatus.partiallyApproved;
+      i.status == InspectionStatus.partiallyApproved ||
+      // Reversed inspections are reopened for first-level approval again —
+      // treat them as pending for the dashboard's queue/counts.
+      i.status == InspectionStatus.reversed;
 }
 
 String? _ageLabel(DateTime? requestDate) {
