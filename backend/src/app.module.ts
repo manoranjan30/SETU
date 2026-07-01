@@ -216,6 +216,8 @@ import { ExecutionProgressAdjustment } from './execution/entities/execution-prog
 import { AppConfigModule } from './app-config/app-config.module';
 import { AppConfig } from './app-config/entities/app-config.entity';
 import { NotificationLog } from './notifications/notification-log.entity';
+import { AdminDataModule } from './admin-data/admin-data.module';
+import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -406,6 +408,7 @@ import { NotificationLog } from './notifications/notification-log.entity';
         // App Config & Notification Log
         AppConfig,
         NotificationLog,
+        AdminDataCorrection,
       ],
       synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
       migrationsRun: process.env.TYPEORM_MIGRATIONS_RUN === 'true',
@@ -450,6 +453,7 @@ import { NotificationLog } from './notifications/notification-log.entity';
     AiInsightsModule,
     SyncModule,
     AppConfigModule,
+    AdminDataModule,
     TypeOrmModule.forFeature([
       Permission,
       Role,

@@ -526,6 +526,9 @@ export const ADMIN_PERMISSIONS: PermissionDef[] = [
   perm('AUDIT.LOG.READ', 'View Audit Logs', 'ADMIN', R, SYS),
   perm('ADMIN.SETTINGS.MANAGE', 'Manage System Settings', 'ADMIN', S, SYS),
   perm('ADMIN.TEMPLATE.MANAGE', 'Manage Report Templates', 'ADMIN', S, SYS),
+  perm('ADMIN.DATA_EDITOR.READ', 'View Data Maintenance Console', 'ADMIN', R, SYS),
+  perm('ADMIN.DATA_EDITOR.UPDATE', 'Apply Data Corrections', 'ADMIN', U, SYS),
+  perm('ADMIN.DATA_EDITOR.REVERT', 'Revert Data Corrections', 'ADMIN', S, SYS),
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -50,6 +50,10 @@ import {
   InspectionWorkflowRun,
   WorkflowRunStatus,
 } from './entities/inspection-workflow-run.entity';
+import {
+  InspectionWorkflowStep,
+  WorkflowStepStatus,
+} from './entities/inspection-workflow-step.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
 import { QualityInspectionAttachmentService } from './quality-inspection-attachment.service';
@@ -138,6 +142,8 @@ export class QualityInspectionService {
     private readonly workOrderRepo: Repository<WorkOrder>,
     @InjectRepository(InspectionWorkflowRun)
     private readonly workflowRunRepo: Repository<InspectionWorkflowRun>,
+    @InjectRepository(InspectionWorkflowStep)
+    private readonly workflowStepRepo: Repository<InspectionWorkflowStep>,
     @InjectRepository(QualityPourCard)
     private readonly pourCardRepo: Repository<QualityPourCard>,
     @InjectRepository(QualityPrePourClearanceCard)
@@ -193,6 +199,58 @@ export class QualityInspectionService {
           ? explicitLabel
           : `GO ${resolvedGoNo}`,
     };
+  }
+
+  private getActiveInspectionStatuses() {
+    return Object.values(InspectionStatus).filter(
+      (status) =>
+        status !== InspectionStatus.REJECTED &&
+        status !== InspectionStatus.CANCELED,
+    );
+  }
+
+  private async assertInspectionGoScopeAvailable(
+    dto: CreateInspectionDto,
+    partNo: number,
+  ) {
+    const query = this.inspectionRepo
+      .createQueryBuilder('inspection')
+      .where('inspection.projectId = :projectId', { projectId: dto.projectId })
+      .andWhere('inspection.epsNodeId = :epsNodeId', {
+        epsNodeId: dto.epsNodeId,
+      })
+      .andWhere('inspection.activityId = :activityId', {
+        activityId: dto.activityId,
+      })
+      .andWhere('inspection.partNo = :partNo', { partNo })
+      .andWhere('inspection.status IN (:...activeStatuses)', {
+        activeStatuses: this.getActiveInspectionStatuses(),
+      });
+
+    if (typeof dto.qualityUnitId === 'number') {
+      query.andWhere('inspection.qualityUnitId = :qualityUnitId', {
+        qualityUnitId: dto.qualityUnitId,
+      });
+    } else {
+      query.andWhere('inspection.qualityUnitId IS NULL');
+    }
+
+    if (typeof dto.qualityRoomId === 'number') {
+      query.andWhere('inspection.qualityRoomId = :qualityRoomId', {
+        qualityRoomId: dto.qualityRoomId,
+      });
+    } else {
+      query.andWhere('inspection.qualityRoomId IS NULL');
+    }
+
+    const existing = await query.orderBy('inspection.id', 'DESC').getOne();
+    if (existing) {
+      const goLabel =
+        existing.goLabel || existing.partLabel || `GO ${existing.partNo || partNo}`;
+      throw new BadRequestException(
+        `${goLabel} is already active for this activity and location as RFI #${existing.id}. Use Add GO for the next GO, or reject/cancel the existing RFI before re-raising this GO.`,
+      );
+    }
   }
 
   async getActiveVendors(projectId: number) {
@@ -458,6 +516,7 @@ export class QualityInspectionService {
     if (!inspection) throw new NotFoundException('Inspection not found');
     const hydratedInspection =
       await this.materializeInspectionStagesIfMissing(inspection);
+    await this.reopenLegacyReversedInspectionIfNeeded(hydratedInspection);
     // Normalize photo arrays on all checklist items (fixes old absolute URLs)
     for (const stage of hydratedInspection.stages ?? []) {
       for (const item of stage.items ?? []) {
@@ -474,6 +533,69 @@ export class QualityInspectionService {
       ...withRelated,
       attachments: await this.attachmentService.listForInspection(id),
     };
+  }
+
+  private async reopenLegacyReversedInspectionIfNeeded(
+    inspection: QualityInspection,
+  ) {
+    const run = await this.workflowRunRepo.findOne({
+      where: { inspectionId: inspection.id },
+      relations: ['steps'],
+    });
+    const shouldReopen =
+      inspection.status === InspectionStatus.REVERSED ||
+      run?.status === WorkflowRunStatus.REVERSED;
+    if (!shouldReopen) return;
+
+    inspection.status = InspectionStatus.PENDING;
+    inspection.isLocked = false;
+    inspection.lockedAt = null;
+    inspection.lockedByUserId = null;
+    await this.inspectionRepo.save(inspection);
+
+    const stagesToReopen = (inspection.stages || []).filter(
+      (stage) => stage.status === StageStatus.APPROVED || stage.isLocked,
+    );
+    for (const stage of stagesToReopen) {
+      stage.status = StageStatus.COMPLETED;
+      stage.isLocked = false;
+      stage.lockedAt = null;
+      stage.lockedByUserId = null;
+    }
+    if (stagesToReopen.length > 0) {
+      await this.stageRepo.save(stagesToReopen);
+    }
+
+    if (run) {
+      const sortedSteps = [...(run.steps || [])].sort(
+        (a, b) => a.stepOrder - b.stepOrder,
+      );
+      const firstStep = sortedSteps[0];
+      for (const step of sortedSteps) {
+        step.status =
+          step.id === firstStep?.id
+            ? WorkflowStepStatus.PENDING
+            : WorkflowStepStatus.WAITING;
+        step.completedAt = null;
+        step.signatureId = null;
+        step.currentApprovalCount = 0;
+        step.approvedUserIds = [];
+        step.signedBy = null;
+        step.signerDisplayName = null;
+        step.signerCompany = null;
+        step.signerRole = null;
+        step.comments =
+          step.id === firstStep?.id
+            ? step.comments || 'Reopened from legacy reversed state'
+            : null;
+      }
+      if (sortedSteps.length > 0) {
+        await this.workflowStepRepo.save(sortedSteps);
+      }
+      run.status = WorkflowRunStatus.IN_PROGRESS;
+      run.currentStepOrder = firstStep?.stepOrder || 1;
+      await this.workflowRunRepo.save(run);
+    }
   }
 
   async getApprovalDashboard(projectId: number, userId: number) {
@@ -710,22 +832,7 @@ export class QualityInspectionService {
       );
     }
 
-    // 2. Check if there is already a PENDING inspection for this activity at this location
-    const existingWhere: any = {
-      activityId: dto.activityId,
-      epsNodeId: dto.epsNodeId,
-      status: InspectionStatus.PENDING,
-      partNo: dto.partNo || 1,
-    };
-    if (typeof dto.qualityUnitId === 'number') {
-      existingWhere.qualityUnitId = dto.qualityUnitId;
-    }
-    if (typeof dto.qualityRoomId === 'number') {
-      existingWhere.qualityRoomId = dto.qualityRoomId;
-    }
-    const existingPending = await this.inspectionRepo.findOne({
-      where: existingWhere,
-    });
+    const requestedPartNo = dto.partNo || dto.goNo || 1;
 
     const effectiveChecklistIds =
       activity.assignedChecklistIds && activity.assignedChecklistIds.length > 0
@@ -734,11 +841,7 @@ export class QualityInspectionService {
           ? [activity.checklistTemplateId]
           : [];
 
-    if (existingPending) {
-      throw new BadRequestException(
-        'A pending inspection request already exists for this activity at this location.',
-      );
-    }
+    await this.assertInspectionGoScopeAvailable(dto, requestedPartNo);
 
     // 3. CHECKLIST VERIFICATION (mandatory before RFI)
     if (effectiveChecklistIds.length === 0) {
@@ -813,11 +916,11 @@ export class QualityInspectionService {
       sequence: activity.sequence,
       qualityUnitId: dto.qualityUnitId,
       qualityRoomId: dto.qualityRoomId,
-      partNo: dto.partNo || 1,
+      partNo: requestedPartNo,
       totalParts: dto.totalParts || 1,
       partLabel:
         dto.partLabel ||
-        ((dto.totalParts || 1) > 1 ? `GO ${dto.partNo || 1}` : null),
+        ((dto.totalParts || 1) > 1 ? `GO ${requestedPartNo}` : null),
       goNo,
       goLabel,
       goDetails: dto.goDetails?.trim() || null,

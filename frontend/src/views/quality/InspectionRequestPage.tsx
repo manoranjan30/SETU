@@ -906,6 +906,10 @@ export default function InspectionRequestPage() {
     [inspections],
   );
 
+  const hasActiveFloorGo = (activityId: number, applicabilityLevel?: string) =>
+    applicabilityLevel === "FLOOR" &&
+    (partProgressByActivity[activityId]?.existingPartNos.length || 0) > 0;
+
   const getObservationScopeLabel = (inspection?: QualityInspection) => {
     if (!inspection) {
       return "RFI observation";
@@ -2287,7 +2291,11 @@ export default function InspectionRequestPage() {
                       {/* Action Buttons */}
                       <div className="shrink-0 pt-1 flex items-center gap-2">
                         {(item.statusState === "READY" ||
-                          item.statusState === "REJECTED") && (
+                          item.statusState === "REJECTED") &&
+                          !hasActiveFloorGo(
+                            item.id,
+                            item.applicabilityLevel,
+                          ) && (
                           <button
                             onClick={() => openRaiseRfiFlow(item)}
                             className="flex items-center gap-1.5 bg-secondary hover:bg-secondary-dark text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all"
