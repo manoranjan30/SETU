@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import api from "../api/axios";
 import { getPublicFileUrl } from "../api/baseUrl";
+import { PermissionCode } from "../config/permissions";
 import { useAuth } from "../context/AuthContext";
 import { qualityService } from "../services/quality.service";
 import "./styles/mobile.css";
@@ -86,6 +87,11 @@ const statusChipClass = (status?: string) => {
   }
   return "mobile-chip";
 };
+
+const hasAnyPermission = (
+  hasPermission: (permission: string) => boolean,
+  permissions: string[],
+) => permissions.some((permission) => hasPermission(permission));
 
 type MobileTheme = "light" | "dark" | "contrast";
 type MobileSiteMode = "normal" | "large";
@@ -710,6 +716,27 @@ function collectDescendantIds(parentId: number, childrenMap: Map<number | null, 
   return ids;
 }
 
+function formatLocationPath(
+  nodeId: number | string | null | undefined,
+  nodes: EpsNode[],
+  project?: EpsNode | null,
+) {
+  const numericId = Number(nodeId);
+  if (!Number.isFinite(numericId)) return "";
+  const byId = new Map<number, EpsNode>();
+  if (project) byId.set(project.id, project);
+  nodes.forEach((node) => byId.set(node.id, node));
+  const names: string[] = [];
+  let current = byId.get(numericId);
+  const seen = new Set<number>();
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    names.unshift(current.name);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return names.join(" / ");
+}
+
 function inspectionProgress(items: AnyRecord[]) {
   const total = items.length;
   const approved = items.filter(isApprovedInspection).length;
@@ -736,6 +763,7 @@ function ActivityStatusStrip({ items }: { items: AnyRecord[] }) {
 
 function QualityHomePage() {
   const { projectId } = useParams();
+  const { hasPermission } = useAuth();
   const { items, loading } = useProjectInspections(projectId);
   const { project, locations, loading: loadingLocations } = useProjectLocations(projectId);
   const [ncrs, setNcrs] = useState<AnyRecord[]>([]);
@@ -768,15 +796,17 @@ function QualityHomePage() {
   );
   const favoriteLocations = locations.filter((node) => favoriteIds.includes(node.id)).slice(0, 8);
   const qualityApps = [
-    { title: "Raise RFI", subtitle: "Location tree", icon: MapPin, to: "locations", tone: "green" },
-    { title: "Search", subtitle: "All quality data", icon: Search, to: "../search", tone: "blue" },
-    { title: "Approvals", subtitle: "My queue", icon: ClipboardCheck, to: "approvals", tone: "amber" },
-    { title: "Observations", subtitle: "Quality issues", icon: AlertTriangle, to: "observations", tone: "red" },
-    { title: "NC Register", subtitle: "Critical NCR", icon: FileText, to: "ncr", tone: "red" },
-    { title: "Cube Tests", subtitle: "Material register", icon: Layers, to: "materials/cubes", tone: "blue" },
-    { title: "All RFIs", subtitle: "Search list", icon: ListChecks, to: "requests", tone: "green" },
-    { title: "My Tasks", subtitle: "Action inbox", icon: ClipboardList, to: "../tasks", tone: "blue" },
-    { title: "QR", subtitle: "Scan / confirm", icon: QrCode, to: "../qr", tone: "green" },
+    ...(hasPermission(PermissionCode.QUALITY_INSPECTION_RAISE)
+      ? [{ title: "Raise RFI", subtitle: "Location tree", icon: MapPin, to: `/m/projects/${projectId}/quality/locations`, tone: "green" }]
+      : []),
+    { title: "Search", subtitle: "All quality data", icon: Search, to: `/m/projects/${projectId}/search`, tone: "blue" },
+    { title: "Approvals", subtitle: "My queue", icon: ClipboardCheck, to: `/m/projects/${projectId}/quality/approvals`, tone: "amber" },
+    { title: "Observations", subtitle: "Quality issues", icon: AlertTriangle, to: `/m/projects/${projectId}/quality/observations`, tone: "red" },
+    { title: "NC Register", subtitle: "Critical NCR", icon: FileText, to: `/m/projects/${projectId}/quality/ncr`, tone: "red" },
+    { title: "Cube Tests", subtitle: "Material register", icon: Layers, to: `/m/projects/${projectId}/quality/materials/cubes`, tone: "blue" },
+    { title: "All RFIs", subtitle: "Search list", icon: ListChecks, to: `/m/projects/${projectId}/quality/requests`, tone: "green" },
+    { title: "My Tasks", subtitle: "Action inbox", icon: ClipboardList, to: `/m/projects/${projectId}/tasks`, tone: "blue" },
+    { title: "QR", subtitle: "Scan / confirm", icon: QrCode, to: `/m/projects/${projectId}/qr`, tone: "green" },
   ];
 
   return (
@@ -1052,17 +1082,25 @@ function MobileLocationPickerTree({
   childrenMap,
   selectedId,
   onSelect,
+  depth = 0,
+  searchActive = false,
 }: {
   node: EpsNode;
   childrenMap: Map<number | null, EpsNode[]>;
   selectedId?: string;
   onSelect: (node: EpsNode) => void;
+  depth?: number;
+  searchActive?: boolean;
 }) {
   const children = childrenMap.get(node.id) || [];
   const selectable = ["FLOOR", "UNIT", "ROOM"].includes(String(node.type || "").toUpperCase());
   const selected = String(node.id) === String(selectedId || "");
+  const containsSelected = Boolean(
+    selectedId && collectDescendantIds(node.id, childrenMap).has(Number(selectedId)),
+  );
+  const shouldOpen = searchActive || depth === 0 || selected || containsSelected;
   return (
-    <details className={`mobile-tree-node picker ${selected ? "selected" : ""}`} open>
+    <details className={`mobile-tree-node picker ${selected ? "selected" : ""}`} open={shouldOpen}>
       <summary title={`${node.name} (${node.type})`}>
         <span>
           <MapPin size={15} />
@@ -1093,6 +1131,8 @@ function MobileLocationPickerTree({
               childrenMap={childrenMap}
               selectedId={selectedId}
               onSelect={onSelect}
+              depth={depth + 1}
+              searchActive={searchActive}
             />
           ))}
         </div>
@@ -1145,6 +1185,7 @@ function MobileInspectionCard({ item }: { item: AnyRecord }) {
 
 function RfiListPage({ approvals = false }: { approvals?: boolean }) {
   const { projectId } = useParams();
+  const { hasPermission } = useAuth();
   const { items, loading } = useProjectInspections(projectId);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState(approvals ? "PENDING" : "ALL");
@@ -1172,7 +1213,9 @@ function RfiListPage({ approvals = false }: { approvals?: boolean }) {
             </button>
           ))}
         </div>
-        {!approvals && <Link className="mobile-button" to="../locations"><Plus size={18} /> Raise by location</Link>}
+        {!approvals && hasPermission(PermissionCode.QUALITY_INSPECTION_RAISE) && (
+          <Link className="mobile-button" to="../locations"><Plus size={18} /> Raise by location</Link>
+        )}
         {loading && <LoadingCard label="Loading RFIs..." />}
         {filtered.map((item) => <MobileInspectionCard key={item.id} item={item} />)}
         {!loading && filtered.length === 0 && <div className="mobile-card mobile-empty">No RFIs found.</div>}
@@ -1295,23 +1338,27 @@ function useQualityActivities(projectId?: string) {
 function QualityLocationPage() {
   const { projectId, epsNodeId } = useParams();
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const { project, locations, loading: loadingLocations } = useProjectLocations(projectId);
   const { lists, loading: loadingLists } = useQualityActivityLists(projectId);
   const [inspections, setInspections] = useState<AnyRecord[]>([]);
   const [loadingInspections, setLoadingInspections] = useState(false);
+  const numericEpsNodeId = Number(epsNodeId);
+  const hasValidEpsNodeId = Number.isFinite(numericEpsNodeId);
   const allNodes = useMemo(() => [...(project ? [project] : []), ...locations], [project, locations]);
   const childrenMap = useMemo(() => buildChildrenMap(allNodes), [allNodes]);
-  const selectedNode = allNodes.find((node) => node.id === Number(epsNodeId));
+  const selectedNode = hasValidEpsNodeId ? allNodes.find((node) => node.id === numericEpsNodeId) : undefined;
   const childNodes = selectedNode ? childrenMap.get(selectedNode.id) || [] : [];
   const isRfiLevel = ["FLOOR", "UNIT", "ROOM"].includes(String(selectedNode?.type || "").toUpperCase());
   const { favoriteIds, toggleFavorite } = useFavoriteLocations(projectId);
+  const canRaiseInspection = hasPermission(PermissionCode.QUALITY_INSPECTION_RAISE);
 
   const loadInspections = async () => {
-    if (!projectId || !epsNodeId) return;
+    if (!projectId || !hasValidEpsNodeId) return;
     setLoadingInspections(true);
     try {
       const res = await api.get("/quality/inspections", {
-        params: { projectId, epsNodeId },
+        params: { projectId, epsNodeId: numericEpsNodeId },
       });
       setInspections(Array.isArray(res.data) ? res.data : res.data?.items || []);
     } catch {
@@ -1326,11 +1373,11 @@ function QualityLocationPage() {
   }, [projectId, epsNodeId]);
 
   const reserveAddGo = async (activity: ActivityOption) => {
-    if (!projectId || !epsNodeId) return;
+    if (!projectId || !hasValidEpsNodeId) return;
     try {
       const result = await qualityService.addInspectionGo({
         projectId: Number(projectId),
-        epsNodeId: Number(epsNodeId),
+        epsNodeId: numericEpsNodeId,
         activityId: activity.id,
       });
       navigate(
@@ -1340,6 +1387,10 @@ function QualityLocationPage() {
       alert(err.response?.data?.message || "Failed to reserve next GO.");
     }
   };
+
+  if (!hasValidEpsNodeId) {
+    return <Navigate to={`/m/projects/${projectId}/quality`} replace />;
+  }
 
   return (
     <MobileShell title={selectedNode?.name || "Location"} subtitle={selectedNode ? `${nodeTypeLabel(selectedNode)} / checklist activities` : "Quality location"}>
@@ -1407,6 +1458,7 @@ function QualityLocationPage() {
                         navigate(`/m/projects/${projectId}/quality/requests/new?epsNodeId=${epsNodeId}&activityId=${activity.id}&listId=${activity.listId}`)
                       }
                       onAddGo={() => reserveAddGo(activity)}
+                      canRaise={canRaiseInspection}
                     />
                   ))}
                 </div>
@@ -1424,11 +1476,13 @@ function QualityActivityCard({
   inspections,
   onRaise,
   onAddGo,
+  canRaise,
 }: {
   activity: ActivityOption;
   inspections: AnyRecord[];
   onRaise: () => void;
   onAddGo: () => void;
+  canRaise: boolean;
 }) {
   const { projectId } = useParams();
   const orderedGos = [...inspections].sort((a, b) => {
@@ -1466,10 +1520,12 @@ function QualityActivityCard({
       )}
       <div className="mobile-action-row">
         {latest && <Link className="mobile-button secondary" to={`/m/projects/${projectId}/quality/inspections/${latest.id}`}>Open RFI</Link>}
-        <button className="mobile-button" type="button" onClick={onRaise}>
-          <Plus size={16} /> {inspections.length ? "Raise RFI" : "Raise GO 1"}
-        </button>
-        {canAddGo && (
+        {canRaise && (
+          <button className="mobile-button" type="button" onClick={onRaise}>
+            <Plus size={16} /> {inspections.length ? "Raise RFI" : "Raise GO 1"}
+          </button>
+        )}
+        {canRaise && canAddGo && (
           <button className="mobile-button secondary" type="button" onClick={onAddGo}>
             Add GO
           </button>
@@ -1483,6 +1539,7 @@ function RaiseRfiPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { hasPermission } = useAuth();
   const { locations, loading: loadingLocations } = useProjectLocations(projectId);
   const { activities, loading: loadingActivities } = useQualityActivities(projectId);
   const [form, setForm] = useState({
@@ -1578,6 +1635,21 @@ function RaiseRfiPage() {
   const filteredActivities = activities.filter((activity) =>
     `${activity.name} ${activity.listName}`.toLowerCase().includes(activitySearch.toLowerCase()),
   );
+  const groupedActivities = useMemo(() => {
+    const groups = new Map<string, { key: string; listName: string; activities: ActivityOption[] }>();
+    filteredActivities.forEach((activity) => {
+      const key = `${activity.listId}-${activity.listName}`;
+      const group = groups.get(key) || {
+        key,
+        listName: activity.listName || "Checklist",
+        activities: [],
+      };
+      group.activities.push(activity);
+      groups.set(key, group);
+    });
+    return Array.from(groups.values());
+  }, [filteredActivities]);
+  const canRaiseInspection = hasPermission(PermissionCode.QUALITY_INSPECTION_RAISE);
 
   const uploadDraft = async (file: File) => {
     if (!projectId) return;
@@ -1588,6 +1660,10 @@ function RaiseRfiPage() {
   };
 
   const submit = async () => {
+    if (!canRaiseInspection) {
+      setMessage("You do not have permission to raise RFIs.");
+      return;
+    }
     if (!form.epsNodeId || !form.activityId) {
       setMessage("Select location and checklist activity.");
       return;
@@ -1654,6 +1730,9 @@ function RaiseRfiPage() {
   return (
     <MobileShell title="Raise RFI" subtitle={`${goLabel} / ${selectedActivity?.name || "Checklist activity"}`}>
       <div className="mobile-stack">
+        {!canRaiseInspection && (
+          <div className="mobile-card mobile-empty">You do not have permission to raise RFIs.</div>
+        )}
         <div className="mobile-card mobile-card-pad">
           <div className="mobile-chip">Step 1</div>
           <h3 className="mobile-title" style={{ marginTop: 8 }}>Location and checklist</h3>
@@ -1731,7 +1810,9 @@ function RaiseRfiPage() {
           {drafts.map((draft) => <p key={draft.id} className="mobile-subtitle">{draft.originalName}</p>)}
         </div>
         {message && <div className={message.includes("success") ? "mobile-chip" : "mobile-chip danger"}>{message}</div>}
-        <button className="mobile-button" onClick={submit} disabled={submitting}>{submitting ? "Submitting..." : "Submit RFI"}</button>
+        {canRaiseInspection && (
+          <button className="mobile-button" onClick={submit} disabled={submitting}>{submitting ? "Submitting..." : "Submit RFI"}</button>
+        )}
       </div>
       {activeSheet === "location" && (
         <MobileSheet title="Select location" onClose={() => setActiveSheet(null)}>
@@ -1778,20 +1859,41 @@ function RaiseRfiPage() {
         <MobileSheet title="Select checklist activity" onClose={() => setActiveSheet(null)}>
           <div className="mobile-stack">
             <input className="mobile-input" placeholder="Search checklist/activity" value={activitySearch} onChange={(event) => setActivitySearch(event.target.value)} />
-            {filteredActivities.map((activity) => (
-              <button
-                className="mobile-card mobile-card-pad"
-                key={`${activity.listId}-${activity.id}`}
-                type="button"
-                onClick={() => {
-                  setForm((current) => ({ ...current, activityId: String(activity.id), listId: String(activity.listId) }));
-                  setActiveSheet(null);
-                }}
-              >
-                <strong>{activity.name}</strong>
-                <span className="mobile-subtitle" style={{ display: "block" }}>{activity.listName}</span>
-              </button>
+            {groupedActivities.map((group) => (
+              <details className="mobile-tree-node mobile-activity-tree" key={group.key} open={Boolean(activitySearch.trim())}>
+                <summary title={group.listName}>
+                  <span>
+                    <ListChecks size={15} />
+                    <strong>{group.listName}</strong>
+                    <small>{group.activities.length} activity option(s)</small>
+                  </span>
+                  <small>Open</small>
+                </summary>
+                <div className="mobile-tree-children">
+                  {group.activities.map((activity) => (
+                    <button
+                      className="mobile-picker-child"
+                      key={`${activity.listId}-${activity.id}`}
+                      type="button"
+                      onClick={() => {
+                        setForm((current) => ({ ...current, activityId: String(activity.id), listId: String(activity.listId) }));
+                        setActiveSheet(null);
+                      }}
+                    >
+                      <strong>{activity.name}</strong>
+                      <small>
+                        {activity.applicabilityLevel || "FLOOR"}
+                        {activity.requiresPourCard ? " / Pour card" : ""}
+                        {activity.requiresPourClearanceCard ? " / Clearance" : ""}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              </details>
             ))}
+            {groupedActivities.length === 0 && (
+              <div className="mobile-card mobile-empty">No checklist activity found.</div>
+            )}
           </div>
         </MobileSheet>
       )}
@@ -1918,7 +2020,7 @@ function InspectionDetailPage() {
 function InspectionDetailPageFull() {
   const { inspectionId } = useParams();
   const { projectId } = useParams();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [detail, setDetail] = useState<AnyRecord | null>(null);
   const [workflow, setWorkflow] = useState<AnyRecord | null>(null);
   const [attachments, setAttachments] = useState<AnyRecord[]>([]);
@@ -1942,6 +2044,15 @@ function InspectionDetailPageFull() {
       ) || stages[0]
     );
   }, [detail]);
+  const canUpdateInspection = hasPermission(PermissionCode.QUALITY_INSPECTION_UPDATE);
+  const canApproveInspection = hasAnyPermission(hasPermission, [
+    PermissionCode.QUALITY_INSPECTION_APPROVE,
+    PermissionCode.QUALITY_INSPECTION_STAGE_APPROVE,
+    PermissionCode.QUALITY_INSPECTION_FINAL_APPROVE,
+  ]);
+  const canRejectInspection = hasPermission(PermissionCode.QUALITY_INSPECTION_APPROVE);
+  const canRaiseChecklistObservation = hasPermission(PermissionCode.QUALITY_OBSERVATION_CREATE);
+  const canCloseChecklistObservation = hasPermission(PermissionCode.QUALITY_OBSERVATION_CLOSE);
 
   const loadDetail = async () => {
     if (!inspectionId) return;
@@ -2290,8 +2401,12 @@ function InspectionDetailPageFull() {
                         </div>
 
                         <div className="mobile-action-row">
-                          <button className="mobile-button secondary" type="button" onClick={() => saveStage(stage)}>Save Stage</button>
-                          <button className="mobile-button" type="button" onClick={() => setStageToApprove(stage)}>Approve Stage</button>
+                          {canUpdateInspection && (
+                            <button className="mobile-button secondary" type="button" onClick={() => saveStage(stage)}>Save Stage</button>
+                          )}
+                          {canApproveInspection && (
+                            <button className="mobile-button" type="button" onClick={() => setStageToApprove(stage)}>Approve Stage</button>
+                          )}
                           <button className="mobile-button secondary" type="button" onClick={() => setDetailTab("observations")}>Observations ({observations.filter((obs) => Number(obs.stageId) === Number(stage.id)).length})</button>
                         </div>
                       </details>
@@ -2299,6 +2414,7 @@ function InspectionDetailPageFull() {
                   })
                 )}
 
+                {canRejectInspection && (
                 <div className="mobile-card mobile-card-pad">
                   <h3 className="mobile-title">Reject RFI</h3>
                   <textarea
@@ -2314,21 +2430,26 @@ function InspectionDetailPageFull() {
                     </div>
                   )}
                 </div>
+                )}
               </>
             )}
 
             {detailTab === "observations" && (
               <div className="mobile-card mobile-card-pad">
               <h3 className="mobile-title">Checklist observations</h3>
-              <textarea
-                className="mobile-textarea"
-                placeholder="Raise checklist observation"
-                value={observationText}
-                onChange={(event) => setObservationText(event.target.value)}
-              />
-              <button className="mobile-button secondary" type="button" onClick={raiseChecklistObservation}>
-                Raise observation
-              </button>
+              {canRaiseChecklistObservation && (
+                <>
+                  <textarea
+                    className="mobile-textarea"
+                    placeholder="Raise checklist observation"
+                    value={observationText}
+                    onChange={(event) => setObservationText(event.target.value)}
+                  />
+                  <button className="mobile-button secondary" type="button" onClick={raiseChecklistObservation}>
+                    Raise observation
+                  </button>
+                </>
+              )}
               {observations.length === 0 && <p className="mobile-subtitle">No observations.</p>}
               {observations.map((obs) => (
                 <div key={obs.id} className="mobile-card mobile-card-pad" style={{ marginTop: 10 }}>
@@ -2342,7 +2463,7 @@ function InspectionDetailPageFull() {
                       ))}
                     </div>
                   )}
-                  {String(obs.status || "").toUpperCase() !== "CLOSED" && (
+                  {canCloseChecklistObservation && String(obs.status || "").toUpperCase() !== "CLOSED" && (
                     <button className="mobile-button secondary" type="button" onClick={() => closeObservation(Number(obs.id))}>
                       Close observation
                     </button>
@@ -2497,10 +2618,17 @@ function InspectionDetailPageFull() {
 
 function MobileConcreteDocumentPage({ type }: { type: "pour" | "clearance" }) {
   const { projectId, inspectionId } = useParams();
+  const { hasPermission } = useAuth();
   const [card, setCard] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const isPour = type === "pour";
+  const canSubmitDocument = isPour
+    ? hasPermission(PermissionCode.QUALITY_POUR_CARD_SUBMIT)
+    : hasPermission(PermissionCode.QUALITY_POUR_CLEARANCE_SUBMIT);
+  const canApproveDocument = isPour
+    ? hasPermission(PermissionCode.QUALITY_POUR_CARD_APPROVE)
+    : hasPermission(PermissionCode.QUALITY_POUR_CLEARANCE_APPROVE);
 
   const load = async () => {
     if (!inspectionId) return;
@@ -2614,9 +2742,15 @@ function MobileConcreteDocumentPage({ type }: { type: "pour" | "clearance" }) {
               <button className="mobile-button secondary" type="button" onClick={() => window.open(`/api/quality/inspections/${inspectionId}/${isPour ? "pour-card" : "pre-pour-clearance"}/pdf`, "_blank")}>
                 PDF
               </button>
-              <button className="mobile-button secondary" type="button" onClick={submit}>Submit</button>
-              <button className="mobile-button" type="button" onClick={approve}>Approve</button>
-              <button className="mobile-button danger" type="button" onClick={reject}>Reject</button>
+              {canSubmitDocument && (
+                <button className="mobile-button secondary" type="button" onClick={submit}>Submit</button>
+              )}
+              {canApproveDocument && (
+                <>
+                  <button className="mobile-button" type="button" onClick={approve}>Approve</button>
+                  <button className="mobile-button danger" type="button" onClick={reject}>Reject</button>
+                </>
+              )}
               <Link className="mobile-button secondary" to={`/m/projects/${projectId}/quality/inspections/${inspectionId}`}>Back to RFI</Link>
             </div>
           </>
@@ -2914,7 +3048,8 @@ function QualityObservationsPage({ ncrOnly = false }: { ncrOnly?: boolean }) {
 
 function QualityObservationsPageFull() {
   const { projectId } = useParams();
-  const { locations } = useProjectLocations(projectId);
+  const { hasPermission } = useAuth();
+  const { project, locations } = useProjectLocations(projectId);
   const [items, setItems] = useState<AnyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -2940,6 +3075,11 @@ function QualityObservationsPageFull() {
     [locations, observationLocationIds],
   );
   const selectedObservationLocation = locations.find((location) => location.id === Number(form.epsNodeId));
+  const selectedObservationLocationPath = formatLocationPath(form.epsNodeId, locations, project);
+  const canCreateObservation = hasPermission(PermissionCode.QUALITY_SITE_OBS_CREATE);
+  const canRectifyObservation = hasPermission(PermissionCode.QUALITY_SITE_OBS_RECTIFY);
+  const canCloseObservation = hasPermission(PermissionCode.QUALITY_SITE_OBS_CLOSE);
+  const canRejectObservationRectification = hasPermission(PermissionCode.QUALITY_SITE_OBS_REJECT_RECTIFICATION);
 
   const load = async () => {
     if (!projectId) return;
@@ -2964,7 +3104,7 @@ function QualityObservationsPageFull() {
       await api.post("/quality/site-observations", {
         projectId: Number(projectId),
         epsNodeId: form.epsNodeId ? Number(form.epsNodeId) : null,
-        locationLabel: locations.find((location) => location.id === Number(form.epsNodeId))?.name || "",
+        locationLabel: selectedObservationLocationPath,
         severity: form.observationRating === "CRITICAL" ? "CRITICAL" : form.observationRating === "OFI" ? "INFO" : form.observationRating,
         observationRating: form.observationRating,
         category: form.category,
@@ -3018,9 +3158,11 @@ function QualityObservationsPageFull() {
   return (
     <MobileShell title="Quality Observations" subtitle="Raise, rectify, reject, close">
       <div className="mobile-stack">
-        <button className="mobile-button" type="button" onClick={() => setShowRaise(true)}>
-          <Plus size={18} /> Raise observation
-        </button>
+        {canCreateObservation && (
+          <button className="mobile-button" type="button" onClick={() => setShowRaise(true)}>
+            <Plus size={18} /> Raise observation
+          </button>
+        )}
         {message && <div className={message.includes("failed") || message.includes("mandatory") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
         {loading && <LoadingCard />}
         {items.map((item) => (
@@ -3059,7 +3201,9 @@ function QualityObservationsPageFull() {
         <MobileSheet title="Raise quality observation" onClose={() => setShowRaise(false)}>
           <div className="mobile-stack">
             <button className="mobile-button secondary" type="button" onClick={() => setShowObservationLocationPicker(true)}>
-              {selectedObservationLocation ? `${selectedObservationLocation.name} (${selectedObservationLocation.type})` : "Select location from tree"}
+              {selectedObservationLocation
+                ? `${selectedObservationLocationPath || selectedObservationLocation.name} (${selectedObservationLocation.type})`
+                : "Select location from tree"}
             </button>
             <select className="mobile-select" value={form.observationRating} onChange={(event) => setForm({ ...form, observationRating: event.target.value })}>
               <option value="OFI">OFI</option>
@@ -3154,9 +3298,15 @@ function QualityObservationsPageFull() {
               </>
             ) : (
               <div className="mobile-action-row">
-                <button className="mobile-button secondary" type="button" onClick={() => setMode("rectify")}>Rectify</button>
-                <button className="mobile-button secondary" type="button" onClick={() => setMode("close")}>Close</button>
-                <button className="mobile-button danger" type="button" onClick={() => setMode("reject")}>Reject rectification</button>
+                {canRectifyObservation && (
+                  <button className="mobile-button secondary" type="button" onClick={() => setMode("rectify")}>Rectify</button>
+                )}
+                {canCloseObservation && (
+                  <button className="mobile-button secondary" type="button" onClick={() => setMode("close")}>Close</button>
+                )}
+                {canRejectObservationRectification && (
+                  <button className="mobile-button danger" type="button" onClick={() => setMode("reject")}>Reject rectification</button>
+                )}
               </div>
             )}
           </div>
@@ -3168,6 +3318,7 @@ function QualityObservationsPageFull() {
 
 function CubeRegisterPage() {
   const { projectId } = useParams();
+  const { hasPermission } = useAuth();
   const [items, setItems] = useState<AnyRecord[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("ALL");
@@ -3175,6 +3326,13 @@ function CubeRegisterPage() {
   const [draft, setDraft] = useState<AnyRecord>({});
   const [evidence, setEvidence] = useState<AnyRecord[]>([]);
   const [message, setMessage] = useState("");
+  const canSaveCube = hasAnyPermission(hasPermission, [
+    PermissionCode.QUALITY_CUBE_TEST_SAVE,
+    PermissionCode.QUALITY_CUBE_TEST_UPDATE,
+  ]);
+  const canApproveCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_APPROVE);
+  const canDeleteCube = hasPermission(PermissionCode.QUALITY_CUBE_TEST_DELETE);
+  const canUploadCubeEvidence = hasPermission(PermissionCode.QUALITY_MATERIAL_EVIDENCE_UPLOAD);
   useEffect(() => {
     if (!projectId) return;
     qualityService.getCubeTestRegister(Number(projectId)).then(setItems).catch(() => setItems([]));
@@ -3295,16 +3453,24 @@ function CubeRegisterPage() {
               <input className="mobile-input" type="date" value={draft.testedDate || ""} onChange={(event) => setDraft({ ...draft, testedDate: event.target.value })} />
               <textarea className="mobile-textarea" placeholder="Remarks" value={draft.remarks || ""} onChange={(event) => setDraft({ ...draft, remarks: event.target.value })} />
               <div className="mobile-action-row">
-                <button className="mobile-button secondary" type="button" onClick={() => saveCube(false)}>Save result</button>
-                <button className="mobile-button" type="button" disabled={String(selected.status || "").toUpperCase() === "APPROVED"} onClick={() => saveCube(true)}>
-                  {String(selected.status || "").toUpperCase() === "APPROVED" ? "Approved" : "Approve"}
-                </button>
-                <button className="mobile-button danger" type="button" onClick={deleteCube}>Delete</button>
+                {canSaveCube && (
+                  <button className="mobile-button secondary" type="button" onClick={() => saveCube(false)}>Save result</button>
+                )}
+                {canApproveCube && (
+                  <button className="mobile-button" type="button" disabled={String(selected.status || "").toUpperCase() === "APPROVED"} onClick={() => saveCube(true)}>
+                    {String(selected.status || "").toUpperCase() === "APPROVED" ? "Approved" : "Approve"}
+                  </button>
+                )}
+                {canDeleteCube && (
+                  <button className="mobile-button danger" type="button" onClick={deleteCube}>Delete</button>
+                )}
               </div>
-              <label className="mobile-button secondary">
-                <Camera size={18} /> Upload evidence
-                <input hidden type="file" accept="image/*,.pdf" capture="environment" onChange={(event) => uploadEvidence(event.target.files?.[0])} />
-              </label>
+              {canUploadCubeEvidence && (
+                <label className="mobile-button secondary">
+                  <Camera size={18} /> Upload evidence
+                  <input hidden type="file" accept="image/*,.pdf" capture="environment" onChange={(event) => uploadEvidence(event.target.files?.[0])} />
+                </label>
+              )}
               {evidence.length > 0 && (
                 <div className="mobile-attachment-grid">
                   {evidence.map((file) => (
@@ -3399,7 +3565,8 @@ function EhsListPage({ incidents = false }: { incidents?: boolean }) {
 
 function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
   const { projectId } = useParams();
-  const { locations } = useProjectLocations(projectId);
+  const { hasPermission } = useAuth();
+  const { project, locations } = useProjectLocations(projectId);
   const [items, setItems] = useState<AnyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -3426,6 +3593,13 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
     [ehsLocationIds, locations],
   );
   const selectedLocation = locations.find((location) => location.id === Number(form.epsNodeId));
+  const selectedLocationPath = formatLocationPath(form.epsNodeId, locations, project);
+  const canCreateEhsRecord = incidents
+    ? hasPermission(PermissionCode.EHS_INCIDENT_CREATE)
+    : hasPermission(PermissionCode.EHS_SITE_OBS_CREATE);
+  const canRectifyEhsObservation = hasPermission(PermissionCode.EHS_SITE_OBS_RECTIFY);
+  const canCloseEhsObservation = hasPermission(PermissionCode.EHS_SITE_OBS_CLOSE);
+  const canRejectEhsRectification = hasPermission(PermissionCode.EHS_SITE_OBS_REJECT_RECTIFICATION);
 
   const load = async () => {
     if (!projectId) return;
@@ -3462,7 +3636,7 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
         await api.post("/ehs/site-observations", {
           projectId: Number(projectId),
           epsNodeId: form.epsNodeId ? Number(form.epsNodeId) : null,
-          locationLabel: locations.find((location) => location.id === Number(form.epsNodeId))?.name || "",
+          locationLabel: selectedLocationPath,
           category: form.category,
           severity: form.severity,
           description: form.description,
@@ -3515,9 +3689,11 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
   return (
     <MobileShell title={incidents ? "EHS Incidents" : "EHS Observations"} subtitle={incidents ? "Incident register" : "Raise, rectify, close"}>
       <div className="mobile-stack">
-        <button className="mobile-button" type="button" onClick={() => setShowCreate(true)}>
-          <Plus size={18} /> {incidents ? "Report incident" : "Raise observation"}
-        </button>
+        {canCreateEhsRecord && (
+          <button className="mobile-button" type="button" onClick={() => setShowCreate(true)}>
+            <Plus size={18} /> {incidents ? "Report incident" : "Raise observation"}
+          </button>
+        )}
         {message && <div className={message.includes("failed") || message.includes("mandatory") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
         {loading && <LoadingCard />}
         {items.map((item) => (
@@ -3557,7 +3733,7 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
           <div className="mobile-stack">
             {!incidents && (
               <button className="mobile-button secondary" type="button" onClick={() => setShowLocationPicker(true)}>
-                {selectedLocation ? `${selectedLocation.name} (${selectedLocation.type})` : "Select location from tree"}
+                {selectedLocation ? `${selectedLocationPath || selectedLocation.name} (${selectedLocation.type})` : "Select location from tree"}
               </button>
             )}
             <input className="mobile-input" placeholder="Category" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
@@ -3653,9 +3829,15 @@ function EhsListPageFull({ incidents = false }: { incidents?: boolean }) {
               </>
             ) : !incidents ? (
               <div className="mobile-action-row">
-                <button className="mobile-button secondary" type="button" onClick={() => setMode("rectify")}>Rectify</button>
-                <button className="mobile-button secondary" type="button" onClick={() => setMode("close")}>Close</button>
-                <button className="mobile-button danger" type="button" onClick={() => setMode("reject")}>Reject rectification</button>
+                {canRectifyEhsObservation && (
+                  <button className="mobile-button secondary" type="button" onClick={() => setMode("rectify")}>Rectify</button>
+                )}
+                {canCloseEhsObservation && (
+                  <button className="mobile-button secondary" type="button" onClick={() => setMode("close")}>Close</button>
+                )}
+                {canRejectEhsRectification && (
+                  <button className="mobile-button danger" type="button" onClick={() => setMode("reject")}>Reject rectification</button>
+                )}
               </div>
             ) : null}
           </div>
