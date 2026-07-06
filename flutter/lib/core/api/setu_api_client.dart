@@ -526,17 +526,14 @@ class SetuApiClient {
 
   /// Returns inspection requests (RFIs) with optional filters.
   ///
-  /// [status] — when provided, is sent to the backend as a server-side filter
-  /// so only matching records are returned (e.g. 'PENDING', 'APPROVED').
-  /// Pass null or omit to get all statuses. 'ALL' is treated as no filter.
-  /// This is critical for the approvals list page, which previously fetched
-  /// every inspection then discarded most of them client-side — for large
-  /// projects that resulted in multi-MB responses on every tab open.
+  /// Returns inspection requests (RFIs) with optional filters.
+  ///
+  /// All three query params are optional beyond [projectId]; omitting them
+  /// returns all inspections across every EPS node and checklist list.
   Future<List<dynamic>> getQualityInspections({
     required int projectId,
     int? epsNodeId,
     int? listId,
-    String? status,
   }) async {
     final response = await _dio.get(
       ApiEndpoints.qualityInspections,
@@ -544,8 +541,6 @@ class SetuApiClient {
         'projectId': projectId,
         if (epsNodeId != null) 'epsNodeId': epsNodeId,
         if (listId != null) 'listId': listId,
-        // Only send status when it's a real filter — 'ALL' means no filter.
-        if (status != null && status != 'ALL') 'status': status,
       },
     );
     return response.data;

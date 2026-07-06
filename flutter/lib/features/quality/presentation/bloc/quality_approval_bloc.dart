@@ -509,14 +509,16 @@ class QualityApprovalBloc
       emit(QualityApprovalLoading());
     }
 
-    // Network fetch: pass the status filter so the backend only returns
-    // the matching subset — previously the entire project's inspection history
-    // was returned and filtered client-side, causing multi-MB responses for
-    // large projects (the primary cause of slow approvals-list loading).
+    // Network fetch — always fetches all inspections for the project so the
+    // client-side _filter() logic can correctly group them (e.g. PENDING tab
+    // shows both pending AND partiallyApproved; APPROVED tab shows both
+    // approved AND provisionallyApproved). Passing a server-side status filter
+    // would silently drop the secondary statuses that _filter() expects.
+    // The real response-size fix is the backend stripping signature bytes from
+    // the list endpoint (see backend handoff).
     try {
       final raw = await _apiClient.getQualityInspections(
         projectId: event.projectId,
-        status: event.filter, // 'ALL' is handled in getQualityInspections → no filter sent
       );
       final all = raw
           .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))
