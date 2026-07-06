@@ -132,12 +132,17 @@ class SignatureCleanup {
           output.setPixelRgba(x, y, 0, 0, 0, 0);
           continue;
         }
-        // Ink — normalize to a dark color; alpha graded by darkness so
-        // edges anti-alias smoothly instead of looking jagged.
-        final alphaFactor =
+        // Ink — render as pure black with alpha graded by darkness.
+        // A power curve (exponent < 1) bows the ramp upward so medium-dark
+        // ink pixels (common in camera-photographed signatures) get close to
+        // full opacity instead of the ~60% they'd get from a linear ramp,
+        // making the signature appear bold rather than washed-out.
+        // Edge/antialiasing pixels retain graduated alpha for smooth strokes.
+        final rawFactor =
             ((_whiteThreshold - lum) / _whiteThreshold).clamp(0.0, 1.0);
+        final alphaFactor = math.pow(rawFactor, 0.35).clamp(0.0, 1.0);
         final alpha = (alphaFactor * 255).round();
-        output.setPixelRgba(x, y, 20, 20, 20, alpha);
+        output.setPixelRgba(x, y, 0, 0, 0, alpha);
         if (alpha > 10) {
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;

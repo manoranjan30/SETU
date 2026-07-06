@@ -1,7 +1,7 @@
 name: setu_mobile
 description: SETU Construction Project Management Mobile App
 publish_to: 'none'
-version: 1.0.1+14
+version: 1.0.1+16
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -82,6 +82,10 @@ dependencies:
   # Renders a PDF page to an image so it can go through the same
   # annotation editor as photos
   pdfx: ^2.6.0
+
+  # HTTP response caching — caches GET responses in memory so navigating back
+  # to an already-loaded checklist/approvals list is instant instead of re-fetching.
+  dio_cache_interceptor: ^4.0.7
 
   # Runtime permission requests (e.g. "install unknown apps" for in-app updates)
   permission_handler: ^11.3.1

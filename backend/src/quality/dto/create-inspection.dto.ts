@@ -13,6 +13,16 @@ export class CreateInspectionDto {
   @IsInt()
   epsNodeId: number;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  locationPath?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  locationLabel?: string;
+
   @IsInt()
   listId: number;
 

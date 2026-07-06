@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { Auditable } from '../audit/auditable.decorator';
+import { MobileCacheHeaders } from '../common/mobile-cache-headers.decorator';
 
 @Controller('ehs/site-observations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -34,6 +35,7 @@ export class EhsObservationController {
 
   @Get()
   @Permissions('EHS.SITE_OBS.READ')
+  @MobileCacheHeaders()
   getAll(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('status') status?: string,
@@ -142,10 +144,7 @@ export class EhsObservationController {
   }
 
   @Patch(':id/reject-rectification')
-  @Permissions(
-    'EHS.SITE_OBS.REJECT_RECTIFICATION',
-    'EHS.SITE_OBS.CLOSE',
-  )
+  @Permissions('EHS.SITE_OBS.REJECT_RECTIFICATION', 'EHS.SITE_OBS.CLOSE')
   @Auditable('EHS', 'REJECT_SITE_OBS_RECTIFICATION', 'id')
   rejectRectification(
     @Param('id') id: string,
@@ -162,7 +161,11 @@ export class EhsObservationController {
   @Patch(':id/hold')
   @Permissions('EHS.SITE_OBS.CLOSE')
   @Auditable('EHS', 'HOLD_SITE_OBS', 'id')
-  hold(@Param('id') id: string, @Body() dto: HoldEhsObservationDto, @Request() req) {
+  hold(
+    @Param('id') id: string,
+    @Body() dto: HoldEhsObservationDto,
+    @Request() req,
+  ) {
     return this.service.hold(id, dto, req.user?.id || req.user?.userId);
   }
 

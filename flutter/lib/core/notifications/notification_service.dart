@@ -41,12 +41,18 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
 
-  // Android notification channel config — must match values declared in
-  // AndroidManifest.xml if using a custom channel there.
-  static const _channelId = 'setu_quality';
-  static const _channelName = 'Quality Notifications';
-  static const _channelDesc =
+  // Quality notification channel
+  static const _qualityChannelId = 'setu_quality';
+  static const _qualityChannelName = 'Quality Notifications';
+  static const _qualityChannelDesc =
       'Notifications for RFI raised, approved, rejected, and observations';
+
+  // EHS notification channel — separate so users can silence EHS independently
+  static const _ehsChannelId = 'setu_ehs';
+  static const _ehsChannelName = 'EHS Notifications';
+  static const _ehsChannelDesc =
+      'EHS observations, safety alerts, and incident notifications';
+
 
   /// Callback invoked whenever the user taps a notification.
   ///
@@ -72,21 +78,25 @@ class NotificationService {
       provisional: false, // false = requires explicit user grant on iOS
     );
 
-    // Android local notification channel
-    // Must be created before any notification is shown; creating an existing
-    // channel with the same ID is idempotent (safe to call on every launch).
-    const androidChannel = AndroidNotificationChannel(
-      _channelId,
-      _channelName,
-      description: _channelDesc,
-      importance: Importance.high, // Shows as heads-up notification on Android
-      playSound: true,
-    );
-
     final androidImpl =
         _local.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
-    await androidImpl?.createNotificationChannel(androidChannel);
+
+    // Register both channels — idempotent, safe to call on every launch.
+    await androidImpl?.createNotificationChannel(const AndroidNotificationChannel(
+      _qualityChannelId,
+      _qualityChannelName,
+      description: _qualityChannelDesc,
+      importance: Importance.high,
+      playSound: true,
+    ));
+    await androidImpl?.createNotificationChannel(const AndroidNotificationChannel(
+      _ehsChannelId,
+      _ehsChannelName,
+      description: _ehsChannelDesc,
+      importance: Importance.high,
+      playSound: true,
+    ));
 
     // Init local notifications
     // iOS permissions are NOT re-requested here because Firebase already
@@ -186,22 +196,28 @@ class NotificationService {
   /// can reconstruct the navigation intent when the user taps the banner.
   Future<void> _onForegroundMessage(RemoteMessage message) async {
     final notification = message.notification;
-    if (notification == null) return; // Data-only message — nothing to display
+    if (notification == null) return;
+
+    // Route to the EHS channel for EHS notifications so users can manage
+    // alert settings per category (e.g. mute safety alerts but keep quality).
+    final module = message.data['module'] as String? ?? '';
+    final isEhs = module == 'EHS';
+    final channelId = isEhs ? _ehsChannelId : _qualityChannelId;
+    final channelName = isEhs ? _ehsChannelName : _qualityChannelName;
+    final channelDesc = isEhs ? _ehsChannelDesc : _qualityChannelDesc;
 
     final android = notification.android;
     await _local.show(
       message.hashCode,
-      notification.title ?? 'SETU Quality',
+      notification.title ?? (isEhs ? 'SETU EHS' : 'SETU Quality'),
       notification.body ?? '',
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: _channelDesc,
+          channelId,
+          channelName,
+          channelDescription: channelDesc,
           importance: Importance.high,
           priority: Priority.high,
-          // Use the server-specified small icon if provided, fall back to the
-          // app launcher icon so the notification always has a valid drawable.
           icon: android?.smallIcon ?? '@mipmap/ic_launcher',
         ),
         iOS: const DarwinNotificationDetails(
@@ -210,7 +226,6 @@ class NotificationService {
           presentSound: true,
         ),
       ),
-      // Encode the FCM data map so the tap handler can parse navigation intent.
       payload: jsonEncode(message.data),
     );
   }

@@ -39,6 +39,9 @@ export class QualityInspection {
   @JoinColumn({ name: 'epsNodeId' })
   epsNode: EpsNode;
 
+  @Column({ type: 'text', name: 'location_path', nullable: true })
+  locationPath: string | null;
+
   @Column()
   listId: number;
 

@@ -35,7 +35,24 @@ import 'package:setu_mobile/features/quality/presentation/pages/pre_pour_clearan
 class InspectionDetailPage extends StatefulWidget {
   final QualityInspection inspection;
 
-  const InspectionDetailPage({super.key, required this.inspection});
+  /// When set (from a push notification tap), the Observations tab
+  /// auto-scrolls to and briefly highlights this observation ID on load.
+  final int? highlightObservationId;
+
+  /// 'rectify'  — auto-opens the fix sheet for [highlightObservationId]
+  ///              (maker received a "rectification rejected" notification).
+  /// 'review'   — scrolls to the obs and shows a "ready to close" banner
+  ///              (checker received a "rectified" notification).
+  /// 'readonly' — obs is closed; just scroll to it.
+  /// null       — standard open, no auto-action.
+  final String? initialObsAction;
+
+  const InspectionDetailPage({
+    super.key,
+    required this.inspection,
+    this.highlightObservationId,
+    this.initialObsAction,
+  });
 
   @override
   State<InspectionDetailPage> createState() => _InspectionDetailPageState();
@@ -119,14 +136,19 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
   }
 
   @override
+  @override
   void initState() {
     super.initState();
-    // Two tabs: Checklist and Observations
     _tabCtrl = TabController(length: 3, vsync: this);
-    // Kick off the detail load immediately on construction
     context
         .read<QualityApprovalBloc>()
         .add(LoadInspectionDetail(widget.inspection));
+    // If opened from a notification, jump straight to the Observations tab.
+    if (widget.highlightObservationId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _tabCtrl.animateTo(1);
+      });
+    }
   }
 
   @override
@@ -346,7 +368,11 @@ class _InspectionDetailPageState extends State<InspectionDetailPage>
                           // Tab 0: checklist stages with expandable items
                           _ChecklistTab(state: display),
                           // Tab 1: observations raised against this inspection
-                          _ObservationsTab(state: display),
+                          _ObservationsTab(
+                            state: display,
+                            highlightObservationId: widget.highlightObservationId,
+                            initialObsAction: widget.initialObsAction,
+                          ),
                           // Tab 2: drawings/supporting docs bound to this RFI
                           _AttachmentsTab(inspection: display.inspection),
                         ],
@@ -1298,15 +1324,65 @@ class _StageApprovalMatrix extends StatelessWidget {
 /// Lists all observations raised against this inspection.
 /// Summary strip shows pending/rectified/closed counts.
 /// Each observation card can be closed or deleted based on permissions.
-class _ObservationsTab extends StatelessWidget {
+class _ObservationsTab extends StatefulWidget {
   final InspectionDetailLoaded state;
-  const _ObservationsTab({required this.state});
+  final int? highlightObservationId;
+  final String? initialObsAction;
+
+  const _ObservationsTab({
+    required this.state,
+    this.highlightObservationId,
+    this.initialObsAction,
+  });
+
+  @override
+  State<_ObservationsTab> createState() => _ObservationsTabState();
+}
+
+class _ObservationsTabState extends State<_ObservationsTab> {
+  final Map<String, GlobalKey> _obsKeys = {};
+  bool _scrollTriggered = false;
+
+  void _tryScrollToHighlight(List<ActivityObservation> obs) {
+    if (widget.highlightObservationId == null || _scrollTriggered) return;
+    final targetId = widget.highlightObservationId.toString();
+    final target = obs.where((o) => o.id == targetId).firstOrNull;
+    if (target == null) return;
+    _scrollTriggered = true;
+    final key = _obsKeys[targetId];
+    if (key?.currentContext != null) {
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 400),
+        alignment: 0.2,
+      );
+    }
+    // Auto-open the rectification sheet for "rejected" notifications.
+    if (widget.initialObsAction == 'rectify' && target.isPending) {
+      final capturedContext = context;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        // ignore: use_build_context_synchronously
+        RectifySheet.show(
+          capturedContext,
+          title: 'Fix Observation',
+          onSubmit: ({required String notes, List<String> photoUrls = const []}) async {
+            if (!mounted) return;
+            context.read<QualityApprovalBloc>().add(SubmitRectification(
+                  obsId: target.id,
+                  closureText: notes,
+                  closureEvidence: photoUrls,
+                ));
+          },
+        );
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final obs = state.observations;
+    final obs = widget.state.observations;
     final theme = Theme.of(context);
-    // Read permissions to gate delete action on observation cards
     final ps = PermissionService.of(context);
 
     return Column(
@@ -1341,7 +1417,7 @@ class _ObservationsTab extends StatelessWidget {
               // Raise new observation — only available with QUALITY.OBSERVATION.CREATE
               TextButton.icon(
                 onPressed: ps.canCreateActivityObs
-                    ? () => RaiseObservationSheet.show(context, stages: state.stages)
+                    ? () => RaiseObservationSheet.show(context, stages: widget.state.stages)
                     : () => ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
@@ -1399,7 +1475,15 @@ class _ObservationsTab extends StatelessWidget {
                   itemCount: obs.length,
                   itemBuilder: (context, i) {
                     final o = obs[i];
-                    return ObservationCard(
+                    final cardKey = _obsKeys.putIfAbsent(o.id, GlobalKey.new);
+                    // On the last item, attempt scroll-to-highlight once.
+                    if (i == obs.length - 1) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _tryScrollToHighlight(obs));
+                    }
+                    return KeyedSubtree(
+                      key: cardKey,
+                      child: ObservationCard(
                       obs: o,
                       // Fix button shown only for PENDING observations AND
                       // when the user holds QUALITY.OBSERVATION.RESOLVE —
@@ -1432,7 +1516,7 @@ class _ObservationsTab extends StatelessWidget {
                               .read<QualityApprovalBloc>()
                               .add(DeleteActivityObservation(o.id))
                           : null,
-                    );
+                    ));
                   },
                 ),
           ),

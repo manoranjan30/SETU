@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { Auditable } from '../audit/auditable.decorator';
+import { MobileCacheHeaders } from '../common/mobile-cache-headers.decorator';
 
 @Controller('quality/site-observations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -34,6 +35,7 @@ export class SiteObservationController {
 
   @Get()
   @Permissions('QUALITY.SITE_OBS.READ')
+  @MobileCacheHeaders()
   getAll(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('status') status?: string,
@@ -162,7 +164,11 @@ export class SiteObservationController {
   @Patch(':id/hold')
   @Permissions('QUALITY.SITE_OBS.CLOSE')
   @Auditable('QUALITY', 'HOLD_SITE_OBS', 'id')
-  hold(@Param('id') id: string, @Body() dto: HoldSiteObservationDto, @Request() req) {
+  hold(
+    @Param('id') id: string,
+    @Body() dto: HoldSiteObservationDto,
+    @Request() req,
+  ) {
     return this.service.hold(id, dto, req.user?.id || req.user?.userId);
   }
 

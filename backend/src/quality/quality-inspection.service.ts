@@ -61,6 +61,8 @@ import { QualityInspectionAttachmentService } from './quality-inspection-attachm
 export interface CreateInspectionDto {
   projectId: number;
   epsNodeId: number;
+  locationPath?: string;
+  locationLabel?: string;
   listId: number;
   activityId: number;
   qualityUnitId?: number;
@@ -406,7 +408,8 @@ export class QualityInspectionService {
 
     const data = inspectionsWithWorkflow.map((inspection) => {
       const ancestry = this.buildEpsAncestry(inspection.epsNodeId, epsById);
-      const locationPath = ancestry.map((n) => n.name).join(' > ');
+      const locationPath =
+        inspection.locationPath || ancestry.map((n) => n.name).join(' > ');
 
       const blockName = ancestry.find(
         (n) => n.type === EpsNodeType.BLOCK,
@@ -531,6 +534,9 @@ export class QualityInspectionService {
     const withRelated = await this.attachRelatedChecklistSummaries(withWorkflow);
     return {
       ...withRelated,
+      locationPath:
+        withRelated.locationPath ||
+        (await this.buildEpsLocationPath(withRelated.epsNodeId)),
       attachments: await this.attachmentService.listForInspection(id),
     };
   }
@@ -899,6 +905,10 @@ export class QualityInspectionService {
     const processCode = this.deriveInspectionProcessCode(dto);
     const documentType = this.deriveInspectionDocumentType(dto, applicability);
     const { goNo, goLabel } = this.deriveGoFields(dto, applicability);
+    const locationPath =
+      dto.locationPath?.trim() ||
+      dto.locationLabel?.trim() ||
+      (await this.buildEpsLocationPath(dto.epsNodeId));
     const relatedChecklistInspectionIds =
       await this.validateRelatedChecklistInspectionIds(dto);
     await this.attachmentService.validateDrafts(
@@ -911,6 +921,7 @@ export class QualityInspectionService {
     const inspection = this.inspectionRepo.create({
       projectId: dto.projectId,
       epsNodeId: dto.epsNodeId,
+      locationPath: locationPath || null,
       listId: activity.listId,
       activityId: dto.activityId,
       sequence: activity.sequence,
@@ -3140,6 +3151,24 @@ export class QualityInspectionService {
     }
 
     return path;
+  }
+
+  private async buildEpsLocationPath(nodeId: number | undefined) {
+    if (!nodeId) return '';
+
+    const names: string[] = [];
+    let currentId: number | undefined = nodeId;
+    const seen = new Set<number>();
+
+    while (currentId && !seen.has(currentId)) {
+      seen.add(currentId);
+      const node = await this.epsNodeRepo.findOne({ where: { id: currentId } });
+      if (!node) break;
+      names.unshift(node.name);
+      currentId = node.parentId || undefined;
+    }
+
+    return names.join(' > ');
   }
 
   private async checkPredecessor(

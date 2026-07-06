@@ -160,23 +160,29 @@ class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserv
       // SnackBar message is shown rather than crashing.
     }
 
-    // Set pending deep link so ProjectsListPage can auto-navigate.
-    // projectId and resourceId may be absent for some notification types
-    // (e.g. STRATEGY_ACTIVATED has no single resource), hence the null guards.
+    // Safe int parser — backend may send IDs as int or string.
+    int? parseId(dynamic v) => v == null ? null : int.tryParse(v.toString());
+
     final type = data['type'] as String? ?? '';
-    final projectId = data['projectId'] != null
-        ? int.tryParse(data['projectId'].toString())
-        : null;
-    // resourceId can come from several fields depending on the notification type.
-    final resourceId = data['observationId'] as String? ??
-        data['incidentId'] as String? ??
-        data['inspectionId'] as String?;
+    final projectId = parseId(data['projectId']);
+    final observationId = parseId(data['observationId']);
+    final inspectionId = parseId(data['inspectionId']);
+    final epsNodeId = parseId(data['epsNodeId']);
+    final activityId = parseId(data['activityId']);
+    final sourceType = data['sourceType'] as String?;
+
     if (type.isNotEmpty && projectId != null) {
-      // Only set a deep link when we have enough data to navigate meaningfully.
       DeepLinkService.instance.set(PendingDeepLink(
         type: type,
+        sourceType: sourceType,
         projectId: projectId,
-        resourceId: resourceId,
+        observationId: observationId,
+        inspectionId: inspectionId,
+        epsNodeId: epsNodeId,
+        activityId: activityId,
+        resourceId: observationId?.toString() ??
+            parseId(data['incidentId'])?.toString() ??
+            inspectionId?.toString(),
       ));
     }
 
@@ -251,7 +257,63 @@ class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserv
             ? Icons.check_circle_outline
             : Icons.cancel_outlined;
         break;
-      // ── Quality Observations ────────────────────────────────────────────────
+      // ── New observation lifecycle types (web handoff) ──────────────────────
+      case 'QUALITY_CHECKLIST_OBS_RAISED':
+        message = 'A quality issue was raised on a checklist item — tap to review.';
+        color = Colors.orange.shade700;
+        icon = Icons.assignment_late_outlined;
+        break;
+      case 'QUALITY_CHECKLIST_OBS_RECTIFIED':
+        message = 'A checklist observation has been fixed — tap to verify and close.';
+        color = Colors.blue.shade700;
+        icon = Icons.build_circle_outlined;
+        break;
+      case 'QUALITY_CHECKLIST_OBS_RECTIFICATION_REJECTED':
+        message = 'Your checklist rectification was rejected — tap to view and re-submit.';
+        color = Colors.red.shade700;
+        icon = Icons.cancel_outlined;
+        break;
+      case 'QUALITY_CHECKLIST_OBS_CLOSED':
+        message = 'A checklist quality observation has been closed.';
+        color = Colors.green.shade700;
+        icon = Icons.verified_outlined;
+        break;
+      case 'QUALITY_SITE_OBS_RECTIFIED':
+        message = 'Your quality observation has been rectified — tap to verify and close.';
+        color = Colors.blue.shade700;
+        icon = Icons.build_circle_outlined;
+        break;
+      case 'QUALITY_SITE_OBS_RECTIFICATION_REJECTED':
+        message = 'Your site observation rectification was rejected — tap to re-submit.';
+        color = Colors.red.shade700;
+        icon = Icons.cancel_outlined;
+        break;
+      case 'QUALITY_SITE_OBS_CLOSED':
+        message = 'Your quality site observation has been closed.';
+        color = Colors.green.shade700;
+        icon = Icons.verified_outlined;
+        break;
+      case 'EHS_OBS_RAISED':
+        message = 'New EHS observation raised — tap to review.';
+        color = Colors.red.shade900;
+        icon = Icons.health_and_safety_outlined;
+        break;
+      case 'EHS_OBS_RECTIFIED':
+        message = 'Your EHS observation has been rectified — tap to verify and close.';
+        color = Colors.blue.shade700;
+        icon = Icons.build_circle_outlined;
+        break;
+      case 'EHS_OBS_RECTIFICATION_REJECTED':
+        message = 'Your EHS observation rectification was rejected — tap to re-submit.';
+        color = Colors.red.shade700;
+        icon = Icons.cancel_outlined;
+        break;
+      case 'EHS_OBS_CLOSED':
+        message = 'Your EHS observation has been closed.';
+        color = Colors.green.shade700;
+        icon = Icons.verified_outlined;
+        break;
+      // ── Legacy observation types ────────────────────────────────────────────
       case 'QUALITY_OBS_RAISED':
         {
           // Include severity in the message when available so the recipient
@@ -288,16 +350,6 @@ class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserv
           color = Colors.red.shade900;
           icon = Icons.health_and_safety_outlined;
         }
-        break;
-      case 'EHS_OBS_RECTIFIED':
-        message = 'Your EHS observation has been rectified — please review and close.';
-        color = Colors.blue.shade700;
-        icon = Icons.build_circle_outlined;
-        break;
-      case 'EHS_OBS_CLOSED':
-        message = 'Your EHS observation has been closed.';
-        color = Colors.green.shade700;
-        icon = Icons.check_circle_outline;
         break;
       // ── Release Strategy ────────────────────────────────────────────────────
       case 'STRATEGY_ACTIVATED':

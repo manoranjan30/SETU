@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/navigation/deep_link_service.dart';
+import 'package:setu_mobile/core/navigation/notification_navigator.dart';
 import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/core/theme/app_dimensions.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
@@ -62,16 +63,25 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
         // during the build/listener phase
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          // Push project dashboard first — pendingModule auto-selects the tab.
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => ProjectDashboardPage(
                 project: project,
-                // pendingModule causes the dashboard to auto-navigate on load
                 pendingModule: link.targetModule,
               ),
             ),
           );
+          // If the notification includes a specific record ID, schedule a
+          // second push (on the NEXT frame so the dashboard has mounted first)
+          // to open the detail page on top — user sees the detail directly
+          // and can press back to return to the module list on the dashboard.
+          if (!link.hasDirectTarget) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            NotificationNavigator.openFromDeepLink(context, link, project);
+          });
         });
       } catch (_) {
         // Project not found in list — silently ignore

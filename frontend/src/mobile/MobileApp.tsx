@@ -173,7 +173,7 @@ const rememberRecentInspection = (item: AnyRecord, projectId?: string) => {
     title: item.rfiNumber || `RFI #${item.id}`,
     subtitle: `${item.activityName || item.checklistName || "Checklist"} / ${item.goLabel || item.goName || "GO"}`,
     status: item.status || item.workflowStatus || "RFI",
-    location: item.elementName || item.epsNodeLabel || item.locationDisplay || "",
+    location: item.locationPath || item.locationLabel || item.elementName || item.epsNodeLabel || item.locationDisplay || "",
     at: new Date().toISOString(),
   };
   writeStorageJson(
@@ -1170,7 +1170,7 @@ function MobileInspectionCard({ item }: { item: AnyRecord }) {
         <div>
           <span className={statusChipClass(item.status)}>{item.status || "RFI"}</span>
           <h3>{item.rfiNumber || `RFI #${item.id}`} / {item.activityName || item.checklistName || item.listName || "Inspection"}</h3>
-          <p>{item.goLabel || item.goName || "GO 1"} / {item.elementName || item.epsNodeLabel || item.locationDisplay || "Location not set"}</p>
+          <p>{item.goLabel || item.goName || "GO 1"} / {item.locationPath || item.locationLabel || item.elementName || item.epsNodeLabel || item.locationDisplay || "Location not set"}</p>
           <p>Raised by {pickName(item.raisedBy || item.createdByUser)} / {dateText(item.requestDate || item.createdAt)}</p>
         </div>
         <FileText color="#2e7d43" />
@@ -1513,7 +1513,7 @@ function QualityActivityCard({
             <Link key={go.id} to={`/m/projects/${projectId}/quality/inspections/${go.id}`} className="mobile-go-chip">
               <span className={statusChipClass(go.status)}>{go.goLabel || go.goName || `GO ${go.goNo || go.partNo || 1}`}</span>
               <strong>{go.rfiNumber || `RFI #${go.id}`}</strong>
-              <small>{go.elementName || go.goDetails || go.locationDisplay || "No element details"}</small>
+              <small>{go.locationPath || go.locationLabel || go.elementName || go.goDetails || go.locationDisplay || "No location details"}</small>
             </Link>
           ))}
         </div>
@@ -1540,7 +1540,7 @@ function RaiseRfiPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { hasPermission } = useAuth();
-  const { locations, loading: loadingLocations } = useProjectLocations(projectId);
+  const { project, locations, loading: loadingLocations } = useProjectLocations(projectId);
   const { activities, loading: loadingActivities } = useQualityActivities(projectId);
   const [form, setForm] = useState({
     epsNodeId: searchParams.get("epsNodeId") || "",
@@ -1569,6 +1569,7 @@ function RaiseRfiPage() {
   const draftKey = `setu-mobile-rfi-draft-${projectId || "global"}`;
 
   const selectedLocation = locations.find((location) => location.id === Number(form.epsNodeId));
+  const selectedLocationPath = formatLocationPath(form.epsNodeId, locations, project);
   const selectedActivity = activities.find((activity) => activity.id === Number(form.activityId));
   const locationTreeNodes = useMemo(() => locations, [locations]);
   const locationChildrenMap = useMemo(() => buildChildrenMap(locationTreeNodes), [locationTreeNodes]);
@@ -1678,6 +1679,8 @@ function RaiseRfiPage() {
       const created = await api.post("/quality/inspections", {
         projectId: Number(projectId),
         epsNodeId: Number(form.epsNodeId),
+        locationPath: selectedLocationPath,
+        locationLabel: selectedLocationPath,
         activityId: Number(form.activityId),
         listId: Number(form.listId || selectedActivity?.listId),
         processCode: "QA_QC_APPROVAL",
@@ -1740,7 +1743,7 @@ function RaiseRfiPage() {
           <div className="mobile-stack" style={{ marginTop: 12 }}>
             <button className="mobile-button secondary" type="button" onClick={() => setActiveSheet("location")}>
               {selectedLocation
-                ? `${selectedLocation.name} (${selectedLocation.type})`
+                ? `${selectedLocationPath || selectedLocation.name} (${selectedLocation.type})`
                 : loadingLocations
                   ? "Loading locations..."
                   : "Select location"}
@@ -1939,6 +1942,7 @@ function RaiseRfiPage() {
               <span className={statusChipClass(previewRelated.status)}>{previewRelated.status || "RFI"}</span>
               <h3 className="mobile-title" style={{ marginTop: 8 }}>{previewRelated.activityName || selectedActivity?.name || "Checklist"}</h3>
               <p className="mobile-subtitle">{previewRelated.goLabel || "GO"} / {previewRelated.goDetails || "No GO details"}</p>
+              <p className="mobile-subtitle">Location: {previewRelated.locationPath || previewRelated.locationLabel || previewRelated.epsNode?.name || previewRelated.epsNodeLabel || "Location not set"}</p>
               <p className="mobile-subtitle">Element: {previewRelated.elementName || "Not set"}</p>
               <p className="mobile-subtitle">Drawing: {previewRelated.drawingNo || "Not set"}</p>
             </div>
@@ -1991,6 +1995,7 @@ function InspectionDetailPage() {
               <span className={statusChipClass(detail.status)}>{detail.status}</span>
               <h2 className="mobile-title" style={{ marginTop: 10 }}>{detail.activityName || detail.checklistName || "Inspection"}</h2>
               <p className="mobile-subtitle">{detail.goLabel || detail.goName} · {detail.elementName || "Element not set"}</p>
+              <p className="mobile-subtitle">Location: {detail.locationPath || detail.locationLabel || detail.epsNode?.name || detail.epsNodeLabel || "Location not set"}</p>
               <p className="mobile-subtitle">GO details: {detail.goDetails || "Not entered"}</p>
               <p className="mobile-subtitle">Raised by: {pickName(detail.raisedBy || detail.createdByUser)}</p>
             </div>
@@ -2294,6 +2299,7 @@ function InspectionDetailPageFull() {
               <span className={statusChipClass(detail.status)}>{detail.status}</span>
               <h2 className="mobile-title" style={{ marginTop: 10 }}>{detail.activityName || detail.checklistName || "Inspection"}</h2>
               <p className="mobile-subtitle">{detail.goLabel || detail.goName || "GO"} / {detail.elementName || "Element not set"}</p>
+              <p className="mobile-subtitle">Location: {detail.locationPath || detail.locationLabel || detail.epsNode?.name || detail.epsNodeLabel || "Location not set"}</p>
               <p className="mobile-subtitle">GO details: {detail.goDetails || "Not entered"}</p>
               <p className="mobile-subtitle">Drawing: {detail.drawingNo || "Not entered"}</p>
               <p className="mobile-subtitle">Raised by: {pickName(detail.raisedBy || detail.createdByUser)}</p>
@@ -2557,6 +2563,7 @@ function InspectionDetailPageFull() {
                     <span className={statusChipClass(linkedPreview.status)}>{linkedPreview.status || "Linked RFI"}</span>
                     <h3 className="mobile-title" style={{ marginTop: 8 }}>{linkedPreview.activityName || linkedPreview.checklistName || "Checklist"}</h3>
                     <p className="mobile-subtitle">{linkedPreview.goLabel || linkedPreview.goName || "GO"} / {linkedPreview.elementName || "Element not set"}</p>
+                    <p className="mobile-subtitle">Location: {linkedPreview.locationPath || linkedPreview.locationLabel || linkedPreview.epsNode?.name || linkedPreview.epsNodeLabel || "Location not set"}</p>
                     <p className="mobile-subtitle">GO details: {linkedPreview.goDetails || "Not entered"}</p>
                     <p className="mobile-subtitle">Drawing: {linkedPreview.drawingNo || "Not entered"}</p>
                     <p className="mobile-subtitle">Raised by: {pickName(linkedPreview.raisedBy || linkedPreview.createdByUser)}</p>

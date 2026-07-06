@@ -401,16 +401,47 @@ class QualityRequestBloc
   }
 
   /// Saves current list context (for refresh) and delegates to [_loadActivities].
+  ///
+  /// Cache-first strategy: if Drift has cached activities for this list, they
+  /// are emitted immediately so the UI renders without waiting for the network.
+  /// The network fetch then runs in the background and updates the UI with
+  /// fresh data when it arrives — eliminating the loading spinner entirely for
+  /// repeat visits to the same checklist.
   Future<void> _onSelectActivityList(
       SelectActivityList event, Emitter<QualityRequestState> emit) async {
     _currentList = event.list;
     _currentProjectId = event.projectId;
     _currentEpsNodeId = event.epsNodeId;
-    emit(const QualityRequestLoading());
-    await _loadActivities(emit,
+
+    // Try to serve cached activities immediately before hitting the network.
+    final cached = await _database.getCachedQualityActivities(event.list.id);
+    if (cached.isNotEmpty) {
+      final cachedActivities = cached
+          .map((c) =>
+              QualityActivity.fromJson(jsonDecode(c.rawData) as Map<String, dynamic>))
+          .toList();
+      // Emit stale rows immediately — inspection/obs data not available from
+      // Drift cache alone, so show activities with locked/unknown status.
+      // The live fetch below will replace this within seconds.
+      emit(ActivitiesLoaded(
         list: event.list,
+        rows: _buildRows(cachedActivities, {}, {}, {}, []),
         projectId: event.projectId,
-        epsNodeId: event.epsNodeId);
+        epsNodeId: event.epsNodeId,
+        isFromCache: true,
+      ));
+      // Background-refresh silently — UI already showing cached rows above.
+      await _loadActivities(emit,
+          list: event.list,
+          projectId: event.projectId,
+          epsNodeId: event.epsNodeId);
+    } else {
+      emit(const QualityRequestLoading());
+      await _loadActivities(emit,
+          list: event.list,
+          projectId: event.projectId,
+          epsNodeId: event.epsNodeId);
+    }
   }
 
   /// Re-runs [_loadActivities] using the stashed context from the last
@@ -422,6 +453,10 @@ class QualityRequestBloc
         _currentEpsNodeId == null) {
       return;
     }
+    // Clear HTTP cache so the refresh always fetches fresh data from the
+    // server rather than serving a recent cached response — critical after
+    // mutations (raise RFI, submit rectification, etc.).
+    await _apiClient.clearCache();
     // Use the refresh source so the UI shows only a shimmer, not a full spinner.
     emit(const QualityRequestLoading(source: QrLoadingSource.refresh));
     await _loadActivities(emit,
@@ -435,7 +470,7 @@ class QualityRequestBloc
   ///
   /// Parallel fetch strategy:
   ///   - Activities and inspections are fetched simultaneously (Future.wait).
-  ///   - A 5-second timeout is applied — if exceeded, cached data is served.
+  ///   - A 10-second timeout is applied — if exceeded, cached data is served.
   ///   - Observations are only fetched for PENDING_OBSERVATION activities to
   ///     minimise network cost.
   Future<void> _loadActivities(
@@ -446,7 +481,9 @@ class QualityRequestBloc
   }) async {
     try {
       // Fetch activities + inspections in parallel.
-      // 5-second timeout — if exceeded the catch block serves cached data.
+      // 10-second timeout — construction-site Wi-Fi can be slow but valid;
+      // the previous 5-second limit caused unnecessarily frequent cache
+      // fallbacks on connections that just needed a few more seconds.
       final results = await Future.wait([
         _apiClient.getQualityListActivities(list.id),
         _apiClient.getQualityInspections(
@@ -454,7 +491,7 @@ class QualityRequestBloc
           epsNodeId: epsNodeId,
           listId: list.id,
         ),
-      ]).timeout(const Duration(seconds: 5));
+      ]).timeout(const Duration(seconds: 10));
 
       final activitiesRaw = results[0];
       final inspectionsRaw = results[1];
