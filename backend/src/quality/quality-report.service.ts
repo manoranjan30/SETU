@@ -2,11 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
-import {
-  PDFDocument as PdfLibDocument,
-  StandardFonts,
-  rgb,
-} from 'pdf-lib';
+import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PassThrough } from 'stream';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -162,13 +158,12 @@ export class QualityReportService {
     const activityType = primaryTemplate?.activityType ?? '';
     const drawingNo = inspection.drawingNo ?? '';
     const contractorName =
-      inspection.contractorName ?? inspection.vendorName ?? 'Internal Team / Vendor';
+      inspection.contractorName ??
+      inspection.vendorName ??
+      'Internal Team / Vendor';
     const elementName =
       inspection.elementName ?? qualityUnit?.name ?? qualityRoom?.name ?? '';
-    const goDetailsText = [
-      goLabel,
-      inspection.goDetails,
-    ]
+    const goDetailsText = [goLabel, inspection.goDetails]
       .filter(Boolean)
       .join(' - ');
     const attachments = await this.attachmentRepo.find({
@@ -204,7 +199,9 @@ export class QualityReportService {
       const startX = 40;
       let currentY = 40;
       const logoPath = this.resolveUploadPath(projectProfile?.companyLogoUrl);
-      const projectLogoPath = this.resolveUploadPath(projectProfile?.projectLogoUrl);
+      const projectLogoPath = this.resolveUploadPath(
+        projectProfile?.projectLogoUrl,
+      );
 
       if (logoPath && existsSync(logoPath)) {
         try {
@@ -215,9 +212,14 @@ export class QualityReportService {
       }
       if (projectLogoPath && existsSync(projectLogoPath)) {
         try {
-          doc.image(readFileSync(projectLogoPath), startX + pageWidth - 70, currentY, {
-            fit: [70, 50],
-          });
+          doc.image(
+            readFileSync(projectLogoPath),
+            startX + pageWidth - 70,
+            currentY,
+            {
+              fit: [70, 50],
+            },
+          );
         } catch {}
       }
       if (
@@ -237,7 +239,8 @@ export class QualityReportService {
             .filter((sig) => !sig.isReversed)
             .sort(
               (a, b) =>
-                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+                new Date(a.createdAt).getTime() -
+                new Date(b.createdAt).getTime(),
             );
           const stageApprovals = signatures.filter(
             (sig) => sig.actionType === 'STAGE_APPROVE',
@@ -271,8 +274,22 @@ export class QualityReportService {
         doc.opacity(1);
       }
 
+      const measureTextHeight = (
+        value: unknown,
+        width: number,
+        font: 'Helvetica' | 'Helvetica-Bold' = 'Helvetica',
+        fontSize = 9,
+        options: PDFKit.Mixins.TextOptions = {},
+      ) => {
+        doc.font(font).fontSize(fontSize);
+        return doc.heightOfString(String(value ?? ''), {
+          width,
+          lineGap: 1,
+          ...options,
+        });
+      };
+
       // DRAW HEADER TABLE
-      const headerRowHeight = 22;
       const headerRows: Array<[string, unknown, string, unknown]> = [
         ['Project :', projectName, 'Checklist No:', checklistNo],
         ['Location :', locationWithScope, 'Rev No:', revNo],
@@ -282,36 +299,75 @@ export class QualityReportService {
         ['Title:', activityTitle, 'Dwg No:', drawingNo],
       ];
       const rightColumnX = startX + 350;
-      const headerHeight = headerRowHeight * headerRows.length;
+      const headerCellPaddingY = 5;
+      const leftLabelWidth = 68;
+      const leftValueWidth = 262;
+      const rightLabelWidth = 72;
+      const rightValueWidth = pageWidth - 432;
+      const headerRowHeights = headerRows.map(
+        ([leftLabel, leftValue, rightLabel, rightValue]) =>
+          Math.max(
+            22,
+            measureTextHeight(leftLabel, leftLabelWidth, 'Helvetica-Bold', 9),
+            measureTextHeight(leftValue, leftValueWidth, 'Helvetica', 9),
+            measureTextHeight(rightLabel, rightLabelWidth, 'Helvetica-Bold', 9),
+            measureTextHeight(rightValue, rightValueWidth, 'Helvetica', 9),
+          ) +
+          headerCellPaddingY * 2,
+      );
+      const headerHeight = headerRowHeights.reduce(
+        (total, height) => total + height,
+        0,
+      );
+
+      if (currentY + headerHeight > doc.page.height - 40) {
+        doc.addPage();
+        currentY = 40;
+      }
 
       doc.rect(startX, currentY, pageWidth, headerHeight).stroke();
-      doc.moveTo(rightColumnX, currentY).lineTo(rightColumnX, currentY + headerHeight).stroke();
+      doc
+        .moveTo(rightColumnX, currentY)
+        .lineTo(rightColumnX, currentY + headerHeight)
+        .stroke();
       doc.fontSize(9);
 
-      headerRows.forEach(([leftLabel, leftValue, rightLabel, rightValue], index) => {
-        const rowY = currentY + index * headerRowHeight;
-        if (index > 0) {
-          doc.moveTo(startX, rowY).lineTo(startX + pageWidth, rowY).stroke();
-        }
-        doc.font('Helvetica-Bold').text(leftLabel, startX + 5, rowY + 5, {
-          width: 68,
-        });
-        doc.font('Helvetica').text(String(leftValue ?? ''), startX + 78, rowY + 5, {
-          width: 262,
-          height: headerRowHeight - 6,
-          ellipsis: true,
-        });
-        doc.font('Helvetica-Bold').text(rightLabel, rightColumnX + 5, rowY + 5, {
-          width: 72,
-        });
-        doc
-          .font('Helvetica')
-          .text(String(rightValue ?? ''), rightColumnX + 82, rowY + 5, {
-            width: pageWidth - 432,
-            height: headerRowHeight - 6,
-            ellipsis: true,
-          });
-      });
+      let headerRowY = currentY;
+      headerRows.forEach(
+        ([leftLabel, leftValue, rightLabel, rightValue], index) => {
+          if (index > 0) {
+            doc
+              .moveTo(startX, headerRowY)
+              .lineTo(startX + pageWidth, headerRowY)
+              .stroke();
+          }
+          doc
+            .font('Helvetica-Bold')
+            .text(leftLabel, startX + 5, headerRowY + 5, {
+              width: leftLabelWidth,
+              lineGap: 1,
+            });
+          doc
+            .font('Helvetica')
+            .text(String(leftValue ?? ''), startX + 78, headerRowY + 5, {
+              width: leftValueWidth,
+              lineGap: 1,
+            });
+          doc
+            .font('Helvetica-Bold')
+            .text(rightLabel, rightColumnX + 5, headerRowY + 5, {
+              width: rightLabelWidth,
+              lineGap: 1,
+            });
+          doc
+            .font('Helvetica')
+            .text(String(rightValue ?? ''), rightColumnX + 82, headerRowY + 5, {
+              width: rightValueWidth,
+              lineGap: 1,
+            });
+          headerRowY += headerRowHeights[index];
+        },
+      );
 
       currentY += headerHeight;
 
@@ -375,13 +431,21 @@ export class QualityReportService {
         }
       }
 
-      if (workflowRun?.strategyName || workflowRun?.processCode || workflowRun?.documentType) {
+      if (
+        workflowRun?.strategyName ||
+        workflowRun?.processCode ||
+        workflowRun?.documentType
+      ) {
         const strategyBits = [
           workflowRun?.strategyName
             ? `Strategy: ${workflowRun.strategyName}${workflowRun.releaseStrategyVersion ? ` v${workflowRun.releaseStrategyVersion}` : ''}`
             : null,
-          workflowRun?.processCode ? `Process: ${workflowRun.processCode}` : null,
-          workflowRun?.documentType ? `Document: ${workflowRun.documentType}` : null,
+          workflowRun?.processCode
+            ? `Process: ${workflowRun.processCode}`
+            : null,
+          workflowRun?.documentType
+            ? `Document: ${workflowRun.documentType}`
+            : null,
         ].filter(Boolean);
 
         if (strategyBits.length > 0) {
@@ -505,20 +569,64 @@ export class QualityReportService {
                   )[0]
               : null;
           // Stage Header (Section)
+          const stageTitle = (
+            stage.stageTemplate?.name || 'Section'
+          ).toUpperCase();
+          const latestStageApprovalText = latestStageSignature
+            ? `Approved by ${latestStageSignature.signerDisplayName || latestStageSignature.signedBy}${
+                latestStageSignature.signerCompany
+                  ? ` • ${latestStageSignature.signerCompany}`
+                  : ''
+              }${
+                latestStageSignature.signerRoleLabel
+                  ? ` • ${latestStageSignature.signerRoleLabel}`
+                  : ''
+              }`
+            : '';
+          const stageTitleHeight = measureTextHeight(
+            stageTitle,
+            pageWidth - 16,
+            'Helvetica-Bold',
+            8,
+            { align: 'center' },
+          );
+          const latestStageApprovalHeight = latestStageSignature
+            ? measureTextHeight(
+                latestStageApprovalText,
+                pageWidth - 16,
+                'Helvetica',
+                7,
+                { align: 'right' },
+              )
+            : 0;
+          const stageHeaderHeight = Math.max(
+            latestStageSignature ? 32 : 18,
+            8 +
+              stageTitleHeight +
+              (latestStageSignature ? latestStageApprovalHeight + 3 : 0) +
+              6,
+          );
+
+          if (currentY + stageHeaderHeight > doc.page.height - 100) {
+            doc.addPage();
+            currentY = 40;
+            drawTableHeader(currentY);
+            currentY += tableHeaderHeight;
+          }
+
           doc
             .fillColor('#E5E7EB')
-            .rect(startX, currentY, pageWidth, 18)
+            .rect(startX, currentY, pageWidth, stageHeaderHeight)
             .fill()
             .fillColor('black');
           doc
             .font('Helvetica-Bold')
             .fontSize(8)
-            .text(
-              (stage.stageTemplate?.name || 'Section').toUpperCase(),
-              startX,
-              currentY + 5,
-              { width: pageWidth, align: 'center' },
-            );
+            .text(stageTitle, startX + 8, currentY + 5, {
+              width: pageWidth - 16,
+              align: 'center',
+              lineGap: 1,
+            });
           if (latestStageSignature) {
             doc
               .font('Helvetica')
@@ -535,13 +643,13 @@ export class QualityReportService {
                     : ''
                 }`,
                 startX + 8,
-                currentY + 4,
-                { width: pageWidth - 16, align: 'right' },
+                currentY + 8 + stageTitleHeight,
+                { width: pageWidth - 16, align: 'right', lineGap: 1 },
               )
               .fillColor('black');
           }
-          doc.rect(startX, currentY, pageWidth, 18).stroke();
-          currentY += 18;
+          doc.rect(startX, currentY, pageWidth, stageHeaderHeight).stroke();
+          currentY += stageHeaderHeight;
 
           if (stage.items) {
             for (const item of stage.items) {
@@ -657,7 +765,12 @@ export class QualityReportService {
         doc.fillColor('black');
         currentY = doc.y + 5;
 
-        const stageColWidths = { stage: 150, level: 120, approver: 160, date: 90 };
+        const stageColWidths = {
+          stage: 150,
+          level: 120,
+          approver: 160,
+          date: 90,
+        };
         doc.rect(startX, currentY, pageWidth, 15).fill('#E5E7EB').stroke();
         doc.fillColor('black').fontSize(8).font('Helvetica-Bold');
         doc.text('STAGE', startX + 5, currentY + 4);
@@ -681,7 +794,13 @@ export class QualityReportService {
         for (const row of activeStageApprovals) {
           const levels = row.stageApprovalLevels?.length
             ? row.stageApprovalLevels
-            : [{ stepOrder: null, stepName: 'Stage Approval', signature: null }];
+            : [
+                {
+                  stepOrder: null,
+                  stepName: 'Stage Approval',
+                  signature: null,
+                },
+              ];
 
           for (let index = 0; index < levels.length; index += 1) {
             const level = levels[index];
@@ -714,9 +833,7 @@ export class QualityReportService {
                       level.signature.signedBy,
                     level.signature.signerCompany,
                     level.signature.signerRoleLabel,
-                    level.signature.isAutoInherited
-                      ? '(Auto-filled)'
-                      : null,
+                    level.signature.isAutoInherited ? '(Auto-filled)' : null,
                   ]
                     .filter(Boolean)
                     .join(' — ')
@@ -844,12 +961,75 @@ export class QualityReportService {
         sigs.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
         if (sigs.length > 0) {
-          const sigBlockHeight = 95;
           const columnsPerRow = Math.min(4, Math.max(1, sigs.length));
           const sigColWidth = pageWidth / columnsPerRow;
           const numRows = Math.ceil(sigs.length / columnsPerRow);
+          const signatureImageHeight = 40;
+          const signatureLayouts = sigs.map((sig) => {
+            const titleText = `${sig.role}${sig.actionType ? ` (${String(sig.actionType).replace(/_/g, ' ')})` : ''}`;
+            const metaText = [sig.company, sig.roleLabel]
+              .filter(Boolean)
+              .join(' • ');
+            const titleHeight = Math.max(
+              12,
+              measureTextHeight(
+                titleText,
+                sigColWidth - 8,
+                'Helvetica-Bold',
+                8,
+                { align: 'center' },
+              ),
+            );
+            const signedByHeight = Math.max(
+              9,
+              measureTextHeight(
+                sig.signedBy,
+                sigColWidth - 8,
+                'Helvetica-Bold',
+                7,
+                { align: 'center' },
+              ),
+            );
+            const metaHeight = metaText
+              ? measureTextHeight(metaText, sigColWidth - 8, 'Helvetica', 6, {
+                  align: 'center',
+                })
+              : 0;
+            const dateHeight = measureTextHeight(
+              sig.date,
+              sigColWidth - 8,
+              'Helvetica',
+              6,
+              { align: 'center' },
+            );
+            const titleBandHeight = titleHeight + 8;
+            const dividerY = titleBandHeight + 6 + signatureImageHeight + 5;
+            const signedByY = dividerY + 4;
+            const metaY = signedByY + signedByHeight + 2;
+            const dateY = metaY + (metaText ? metaHeight + 2 : 0);
 
-          if (currentY + sigBlockHeight * numRows + 40 > doc.page.height) {
+            return {
+              titleText,
+              metaText,
+              titleBandHeight,
+              dividerY,
+              signedByY,
+              signedByHeight,
+              metaY,
+              metaHeight,
+              dateY,
+              cardHeight: Math.max(95, dateY + dateHeight + 8),
+            };
+          });
+          const rowHeights = Array.from({ length: numRows }, (_, rowIndex) => {
+            const rowLayouts = signatureLayouts.slice(
+              rowIndex * columnsPerRow,
+              rowIndex * columnsPerRow + columnsPerRow,
+            );
+            return Math.max(...rowLayouts.map((layout) => layout.cardHeight));
+          });
+
+          if (currentY + 40 > doc.page.height) {
             doc.addPage();
             currentY = 40;
           }
@@ -864,13 +1044,18 @@ export class QualityReportService {
           currentY += 20;
 
           for (let r = 0; r < numRows; r++) {
-            const y = currentY + r * sigBlockHeight;
-            doc.rect(startX, y, pageWidth, sigBlockHeight).stroke();
+            const rowHeight = rowHeights[r];
+            if (currentY + rowHeight > doc.page.height - 40) {
+              doc.addPage();
+              currentY = 40;
+            }
+            const y = currentY;
+            doc.rect(startX, y, pageWidth, rowHeight).stroke();
 
             for (let c = 1; c < columnsPerRow; c++) {
               doc
                 .moveTo(startX + c * sigColWidth, y)
-                .lineTo(startX + c * sigColWidth, y + sigBlockHeight)
+                .lineTo(startX + c * sigColWidth, y + rowHeight)
                 .stroke();
             }
 
@@ -878,23 +1063,20 @@ export class QualityReportService {
               const sigIndex = r * columnsPerRow + c;
               if (sigIndex < sigs.length) {
                 const sig = sigs[sigIndex];
+                const sigLayout = signatureLayouts[sigIndex];
                 const cx = startX + c * sigColWidth;
 
                 doc
                   .fillColor('#E5E7EB')
-                  .rect(cx, y, sigColWidth, 15)
+                  .rect(cx, y, sigColWidth, sigLayout.titleBandHeight)
                   .fill()
                   .stroke();
                 doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-                doc.text(
-                  `${sig.role}${sig.actionType ? ` (${String(sig.actionType).replace(/_/g, ' ')})` : ''}`,
-                  cx,
-                  y + 4,
-                  {
-                  width: sigColWidth,
+                doc.text(sigLayout.titleText, cx + 4, y + 4, {
+                  width: sigColWidth - 8,
                   align: 'center',
-                  },
-                );
+                  lineGap: 1,
+                });
 
                 if (sig.signatureData) {
                   try {
@@ -902,9 +1084,14 @@ export class QualityReportService {
                     if (sig.signatureData.startsWith('data:image')) {
                       // Already a proper data URI
                       imgSrc = sig.signatureData;
-                    } else if (sig.signatureData.startsWith('/uploads/') || sig.signatureData.startsWith('uploads/')) {
+                    } else if (
+                      sig.signatureData.startsWith('/uploads/') ||
+                      sig.signatureData.startsWith('uploads/')
+                    ) {
                       // Stored as a file path
-                      const sigFilePath = this.resolveUploadPath(sig.signatureData);
+                      const sigFilePath = this.resolveUploadPath(
+                        sig.signatureData,
+                      );
                       if (sigFilePath && existsSync(sigFilePath)) {
                         imgSrc = readFileSync(sigFilePath);
                       }
@@ -913,44 +1100,56 @@ export class QualityReportService {
                       imgSrc = `data:image/png;base64,${sig.signatureData}`;
                     }
                     if (imgSrc) {
-                      doc.image(imgSrc as any, cx + 5, y + 20, {
-                        width: sigColWidth - 10,
-                        height: 40,
-                      });
+                      doc.image(
+                        imgSrc as any,
+                        cx + 5,
+                        y + sigLayout.titleBandHeight + 6,
+                        {
+                          width: sigColWidth - 10,
+                          height: signatureImageHeight,
+                        },
+                      );
                     }
                   } catch (e) {
-                    console.error('Failed to render signature image:', (e as Error).message);
+                    console.error(
+                      'Failed to render signature image:',
+                      (e as Error).message,
+                    );
                   }
                 }
 
                 doc
-                  .moveTo(cx, y + 65)
-                  .lineTo(cx + sigColWidth, y + 65)
+                  .moveTo(cx, y + sigLayout.dividerY)
+                  .lineTo(cx + sigColWidth, y + sigLayout.dividerY)
                   .stroke();
                 doc.font('Helvetica-Bold').fontSize(7);
-                doc.text(sig.signedBy, cx, y + 68, {
-                  width: sigColWidth,
+                doc.text(sig.signedBy, cx + 4, y + sigLayout.signedByY, {
+                  width: sigColWidth - 8,
                   align: 'center',
+                  lineGap: 1,
                 });
                 doc.font('Helvetica').fontSize(6).fillColor('#6B7280');
                 doc.text(
                   [sig.company, sig.roleLabel].filter(Boolean).join(' • '),
                   cx + 4,
-                  y + 76,
+                  y + sigLayout.metaY,
                   {
                     width: sigColWidth - 8,
                     align: 'center',
+                    lineGap: 1,
                   },
                 );
-                doc.text(sig.date, cx, y + 83, {
-                  width: sigColWidth,
+                doc.text(sig.date, cx + 4, y + sigLayout.dateY, {
+                  width: sigColWidth - 8,
                   align: 'center',
+                  lineGap: 1,
                 });
                 doc.fillColor('black');
               }
             }
+            currentY += rowHeight + 10;
           }
-          currentY += sigBlockHeight * numRows + 20;
+          currentY += 10;
         }
       };
 
@@ -993,7 +1192,10 @@ export class QualityReportService {
                 doc.addPage();
                 currentY = 40;
               }
-              doc.rect(startX, currentY, pageWidth, obsHeaderH).fill('#FEF3C7').stroke();
+              doc
+                .rect(startX, currentY, pageWidth, obsHeaderH)
+                .fill('#FEF3C7')
+                .stroke();
               doc.fillColor('#92400E').font('Helvetica-Bold').fontSize(8);
               const statusColor =
                 obs.status === 'CLOSED'
@@ -1006,11 +1208,9 @@ export class QualityReportService {
                 startX + 5,
                 currentY + 4,
               );
-              doc.fillColor(statusColor).text(
-                obs.status || 'PENDING',
-                startX + 80,
-                currentY + 4,
-              );
+              doc
+                .fillColor(statusColor)
+                .text(obs.status || 'PENDING', startX + 80, currentY + 4);
               doc.fillColor('#374151').font('Helvetica').fontSize(7);
               doc.text(
                 `Raised: ${formatDateTime(obs.createdAt)}`,
@@ -1038,12 +1238,9 @@ export class QualityReportService {
               }
               doc.rect(startX, currentY, pageWidth, obsTextH).stroke();
               doc.font('Helvetica').fontSize(8).fillColor('black');
-              doc.text(
-                obs.observationText || '',
-                startX + 5,
-                currentY + 6,
-                { width: pageWidth - 10 },
-              );
+              doc.text(obs.observationText || '', startX + 5, currentY + 6, {
+                width: pageWidth - 10,
+              });
               currentY += obsTextH;
 
               // ── Closure text row (if any) ─────────────────────────────────
@@ -1056,7 +1253,10 @@ export class QualityReportService {
                   doc.addPage();
                   currentY = 40;
                 }
-                doc.rect(startX, currentY, pageWidth, closureH).fill('#F0FDF4').stroke();
+                doc
+                  .rect(startX, currentY, pageWidth, closureH)
+                  .fill('#F0FDF4')
+                  .stroke();
                 doc.fillColor('#065F46').font('Helvetica-Oblique').fontSize(7);
                 doc.text(
                   `Closure Note: ${obs.closureText}`,
@@ -1069,9 +1269,7 @@ export class QualityReportService {
               }
 
               // ── Observation photos ─────────────────────────────────────────
-              const allPhotos: string[] = [
-                ...((obs.photos as string[]) || []),
-              ];
+              const allPhotos: string[] = [...((obs.photos as string[]) || [])];
               if (allPhotos.length > 0) {
                 const photoRowH = photoHeight + 8;
                 const numRows = Math.ceil(allPhotos.length / photosPerRow);
@@ -1080,7 +1278,10 @@ export class QualityReportService {
                   doc.addPage();
                   currentY = 40;
                 }
-                doc.rect(startX, currentY, pageWidth, 12).fill('#FEF9C3').stroke();
+                doc
+                  .rect(startX, currentY, pageWidth, 12)
+                  .fill('#FEF9C3')
+                  .stroke();
                 doc.fillColor('#713F12').font('Helvetica-Bold').fontSize(7);
                 doc.text('Observation Photos', startX + 5, currentY + 3);
                 doc.fillColor('black');
@@ -1099,12 +1300,19 @@ export class QualityReportService {
                     const photoPath = this.resolveUploadPath(allPhotos[pi]);
                     if (photoPath && existsSync(photoPath)) {
                       try {
-                        doc.image(photoPath, startX + c * (photoWidth + 5) + 3, currentY + 3, {
-                          width: photoWidth,
-                          height: photoHeight,
-                          fit: [photoWidth, photoHeight],
-                        });
-                      } catch (_) { /* skip unreadable image */ }
+                        doc.image(
+                          photoPath,
+                          startX + c * (photoWidth + 5) + 3,
+                          currentY + 3,
+                          {
+                            width: photoWidth,
+                            height: photoHeight,
+                            fit: [photoWidth, photoHeight],
+                          },
+                        );
+                      } catch (_) {
+                        /* skip unreadable image */
+                      }
                     }
                   }
                   currentY += rowH;
@@ -1123,7 +1331,10 @@ export class QualityReportService {
                   doc.addPage();
                   currentY = 40;
                 }
-                doc.rect(startX, currentY, pageWidth, 12).fill('#DCFCE7').stroke();
+                doc
+                  .rect(startX, currentY, pageWidth, 12)
+                  .fill('#DCFCE7')
+                  .stroke();
                 doc.fillColor('#14532D').font('Helvetica-Bold').fontSize(7);
                 doc.text('Closure Evidence Photos', startX + 5, currentY + 3);
                 doc.fillColor('black');
@@ -1142,12 +1353,19 @@ export class QualityReportService {
                     const photoPath = this.resolveUploadPath(closurePhotos[pi]);
                     if (photoPath && existsSync(photoPath)) {
                       try {
-                        doc.image(photoPath, startX + c * (photoWidth + 5) + 3, currentY + 3, {
-                          width: photoWidth,
-                          height: photoHeight,
-                          fit: [photoWidth, photoHeight],
-                        });
-                      } catch (_) { /* skip unreadable image */ }
+                        doc.image(
+                          photoPath,
+                          startX + c * (photoWidth + 5) + 3,
+                          currentY + 3,
+                          {
+                            width: photoWidth,
+                            height: photoHeight,
+                            fit: [photoWidth, photoHeight],
+                          },
+                        );
+                      } catch (_) {
+                        /* skip unreadable image */
+                      }
                     }
                   }
                   currentY += rowH;
@@ -1230,7 +1448,10 @@ export class QualityReportService {
 
     for (const related of relatedInspections) {
       try {
-        const linkedPdf = await this.generateInspectionReport(related.id, false);
+        const linkedPdf = await this.generateInspectionReport(
+          related.id,
+          false,
+        );
         const linkedDocument = await PdfLibDocument.load(linkedPdf);
         const pages = await output.copyPages(
           linkedDocument,
@@ -1316,4 +1537,3 @@ export class QualityReportService {
     });
   }
 }
-
