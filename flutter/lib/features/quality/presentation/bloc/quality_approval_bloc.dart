@@ -480,20 +480,55 @@ class QualityApprovalBloc
   /// flag on [InspectionsLoaded] tells the UI to show the offline indicator.
   Future<void> _onLoadInspections(
       LoadInspections event, Emitter<QualityApprovalState> emit) async {
-    emit(QualityApprovalLoading());
+    // Cache-first: serve SharedPreferences-cached data immediately so the
+    // list renders without waiting for the network. The network fetch below
+    // runs in the background and replaces the cached data when it arrives.
+    // This mirrors what the mobile browser does via HTTP cache — making the
+    // first visible render feel instant rather than blocked behind a spinner.
+    final prefs = await SharedPreferences.getInstance();
+    final cachedJson = prefs.getString(
+        BackgroundDownloadService.qualityInspectionsKey(event.projectId));
+    if (cachedJson != null) {
+      try {
+        final cachedList = jsonDecode(cachedJson) as List<dynamic>;
+        final cachedAll = cachedList
+            .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))
+            .toList();
+        final cachedFiltered = _filter(cachedAll, event.filter);
+        emit(InspectionsLoaded(
+          inspections: cachedFiltered,
+          activeFilter: event.filter,
+          projectId: event.projectId,
+          fromCache: true,
+        ));
+      } catch (_) {
+        // Malformed cache — fall through to network-only path below.
+        emit(QualityApprovalLoading());
+      }
+    } else {
+      emit(QualityApprovalLoading());
+    }
+
+    // Network fetch: pass the status filter so the backend only returns
+    // the matching subset — previously the entire project's inspection history
+    // was returned and filtered client-side, causing multi-MB responses for
+    // large projects (the primary cause of slow approvals-list loading).
     try {
       final raw = await _apiClient.getQualityInspections(
         projectId: event.projectId,
+        status: event.filter, // 'ALL' is handled in getQualityInspections → no filter sent
       );
       final all = raw
           .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // Persist for next offline session.
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          BackgroundDownloadService.qualityInspectionsKey(event.projectId),
-          jsonEncode(raw));
+      // Persist ALL-filter responses for offline session (full cache).
+      // Filtered results are not worth caching since they'd be incomplete.
+      if (event.filter == 'ALL') {
+        await prefs.setString(
+            BackgroundDownloadService.qualityInspectionsKey(event.projectId),
+            jsonEncode(raw));
+      }
 
       final filtered = _filter(all, event.filter);
       emit(InspectionsLoaded(
@@ -508,9 +543,12 @@ class QualityApprovalBloc
           ? (e.response == null)
           : e.toString().toLowerCase().contains('connection') ||
               e.toString().toLowerCase().contains('socket');
+      // If cache-first already emitted data, the user can see something —
+      // swallow the network error silently rather than replacing visible
+      // cached rows with an error message.
+      if (isNetworkError && cachedJson != null) return;
       if (isNetworkError) {
         try {
-          final prefs = await SharedPreferences.getInstance();
           final cached = prefs.getString(
               BackgroundDownloadService.qualityInspectionsKey(event.projectId));
           if (cached != null) {

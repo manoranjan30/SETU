@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import 'package:setu_mobile/core/api/api_endpoints.dart';
@@ -13,6 +14,8 @@ import 'package:setu_mobile/core/auth/token_manager.dart';
 ///   transparently retries once on 401 after refreshing the token.
 /// - [_ErrorInterceptor]: normalises all [DioException] variants into typed
 ///   [ApiException] objects so callers never have to inspect raw Dio errors.
+/// - [DioCacheInterceptor]: caches GET responses in memory for up to 3 minutes
+///   so navigating back to a previously-loaded screen is instant.
 ///
 /// In debug builds, [PrettyDioLogger] is added to print human-readable
 /// request/response logs to the console.
@@ -20,6 +23,22 @@ import 'package:setu_mobile/core/auth/token_manager.dart';
 /// Instantiated once via dependency injection (GetIt) and shared app-wide.
 class SetuApiClient {
   final TokenManager _tokenManager;
+
+  // Shared in-memory cache store — lives for the lifetime of the process.
+  // MemCacheStore is cleared on app restart, which is the right behavior:
+  // fresh session → fresh data, but within a session back-navigation is instant.
+  static final _cacheStore = MemCacheStore();
+  static final _cacheOptions = CacheOptions(
+    store: _cacheStore,
+    // forceCache: cache every successful GET for up to 3 minutes, even when
+    // the server sends no Cache-Control header (most of our endpoints don't).
+    policy: CachePolicy.forceCache,
+    maxStale: const Duration(minutes: 3),
+    // Serve stale cached data on any network error EXCEPT auth errors —
+    // keeps the app usable on poor construction-site connectivity.
+    hitCacheOnErrorCodes: [],
+    priority: CachePriority.normal,
+  );
 
   // Dio instance is created in the constructor and held privately.
   // late final ensures it is only assigned once and never null after init.
@@ -55,10 +74,12 @@ class SetuApiClient {
     );
 
     // Interceptors are evaluated in insertion order:
-    // 1. _AuthInterceptor  — adds Authorization header before the request leaves.
-    // 2. _ErrorInterceptor — maps Dio errors to ApiException after response arrives.
-    // 3. PrettyDioLogger   — only in debug builds; logs to console for developer inspection.
+    // 1. DioCacheInterceptor — serves GET responses from in-memory cache when fresh.
+    // 2. _AuthInterceptor   — adds Authorization header before the request leaves.
+    // 3. _ErrorInterceptor  — maps Dio errors to ApiException after response arrives.
+    // 4. PrettyDioLogger    — only in debug builds; logs to console for developer inspection.
     _dio.interceptors.addAll([
+      DioCacheInterceptor(options: _cacheOptions),
       _AuthInterceptor(_tokenManager, _dio),
       _ErrorInterceptor(),
       if (kDebugMode)
@@ -80,6 +101,15 @@ class SetuApiClient {
   /// that let a tester point the app at a different server without rebuilding).
   void updateBaseUrl(String baseUrl) {
     _dio.options.baseUrl = baseUrl;
+  }
+
+  /// Clears the in-memory HTTP response cache.
+  ///
+  /// Call this after any mutating operation (raise RFI, submit observation,
+  /// etc.) so the next list fetch goes to the server rather than returning
+  /// stale cached data. Also called by blocs on explicit pull-to-refresh.
+  Future<void> clearCache() async {
+    await _cacheStore.clean();
   }
 
   // ==================== AUTH ENDPOINTS ====================
@@ -496,12 +526,17 @@ class SetuApiClient {
 
   /// Returns inspection requests (RFIs) with optional filters.
   ///
-  /// All three query params are optional beyond [projectId]; omitting them
-  /// returns all inspections across every EPS node and checklist list.
+  /// [status] — when provided, is sent to the backend as a server-side filter
+  /// so only matching records are returned (e.g. 'PENDING', 'APPROVED').
+  /// Pass null or omit to get all statuses. 'ALL' is treated as no filter.
+  /// This is critical for the approvals list page, which previously fetched
+  /// every inspection then discarded most of them client-side — for large
+  /// projects that resulted in multi-MB responses on every tab open.
   Future<List<dynamic>> getQualityInspections({
     required int projectId,
     int? epsNodeId,
     int? listId,
+    String? status,
   }) async {
     final response = await _dio.get(
       ApiEndpoints.qualityInspections,
@@ -509,6 +544,8 @@ class SetuApiClient {
         'projectId': projectId,
         if (epsNodeId != null) 'epsNodeId': epsNodeId,
         if (listId != null) 'listId': listId,
+        // Only send status when it's a real filter — 'ALL' means no filter.
+        if (status != null && status != 'ALL') 'status': status,
       },
     );
     return response.data;
@@ -976,6 +1013,22 @@ class SetuApiClient {
       queryParameters: params,
     );
     return response.data as List<dynamic>;
+  }
+
+  /// Returns a single quality site observation by ID.
+  /// Used by NotificationNavigator to deep-link directly from a push notification
+  /// into the observation detail page without loading the full list first.
+  Future<Map<String, dynamic>> getQualitySiteObsById(int id) async {
+    final response =
+        await _dio.get(ApiEndpoints.qualitySiteObservation(id.toString()));
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Returns a single EHS site observation by ID.
+  Future<Map<String, dynamic>> getEhsSiteObsById(int id) async {
+    final response =
+        await _dio.get(ApiEndpoints.ehsSiteObservation(id.toString()));
+    return response.data as Map<String, dynamic>;
   }
 
   /// Creates a new quality site observation for a project.

@@ -220,7 +220,11 @@ export class QualityActivityService {
 
     const list = await this.listRepo.findOne({
       where: { id: listId },
-      relations: ['activities', 'activities.incomingEdges', 'activities.incomingEdges.source'],
+      relations: [
+        'activities',
+        'activities.incomingEdges',
+        'activities.incomingEdges.source',
+      ],
     });
 
     const fallbackActivities = (list?.activities || []).sort(
@@ -401,7 +405,7 @@ export class QualityActivityService {
       observationRating,
       observationText: dto.observationText,
       remarks: dto.remarks,
-      photos: (dto.photos || []).map(u => this.toRelativePath(u)),
+      photos: (dto.photos || []).map((u) => this.toRelativePath(u)),
       status: ActivityObservationStatus.PENDING,
       rectificationHistory: [],
     });
@@ -420,9 +424,7 @@ export class QualityActivityService {
         location: [
           `EPS #${inspection.epsNodeId}`,
           inspection.elementName,
-          inspection.drawingNo
-            ? `Drawing ${inspection.drawingNo}`
-            : null,
+          inspection.drawingNo ? `Drawing ${inspection.drawingNo}` : null,
         ]
           .filter(Boolean)
           .join(' / '),
@@ -436,28 +438,51 @@ export class QualityActivityService {
     activity.status = QualityActivityStatus.PENDING_OBSERVATION;
     await this.activityRepo.save(activity);
 
-    // Notify only the raiser of the selected inspection.
-    this.notifyInspectionRaiserOfObservation(inspection, saved.id).catch(() => {
+    this.notifyChecklistObservationRaised(inspection, saved.id).catch(() => {
       // Fire-and-forget; do not fail the request if notification errors
     });
 
     return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
 
-  private async notifyInspectionRaiserOfObservation(
+  private uniqueUserIds(values: Array<number | string | null | undefined>) {
+    return Array.from(
+      new Set(
+        values
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    );
+  }
+
+  private async getInspectionNotificationScope(inspectionId?: number | null) {
+    if (!inspectionId) return null;
+    return this.inspectionRepo.findOne({
+      where: { id: inspectionId },
+      select: [
+        'id',
+        'projectId',
+        'epsNodeId',
+        'activityId',
+        'vendorName',
+        'requestedById',
+        'goLabel',
+      ],
+    });
+  }
+
+  private async notifyChecklistObservationRaised(
     inspection: Pick<QualityInspection, 'id' | 'requestedById'>,
     observationId: string,
   ): Promise<void> {
-    if (!inspection.requestedById) return;
-
-    const inspectionScope = await this.inspectionRepo.findOne({
-      where: { id: inspection.id },
-      select: ['id', 'projectId', 'epsNodeId', 'activityId', 'vendorName'],
-    });
+    const inspectionScope = await this.getInspectionNotificationScope(
+      inspection.id,
+    );
+    if (!inspectionScope?.projectId) return;
     const scope = await this.notificationContext.resolve({
-      projectId: inspectionScope?.projectId ?? null,
-      epsNodeId: inspectionScope?.epsNodeId ?? null,
-      activityId: inspectionScope?.activityId ?? null,
+      projectId: inspectionScope.projectId,
+      epsNodeId: inspectionScope.epsNodeId,
+      activityId: inspectionScope.activityId,
       subjectLabel: inspectionScope?.vendorName || 'RFI observation',
     });
     const body = [
@@ -468,19 +493,93 @@ export class QualityActivityService {
       .filter((value): value is string => Boolean(value && value.trim()))
       .join(' | ');
 
-    if (!inspectionScope?.projectId) return;
-    await this.pushService.sendToProjectUsers(
+    const data = {
+      type: 'QUALITY_CHECKLIST_OBS_RAISED',
+      module: 'QUALITY',
+      sourceType: 'QUALITY_CHECKLIST_OBSERVATION',
+      observationId,
+      inspectionId: String(inspection.id),
+      ...this.notificationContext.toData(scope),
+    };
+
+    await this.pushService.sendToProjectPermission(
       inspectionScope.projectId,
-      [inspection.requestedById],
+      'QUALITY.OBSERVATION.RESOLVE',
       'Quality Observation Raised',
       body,
-      {
-        type: 'quality_observation',
-        observationId,
-        inspectionId: String(inspection.id),
-        ...this.notificationContext.toData(scope),
-      },
+      data,
     );
+
+    const directUserIds = this.uniqueUserIds([inspection.requestedById]);
+    if (directUserIds.length > 0) {
+      await this.pushService.sendToProjectUsers(
+        inspectionScope.projectId,
+        directUserIds,
+        'Quality Observation Raised',
+        body,
+        data,
+      );
+    }
+  }
+
+  private async notifyChecklistObservationUpdate(
+    observation: ActivityObservation,
+    options: {
+      title: string;
+      summary: string;
+      type: string;
+      permissionCode?: string;
+      directUserIds?: Array<number | string | null | undefined>;
+      extraBody?: string | null;
+    },
+  ): Promise<void> {
+    const inspectionScope = await this.getInspectionNotificationScope(
+      observation.inspectionId,
+    );
+    if (!inspectionScope?.projectId) return;
+
+    const scope = await this.notificationContext.resolve({
+      projectId: inspectionScope.projectId,
+      epsNodeId: inspectionScope.epsNodeId,
+      activityId: inspectionScope.activityId,
+      subjectLabel: inspectionScope.vendorName || 'RFI observation',
+    });
+    const body = [
+      options.summary,
+      this.notificationContext.formatInline(scope),
+      options.extraBody,
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .join(' | ');
+    const data = {
+      type: options.type,
+      module: 'QUALITY',
+      sourceType: 'QUALITY_CHECKLIST_OBSERVATION',
+      observationId: observation.id,
+      inspectionId: String(inspectionScope.id),
+      ...this.notificationContext.toData(scope),
+    };
+
+    if (options.permissionCode) {
+      await this.pushService.sendToProjectPermission(
+        inspectionScope.projectId,
+        options.permissionCode,
+        options.title,
+        body,
+        data,
+      );
+    }
+
+    const directUserIds = this.uniqueUserIds(options.directUserIds || []);
+    if (directUserIds.length > 0) {
+      await this.pushService.sendToProjectUsers(
+        inspectionScope.projectId,
+        directUserIds,
+        options.title,
+        body,
+        data,
+      );
+    }
   }
 
   async resolveObservation(
@@ -506,7 +605,9 @@ export class QualityActivityService {
 
     obs.status = ActivityObservationStatus.RECTIFIED;
     obs.closureText = dto.closureText;
-    obs.closureEvidence = (dto.closureEvidence || []).map(u => this.toRelativePath(u));
+    obs.closureEvidence = (dto.closureEvidence || []).map((u) =>
+      this.toRelativePath(u),
+    );
     obs.resolvedBy = userId;
     obs.resolvedAt = new Date();
     obs.rectificationHistory = [
@@ -529,6 +630,17 @@ export class QualityActivityService {
         status: QualityActivityStatus.UNDER_INSPECTION,
       });
     }
+
+    this.notifyChecklistObservationUpdate(saved, {
+      title: 'Quality Observation Rectified',
+      summary: 'Checklist observation rectification has been submitted.',
+      type: 'QUALITY_CHECKLIST_OBS_RECTIFIED',
+      permissionCode: 'QUALITY.OBSERVATION.CLOSE',
+      directUserIds: [saved.inspectorId],
+      extraBody: 'Please review and close or reject.',
+    }).catch(() => {
+      // Fire-and-forget; do not fail the request if notification errors
+    });
 
     return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
@@ -575,6 +687,17 @@ export class QualityActivityService {
     const saved = await this.obsRepo.save(obs);
     await this.ncrSyncService.markOpen(saved.ncrId);
 
+    this.notifyChecklistObservationUpdate(saved, {
+      title: 'Quality Rectification Rejected',
+      summary: 'Checklist observation rectification was rejected.',
+      type: 'QUALITY_CHECKLIST_OBS_RECTIFICATION_REJECTED',
+      permissionCode: 'QUALITY.OBSERVATION.RESOLVE',
+      directUserIds: [saved.resolvedBy],
+      extraBody: `Reason: ${rejectionRemarks}`,
+    }).catch(() => {
+      // Fire-and-forget; do not fail the request if notification errors
+    });
+
     return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
 
@@ -611,6 +734,15 @@ export class QualityActivityService {
         status: QualityActivityStatus.UNDER_INSPECTION,
       });
     }
+
+    this.notifyChecklistObservationUpdate(saved, {
+      title: 'Quality Observation Closed',
+      summary: 'Checklist observation has been closed.',
+      type: 'QUALITY_CHECKLIST_OBS_CLOSED',
+      directUserIds: [saved.inspectorId, saved.resolvedBy],
+    }).catch(() => {
+      // Fire-and-forget; do not fail the request if notification errors
+    });
 
     return this.decorateOneObservation(saved) as Promise<ActivityObservation>;
   }
@@ -659,7 +791,8 @@ export class QualityActivityService {
     }
 
     // Validation: Check unresolved observations
-    const pendingCount = await this.countUnresolvedObservationCountForActivity(id);
+    const pendingCount =
+      await this.countUnresolvedObservationCountForActivity(id);
 
     if (pendingCount > 0) {
       throw new BadRequestException(
@@ -852,8 +985,7 @@ export class QualityActivityService {
           ) ??
           act.pourClearanceTriggerStageTemplateId ??
           undefined,
-        pourClearanceSignoffTemplate:
-          act.pourClearanceSignoffTemplate || [],
+        pourClearanceSignoffTemplate: act.pourClearanceSignoffTemplate || [],
         floorVisibility: act.floorVisibility,
         position: act.position,
         status: QualityActivityStatus.NOT_STARTED,
@@ -995,8 +1127,9 @@ export class QualityActivityService {
       return { templateIdMap, stageIdMap };
     }
 
-    const templateRepo =
-      this.dataSource.getRepository(QualityChecklistTemplate);
+    const templateRepo = this.dataSource.getRepository(
+      QualityChecklistTemplate,
+    );
     const itemRepo = this.dataSource.getRepository(
       QualityChecklistItemTemplate,
     );
@@ -1180,9 +1313,7 @@ export class QualityActivityService {
         : Date.now();
     const ageingMinutes = Math.max(
       0,
-      Math.floor(
-        (endTime - new Date(observation.createdAt).getTime()) / 60000,
-      ),
+      Math.floor((endTime - new Date(observation.createdAt).getTime()) / 60000),
     );
 
     return {
@@ -1286,16 +1417,14 @@ export class QualityActivityService {
   }
 
   private normalizeFloorVisibility(
-    value?:
-      | {
-          mode?: 'ALL' | 'RESTRICTED';
-          selectedNodeIds?: number[];
-          selectedBlockIds?: number[];
-          selectedTowerIds?: number[];
-          selectedFloorIds?: number[];
-          version?: number;
-        }
-      | null,
+    value?: {
+      mode?: 'ALL' | 'RESTRICTED';
+      selectedNodeIds?: number[];
+      selectedBlockIds?: number[];
+      selectedTowerIds?: number[];
+      selectedFloorIds?: number[];
+      version?: number;
+    } | null,
   ) {
     if (!value || value.mode === 'ALL') {
       return null;

@@ -76,6 +76,40 @@ export class UsersService {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'roles')
       .leftJoinAndSelect('user.permissions', 'permissions')
+      .select([
+        'user.id',
+        'user.username',
+        'user.isActive',
+        'user.displayName',
+        'user.email',
+        'user.designation',
+        'user.phone',
+        'user.signatureImageUrl',
+        'user.signatureUpdatedAt',
+        'user.isTempUser',
+        'user.isFirstLogin',
+        'user.createdAt',
+        'user.updatedAt',
+        'roles.id',
+        'roles.name',
+        'roles.description',
+        'roles.dashboardId',
+        'roles.isSystem',
+        'roles.isLocked',
+        'roles.isActive',
+        'roles.tempRoleTemplateId',
+        'roles.vendorRoleLevel',
+        'permissions.id',
+        'permissions.permissionCode',
+        'permissions.permissionName',
+        'permissions.moduleName',
+        'permissions.entityName',
+        'permissions.actionType',
+        'permissions.scopeLevel',
+        'permissions.description',
+        'permissions.isSystem',
+        'permissions.isActive',
+      ])
       .where('user.isTempUser = :isTemp OR user.isTempUser IS NULL', {
         isTemp: false,
       })
@@ -129,7 +163,7 @@ export class UsersService {
     });
     if (!user) throw new ForbiddenException('User not found');
 
-    const { passwordHash, ...safeUser } = user;
+    const { passwordHash, signatureData, fcmToken, ...safeUser } = user;
 
     if (user.isTempUser) {
       const tempInfo = await this.tempUserRepository.findOne({
@@ -247,9 +281,8 @@ export class UsersService {
       };
 
       if (signatureImageUrl !== undefined) {
-        updateData.signatureImageUrl = this.normalizeSignatureImageSource(
-          signatureImageUrl,
-        );
+        updateData.signatureImageUrl =
+          this.normalizeSignatureImageSource(signatureImageUrl);
       }
 
       const updateResult = await this.usersRepository.update(id, updateData);
@@ -272,7 +305,8 @@ export class UsersService {
     if (!text) return null;
     if (/^data:image\//i.test(text)) return text;
     if (/^https?:\/\//i.test(text)) return text;
-    if (/^\/?uploads\//i.test(text)) return text.startsWith('/') ? text : `/${text}`;
+    if (/^\/?uploads\//i.test(text))
+      return text.startsWith('/') ? text : `/${text}`;
     if (/^[A-Za-z0-9+/=\s]+$/.test(text) && text.length > 100) {
       return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
     }

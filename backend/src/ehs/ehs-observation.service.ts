@@ -50,9 +50,7 @@ export class EhsObservationService {
     const values = Array.isArray(categories) ? categories : [];
     const deduped = Array.from(
       new Set(
-        values
-          .map((value) => String(value ?? '').trim())
-          .filter(Boolean),
+        values.map((value) => String(value ?? '').trim()).filter(Boolean),
       ),
     );
 
@@ -155,7 +153,10 @@ export class EhsObservationService {
 
     if (options?.paged) {
       const page = Math.max(1, Number(options.page) || 1);
-      const pageSize = Math.min(100, Math.max(5, Number(options.pageSize) || 10));
+      const pageSize = Math.min(
+        100,
+        Math.max(5, Number(options.pageSize) || 10),
+      );
       const [rows, total] = await query
         .skip((page - 1) * pageSize)
         .take(pageSize)
@@ -245,9 +246,11 @@ export class EhsObservationService {
       Description: obs.description,
       Remarks: obs.remarks || '',
       'Target Date': obs.targetDate || '',
-      'Raised On': obs.createdAt ? new Date(obs.createdAt).toLocaleString() : '',
+      'Raised On': obs.createdAt
+        ? new Date(obs.createdAt).toLocaleString()
+        : '',
       'Ageing Days': obs.ageingDays,
-      'Rectification': obs.rectificationText || '',
+      Rectification: obs.rectificationText || '',
       'Rectified On': obs.rectifiedAt
         ? new Date(obs.rectifiedAt).toLocaleString()
         : '',
@@ -273,13 +276,34 @@ export class EhsObservationService {
             : 'Filtered register',
       },
       { Metric: 'Total Records', Value: rows.length },
-      { Metric: 'Open / Held', Value: rows.filter((r) => ['OPEN', 'HELD'].includes(r.status)).length },
-      { Metric: 'Rectified', Value: rows.filter((r) => r.status === 'RECTIFIED').length },
-      { Metric: 'Closed', Value: rows.filter((r) => r.status === 'CLOSED').length },
-      { Metric: 'Critical', Value: rows.filter((r) => r.severity === 'CRITICAL').length },
-      { Metric: 'Major', Value: rows.filter((r) => r.severity === 'MAJOR').length },
-      { Metric: 'Minor', Value: rows.filter((r) => r.severity === 'MINOR').length },
-      { Metric: 'Info', Value: rows.filter((r) => r.severity === 'INFO').length },
+      {
+        Metric: 'Open / Held',
+        Value: rows.filter((r) => ['OPEN', 'HELD'].includes(r.status)).length,
+      },
+      {
+        Metric: 'Rectified',
+        Value: rows.filter((r) => r.status === 'RECTIFIED').length,
+      },
+      {
+        Metric: 'Closed',
+        Value: rows.filter((r) => r.status === 'CLOSED').length,
+      },
+      {
+        Metric: 'Critical',
+        Value: rows.filter((r) => r.severity === 'CRITICAL').length,
+      },
+      {
+        Metric: 'Major',
+        Value: rows.filter((r) => r.severity === 'MAJOR').length,
+      },
+      {
+        Metric: 'Minor',
+        Value: rows.filter((r) => r.severity === 'MINOR').length,
+      },
+      {
+        Metric: 'Info',
+        Value: rows.filter((r) => r.severity === 'INFO').length,
+      },
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -310,7 +334,11 @@ export class EhsObservationService {
     ];
     summarySheet['!cols'] = [{ wch: 24 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-    XLSX.utils.book_append_sheet(workbook, registerSheet, 'Observation Register');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      registerSheet,
+      'Observation Register',
+    );
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 
@@ -403,11 +431,10 @@ export class EhsObservationService {
   }
 
   private calculateAgeingMinutes(obs: EhsObservation) {
-    const endTime =
-      obs.rectifiedAt
-        ? obs.rectifiedAt.getTime()
-        : obs.status === EhsObservationStatus.CLOSED && obs.closedAt
-          ? obs.closedAt.getTime()
+    const endTime = obs.rectifiedAt
+      ? obs.rectifiedAt.getTime()
+      : obs.status === EhsObservationStatus.CLOSED && obs.closedAt
+        ? obs.closedAt.getTime()
         : Date.now();
     const holdInProgressMinutes =
       obs.status === EhsObservationStatus.HELD && obs.holdStartedAt
@@ -430,6 +457,117 @@ export class EhsObservationService {
     entry: EhsObservationRectificationHistoryEntry,
   ) {
     obs.rectificationHistory = [...(obs.rectificationHistory || []), entry];
+  }
+
+  private uniqueUserIds(values: Array<number | string | null | undefined>) {
+    return Array.from(
+      new Set(
+        values
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    );
+  }
+
+  private async notifyEhsObservationPermission(
+    obs: EhsObservation,
+    permissionCode: string,
+    options: {
+      title: string;
+      body: string;
+      type: string;
+      directUserIds?: Array<number | string | null | undefined>;
+      extraBody?: string | null;
+    },
+  ) {
+    const notification =
+      await this.notificationComposer.composeObservationUpdate({
+        moduleLabel: 'EHS',
+        projectId: obs.projectId,
+        epsNodeId: obs.epsNodeId,
+        severity: obs.severity,
+        category: obs.category,
+        subjectLabel: obs.category || 'EHS observation',
+        statusLabel: options.title,
+        notificationType: options.type,
+      });
+    const body = [
+      notification.body,
+      options.body && options.body !== notification.body ? options.body : null,
+      options.extraBody,
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .join(' | ');
+    const data = {
+      observationId: String(obs.id),
+      module: 'EHS',
+      sourceType: 'EHS_SITE_OBSERVATION',
+      ...notification.data,
+    };
+
+    await this.pushService.sendToProjectPermission(
+      obs.projectId,
+      permissionCode,
+      notification.title,
+      body,
+      data,
+    );
+
+    const directUserIds = this.uniqueUserIds(options.directUserIds || []);
+    if (directUserIds.length > 0) {
+      await this.pushService.sendToProjectUsers(
+        obs.projectId,
+        directUserIds,
+        notification.title,
+        body,
+        data,
+      );
+    }
+  }
+
+  private async notifyEhsObservationUsers(
+    obs: EhsObservation,
+    options: {
+      title: string;
+      body: string;
+      type: string;
+      directUserIds: Array<number | string | null | undefined>;
+      extraBody?: string | null;
+    },
+  ) {
+    const directUserIds = this.uniqueUserIds(options.directUserIds);
+    if (directUserIds.length === 0) return;
+    const notification =
+      await this.notificationComposer.composeObservationUpdate({
+        moduleLabel: 'EHS',
+        projectId: obs.projectId,
+        epsNodeId: obs.epsNodeId,
+        severity: obs.severity,
+        category: obs.category,
+        subjectLabel: obs.category || 'EHS observation',
+        statusLabel: options.title,
+        notificationType: options.type,
+      });
+    const body = [
+      notification.body,
+      options.body && options.body !== notification.body ? options.body : null,
+      options.extraBody,
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .join(' | ');
+
+    await this.pushService.sendToProjectUsers(
+      obs.projectId,
+      directUserIds,
+      notification.title,
+      body,
+      {
+        observationId: String(obs.id),
+        module: 'EHS',
+        sourceType: 'EHS_SITE_OBSERVATION',
+        ...notification.data,
+      },
+    );
   }
 
   private async resolveLocationLabel(
@@ -476,10 +614,7 @@ export class EhsObservationService {
 
     const saved = await this.observationRepo.save(obs);
 
-    if (
-      dto.severity === EhsObservationSeverity.CRITICAL ||
-      dto.severity === EhsObservationSeverity.MAJOR
-    ) {
+    {
       const notification =
         await this.notificationComposer.composeObservationRaised({
           moduleLabel: 'EHS',
@@ -488,16 +623,19 @@ export class EhsObservationService {
           severity: dto.severity,
           category: dto.category,
           subjectLabel: dto.category || 'EHS observation',
+          notificationType: 'EHS_OBS_RAISED',
         });
 
       this.pushService
         .sendToProjectPermission(
           dto.projectId,
-          'EHS.SITE_OBS.CLOSE',
+          'EHS.SITE_OBS.RECTIFY',
           notification.title,
           notification.body,
           {
             observationId: String(saved.id),
+            module: 'EHS',
+            sourceType: 'EHS_SITE_OBSERVATION',
             ...notification.data,
           },
         )
@@ -545,34 +683,15 @@ export class EhsObservationService {
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
 
-    if (obs.raisedById) {
-      const notification =
-        await this.notificationComposer.composeObservationUpdate({
-          moduleLabel: 'EHS',
-          projectId: obs.projectId,
-          epsNodeId: obs.epsNodeId,
-          severity: obs.severity,
-          category: obs.category,
-          subjectLabel: obs.category || 'EHS observation',
-          statusLabel: 'EHS Observation Rectified',
-          notificationType: 'EHS_OBS_RECTIFIED',
-        });
-
-      this.pushService
-        .sendToProjectUsers(
-          obs.projectId,
-          [parseInt(obs.raisedById, 10)],
-          notification.title,
-          `${notification.body} | Please review and close.`,
-          {
-            observationId: String(saved.id),
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
+    this.notifyEhsObservationPermission(saved, 'EHS.SITE_OBS.CLOSE', {
+      title: 'EHS Observation Rectified',
+      body: 'EHS observation rectification has been submitted.',
+      type: 'EHS_OBS_RECTIFIED',
+      directUserIds: [saved.raisedById],
+      extraBody: 'Please review and close or reject.',
+    }).catch(() => {
+      /* non-fatal */
+    });
 
     if (userId) {
       await this.auditService.log(
@@ -621,39 +740,15 @@ export class EhsObservationService {
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
 
-    if (obs.raisedById) {
-      const notification =
-        await this.notificationComposer.composeObservationUpdate({
-          moduleLabel: 'EHS',
-          projectId: obs.projectId,
-          epsNodeId: obs.epsNodeId,
-          severity: obs.severity,
-          category: obs.category,
-          subjectLabel: obs.category || 'EHS observation',
-          statusLabel: 'EHS Rectification Rejected',
-          notificationType: 'EHS_OBS_RECTIFICATION_REJECTED',
-        });
-
-      this.pushService
-        .sendToProjectUsers(
-          obs.projectId,
-          [parseInt(obs.raisedById, 10)],
-          notification.title,
-          [
-            notification.body,
-            obs.rectificationRejectedRemarks
-              ? `Reason: ${obs.rectificationRejectedRemarks}`
-              : 'Please rectify and submit again.',
-          ].join(' | '),
-          {
-            observationId: String(saved.id),
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
+    this.notifyEhsObservationPermission(saved, 'EHS.SITE_OBS.RECTIFY', {
+      title: 'EHS Rectification Rejected',
+      body: 'EHS observation rectification was rejected.',
+      type: 'EHS_OBS_RECTIFICATION_REJECTED',
+      directUserIds: [saved.rectifiedById],
+      extraBody: `Reason: ${rejectionRemarks}`,
+    }).catch(() => {
+      /* non-fatal */
+    });
 
     if (userId) {
       await this.auditService.log(
@@ -743,34 +838,14 @@ export class EhsObservationService {
 
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
 
-    if (obs.raisedById) {
-      const notification =
-        await this.notificationComposer.composeObservationUpdate({
-          moduleLabel: 'EHS',
-          projectId: obs.projectId,
-          epsNodeId: obs.epsNodeId,
-          severity: obs.severity,
-          category: obs.category,
-          subjectLabel: obs.category || 'EHS observation',
-          statusLabel: 'EHS Observation Closed',
-          notificationType: 'EHS_OBS_CLOSED',
-        });
-
-      this.pushService
-        .sendToProjectUsers(
-          obs.projectId,
-          [parseInt(obs.raisedById, 10)],
-          notification.title,
-          notification.body,
-          {
-            observationId: String(saved.id),
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
+    this.notifyEhsObservationUsers(saved, {
+      title: 'EHS Observation Closed',
+      body: 'EHS observation has been closed.',
+      type: 'EHS_OBS_CLOSED',
+      directUserIds: [saved.raisedById, saved.rectifiedById],
+    }).catch(() => {
+      /* non-fatal */
+    });
 
     if (userId) {
       await this.auditService.log(

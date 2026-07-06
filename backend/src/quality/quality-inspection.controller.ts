@@ -30,6 +30,7 @@ import { Res } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { QualityInspectionAttachmentService } from './quality-inspection-attachment.service';
+import { MobileCacheHeaders } from '../common/mobile-cache-headers.decorator';
 
 const rfiAttachmentUpload = FileFieldsInterceptor(
   [
@@ -67,16 +68,21 @@ export class QualityInspectionController {
   private isAdminRequest(req: any) {
     const roles = Array.isArray(req?.user?.roles) ? req.user.roles : [];
     return (
-      roles.some((role: any) =>
-        String(typeof role === 'string' ? role : role?.name || '')
-          .trim()
-          .toLowerCase() === 'admin',
-      ) || String(req?.user?.role || '').trim().toLowerCase() === 'admin'
+      roles.some(
+        (role: any) =>
+          String(typeof role === 'string' ? role : role?.name || '')
+            .trim()
+            .toLowerCase() === 'admin',
+      ) ||
+      String(req?.user?.role || '')
+        .trim()
+        .toLowerCase() === 'admin'
     );
   }
 
   @Get()
   @Permissions('QUALITY.INSPECTION.READ')
+  @MobileCacheHeaders()
   getInspections(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('epsNodeId', new ParseIntPipe({ optional: true }))
@@ -200,6 +206,7 @@ export class QualityInspectionController {
 
   @Get(':id')
   @Permissions('QUALITY.INSPECTION.READ')
+  @MobileCacheHeaders()
   getInspectionDetails(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.service.getInspectionDetails(
       id,
@@ -246,10 +253,7 @@ export class QualityInspectionController {
 
   @Get(':id/attachments')
   @Permissions('QUALITY.INSPECTION.READ')
-  async getAttachments(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req,
-  ) {
+  async getAttachments(@Param('id', ParseIntPipe) id: number, @Request() req) {
     await this.service.getInspectionDetails(
       id,
       req?.user?.userId || req?.user?.id,
@@ -360,6 +364,7 @@ export class QualityInspectionController {
 
   @Get(':id/workflow')
   @Permissions('QUALITY.INSPECTION.READ')
+  @MobileCacheHeaders()
   getWorkflowState(@Param('id', ParseIntPipe) id: number) {
     return this.workflowService.getWorkflowState(id);
   }

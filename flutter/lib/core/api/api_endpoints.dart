@@ -342,6 +342,7 @@ class ApiEndpoints {
   /// Returns a single inspection with its full checklist stages and items.
   static String qualityInspection(int id) => '/quality/inspections/$id';
 
+
   /// POST /quality/inspections — Raise RFI
   /// Creates a new inspection request against a specific activity and location.
   static const String raiseRfi = '/quality/inspections';

@@ -31,6 +31,7 @@ import type {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
+import { MobileCacheHeaders } from '../common/mobile-cache-headers.decorator';
 
 interface RequestWithUser {
   user?: { id: number };
@@ -45,6 +46,7 @@ export class QualityActivityController {
 
   @Get('activity-lists')
   @Permissions('QUALITY.ACTIVITYLIST.READ')
+  @MobileCacheHeaders()
   getLists(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('epsNodeId', new ParseIntPipe({ optional: true }))
@@ -55,6 +57,7 @@ export class QualityActivityController {
 
   @Get('activity-lists/:id')
   @Permissions('QUALITY.ACTIVITYLIST.READ')
+  @MobileCacheHeaders()
   getListById(@Param('id', ParseIntPipe) id: number) {
     return this.service.getListById(id);
   }
@@ -114,6 +117,7 @@ export class QualityActivityController {
 
   @Get('activity-lists/:listId/activities')
   @Permissions('QUALITY.ACTIVITY.READ')
+  @MobileCacheHeaders()
   getActivities(@Param('listId', ParseIntPipe) listId: number) {
     return this.service.getActivities(listId);
   }
@@ -152,6 +156,7 @@ export class QualityActivityController {
 
   @Get('activities/:id/observations')
   @Permissions('QUALITY.ACTIVITY.READ')
+  @MobileCacheHeaders()
   getObservations(
     @Param('id', ParseIntPipe) id: number,
     @Query('inspectionId', new ParseIntPipe({ optional: true }))

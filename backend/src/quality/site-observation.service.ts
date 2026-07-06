@@ -57,9 +57,7 @@ export class SiteObservationService {
     const values = Array.isArray(categories) ? categories : [];
     const deduped = Array.from(
       new Set(
-        values
-          .map((value) => String(value ?? '').trim())
-          .filter(Boolean),
+        values.map((value) => String(value ?? '').trim()).filter(Boolean),
       ),
     );
 
@@ -161,13 +159,18 @@ export class SiteObservationService {
 
     if (options?.paged) {
       const page = Math.max(1, Number(options.page) || 1);
-      const pageSize = Math.min(100, Math.max(5, Number(options.pageSize) || 10));
+      const pageSize = Math.min(
+        100,
+        Math.max(5, Number(options.pageSize) || 10),
+      );
       const [rows, total] = await query
         .skip((page - 1) * pageSize)
         .take(pageSize)
         .getManyAndCount();
       return {
-        data: await this.decorateObservations(rows.map((obs) => this.normalizePhotos(obs))),
+        data: await this.decorateObservations(
+          rows.map((obs) => this.normalizePhotos(obs)),
+        ),
         total,
         page,
         pageSize,
@@ -175,7 +178,9 @@ export class SiteObservationService {
     }
 
     const rows = await query.getMany();
-    return this.decorateObservations(rows.map((obs) => this.normalizePhotos(obs)));
+    return this.decorateObservations(
+      rows.map((obs) => this.normalizePhotos(obs)),
+    );
   }
 
   async exportRegister(
@@ -250,10 +255,12 @@ export class SiteObservationService {
       Description: obs.description,
       Remarks: obs.remarks || '',
       'Target Date': obs.targetDate || '',
-      'Raised On': obs.createdAt ? new Date(obs.createdAt).toLocaleString() : '',
+      'Raised On': obs.createdAt
+        ? new Date(obs.createdAt).toLocaleString()
+        : '',
       'Raised By': obs.raisedBy?.displayName || '',
       'Ageing Days': obs.ageingDays,
-      'Rectification': obs.rectificationText || '',
+      Rectification: obs.rectificationText || '',
       'Rectified On': obs.rectifiedAt
         ? new Date(obs.rectifiedAt).toLocaleString()
         : '',
@@ -281,14 +288,38 @@ export class SiteObservationService {
             : 'Filtered register',
       },
       { Metric: 'Total Records', Value: rows.length },
-      { Metric: 'Open / Held', Value: rows.filter((r) => ['OPEN', 'HELD'].includes(r.status)).length },
-      { Metric: 'Rectified', Value: rows.filter((r) => r.status === 'RECTIFIED').length },
-      { Metric: 'Closed', Value: rows.filter((r) => r.status === 'CLOSED').length },
-      { Metric: 'Critical', Value: rows.filter((r) => r.observationRating === 'CRITICAL').length },
-      { Metric: 'Major', Value: rows.filter((r) => r.observationRating === 'MAJOR').length },
-      { Metric: 'Moderate', Value: rows.filter((r) => r.observationRating === 'MODERATE').length },
-      { Metric: 'Minor', Value: rows.filter((r) => r.observationRating === 'MINOR').length },
-      { Metric: 'OFI', Value: rows.filter((r) => r.observationRating === 'OFI').length },
+      {
+        Metric: 'Open / Held',
+        Value: rows.filter((r) => ['OPEN', 'HELD'].includes(r.status)).length,
+      },
+      {
+        Metric: 'Rectified',
+        Value: rows.filter((r) => r.status === 'RECTIFIED').length,
+      },
+      {
+        Metric: 'Closed',
+        Value: rows.filter((r) => r.status === 'CLOSED').length,
+      },
+      {
+        Metric: 'Critical',
+        Value: rows.filter((r) => r.observationRating === 'CRITICAL').length,
+      },
+      {
+        Metric: 'Major',
+        Value: rows.filter((r) => r.observationRating === 'MAJOR').length,
+      },
+      {
+        Metric: 'Moderate',
+        Value: rows.filter((r) => r.observationRating === 'MODERATE').length,
+      },
+      {
+        Metric: 'Minor',
+        Value: rows.filter((r) => r.observationRating === 'MINOR').length,
+      },
+      {
+        Metric: 'OFI',
+        Value: rows.filter((r) => r.observationRating === 'OFI').length,
+      },
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -319,7 +350,11 @@ export class SiteObservationService {
     ];
     summarySheet['!cols'] = [{ wch: 24 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-    XLSX.utils.book_append_sheet(workbook, registerSheet, 'Observation Register');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      registerSheet,
+      'Observation Register',
+    );
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 
@@ -420,11 +455,10 @@ export class SiteObservationService {
   }
 
   private calculateAgeingMinutes(obs: SiteObservation) {
-    const endTime =
-      obs.rectifiedAt
-        ? obs.rectifiedAt.getTime()
-        : obs.status === SiteObservationStatus.CLOSED && obs.closedAt
-          ? obs.closedAt.getTime()
+    const endTime = obs.rectifiedAt
+      ? obs.rectifiedAt.getTime()
+      : obs.status === SiteObservationStatus.CLOSED && obs.closedAt
+        ? obs.closedAt.getTime()
         : Date.now();
     const holdInProgressMinutes =
       obs.status === SiteObservationStatus.HELD && obs.holdStartedAt
@@ -447,6 +481,117 @@ export class SiteObservationService {
     entry: SiteObservationRectificationHistoryEntry,
   ) {
     obs.rectificationHistory = [...(obs.rectificationHistory || []), entry];
+  }
+
+  private uniqueUserIds(values: Array<number | string | null | undefined>) {
+    return Array.from(
+      new Set(
+        values
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    );
+  }
+
+  private async notifySiteObservationPermission(
+    obs: SiteObservation,
+    permissionCode: string,
+    options: {
+      title: string;
+      body: string;
+      type: string;
+      directUserIds?: Array<number | string | null | undefined>;
+      extraBody?: string | null;
+    },
+  ) {
+    const notification =
+      await this.notificationComposer.composeObservationUpdate({
+        moduleLabel: 'Quality',
+        projectId: obs.projectId,
+        epsNodeId: obs.epsNodeId,
+        severity: obs.severity,
+        category: obs.category,
+        subjectLabel: obs.category || 'Site observation',
+        statusLabel: options.title,
+        notificationType: options.type,
+      });
+    const body = [
+      notification.body,
+      options.body && options.body !== notification.body ? options.body : null,
+      options.extraBody,
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .join(' | ');
+    const data = {
+      observationId: String(obs.id),
+      module: 'QUALITY',
+      sourceType: 'QUALITY_SITE_OBSERVATION',
+      ...notification.data,
+    };
+
+    await this.pushService.sendToProjectPermission(
+      obs.projectId,
+      permissionCode,
+      notification.title,
+      body,
+      data,
+    );
+
+    const directUserIds = this.uniqueUserIds(options.directUserIds || []);
+    if (directUserIds.length > 0) {
+      await this.pushService.sendToProjectUsers(
+        obs.projectId,
+        directUserIds,
+        notification.title,
+        body,
+        data,
+      );
+    }
+  }
+
+  private async notifySiteObservationUsers(
+    obs: SiteObservation,
+    options: {
+      title: string;
+      body: string;
+      type: string;
+      directUserIds: Array<number | string | null | undefined>;
+      extraBody?: string | null;
+    },
+  ) {
+    const directUserIds = this.uniqueUserIds(options.directUserIds);
+    if (directUserIds.length === 0) return;
+    const notification =
+      await this.notificationComposer.composeObservationUpdate({
+        moduleLabel: 'Quality',
+        projectId: obs.projectId,
+        epsNodeId: obs.epsNodeId,
+        severity: obs.severity,
+        category: obs.category,
+        subjectLabel: obs.category || 'Site observation',
+        statusLabel: options.title,
+        notificationType: options.type,
+      });
+    const body = [
+      notification.body,
+      options.body && options.body !== notification.body ? options.body : null,
+      options.extraBody,
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .join(' | ');
+
+    await this.pushService.sendToProjectUsers(
+      obs.projectId,
+      directUserIds,
+      notification.title,
+      body,
+      {
+        observationId: String(obs.id),
+        module: 'QUALITY',
+        sourceType: 'QUALITY_SITE_OBSERVATION',
+        ...notification.data,
+      },
+    );
   }
 
   private async resolveLocationLabel(
@@ -584,34 +729,15 @@ export class SiteObservationService {
       saved.rectificationText,
     );
 
-    if (obs.raisedById) {
-      const notification =
-        await this.notificationComposer.composeObservationUpdate({
-          moduleLabel: 'Quality',
-          projectId: obs.projectId,
-          epsNodeId: obs.epsNodeId,
-          severity: obs.severity,
-          category: obs.category,
-          subjectLabel: obs.category || 'Site observation',
-          statusLabel: 'Quality Observation Rectified',
-          notificationType: 'OBS_RECTIFIED',
-        });
-
-      this.pushService
-        .sendToProjectUsers(
-          obs.projectId,
-          [parseInt(obs.raisedById, 10)],
-          notification.title,
-          `${notification.body} | Please review and close.`,
-          {
-            observationId: String(saved.id),
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
+    this.notifySiteObservationPermission(saved, 'QUALITY.SITE_OBS.CLOSE', {
+      title: 'Quality Observation Rectified',
+      body: 'Quality site observation rectification has been submitted.',
+      type: 'QUALITY_SITE_OBS_RECTIFIED',
+      directUserIds: [saved.raisedById],
+      extraBody: 'Please review and close or reject.',
+    }).catch(() => {
+      /* non-fatal */
+    });
 
     if (userId) {
       await this.auditService.log(
@@ -661,39 +787,15 @@ export class SiteObservationService {
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
     await this.ncrSyncService.markOpen(saved.ncrId);
 
-    if (obs.raisedById) {
-      const notification =
-        await this.notificationComposer.composeObservationUpdate({
-          moduleLabel: 'Quality',
-          projectId: obs.projectId,
-          epsNodeId: obs.epsNodeId,
-          severity: obs.severity,
-          category: obs.category,
-          subjectLabel: obs.category || 'Site observation',
-          statusLabel: 'Quality Rectification Rejected',
-          notificationType: 'OBS_RECTIFICATION_REJECTED',
-        });
-
-      this.pushService
-        .sendToProjectUsers(
-          obs.projectId,
-          [parseInt(obs.raisedById, 10)],
-          notification.title,
-          [
-            notification.body,
-            obs.rectificationRejectedRemarks
-              ? `Reason: ${obs.rectificationRejectedRemarks}`
-              : 'Please rectify and submit again.',
-          ].join(' | '),
-          {
-            observationId: String(saved.id),
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
+    this.notifySiteObservationPermission(saved, 'QUALITY.SITE_OBS.RECTIFY', {
+      title: 'Quality Rectification Rejected',
+      body: 'Quality site observation rectification was rejected.',
+      type: 'QUALITY_SITE_OBS_RECTIFICATION_REJECTED',
+      directUserIds: [saved.rectifiedById],
+      extraBody: `Reason: ${rejectionRemarks}`,
+    }).catch(() => {
+      /* non-fatal */
+    });
 
     if (userId) {
       await this.auditService.log(
@@ -788,34 +890,14 @@ export class SiteObservationService {
     const saved = this.normalizePhotos(await this.observationRepo.save(obs));
     await this.ncrSyncService.markClosed(saved.ncrId);
 
-    if (obs.raisedById) {
-      const notification =
-        await this.notificationComposer.composeObservationUpdate({
-          moduleLabel: 'Quality',
-          projectId: obs.projectId,
-          epsNodeId: obs.epsNodeId,
-          severity: obs.severity,
-          category: obs.category,
-          subjectLabel: obs.category || 'Site observation',
-          statusLabel: 'Quality Observation Closed',
-          notificationType: 'OBS_CLOSED',
-        });
-
-      this.pushService
-        .sendToProjectUsers(
-          obs.projectId,
-          [parseInt(obs.raisedById, 10)],
-          notification.title,
-          notification.body,
-          {
-            observationId: String(saved.id),
-            ...notification.data,
-          },
-        )
-        .catch(() => {
-          /* non-fatal */
-        });
-    }
+    this.notifySiteObservationUsers(saved, {
+      title: 'Quality Observation Closed',
+      body: 'Quality site observation has been closed.',
+      type: 'QUALITY_SITE_OBS_CLOSED',
+      directUserIds: [saved.raisedById, saved.rectifiedById],
+    }).catch(() => {
+      /* non-fatal */
+    });
 
     if (userId) {
       await this.auditService.log(
