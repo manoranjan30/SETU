@@ -248,7 +248,9 @@ export class QualityInspectionService {
     const existing = await query.orderBy('inspection.id', 'DESC').getOne();
     if (existing) {
       const goLabel =
-        existing.goLabel || existing.partLabel || `GO ${existing.partNo || partNo}`;
+        existing.goLabel ||
+        existing.partLabel ||
+        `GO ${existing.partNo || partNo}`;
       throw new BadRequestException(
         `${goLabel} is already active for this activity and location as RFI #${existing.id}. Use Add GO for the next GO, or reject/cancel the existing RFI before re-raising this GO.`,
       );
@@ -337,7 +339,9 @@ export class QualityInspectionService {
       : [await query.getMany(), undefined];
 
     if (inspections.length === 0) {
-      return hasPaging ? { data: [], total: total || 0, limit, offset, hasMore: false } : [];
+      return hasPaging
+        ? { data: [], total: total || 0, limit, offset, hasMore: false }
+        : [];
     }
 
     // Build related lookups in batch to avoid per-row queries.
@@ -374,23 +378,23 @@ export class QualityInspectionService {
     );
     const [allEpsNodes, units, rooms, relatedInspections, requesters] =
       await Promise.all([
-      this.epsNodeRepo.find(),
-      unitIds.length
-        ? this.qualityUnitRepo.find({ where: { id: In(unitIds) } })
-        : Promise.resolve([]),
-      roomIds.length
-        ? this.qualityRoomRepo.find({ where: { id: In(roomIds) } })
-        : Promise.resolve([]),
-      relatedInspectionIds.length
-        ? this.inspectionRepo.find({
-            where: { id: In(relatedInspectionIds), projectId },
-            relations: ['activity'],
-          })
-        : Promise.resolve([]),
-      requestedByIds.length
-        ? this.userRepo.find({ where: { id: In(requestedByIds) } })
-        : Promise.resolve([]),
-    ]);
+        this.epsNodeRepo.find(),
+        unitIds.length
+          ? this.qualityUnitRepo.find({ where: { id: In(unitIds) } })
+          : Promise.resolve([]),
+        roomIds.length
+          ? this.qualityRoomRepo.find({ where: { id: In(roomIds) } })
+          : Promise.resolve([]),
+        relatedInspectionIds.length
+          ? this.inspectionRepo.find({
+              where: { id: In(relatedInspectionIds), projectId },
+              relations: ['activity'],
+            })
+          : Promise.resolve([]),
+        requestedByIds.length
+          ? this.userRepo.find({ where: { id: In(requestedByIds) } })
+          : Promise.resolve([]),
+      ]);
 
     const epsById = new Map<number, EpsNode>(allEpsNodes.map((n) => [n.id, n]));
     const unitsById = new Map<number, QualityUnit>(units.map((u) => [u.id, u]));
@@ -530,8 +534,10 @@ export class QualityInspectionService {
       [hydratedInspection],
       viewerUserId,
       viewerIsAdmin,
+      true,
     );
-    const withRelated = await this.attachRelatedChecklistSummaries(withWorkflow);
+    const withRelated =
+      await this.attachRelatedChecklistSummaries(withWorkflow);
     return {
       ...withRelated,
       locationPath:
@@ -731,8 +737,8 @@ export class QualityInspectionService {
     const isActiveSubmission = (inspection?: QualityInspection) =>
       Boolean(
         inspection &&
-          inspection.status !== InspectionStatus.REJECTED &&
-          inspection.status !== InspectionStatus.CANCELED,
+        inspection.status !== InspectionStatus.REJECTED &&
+        inspection.status !== InspectionStatus.CANCELED,
       );
     const raisedUnitIds = Array.from(latestByUnit.entries())
       .filter(([, inspection]) => isActiveSubmission(inspection))
@@ -832,7 +838,9 @@ export class QualityInspectionService {
     }
 
     const floorScope = await this.resolveFloorVisibilityScope(epsNode);
-    if (!this.isActivityVisibleForFloorScope(activity.floorVisibility, floorScope)) {
+    if (
+      !this.isActivityVisibleForFloorScope(activity.floorVisibility, floorScope)
+    ) {
       throw new BadRequestException(
         'This activity is not configured to be visible for the selected floor.',
       );
@@ -1071,7 +1079,10 @@ export class QualityInspectionService {
       );
     }
 
-    if ((data.signature || data.status === StageStatus.APPROVED) && data.userId) {
+    if (
+      (data.signature || data.status === StageStatus.APPROVED) &&
+      data.userId
+    ) {
       await this.inspectionWorkflowService.assertUserCanApproveInspectionStep(
         stage.inspection.id,
         Number(data.userId),
@@ -1145,10 +1156,7 @@ export class QualityInspectionService {
         }
       }
 
-      if (
-        requestedStatus !== StageStatus.APPROVED &&
-        checkedItemsCount === 0
-      ) {
+      if (requestedStatus !== StageStatus.APPROVED && checkedItemsCount === 0) {
         throw new BadRequestException(
           'Select at least one checklist item before signing work progress.',
         );
@@ -1172,7 +1180,9 @@ export class QualityInspectionService {
         data.userId,
       );
       const actionType =
-        requestedStatus === StageStatus.APPROVED ? 'STAGE_APPROVE' : 'SAVE_PROGRESS';
+        requestedStatus === StageStatus.APPROVED
+          ? 'STAGE_APPROVE'
+          : 'SAVE_PROGRESS';
       const signature = this.signatureRepo.create({
         stageId,
         inspectionId: stage.inspection.id,
@@ -1378,7 +1388,7 @@ export class QualityInspectionService {
     );
     const hasPourClearanceGate = Boolean(
       triggerStageTemplateId &&
-        (activity?.requiresPourCard || activity?.requiresPourClearanceCard),
+      (activity?.requiresPourCard || activity?.requiresPourClearanceCard),
     );
 
     if (!hasPourClearanceGate) {
@@ -1413,9 +1423,9 @@ export class QualityInspectionService {
     });
     const pourCardApproved = Boolean(
       pourCard &&
-        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-          pourCard.status,
-        ),
+      [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+        pourCard.status,
+      ),
     );
 
     if (!pourCardApproved) {
@@ -1453,9 +1463,7 @@ export class QualityInspectionService {
 
     const incompleteItems = (stage.items || []).filter(
       (item) =>
-        item?.value !== 'YES' &&
-        item?.value !== 'NA' &&
-        item?.isOk !== true,
+        item?.value !== 'YES' && item?.value !== 'NA' && item?.isOk !== true,
     );
     if (incompleteItems.length > 0) {
       throw new BadRequestException(
@@ -1477,7 +1485,9 @@ export class QualityInspectionService {
       userId,
     );
     if (!run) {
-      throw new NotFoundException('Workflow is not configured for this inspection');
+      throw new NotFoundException(
+        'Workflow is not configured for this inspection',
+      );
     }
 
     const sortedSteps = [...(run.steps || [])].sort(
@@ -1505,35 +1515,35 @@ export class QualityInspectionService {
         metadata: { timestamp: now, user: String(userId) },
       });
       const approvalEntity = this.signatureRepo.create({
-          stageId,
-          inspectionId,
-          workflowStepId: undefined,
-          approvalLevelOrder: undefined,
-          approvalLevelName: 'Direct Stage Approval',
-          approvalAssignedUserId: undefined,
-          approvalAssignedRoleId: undefined,
-          isAutoInherited: false,
-          inheritedFromStepOrder: undefined,
-          userId,
-          signedByUserId: userId,
-          actionType: 'STAGE_APPROVE',
-          role: signer.roleLabel || (isAdmin ? 'Admin' : 'Approver'),
-          signedBy: String(userId),
-          signerDisplayName: signer.displayName,
-          signerCompany: signer.companyLabel,
-          signerRoleLabel: signer.roleLabel || (isAdmin ? 'Admin' : 'Approver'),
-          sourceType: signer.sourceType,
-          signatureData,
-          lockHash: fingerprint,
-          metadata: {
-            timestamp: now,
-            ...(signatureEvidence || {}),
-            identityBound: true,
-            signatureMode:
-              (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
-            directStageApproval: true,
-          } as any,
-        });
+        stageId,
+        inspectionId,
+        workflowStepId: undefined,
+        approvalLevelOrder: undefined,
+        approvalLevelName: 'Direct Stage Approval',
+        approvalAssignedUserId: undefined,
+        approvalAssignedRoleId: undefined,
+        isAutoInherited: false,
+        inheritedFromStepOrder: undefined,
+        userId,
+        signedByUserId: userId,
+        actionType: 'STAGE_APPROVE',
+        role: signer.roleLabel || (isAdmin ? 'Admin' : 'Approver'),
+        signedBy: String(userId),
+        signerDisplayName: signer.displayName,
+        signerCompany: signer.companyLabel,
+        signerRoleLabel: signer.roleLabel || (isAdmin ? 'Admin' : 'Approver'),
+        sourceType: signer.sourceType,
+        signatureData,
+        lockHash: fingerprint,
+        metadata: {
+          timestamp: now,
+          ...(signatureEvidence || {}),
+          identityBound: true,
+          signatureMode:
+            (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
+          directStageApproval: true,
+        } as any,
+      });
       const approval = await this.signatureRepo.save(approvalEntity);
 
       stage.signatures = [...(stage.signatures || []), approval];
@@ -1550,8 +1560,9 @@ export class QualityInspectionService {
       if (!inspection) throw new NotFoundException('Inspection not found');
 
       const totalStages = inspection.stages.length;
-      const approvedStages = inspection.stages.filter((inspectionStage: any) =>
-        this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
+      const approvedStages = inspection.stages.filter(
+        (inspectionStage: any) =>
+          this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
       ).length;
 
       if (approvedStages > 0 && approvedStages < totalStages) {
@@ -1702,8 +1713,9 @@ export class QualityInspectionService {
     if (!inspection) throw new NotFoundException('Inspection not found');
 
     const totalStages = inspection.stages.length;
-    const approvedStages = inspection.stages.filter((inspectionStage: any) =>
-      this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
+    const approvedStages = inspection.stages.filter(
+      (inspectionStage: any) =>
+        this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
     ).length;
 
     if (approvedStages > 0 && approvedStages < totalStages) {
@@ -1773,7 +1785,9 @@ export class QualityInspectionService {
             )
             .map((actor) => actor.userId)
         : [];
-      const notifyUserIds = Array.from(new Set([...nextUserIds, ...nextRoleUserIds]));
+      const notifyUserIds = Array.from(
+        new Set([...nextUserIds, ...nextRoleUserIds]),
+      );
       if (notifyUserIds.length > 0) {
         const notification =
           await this.notificationComposer.composeInspectionApprovalRequired({
@@ -1975,24 +1989,24 @@ export class QualityInspectionService {
       void (async () => {
         const notification =
           await this.notificationComposer.composeInspectionDecision({
-          projectId: inspection.projectId,
-          epsNodeId: inspection.epsNodeId,
-          activityId: inspection.activityId,
-          inspectionId,
-          decisionLabel: 'RFI Approved',
-          comments: comments || undefined,
-        });
+            projectId: inspection.projectId,
+            epsNodeId: inspection.epsNodeId,
+            activityId: inspection.activityId,
+            inspectionId,
+            decisionLabel: 'RFI Approved',
+            comments: comments || undefined,
+          });
         await this.pushService.sendToProjectUsers(
-            inspection.projectId,
-            [inspection.requestedById],
-            notification.title,
-            notification.body,
-            {
-              inspectionId: String(inspectionId),
-              type: 'APPROVED',
-              ...notification.data,
-            },
-          );
+          inspection.projectId,
+          [inspection.requestedById],
+          notification.title,
+          notification.body,
+          {
+            inspectionId: String(inspectionId),
+            type: 'APPROVED',
+            ...notification.data,
+          },
+        );
       })().catch(() => {
         /* non-fatal */
       });
@@ -2049,7 +2063,10 @@ export class QualityInspectionService {
       inspectionId,
       userId,
     );
-    const remainingApprovals = this.buildStageApprovalDetails(refreshedStage, run);
+    const remainingApprovals = this.buildStageApprovalDetails(
+      refreshedStage,
+      run,
+    );
     const checkedItems = (refreshedStage.items || []).filter(
       (item) =>
         item?.value === 'YES' || item?.value === 'NA' || item?.isOk === true,
@@ -2064,7 +2081,9 @@ export class QualityInspectionService {
           ? StageStatus.COMPLETED
           : StageStatus.IN_PROGRESS;
     refreshedStage.isLocked = remainingApprovals.fullyApproved;
-    refreshedStage.lockedAt = remainingApprovals.fullyApproved ? new Date() : null;
+    refreshedStage.lockedAt = remainingApprovals.fullyApproved
+      ? new Date()
+      : null;
     refreshedStage.lockedByUserId = remainingApprovals.fullyApproved
       ? userId
       : null;
@@ -2083,8 +2102,9 @@ export class QualityInspectionService {
       relations: ['stages', 'stages.signatures'],
     });
     if (inspection) {
-      const approvedStages = (inspection.stages || []).filter((inspectionStage: any) =>
-        this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
+      const approvedStages = (inspection.stages || []).filter(
+        (inspectionStage: any) =>
+          this.buildStageApprovalDetails(inspectionStage, run).fullyApproved,
       ).length;
       inspection.status =
         approvedStages > 0
@@ -2135,7 +2155,6 @@ export class QualityInspectionService {
         },
       },
     });
-
   }
 
   private normalizeRelatedChecklistInspectionIds(input?: number[]) {
@@ -2151,7 +2170,9 @@ export class QualityInspectionService {
     );
   }
 
-  private async validateRelatedChecklistInspectionIds(dto: CreateInspectionDto) {
+  private async validateRelatedChecklistInspectionIds(
+    dto: CreateInspectionDto,
+  ) {
     const ids = this.normalizeRelatedChecklistInspectionIds(
       dto.relatedChecklistInspectionIds,
     );
@@ -2239,7 +2260,9 @@ export class QualityInspectionService {
           where: { id: In(checklistIds), projectId },
         })
       : [];
-    const templateMap = new Map(templates.map((template) => [template.id, template]));
+    const templateMap = new Map(
+      templates.map((template) => [template.id, template]),
+    );
     const groups = new Map<string, any>();
 
     for (const inspection of eligible) {
@@ -2255,7 +2278,8 @@ export class QualityInspectionService {
             checklistName: template.name,
             checklistNo: template.checklistNo,
             activityId: inspection.activityId,
-            activityName: activity?.activityName || `Activity ${inspection.activityId}`,
+            activityName:
+              activity?.activityName || `Activity ${inspection.activityId}`,
             listName: activity?.list?.name || null,
             children: [],
           });
@@ -2308,13 +2332,9 @@ export class QualityInspectionService {
           qualityRoomId: dto.qualityRoomId,
         });
       }
-      const scoped = await query
-        .orderBy('inspection.partNo', 'ASC')
-        .getMany();
+      const scoped = await query.orderBy('inspection.partNo', 'ASC').getMany();
       if (scoped.length === 0) {
-        throw new BadRequestException(
-          'Raise GO 1 before adding another GO.',
-        );
+        throw new BadRequestException('Raise GO 1 before adding another GO.');
       }
       const currentTotal = scoped.reduce(
         (max, inspection) =>
@@ -2335,10 +2355,12 @@ export class QualityInspectionService {
     });
   }
 
-  private getEffectiveChecklistIdsForActivity(activity?: {
-    assignedChecklistIds?: number[];
-    checklistTemplateId?: number | null;
-  } | null): number[] {
+  private getEffectiveChecklistIdsForActivity(
+    activity?: {
+      assignedChecklistIds?: number[];
+      checklistTemplateId?: number | null;
+    } | null,
+  ): number[] {
     if (activity?.assignedChecklistIds?.length) {
       return activity.assignedChecklistIds;
     }
@@ -2410,7 +2432,9 @@ export class QualityInspectionService {
       where: { inspectionId: inspection.id },
     });
     if (existingStageCount > 0) {
-      return (await this.loadInspectionWithDetails(inspection.id)) || inspection;
+      return (
+        (await this.loadInspectionWithDetails(inspection.id)) || inspection
+      );
     }
 
     const templates = await this.checklistTemplateRepo.find({
@@ -2451,11 +2475,14 @@ export class QualityInspectionService {
   }
 
   private matchesStepForUser(
-    step: {
-      assignedUserId?: number | null;
-      assignedUserIds?: number[] | null;
-      assignedRoleId?: number | null;
-    } | null | undefined,
+    step:
+      | {
+          assignedUserId?: number | null;
+          assignedUserIds?: number[] | null;
+          assignedRoleId?: number | null;
+        }
+      | null
+      | undefined,
     userId: number,
     userRoleIds: number[],
     isAdmin: boolean,
@@ -2507,7 +2534,9 @@ export class QualityInspectionService {
           )
           .map((step) => step.stepOrder);
     const highestAssignedLevel =
-      assignedLevels.length > 0 ? assignedLevels[assignedLevels.length - 1] : null;
+      assignedLevels.length > 0
+        ? assignedLevels[assignedLevels.length - 1]
+        : null;
     const canApproveNow =
       activeStep != null &&
       activeLevel != null &&
@@ -2655,7 +2684,10 @@ export class QualityInspectionService {
       );
   }
 
-  private buildStageApprovalDetails(stage: any, run?: InspectionWorkflowRun | null) {
+  private buildStageApprovalDetails(
+    stage: any,
+    run?: InspectionWorkflowRun | null,
+  ) {
     const sortedSteps = [...(run?.steps || [])].sort(
       (a: any, b: any) => a.stepOrder - b.stepOrder,
     );
@@ -2667,13 +2699,18 @@ export class QualityInspectionService {
 
     for (const signature of stageApprovals) {
       const levelOrder = Number(signature.approvalLevelOrder);
-      if (Number.isFinite(levelOrder) && levelOrder > 0 && !approvalsByLevel.has(levelOrder)) {
+      if (
+        Number.isFinite(levelOrder) &&
+        levelOrder > 0 &&
+        !approvalsByLevel.has(levelOrder)
+      ) {
         approvalsByLevel.set(levelOrder, signature);
       }
     }
 
     const levels = sortedSteps.map((step: any) => {
-      const signature = approvalsByLevel.get(step.stepOrder) || legacyApproval || null;
+      const signature =
+        approvalsByLevel.get(step.stepOrder) || legacyApproval || null;
       return {
         stepOrder: step.stepOrder,
         stepName: step.stepName || `Level ${step.stepOrder}`,
@@ -2686,10 +2723,14 @@ export class QualityInspectionService {
         autoInherited: Boolean(signature?.isAutoInherited),
         inheritedFromStepOrder: signature?.inheritedFromStepOrder ?? null,
         signedByUserId: signature?.signedByUserId ?? null,
-        signerDisplayName: signature?.signerDisplayName || signature?.signedBy || null,
+        signerDisplayName:
+          signature?.signerDisplayName || signature?.signedBy || null,
         signerCompany: signature?.signerCompany || null,
         signerRoleLabel:
-          signature?.signerRoleLabel || signature?.role || step.stepName || null,
+          signature?.signerRoleLabel ||
+          signature?.role ||
+          step.stepName ||
+          null,
         approvedAt: signature?.createdAt || null,
       };
     });
@@ -2763,9 +2804,7 @@ export class QualityInspectionService {
       });
 
       if (unresolvedStageObservations > 0) {
-        throw new BadRequestException(
-          stageMessage || inspectionMessage,
-        );
+        throw new BadRequestException(stageMessage || inspectionMessage);
       }
     }
 
@@ -2776,6 +2815,7 @@ export class QualityInspectionService {
     inspections: T[],
     viewerUserId?: number,
     viewerIsAdmin: boolean = false,
+    includeSignatureData: boolean = false,
   ): Promise<(T & Record<string, any>)[]> {
     if (inspections.length === 0) return [];
 
@@ -2784,14 +2824,65 @@ export class QualityInspectionService {
       new Set(
         inspections
           .map((inspection: any) => inspection.activityId)
-          .filter((activityId): activityId is number => typeof activityId === 'number'),
+          .filter(
+            (activityId): activityId is number =>
+              typeof activityId === 'number',
+          ),
       ),
     );
 
     const stageRecords = await this.stageRepo.find({
       where: { inspectionId: In(inspectionIds) } as any,
-      relations: ['signatures'],
+      relations: includeSignatureData ? ['signatures'] : [],
     });
+    if (!includeSignatureData) {
+      const stageIds = stageRecords
+        .map((stage) => stage.id)
+        .filter((id): id is number => Number.isInteger(Number(id)));
+      if (stageIds.length > 0) {
+        const stageSignatures = await this.signatureRepo.find({
+          where: { stageId: In(stageIds) },
+          select: {
+            id: true,
+            stageId: true,
+            inspectionId: true,
+            workflowStepId: true,
+            approvalLevelOrder: true,
+            approvalLevelName: true,
+            approvalAssignedUserId: true,
+            approvalAssignedRoleId: true,
+            isAutoInherited: true,
+            inheritedFromStepOrder: true,
+            userId: true,
+            actionType: true,
+            role: true,
+            signedBy: true,
+            signedByUserId: true,
+            signerDisplayName: true,
+            signerCompany: true,
+            signerRoleLabel: true,
+            sourceType: true,
+            lockHash: true,
+            metadata: true,
+            isReversed: true,
+            reversedAt: true,
+            reversedByUserId: true,
+            reversalReason: true,
+            createdAt: true,
+          },
+          order: { createdAt: 'ASC' },
+        });
+        const signaturesByStageId = new Map<number, any[]>();
+        for (const signature of stageSignatures) {
+          const bucket = signaturesByStageId.get(signature.stageId) || [];
+          bucket.push(signature);
+          signaturesByStageId.set(signature.stageId, bucket);
+        }
+        for (const stage of stageRecords as any[]) {
+          stage.signatures = signaturesByStageId.get(stage.id) || [];
+        }
+      }
+    }
     const stageMap = new Map<number, any[]>();
     for (const stage of stageRecords) {
       const bucket = stageMap.get(stage.inspectionId) || [];
@@ -2801,44 +2892,117 @@ export class QualityInspectionService {
 
     const runs = await this.workflowRunRepo.find({
       where: { inspectionId: In(inspectionIds) },
-      relations: ['steps', 'steps.signature'],
+      relations: includeSignatureData
+        ? ['steps', 'steps.signature']
+        : ['steps'],
     });
+
+    if (!includeSignatureData) {
+      const steps = runs.flatMap((run) => run.steps || []);
+      const stepIds = steps
+        .map((step) => step.id)
+        .filter((id): id is number => Number.isInteger(Number(id)));
+      const signatureIds = steps
+        .map((step) => step.signatureId)
+        .filter((id): id is number => Number.isInteger(Number(id)));
+      if (stepIds.length > 0 || signatureIds.length > 0) {
+        const stepSignatures = await this.signatureRepo.find({
+          where: [
+            ...(stepIds.length ? [{ workflowStepId: In(stepIds) }] : []),
+            ...(signatureIds.length ? [{ id: In(signatureIds) }] : []),
+          ],
+          select: {
+            id: true,
+            stageId: true,
+            inspectionId: true,
+            workflowStepId: true,
+            approvalLevelOrder: true,
+            approvalLevelName: true,
+            approvalAssignedUserId: true,
+            approvalAssignedRoleId: true,
+            isAutoInherited: true,
+            inheritedFromStepOrder: true,
+            userId: true,
+            actionType: true,
+            role: true,
+            signedBy: true,
+            signedByUserId: true,
+            signerDisplayName: true,
+            signerCompany: true,
+            signerRoleLabel: true,
+            sourceType: true,
+            lockHash: true,
+            metadata: true,
+            isReversed: true,
+            reversedAt: true,
+            reversedByUserId: true,
+            reversalReason: true,
+            createdAt: true,
+          },
+        });
+        const signaturesByStepId = new Map<number, any>();
+        const signaturesById = new Map<number, any>();
+        for (const signature of stepSignatures) {
+          signaturesById.set(signature.id, signature);
+          if (signature.workflowStepId) {
+            signaturesByStepId.set(signature.workflowStepId, signature);
+          }
+        }
+        for (const step of steps as any[]) {
+          step.signature =
+            signaturesByStepId.get(step.id) ||
+            (step.signatureId ? signaturesById.get(step.signatureId) : null) ||
+            null;
+        }
+      }
+    }
 
     const runMap = new Map<number, InspectionWorkflowRun>(
       runs.map((run) => [run.inspectionId, run]),
     );
 
-    const [observationCountRows, legacyObservationCountRows] = await Promise.all([
-      this.observationRepo
-        .createQueryBuilder('observation')
-        .select('observation.inspectionId', 'inspectionId')
-        .addSelect('COUNT(*)', 'count')
-        .where('observation.inspectionId IN (:...inspectionIds)', { inspectionIds })
-        .andWhere('observation.status IN (:...statuses)', {
-          statuses: this.getUnresolvedObservationStatuses(),
-        })
-        .groupBy('observation.inspectionId')
-        .getRawMany<{ inspectionId: string; count: string }>(),
-      activityIds.length
-        ? this.observationRepo
-            .createQueryBuilder('observation')
-            .select('observation.activityId', 'activityId')
-            .addSelect('COUNT(*)', 'count')
-            .where('observation.activityId IN (:...activityIds)', { activityIds })
-            .andWhere('observation.inspectionId IS NULL')
-            .andWhere('observation.status IN (:...statuses)', {
-              statuses: this.getUnresolvedObservationStatuses(),
-            })
-            .groupBy('observation.activityId')
-            .getRawMany<{ activityId: string; count: string }>()
-        : Promise.resolve([] as Array<{ activityId: string; count: string }>),
-    ]);
+    const [observationCountRows, legacyObservationCountRows] =
+      await Promise.all([
+        this.observationRepo
+          .createQueryBuilder('observation')
+          .select('observation.inspectionId', 'inspectionId')
+          .addSelect('COUNT(*)', 'count')
+          .where('observation.inspectionId IN (:...inspectionIds)', {
+            inspectionIds,
+          })
+          .andWhere('observation.status IN (:...statuses)', {
+            statuses: this.getUnresolvedObservationStatuses(),
+          })
+          .groupBy('observation.inspectionId')
+          .getRawMany<{ inspectionId: string; count: string }>(),
+        activityIds.length
+          ? this.observationRepo
+              .createQueryBuilder('observation')
+              .select('observation.activityId', 'activityId')
+              .addSelect('COUNT(*)', 'count')
+              .where('observation.activityId IN (:...activityIds)', {
+                activityIds,
+              })
+              .andWhere('observation.inspectionId IS NULL')
+              .andWhere('observation.status IN (:...statuses)', {
+                statuses: this.getUnresolvedObservationStatuses(),
+              })
+              .groupBy('observation.activityId')
+              .getRawMany<{ activityId: string; count: string }>()
+          : Promise.resolve([] as Array<{ activityId: string; count: string }>),
+      ]);
 
     const observationCountByInspectionId = new Map<number, number>(
-      observationCountRows.map((row) => [Number(row.inspectionId), Number(row.count)]),
+      observationCountRows.map((row) => [
+        Number(row.inspectionId),
+        Number(row.count),
+      ]),
     );
     const legacyObservationCountByActivityId = new Map<number, number>(
-      legacyObservationCountRows.map((row) => [Number(row.activityId), Number(row.count)]),
+      legacyObservationCountRows.map((row) => [
+        Number(row.activityId),
+        Number(row.count),
+      ]),
     );
 
     const [pourCards, prePourClearanceCards] = await Promise.all([
@@ -2869,7 +3033,8 @@ export class QualityInspectionService {
 
     await Promise.all(
       projectIds.map(async (projectId) => {
-        const actors = await this.approvalRuntimeService.getProjectActors(projectId);
+        const actors =
+          await this.approvalRuntimeService.getProjectActors(projectId);
         actorMapByProject.set(
           projectId,
           new Map(actors.map((actor) => [actor.userId, actor])),
@@ -2902,20 +3067,24 @@ export class QualityInspectionService {
       const completedSteps = sortedSteps.filter(
         (step) => step.status === 'COMPLETED',
       );
-      const stages = (inspection.stages || stageMap.get(inspection.id) || []).map(
-        (stage: any) => {
-          const stageApproval = this.buildStageApprovalDetails(stage, run);
-          return {
-            ...stage,
-            stageApproval,
-          };
-        },
-      );
+      const stages = (
+        inspection.stages ||
+        stageMap.get(inspection.id) ||
+        []
+      ).map((stage: any) => {
+        const stageApproval = this.buildStageApprovalDetails(stage, run);
+        return {
+          ...stage,
+          stageApproval,
+        };
+      });
       const approvedStages =
-        stages.filter((stage: any) => stage.stageApproval?.fullyApproved).length || 0;
+        stages.filter((stage: any) => stage.stageApproval?.fullyApproved)
+          .length || 0;
       const totalStages = stages.length || 0;
       const triggerStageTemplateId =
-        (inspection as any).activity?.pourClearanceTriggerStageTemplateId || null;
+        (inspection as any).activity?.pourClearanceTriggerStageTemplateId ||
+        null;
       const triggerStage = triggerStageTemplateId
         ? stages.find(
             (stage: any) =>
@@ -2932,23 +3101,25 @@ export class QualityInspectionService {
         prePourClearanceByInspectionId.get(inspection.id) || null;
       const prePourClearanceApproved = Boolean(
         prePourClearance &&
-          [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-            prePourClearance.status,
-          ),
+        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+          prePourClearance.status,
+        ),
       );
       const pourCardApproved = Boolean(
         pourCard &&
-          [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-            pourCard.status,
-          ),
+        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+          pourCard.status,
+        ),
       );
 
       let pendingApprovalDisplay: string | null = null;
       let pendingApproverNames: string[] = [];
       let stagePendingContext = this.getNextPendingStageLevel(stages);
       if (!stagePendingContext && pendingStep && projectId) {
-        const actorMap = actorMapByProject.get(projectId) || new Map<number, any>();
-        const roleMap = roleMapByProject.get(projectId) || new Map<number, string>();
+        const actorMap =
+          actorMapByProject.get(projectId) || new Map<number, any>();
+        const roleMap =
+          roleMapByProject.get(projectId) || new Map<number, string>();
         const assignedUserIds = pendingStep.assignedUserIds?.length
           ? pendingStep.assignedUserIds
           : pendingStep.assignedUserId
@@ -2956,7 +3127,9 @@ export class QualityInspectionService {
             : [];
 
         pendingApproverNames = assignedUserIds
-          .map((userId) => actorMap.get(userId)?.displayName || `User #${userId}`)
+          .map(
+            (userId) => actorMap.get(userId)?.displayName || `User #${userId}`,
+          )
           .filter(Boolean);
 
         if (pendingApproverNames.length === 0 && pendingStep.assignedRoleId) {
@@ -2975,15 +3148,21 @@ export class QualityInspectionService {
           }`;
         }
       } else if (stagePendingContext && projectId) {
-        const actorMap = actorMapByProject.get(projectId) || new Map<number, any>();
-        const roleMap = roleMapByProject.get(projectId) || new Map<number, string>();
-        const assignedUserIds = stagePendingContext.level.assignedUserIds?.length
+        const actorMap =
+          actorMapByProject.get(projectId) || new Map<number, any>();
+        const roleMap =
+          roleMapByProject.get(projectId) || new Map<number, string>();
+        const assignedUserIds = stagePendingContext.level.assignedUserIds
+          ?.length
           ? stagePendingContext.level.assignedUserIds
           : stagePendingContext.level.assignedUserId
             ? [stagePendingContext.level.assignedUserId]
             : [];
         pendingApproverNames = assignedUserIds
-          .map((userId: number) => actorMap.get(userId)?.displayName || `User #${userId}`)
+          .map(
+            (userId: number) =>
+              actorMap.get(userId)?.displayName || `User #${userId}`,
+          )
           .filter(Boolean);
         if (
           pendingApproverNames.length === 0 &&
@@ -2996,9 +3175,12 @@ export class QualityInspectionService {
           pendingApproverNames = [roleName];
         }
         pendingApprovalDisplay = `Stage ${
-          stagePendingContext.stage.stageTemplate?.name || `#${stagePendingContext.stage.id}`
+          stagePendingContext.stage.stageTemplate?.name ||
+          `#${stagePendingContext.stage.id}`
         } - Level ${stagePendingContext.level.stepOrder} Pending: ${
-          pendingApproverNames.join(', ') || stagePendingContext.level.stepName || 'Approval Pending'
+          pendingApproverNames.join(', ') ||
+          stagePendingContext.level.stepName ||
+          'Approval Pending'
         }`;
       }
 
@@ -3017,7 +3199,9 @@ export class QualityInspectionService {
         pendingObservationCount:
           observationCountByInspectionId.get(inspection.id) || 0,
         legacyActivityObservationCount:
-          legacyObservationCountByActivityId.get((inspection as any).activityId) || 0,
+          legacyObservationCountByActivityId.get(
+            (inspection as any).activityId,
+          ) || 0,
         stages,
         workflowCurrentLevel: run?.currentStepOrder || null,
         workflowTotalLevels: sortedSteps.length,
@@ -3046,7 +3230,8 @@ export class QualityInspectionService {
             run?.documentType || (inspection as any).documentType || null,
           actorState: currentUserContext.actorState,
           currentUserCanApprove: currentUserContext.currentUserCanApprove,
-          currentUserAssignedLevels: currentUserContext.currentUserAssignedLevels,
+          currentUserAssignedLevels:
+            currentUserContext.currentUserAssignedLevels,
           currentUserFutureLevels: currentUserContext.currentUserFutureLevels,
           currentUserBlockedReason: currentUserContext.currentUserBlockedReason,
           currentUserActionHint: currentUserContext.currentUserActionHint,
@@ -3070,25 +3255,25 @@ export class QualityInspectionService {
                 approvedUserIds: [],
               }
             : pendingStep
-            ? {
-                stepOrder: pendingStep.stepOrder,
-                stepName: pendingStep.stepName,
-                assignedUserId: pendingStep.assignedUserId,
-                assignedUserIds:
-                  pendingStep.assignedUserIds ||
-                  (pendingStep.assignedUserId
-                    ? [pendingStep.assignedUserId]
-                    : []),
-                assignedRoleId: pendingStep.assignedRoleId,
-                pendingApproverNames,
-                pendingApprovalDisplay,
-                approverMode: pendingStep.approverMode,
-              status: pendingStep.status,
-              currentApprovalCount: pendingStep.currentApprovalCount || 0,
-              minApprovalsRequired: pendingStep.minApprovalsRequired || 1,
-              approvedUserIds: pendingStep.approvedUserIds || [],
-              }
-            : null,
+              ? {
+                  stepOrder: pendingStep.stepOrder,
+                  stepName: pendingStep.stepName,
+                  assignedUserId: pendingStep.assignedUserId,
+                  assignedUserIds:
+                    pendingStep.assignedUserIds ||
+                    (pendingStep.assignedUserId
+                      ? [pendingStep.assignedUserId]
+                      : []),
+                  assignedRoleId: pendingStep.assignedRoleId,
+                  pendingApproverNames,
+                  pendingApprovalDisplay,
+                  approverMode: pendingStep.approverMode,
+                  status: pendingStep.status,
+                  currentApprovalCount: pendingStep.currentApprovalCount || 0,
+                  minApprovalsRequired: pendingStep.minApprovalsRequired || 1,
+                  approvedUserIds: pendingStep.approvedUserIds || [],
+                }
+              : null,
           completedSteps: completedSteps.map((step) => ({
             stepOrder: step.stepOrder,
             stepName: step.stepName,
@@ -3096,7 +3281,9 @@ export class QualityInspectionService {
             minApprovalsRequired: step.minApprovalsRequired || 1,
             signedByUserId: step.signature?.signedByUserId || null,
             signerDisplayName:
-              step.signerDisplayName || step.signature?.signerDisplayName || null,
+              step.signerDisplayName ||
+              step.signature?.signerDisplayName ||
+              null,
             signerCompany:
               step.signerCompany || step.signature?.signerCompany || null,
             signerRole:
@@ -3115,7 +3302,9 @@ export class QualityInspectionService {
           currentUserActionHint: currentUserContext.currentUserActionHint,
           currentUserBlockedReason: currentUserContext.currentUserBlockedReason,
           activeLevel:
-            stagePendingContext?.level?.stepOrder || pendingStep?.stepOrder || null,
+            stagePendingContext?.level?.stepOrder ||
+            pendingStep?.stepOrder ||
+            null,
           pourClearanceTriggerStageTemplateId: triggerStageTemplateId,
           pourClearanceTriggerStageName:
             triggerStage?.stageTemplate?.name || null,
@@ -3129,7 +3318,6 @@ export class QualityInspectionService {
         },
       };
     });
-
   }
 
   private buildEpsAncestry(
@@ -3174,7 +3362,11 @@ export class QualityInspectionService {
   private async checkPredecessor(
     prevActivityId: number,
     epsNodeId: number,
-    floorScope?: { blockId?: number; towerId?: number; floorId?: number } | null,
+    floorScope?: {
+      blockId?: number;
+      towerId?: number;
+      floorId?: number;
+    } | null,
   ): Promise<{ approved: boolean; activityName: string }> {
     const prevActivity = await this.activityRepo.findOne({
       where: { id: prevActivityId },
@@ -3230,7 +3422,9 @@ export class QualityInspectionService {
     }
 
     await this.cubeRegisterRepo.delete({ inspectionId: id });
-    this.logger.log(`Cascade deleted cube test register rows for inspection #${id}`);
+    this.logger.log(
+      `Cascade deleted cube test register rows for inspection #${id}`,
+    );
 
     await this.attachmentService.purgeForInspection(id);
     await this.inspectionRepo.remove(inspection);

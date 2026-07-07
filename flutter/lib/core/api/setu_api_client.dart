@@ -528,12 +528,19 @@ class SetuApiClient {
   ///
   /// Returns inspection requests (RFIs) with optional filters.
   ///
-  /// All three query params are optional beyond [projectId]; omitting them
-  /// returns all inspections across every EPS node and checklist list.
+  /// When [limit] is provided the backend activates its pagination branch
+  /// (`skip/take`) rather than a full-table `getMany()`, which also limits
+  /// how many records `attachWorkflowSummary` processes — directly reducing
+  /// the response size and server CPU.  The response shape changes from a
+  /// plain `List` to `{ data: [...], total, limit, offset, hasMore }`;
+  /// [_unwrapInspections] normalises both shapes so callers don't need to
+  /// handle the difference.
   Future<List<dynamic>> getQualityInspections({
     required int projectId,
     int? epsNodeId,
     int? listId,
+    int? limit,
+    int? offset,
   }) async {
     final response = await _dio.get(
       ApiEndpoints.qualityInspections,
@@ -541,9 +548,23 @@ class SetuApiClient {
         'projectId': projectId,
         if (epsNodeId != null) 'epsNodeId': epsNodeId,
         if (listId != null) 'listId': listId,
+        if (limit != null) 'limit': limit,
+        if (offset != null) 'offset': offset,
       },
     );
-    return response.data;
+    return _unwrapInspections(response.data);
+  }
+
+  /// Normalises the two possible response shapes from the inspections endpoint:
+  ///   - Paginated:  `{ data: [...], total, hasMore, ... }`
+  ///   - Unpaginated: `[...]`
+  static List<dynamic> _unwrapInspections(dynamic raw) {
+    if (raw is List) return raw;
+    if (raw is Map) {
+      final data = raw['data'];
+      if (data is List) return data;
+    }
+    return const [];
   }
 
   /// Returns a single inspection with its full checklist stages and items.
