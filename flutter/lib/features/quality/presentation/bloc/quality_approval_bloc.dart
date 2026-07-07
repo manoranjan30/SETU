@@ -480,57 +480,25 @@ class QualityApprovalBloc
   /// flag on [InspectionsLoaded] tells the UI to show the offline indicator.
   Future<void> _onLoadInspections(
       LoadInspections event, Emitter<QualityApprovalState> emit) async {
-    // Cache-first: serve SharedPreferences-cached data immediately so the
-    // list renders without waiting for the network. The network fetch below
-    // runs in the background and replaces the cached data when it arrives.
-    // This mirrors what the mobile browser does via HTTP cache — making the
-    // first visible render feel instant rather than blocked behind a spinner.
-    final prefs = await SharedPreferences.getInstance();
-    final cachedJson = prefs.getString(
-        BackgroundDownloadService.qualityInspectionsKey(event.projectId));
-    if (cachedJson != null) {
-      try {
-        final cachedList = jsonDecode(cachedJson) as List<dynamic>;
-        final cachedAll = cachedList
-            .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))
-            .toList();
-        final cachedFiltered = _filter(cachedAll, event.filter);
-        emit(InspectionsLoaded(
-          inspections: cachedFiltered,
-          activeFilter: event.filter,
-          projectId: event.projectId,
-          fromCache: true,
-        ));
-      } catch (_) {
-        // Malformed cache — fall through to network-only path below.
-        emit(QualityApprovalLoading());
-      }
-    } else {
-      emit(QualityApprovalLoading());
-    }
-
-    // Network fetch — always fetches all inspections for the project so the
-    // client-side _filter() logic can correctly group them (e.g. PENDING tab
-    // shows both pending AND partiallyApproved; APPROVED tab shows both
-    // approved AND provisionallyApproved). Passing a server-side status filter
-    // would silently drop the secondary statuses that _filter() expects.
-    // The real response-size fix is the backend stripping signature bytes from
-    // the list endpoint (see backend handoff).
+    emit(QualityApprovalLoading());
     try {
+      // limit=100 activates the backend's pagination branch (skip/take query)
+      // instead of a full-table getMany(), which means attachWorkflowSummary
+      // processes at most 100 inspections rather than every one in the project.
+      // The backend caps at 100 per call; for most projects all relevant
+      // PENDING/APPROVED records fit within this window (sorted by createdAt DESC).
       final raw = await _apiClient.getQualityInspections(
         projectId: event.projectId,
+        limit: 100,
       );
       final all = raw
           .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // Persist ALL-filter responses for offline session (full cache).
-      // Filtered results are not worth caching since they'd be incomplete.
-      if (event.filter == 'ALL') {
-        await prefs.setString(
-            BackgroundDownloadService.qualityInspectionsKey(event.projectId),
-            jsonEncode(raw));
-      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          BackgroundDownloadService.qualityInspectionsKey(event.projectId),
+          jsonEncode(raw));
 
       final filtered = _filter(all, event.filter);
       emit(InspectionsLoaded(
@@ -539,18 +507,13 @@ class QualityApprovalBloc
         projectId: event.projectId,
       ));
     } catch (e) {
-      // Network failed — try the SharedPreferences cache.
-      // Only use cache for connectivity errors; surface server errors directly.
       final isNetworkError = e is DioException
           ? (e.response == null)
           : e.toString().toLowerCase().contains('connection') ||
               e.toString().toLowerCase().contains('socket');
-      // If cache-first already emitted data, the user can see something —
-      // swallow the network error silently rather than replacing visible
-      // cached rows with an error message.
-      if (isNetworkError && cachedJson != null) return;
       if (isNetworkError) {
         try {
+          final prefs = await SharedPreferences.getInstance();
           final cached = prefs.getString(
               BackgroundDownloadService.qualityInspectionsKey(event.projectId));
           if (cached != null) {
@@ -568,9 +531,7 @@ class QualityApprovalBloc
             ));
             return;
           }
-        } catch (_) {
-          // Cache read failed — fall through to error.
-        }
+        } catch (_) {}
       }
       emit(QualityApprovalError(_friendly(e)));
     }
