@@ -15,6 +15,8 @@ import {
   TrendingUp,
   Wallet,
   ScrollText,
+  HeartPulse,
+  ClipboardList,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -131,6 +133,18 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       permission: PermissionCode.PLANNING_BUDGET_READ,
     },
     {
+      key: "health",
+      icon: <HeartPulse size={18} />,
+      label: "Project Health",
+      permission: PermissionCode.PLANNING_HEALTH_READ,
+    },
+    {
+      key: "planning_actions",
+      icon: <ClipboardList size={18} />,
+      label: "Planning Actions",
+      permission: PermissionCode.PLANNING_TASK_READ,
+    },
+    {
       key: "reports",
       icon: <ScrollText size={18} />,
       label: "Reports",
@@ -200,6 +214,8 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "release_strategy",
           "cost",
           "budget",
+          "health",
+          "planning_actions",
           "reports",
         ].includes(currentView) ? (
           children

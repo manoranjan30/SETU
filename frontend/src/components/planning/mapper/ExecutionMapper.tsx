@@ -1,4 +1,10 @@
-import React, { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useParams } from "react-router-dom";
 import api from "../../../api/axios";
 import {
@@ -48,11 +54,7 @@ import {
 const yieldToMainThread = () =>
   new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
-type ReviewStatus =
-  | "APPROVED"
-  | "NEEDS_REVIEW"
-  | "REJECTED"
-  | "SKIPPED";
+type ReviewStatus = "APPROVED" | "NEEDS_REVIEW" | "REJECTED" | "SKIPPED";
 
 type SelectedWoItem = {
   workOrderItemId: number;
@@ -64,7 +66,6 @@ type SelectedWoItem = {
   fullContext?: string;
   locationKey?: string;
 };
-
 
 type MappingAuditEntry = {
   id: number;
@@ -295,388 +296,235 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
   );
 
   return (
-  <div
-    className={`flex min-h-0 flex-col rounded-lg border bg-surface-card shadow ${
-      fullscreen ? "h-full" : ""
-    }`}
-  >
-    <div className="border-b bg-surface-base px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-600" />
-            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">
-              Smart Map Assistant
-            </h2>
-          </div>
-          <p className="mt-1 text-xs text-text-muted">
-            Confidence scoring, branch intelligence, fast review statuses, and
-            keyboard-driven approvals are all active here.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">
-              Learned patterns: {learnedActivityPatternCount} activity, {learnedBranchPatternCount} branch
-            </span>
-            {learnedResetAt > 0 && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
-                Reset after {new Date(learnedResetAt).toLocaleString("en-IN")}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={resetLearnedPatternMemory}
-            className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
-          >
-            <span className="inline-flex items-center gap-2">
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset Learned Memory
-            </span>
-          </button>
-          {fullscreen ? (
-            <button
-              type="button"
-              onClick={closeFullscreen}
-              className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Minimize2 className="h-3.5 w-3.5" />
-                Exit Full Screen
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={openFullscreen}
-              className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
-            >
-              <span className="inline-flex items-center gap-2">
-                <PanelRightOpen className="h-3.5 w-3.5" />
-                Open Full Screen
-              </span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-
-    <div className="min-h-0 flex-1 overflow-auto p-4">
-      {selectedWoItems.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-default p-6 text-center text-sm text-text-muted">
-          Select WO measurement rows on the left to get live suggestions here.
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {(isSuggestionEngineRunning || selectedWoItems.length > 80) && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-700">
-              <div className="flex items-center gap-2 font-semibold">
-                <Loader className="h-3.5 w-3.5 animate-spin" />
-                {isSuggestionEngineRunning
-                  ? suggestionEngineMessage
-                  : "Large parent selection detected. The mapper is preparing hierarchy-aware suggestions."}
-              </div>
-              <div className="mt-1 text-[11px] text-blue-600">
-                Parent selection includes many child measurement rows, so the assistant is matching full BOQ hierarchy against the full schedule tree.
-              </div>
+    <div
+      className={`flex min-h-0 flex-col rounded-lg border bg-surface-card shadow ${
+        fullscreen ? "h-full" : ""
+      }`}
+    >
+      <div className="border-b bg-surface-base px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-600" />
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">
+                Smart Map Assistant
+              </h2>
             </div>
-          )}
-
-          <div className="rounded-xl border border-border-default bg-surface-base p-3">
-            <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-              Current Selection
-            </div>
-            <div className="max-h-56 space-y-2 overflow-y-auto pr-1 text-xs">
-              {displayedSelectionItems.map((item) => (
-                <div
-                  key={item.workOrderItemId}
-                  className="rounded-lg bg-surface-card px-2 py-2"
-                >
-                  <div className="font-semibold text-slate-800">
-                    {item.description}
-                  </div>
-                  {item.boqPath && (
-                    <div className="mt-1 text-[11px] text-text-muted">
-                      BOQ Path: {item.boqPath}
-                    </div>
-                  )}
-                  {item.treeContext && (
-                    <div className="mt-1 text-text-muted">
-                      WO Path: {item.treeContext}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {hiddenSelectionCount > 0 && (
-                <div className="rounded-lg border border-dashed border-border-default bg-surface-base px-2 py-2 text-[11px] text-text-muted">
-                  {hiddenSelectionCount} more selected WO rows are hidden here to keep the mapper responsive.
-                </div>
+            <p className="mt-1 text-xs text-text-muted">
+              Confidence scoring, branch intelligence, fast review statuses, and
+              keyboard-driven approvals are all active here.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">
+                Learned patterns: {learnedActivityPatternCount} activity,{" "}
+                {learnedBranchPatternCount} branch
+              </span>
+              {learnedResetAt > 0 && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+                  Reset after {new Date(learnedResetAt).toLocaleString("en-IN")}
+                </span>
               )}
             </div>
           </div>
-
-          <div className="rounded-xl border border-border-default bg-surface-base p-3">
-            <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-              <Rows3 className="h-3.5 w-3.5" />
-              Mapping Mode
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAssistantMode("suggestions")}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
-                  assistantMode === "suggestions"
-                    ? "bg-primary-muted text-primary"
-                    : "bg-surface-card text-text-secondary hover:bg-surface-raised"
-                }`}
-              >
-                Smart Suggestions
-              </button>
-              <button
-                type="button"
-                onClick={() => setAssistantMode("workbench")}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
-                  assistantMode === "workbench"
-                    ? "bg-primary-muted text-primary"
-                    : "bg-surface-card text-text-secondary hover:bg-surface-raised"
-                }`}
-              >
-                Mapping Workbench
-              </button>
-              <button
-                type="button"
-                onClick={() => setAssistantMode("review")}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
-                  assistantMode === "review"
-                    ? "bg-primary-muted text-primary"
-                    : "bg-surface-card text-text-secondary hover:bg-surface-raised"
-                }`}
-              >
-                Bulk Review Table
-              </button>
-            </div>
-          </div>
-
-          {assistantMode === "suggestions" ? (
-            <>
-              <div className="rounded-xl border border-border-default bg-surface-base p-3">
-                <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                  <GitBranch className="h-3.5 w-3.5" />
-                  Suggested Branches
-                </div>
-                {branchSuggestions.length === 0 ? (
-                  <div className="text-xs text-text-muted">
-                    No repeatable branch signal yet. Select more WO rows to build branch intelligence.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {branchSuggestions.map((branch) => (
-                      <div
-                        key={branch.branchPath}
-                        className="rounded-xl border border-border-default bg-surface-card p-3"
-                      >
-                        <div className="font-semibold text-slate-800">
-                          {branch.branchPath}
-                        </div>
-                        <div className="mt-1 text-xs text-text-muted">
-                          {branch.matchedItems} matched row(s) • avg score{" "}
-                          {Math.round(branch.avgScore)}
-                        </div>
-                        <div className="mt-2 text-[11px] text-text-muted">
-                          Examples: {branch.sampleActivities.join(", ")}
-                        </div>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => applyBranchSuggestion(branch.branchPath)}
-                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
-                          >
-                            Approve This Branch
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-border-default bg-surface-base p-3">
-                <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                  <Gauge className="h-3.5 w-3.5" />
-                  Suggested Activities
-                </div>
-                {quickSuggestions.length === 0 ? (
-                  <div className="text-xs text-text-muted">
-                    No strong match found yet. Use the full tree validation to map manually.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {quickSuggestions.map((suggestion) => (
-                      <div
-                        key={suggestion.activity.id}
-                        className="rounded-xl border border-border-default bg-surface-card p-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-800">
-                              {suggestion.activity.activityCode}{" "}
-                              {suggestion.activity.activityName}
-                            </div>
-                            <div className="mt-1 flex items-start gap-2 text-xs text-text-muted">
-                              <MapPin className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                              <span>{suggestion.treePath}</span>
-                            </div>
-                            <div className="mt-1 text-[11px] text-text-muted">
-                              Branch: {suggestion.branchPath}
-                            </div>
-                          </div>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getConfidenceTone(
-                              suggestion.confidence,
-                            )}`}
-                          >
-                            {suggestion.confidence}
-                          </span>
-                        </div>
-                        {suggestion.matches.locationMatches.length > 0 && (
-                          <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-green-700">
-                            Location match:{" "}
-                            {suggestion.matches.locationMatches.join(", ")}
-                          </div>
-                        )}
-                        {suggestion.learned?.totalBoost ? (
-                          <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-violet-700">
-                            {getLearnedSuggestionSummary(suggestion)}
-                            {suggestion.learned.branchPatternHits > 0
-                              ? ` • branch ${suggestion.learned.branchPatternHits}`
-                              : ""}
-                            {suggestion.learned.activityPatternHits > 0
-                              ? ` • activity ${suggestion.learned.activityPatternHits}`
-                              : ""}
-                          </div>
-                        ) : null}
-                        <div className="mt-2 flex items-center justify-between">
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                            Match score {suggestion.score}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => void handleLink(suggestion.activity.id)}
-                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
-                          >
-                            Quick Link
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          ) : assistantMode === "workbench" ? (
-            <div
-              className={`grid gap-3 rounded-xl border border-border-default bg-surface-base p-3 ${
-                fullscreen
-                  ? "min-h-[70vh] grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]"
-                  : "min-h-[420px] grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]"
-              }`}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={resetLearnedPatternMemory}
+              className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
             >
-              <div className="flex min-h-0 flex-col rounded-xl border border-border-default bg-surface-card">
-                <div className="border-b px-3 py-2">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                    <GripVertical className="h-3.5 w-3.5" />
-                    Selected WO Items Queue
-                  </div>
-                  <p className="mt-1 text-xs text-text-muted">
-                    Scroll the queue, select an item, or drag it onto a candidate activity card.
-                  </p>
+              <span className="inline-flex items-center gap-2">
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset Learned Memory
+              </span>
+            </button>
+            {fullscreen ? (
+              <button
+                type="button"
+                onClick={closeFullscreen}
+                className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Minimize2 className="h-3.5 w-3.5" />
+                  Exit Full Screen
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={openFullscreen}
+                className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <PanelRightOpen className="h-3.5 w-3.5" />
+                  Open Full Screen
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {selectedWoItems.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border-default p-6 text-center text-sm text-text-muted">
+            Select WO measurement rows on the left to get live suggestions here.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {(isSuggestionEngineRunning || selectedWoItems.length > 80) && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-700">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Loader className="h-3.5 w-3.5 animate-spin" />
+                  {isSuggestionEngineRunning
+                    ? suggestionEngineMessage
+                    : "Large parent selection detected. The mapper is preparing hierarchy-aware suggestions."}
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                  <div className="space-y-2">
-                    {displayedSelectionItems.map((item) => (
-                      <button
-                        key={item.workOrderItemId}
-                        type="button"
-                        draggable
-                        onDragStart={(event) =>
-                          event.dataTransfer.setData(
-                            "text/plain",
-                            String(item.workOrderItemId),
-                          )
-                        }
-                        onClick={() => setActiveWorkbenchItemId(item.workOrderItemId)}
-                        className={`w-full rounded-lg border px-3 py-2 text-left ${
-                          activeWorkbenchItem?.workOrderItemId ===
-                          item.workOrderItemId
-                            ? "border-primary/30 bg-primary-muted"
-                            : "border-border-default bg-surface-base hover:bg-surface-raised"
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <GripVertical className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-disabled" />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-semibold text-slate-800">
-                              {item.description}
-                            </div>
-                            {item.boqPath && (
-                              <div className="mt-1 text-xs text-text-muted">
-                                BOQ: {item.boqPath}
-                              </div>
-                            )}
-                            {item.treeContext && (
-                              <div className="mt-1 text-xs text-text-muted">
-                                WO: {item.treeContext}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                    {hiddenSelectionCount > 0 && (
-                      <div className="rounded-lg border border-dashed border-border-default bg-surface-base px-3 py-2 text-[11px] text-text-muted">
-                        Showing the first {displayedSelectionItems.length} items in the queue. {hiddenSelectionCount} more selected rows remain in the current batch.
+                <div className="mt-1 text-[11px] text-blue-600">
+                  Parent selection includes many child measurement rows, so the
+                  assistant is matching full BOQ hierarchy against the full
+                  schedule tree.
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-border-default bg-surface-base p-3">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                Current Selection
+              </div>
+              <div className="max-h-56 space-y-2 overflow-y-auto pr-1 text-xs">
+                {displayedSelectionItems.map((item) => (
+                  <div
+                    key={item.workOrderItemId}
+                    className="rounded-lg bg-surface-card px-2 py-2"
+                  >
+                    <div className="font-semibold text-slate-800">
+                      {item.description}
+                    </div>
+                    {item.boqPath && (
+                      <div className="mt-1 text-[11px] text-text-muted">
+                        BOQ Path: {item.boqPath}
+                      </div>
+                    )}
+                    {item.treeContext && (
+                      <div className="mt-1 text-text-muted">
+                        WO Path: {item.treeContext}
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
-
-              <div className="flex min-h-0 flex-col rounded-xl border border-border-default bg-surface-card">
-                <div className="border-b px-3 py-2">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                    <Target className="h-3.5 w-3.5" />
-                    Candidate Activities
+                ))}
+                {hiddenSelectionCount > 0 && (
+                  <div className="rounded-lg border border-dashed border-border-default bg-surface-base px-2 py-2 text-[11px] text-text-muted">
+                    {hiddenSelectionCount} more selected WO rows are hidden here
+                    to keep the mapper responsive.
                   </div>
-                  <p className="mt-1 text-xs text-text-muted">
-                    Branch-aware candidates, confidence badges, and drag-drop mapping for the active row.
-                  </p>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                  {!activeWorkbenchItem ? (
-                    <div className="rounded-lg border border-dashed border-border-default p-4 text-xs text-text-muted">
-                      Select a WO item from the queue to inspect its best activity matches.
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border-default bg-surface-base p-3">
+              <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                <Rows3 className="h-3.5 w-3.5" />
+                Mapping Mode
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAssistantMode("suggestions")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                    assistantMode === "suggestions"
+                      ? "bg-primary-muted text-primary"
+                      : "bg-surface-card text-text-secondary hover:bg-surface-raised"
+                  }`}
+                >
+                  Smart Suggestions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssistantMode("workbench")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                    assistantMode === "workbench"
+                      ? "bg-primary-muted text-primary"
+                      : "bg-surface-card text-text-secondary hover:bg-surface-raised"
+                  }`}
+                >
+                  Mapping Workbench
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssistantMode("review")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                    assistantMode === "review"
+                      ? "bg-primary-muted text-primary"
+                      : "bg-surface-card text-text-secondary hover:bg-surface-raised"
+                  }`}
+                >
+                  Bulk Review Table
+                </button>
+              </div>
+            </div>
+
+            {assistantMode === "suggestions" ? (
+              <>
+                <div className="rounded-xl border border-border-default bg-surface-base p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                    <GitBranch className="h-3.5 w-3.5" />
+                    Suggested Branches
+                  </div>
+                  {branchSuggestions.length === 0 ? (
+                    <div className="text-xs text-text-muted">
+                      No repeatable branch signal yet. Select more WO rows to
+                      build branch intelligence.
                     </div>
-                  ) : activeWorkbenchSuggestions.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border-default p-4 text-xs text-text-muted">
-                      No strong candidates found for this item yet. Use the full tree validation if needed.
+                  ) : (
+                    <div className="space-y-2">
+                      {branchSuggestions.map((branch) => (
+                        <div
+                          key={branch.branchPath}
+                          className="rounded-xl border border-border-default bg-surface-card p-3"
+                        >
+                          <div className="font-semibold text-slate-800">
+                            {branch.branchPath}
+                          </div>
+                          <div className="mt-1 text-xs text-text-muted">
+                            {branch.matchedItems} matched row(s) • avg score{" "}
+                            {Math.round(branch.avgScore)}
+                          </div>
+                          <div className="mt-2 text-[11px] text-text-muted">
+                            Examples: {branch.sampleActivities.join(", ")}
+                          </div>
+                          <div className="mt-3 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                applyBranchSuggestion(branch.branchPath)
+                              }
+                              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
+                            >
+                              Approve This Branch
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border-default bg-surface-base p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                    <Gauge className="h-3.5 w-3.5" />
+                    Suggested Activities
+                  </div>
+                  {quickSuggestions.length === 0 ? (
+                    <div className="text-xs text-text-muted">
+                      No strong match found yet. Use the full tree validation to
+                      map manually.
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {activeWorkbenchSuggestions.map((suggestion) => (
+                      {quickSuggestions.map((suggestion) => (
                         <div
                           key={suggestion.activity.id}
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            const workOrderItemId = Number(
-                              event.dataTransfer.getData("text/plain"),
-                            );
-                            if (workOrderItemId) {
-                              void handleLinkItems([workOrderItemId], suggestion.activity.id);
-                            }
-                          }}
-                          className="rounded-xl border border-border-default bg-surface-base p-3"
+                          className="rounded-xl border border-border-default bg-surface-card p-3"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -709,28 +557,26 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                           {suggestion.learned?.totalBoost ? (
                             <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-violet-700">
                               {getLearnedSuggestionSummary(suggestion)}
+                              {suggestion.learned.branchPatternHits > 0
+                                ? ` • branch ${suggestion.learned.branchPatternHits}`
+                                : ""}
+                              {suggestion.learned.activityPatternHits > 0
+                                ? ` • activity ${suggestion.learned.activityPatternHits}`
+                                : ""}
                             </div>
                           ) : null}
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <div className="mt-2 flex items-center justify-between">
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                               Match score {suggestion.score}
                             </span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-slate-600">
-                              Drag item here
-                            </span>
-                          </div>
-                          <div className="mt-3 flex justify-end">
                             <button
                               type="button"
                               onClick={() =>
-                                void handleLinkItems(
-                                  [activeWorkbenchItem.workOrderItemId],
-                                  suggestion.activity.id,
-                                )
+                                void handleLink(suggestion.activity.id)
                               }
                               className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
                             >
-                              Map This Item
+                              Quick Link
                             </button>
                           </div>
                         </div>
@@ -738,488 +584,683 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-border-default bg-surface-base p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+              </>
+            ) : assistantMode === "workbench" ? (
+              <div
+                className={`grid gap-3 rounded-xl border border-border-default bg-surface-base p-3 ${
+                  fullscreen
+                    ? "min-h-[70vh] grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]"
+                    : "min-h-[420px] grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]"
+                }`}
+              >
+                <div className="flex min-h-0 flex-col rounded-xl border border-border-default bg-surface-card">
+                  <div className="border-b px-3 py-2">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                      <Filter className="h-3.5 w-3.5" />
-                      Review Controls
+                      <GripVertical className="h-3.5 w-3.5" />
+                      Selected WO Items Queue
                     </div>
                     <p className="mt-1 text-xs text-text-muted">
-                      Confidence filters, approval statuses, branch actions, and keyboard shortcuts keep this review screen fast even for large batches.
+                      Scroll the queue, select an item, or drag it onto a
+                      candidate activity card.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={approveTopMatchForHighConfidence}
-                      className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Approve High Confidence
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={markLowConfidenceNeedsReview}
-                      className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white hover:bg-amber-600"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        Flag Low Confidence
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={copyActiveBranchToSelectedRows}
-                      className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Copy className="h-3.5 w-3.5" />
-                        Copy Active Branch
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void applyBulkReviewAll()}
-                      disabled={bulkReviewRows.length === 0}
-                      className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Apply All Approved
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-                  <div className="rounded-xl border border-border-default bg-surface-card p-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                      <Keyboard className="h-3.5 w-3.5" />
-                      Keyboard Flow
-                    </div>
-                    <div className="mt-2 grid gap-2 text-[11px] text-text-muted md:grid-cols-2">
-                      <div>`↑ / ↓` move active row</div>
-                      <div>`1 / 2 / 3` pick suggestion</div>
-                      <div>`A` approve</div>
-                      <div>`N` needs review</div>
-                      <div>`S` skip</div>
-                      <div>`X` reject</div>
-                      <div>`Enter` apply active row</div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-border-default bg-surface-card p-3">
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                      <Gauge className="h-3.5 w-3.5" />
-                      Filters
-                    </div>
-                    <div className="mt-2 grid gap-2 md:grid-cols-2">
-                      <select
-                        value={reviewConfidenceFilter}
-                        onChange={(event) =>
-                          setReviewConfidenceFilter(
-                            event.target.value as "ALL" | ConfidenceLevel,
-                          )
-                        }
-                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs"
-                      >
-                        <option value="ALL">All Confidence</option>
-                        <option value="HIGH">High Confidence</option>
-                        <option value="MEDIUM">Medium Confidence</option>
-                        <option value="LOW">Low Confidence</option>
-                      </select>
-                      <select
-                        value={reviewStatusFilter}
-                        onChange={(event) =>
-                          setReviewStatusFilter(
-                            event.target.value as "ALL" | ReviewStatus,
-                          )
-                        }
-                        className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs"
-                      >
-                        <option value="ALL">All Statuses</option>
-                        <option value="APPROVED">Approved</option>
-                        <option value="NEEDS_REVIEW">Needs Review</option>
-                        <option value="REJECTED">Rejected</option>
-                        <option value="SKIPPED">Skipped</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {activeReviewRow && (
-                <div className="rounded-xl border border-border-default bg-surface-base p-3">
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_320px]">
-                    <div className="rounded-xl border border-border-default bg-surface-card p-3">
-                      <div className="text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                        Active WO Row
-                      </div>
-                      <div className="mt-2 font-semibold text-slate-800">
-                        {activeReviewRow.item.description}
-                      </div>
-                      {activeReviewRow.item.boqPath && (
-                        <div className="mt-1 text-xs text-text-muted">
-                          BOQ: {activeReviewRow.item.boqPath}
-                        </div>
-                      )}
-                      {activeReviewRow.item.treeContext && (
-                        <div className="mt-1 text-xs text-text-muted">
-                          WO: {activeReviewRow.item.treeContext}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border border-border-default bg-surface-card p-3">
-                      <div className="text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                        Selected Candidate
-                      </div>
-                      {(() => {
-                        const selectedSuggestion =
-                          activeReviewRow.suggestions.find(
-                            (suggestion) =>
-                              suggestion.activity.id ===
-                              activeReviewRow.selectedActivityId,
-                          ) || activeReviewRow.suggestions[0];
-                        if (!selectedSuggestion) {
-                          return (
-                            <div className="mt-2 text-xs text-text-muted">
-                              No candidate selected yet.
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="mt-2">
-                            <div className="font-semibold text-slate-800">
-                              {selectedSuggestion.activity.activityCode}{" "}
-                              {selectedSuggestion.activity.activityName}
-                            </div>
-                            <div className="mt-1 text-xs text-text-muted">
-                              {selectedSuggestion.treePath}
-                            </div>
-                            <div className="mt-1 text-[11px] text-text-muted">
-                              Branch: {selectedSuggestion.branchPath}
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getConfidenceTone(
-                                  selectedSuggestion.confidence,
-                                )}`}
-                              >
-                                {selectedSuggestion.confidence}
-                              </span>
-                              {selectedSuggestion.learned?.totalBoost ? (
-                                <span
-                                  title={getLearnedSuggestionSummary(selectedSuggestion)}
-                                  className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700"
-                                >
-                                  Learned
-                                </span>
-                              ) : null}
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                                Score {selectedSuggestion.score}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="rounded-xl border border-border-default bg-surface-card p-3">
-                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                        <History className="h-3.5 w-3.5" />
-                        Mapping Audit
-                      </div>
-                      {activeReviewRow.currentMappings.length === 0 ? (
-                        <div className="mt-2 text-xs text-text-muted">
-                          No saved mapping history for this WO row yet.
-                        </div>
-                      ) : (
-                        <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
-                          {activeReviewRow.currentMappings.map((entry) => (
-                            <div
-                              key={entry.id}
-                              className="rounded-lg bg-surface-base px-2 py-2 text-xs"
-                            >
-                              <div className="font-semibold text-slate-800">
-                                {entry.activityCode} {entry.activityName}
+                  <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                    <div className="space-y-2">
+                      {displayedSelectionItems.map((item) => (
+                        <button
+                          key={item.workOrderItemId}
+                          type="button"
+                          draggable
+                          onDragStart={(event) =>
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              String(item.workOrderItemId),
+                            )
+                          }
+                          onClick={() =>
+                            setActiveWorkbenchItemId(item.workOrderItemId)
+                          }
+                          className={`w-full rounded-lg border px-3 py-2 text-left ${
+                            activeWorkbenchItem?.workOrderItemId ===
+                            item.workOrderItemId
+                              ? "border-primary/30 bg-primary-muted"
+                              : "border-border-default bg-surface-base hover:bg-surface-raised"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <GripVertical className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-disabled" />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-semibold text-slate-800">
+                                {item.description}
                               </div>
-                              {entry.treePath && (
-                                <div className="mt-1 text-text-muted">
-                                  {entry.treePath}
+                              {item.boqPath && (
+                                <div className="mt-1 text-xs text-text-muted">
+                                  BOQ: {item.boqPath}
                                 </div>
                               )}
-                              <div className="mt-1 text-text-muted">
-                                By {entry.createdBy || "system"} •{" "}
-                                {formatAuditTime(entry.updatedOn || entry.createdOn)}
-                              </div>
+                              {item.treeContext && (
+                                <div className="mt-1 text-xs text-text-muted">
+                                  WO: {item.treeContext}
+                                </div>
+                              )}
                             </div>
-                          ))}
+                          </div>
+                        </button>
+                      ))}
+                      {hiddenSelectionCount > 0 && (
+                        <div className="rounded-lg border border-dashed border-border-default bg-surface-base px-3 py-2 text-[11px] text-text-muted">
+                          Showing the first {displayedSelectionItems.length}{" "}
+                          items in the queue. {hiddenSelectionCount} more
+                          selected rows remain in the current batch.
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
-              )}
 
-              <div className="rounded-xl border border-border-default bg-surface-base p-3">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-text-disabled">
-                    Bulk Review Table
+                <div className="flex min-h-0 flex-col rounded-xl border border-border-default bg-surface-card">
+                  <div className="border-b px-3 py-2">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                      <Target className="h-3.5 w-3.5" />
+                      Candidate Activities
+                    </div>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Branch-aware candidates, confidence badges, and drag-drop
+                      mapping for the active row.
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={selectAllVisibleReviewRows}
-                      className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
-                    >
-                      Select Visible
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearReviewRowSelection}
-                      className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
-                    >
-                      Clear Selection
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-border-default bg-surface-card">
-                  <div className="grid grid-cols-[44px_minmax(0,1.2fr)_110px_110px_110px_130px_100px] gap-2 border-b bg-surface-raised px-3 py-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
-                    <div />
-                    <div>WO Item</div>
-                    <div>Match 1</div>
-                    <div>Match 2</div>
-                    <div>Match 3</div>
-                    <div>Status</div>
-                    <div>Action</div>
-                  </div>
-                  <div className={`${fullscreen ? "max-h-[58vh]" : "max-h-[420px]"} overflow-y-auto`}>
-                    {filteredReviewRows.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-sm text-text-muted">
-                        No review rows match the current filters.
+                  <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                    {!activeWorkbenchItem ? (
+                      <div className="rounded-lg border border-dashed border-border-default p-4 text-xs text-text-muted">
+                        Select a WO item from the queue to inspect its best
+                        activity matches.
+                      </div>
+                    ) : activeWorkbenchSuggestions.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-border-default p-4 text-xs text-text-muted">
+                        No strong candidates found for this item yet. Use the
+                        full tree validation if needed.
                       </div>
                     ) : (
-                      filteredReviewRows.map((row) => {
-                        const manualOverride =
-                          row.selectedActivityId !== row.suggestions[0]?.activity.id;
-                        const isActive =
-                          activeReviewRow?.item.workOrderItemId ===
-                          row.item.workOrderItemId;
-                        const isSelected = reviewSelectedItemIds.includes(
-                          row.item.workOrderItemId,
-                        );
-
-                        return (
+                      <div className="space-y-3">
+                        {activeWorkbenchSuggestions.map((suggestion) => (
                           <div
-                            key={row.item.workOrderItemId}
-                            className={`grid grid-cols-[44px_minmax(0,1.2fr)_110px_110px_110px_130px_100px] gap-2 border-b border-border-subtle px-3 py-3 text-xs last:border-b-0 ${
-                              isActive ? "bg-primary-muted/40" : ""
-                            }`}
-                            onClick={() => setActiveReviewRowId(row.item.workOrderItemId)}
-                          >
-                            <div className="pt-1">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() =>
-                                  toggleReviewRowSelection(row.item.workOrderItemId)
-                                }
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="truncate font-semibold text-slate-800">
-                                {row.item.description}
-                              </div>
-                              {row.item.boqPath && (
-                                <div className="mt-1 truncate text-text-muted">
-                                  BOQ: {row.item.boqPath}
-                                </div>
-                              )}
-                              {row.item.treeContext && (
-                                <div className="mt-1 truncate text-text-muted">
-                                  WO: {row.item.treeContext}
-                                </div>
-                              )}
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getConfidenceTone(
-                                    row.topConfidence,
-                                  )}`}
-                                >
-                                  {row.topConfidence}
-                                </span>
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getStatusTone(
-                                    row.status,
-                                  )}`}
-                                >
-                                  {row.status.replace("_", " ")}
-                                </span>
-                                {manualOverride && (
-                                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700">
-                                    Override
-                                  </span>
-                                )}
-                              </div>
-                              <input
-                                type="text"
-                                value={row.overrideReason}
-                                onChange={(event) =>
-                                  setReviewOverrideReason(
-                                    row.item.workOrderItemId,
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder={
-                                  manualOverride
-                                    ? "Override reason required for non-top match"
-                                    : "Optional review note"
-                                }
-                                className="mt-2 w-full rounded-lg border border-border-default bg-surface-base px-2 py-1.5 text-[11px]"
-                              />
-                            </div>
-                            {[0, 1, 2].map((index) => {
-                              const suggestion = row.suggestions[index];
-                              if (!suggestion) {
-                                return (
-                                  <div
-                                    key={`${row.item.workOrderItemId}-empty-${index}`}
-                                    className="rounded-lg border border-dashed border-border-default px-2 py-2 text-[11px] text-text-disabled"
-                                  >
-                                    No match
-                                  </div>
+                            key={suggestion.activity.id}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              const workOrderItemId = Number(
+                                event.dataTransfer.getData("text/plain"),
+                              );
+                              if (workOrderItemId) {
+                                void handleLinkItems(
+                                  [workOrderItemId],
+                                  suggestion.activity.id,
                                 );
                               }
-
-                              const suggestionSelected =
-                                row.selectedActivityId === suggestion.activity.id;
-                              return (
-                                <button
-                                  key={suggestion.activity.id}
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setBulkReviewSelection(
-                                      row.item.workOrderItemId,
-                                      suggestion.activity.id,
-                                    );
-                                  }}
-                                  className={`rounded-lg border px-2 py-2 text-left transition-colors ${
-                                    suggestionSelected
-                                      ? "border-primary/40 bg-primary-muted"
-                                      : "border-border-default hover:bg-surface-base"
-                                  }`}
-                                  title={`${suggestion.activity.activityCode} ${suggestion.activity.activityName}\n${suggestion.treePath}`}
-                                >
-                                  <div className="truncate font-semibold text-slate-800">
-                                    {suggestion.activity.activityCode}
-                                  </div>
-                                  <div className="mt-1 truncate text-[10px] text-text-muted">
-                                    {suggestion.branchPath}
-                                  </div>
-                                  <div className="mt-1 flex items-center justify-between gap-1">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
-                                      {suggestion.score}
-                                    </span>
-                                    <div className="flex items-center gap-1">
-                                      {suggestion.learned?.totalBoost ? (
-                                        <span
-                                          title={getLearnedSuggestionSummary(suggestion)}
-                                          className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-violet-700"
-                                        >
-                                          Learned
-                                        </span>
-                                      ) : null}
-                                      <span
-                                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getConfidenceTone(
-                                          suggestion.confidence,
-                                        )}`}
-                                      >
-                                        {suggestion.confidence}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                            <div className="space-y-2">
-                              <select
-                                value={row.status}
-                                onChange={(event) =>
-                                  setReviewStatus(
-                                    row.item.workOrderItemId,
-                                    event.target.value as ReviewStatus,
+                            }}
+                            className="rounded-xl border border-border-default bg-surface-base p-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-slate-800">
+                                  {suggestion.activity.activityCode}{" "}
+                                  {suggestion.activity.activityName}
+                                </div>
+                                <div className="mt-1 flex items-start gap-2 text-xs text-text-muted">
+                                  <MapPin className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                                  <span>{suggestion.treePath}</span>
+                                </div>
+                                <div className="mt-1 text-[11px] text-text-muted">
+                                  Branch: {suggestion.branchPath}
+                                </div>
+                              </div>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getConfidenceTone(
+                                  suggestion.confidence,
+                                )}`}
+                              >
+                                {suggestion.confidence}
+                              </span>
+                            </div>
+                            {suggestion.matches.locationMatches.length > 0 && (
+                              <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-green-700">
+                                Location match:{" "}
+                                {suggestion.matches.locationMatches.join(", ")}
+                              </div>
+                            )}
+                            {suggestion.learned?.totalBoost ? (
+                              <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-violet-700">
+                                {getLearnedSuggestionSummary(suggestion)}
+                              </div>
+                            ) : null}
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                Match score {suggestion.score}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-slate-600">
+                                Drag item here
+                              </span>
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleLinkItems(
+                                    [activeWorkbenchItem.workOrderItemId],
+                                    suggestion.activity.id,
                                   )
                                 }
-                                className="w-full rounded-lg border border-border-default bg-surface-base px-2 py-1.5 text-[11px]"
+                                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
                               >
-                                <option value="APPROVED">Approved</option>
-                                <option value="NEEDS_REVIEW">Needs Review</option>
-                                <option value="REJECTED">Rejected</option>
-                                <option value="SKIPPED">Skipped</option>
-                              </select>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  const topBranch = row.suggestions[0]?.branchPath;
-                                  if (topBranch) {
-                                    applyBranchSuggestion(topBranch);
-                                  }
-                                }}
-                                className="w-full rounded-lg border border-border-default bg-surface-card px-2 py-1.5 text-[11px] font-semibold text-text-secondary hover:bg-surface-raised"
-                              >
-                                Branch
-                              </button>
-                            </div>
-                            <div className="flex items-start justify-end">
-                              <button
-                                type="button"
-                                disabled={
-                                  !row.selectedActivityId ||
-                                  row.status !== "APPROVED"
-                                }
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (row.selectedActivityId) {
-                                    void applyBulkReviewRow(
-                                      row.item.workOrderItemId,
-                                      row.selectedActivityId,
-                                    );
-                                  }
-                                }}
-                                className="rounded-lg bg-secondary px-3 py-2 text-[11px] font-bold text-white hover:bg-secondary-dark disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Apply
+                                Map This Item
                               </button>
                             </div>
                           </div>
-                        );
-                      })
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-border-default bg-surface-base p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                        <Filter className="h-3.5 w-3.5" />
+                        Review Controls
+                      </div>
+                      <p className="mt-1 text-xs text-text-muted">
+                        Confidence filters, approval statuses, branch actions,
+                        and keyboard shortcuts keep this review screen fast even
+                        for large batches.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={approveTopMatchForHighConfidence}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Approve High Confidence
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={markLowConfidenceNeedsReview}
+                        className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white hover:bg-amber-600"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          Flag Low Confidence
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={copyActiveBranchToSelectedRows}
+                        className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Copy className="h-3.5 w-3.5" />
+                          Copy Active Branch
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void applyBulkReviewAll()}
+                        disabled={bulkReviewRows.length === 0}
+                        className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Apply All Approved
+                      </button>
+                    </div>
+                  </div>
 
-          <button
-            type="button"
-            onClick={openFullTreeValidation}
-            className="w-full rounded-xl border border-border-default px-4 py-3 text-sm font-semibold text-text-secondary hover:bg-surface-base"
-          >
-            Open Full Tree Validation
-          </button>
-        </div>
-      )}
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                    <div className="rounded-xl border border-border-default bg-surface-card p-3">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                        <Keyboard className="h-3.5 w-3.5" />
+                        Keyboard Flow
+                      </div>
+                      <div className="mt-2 grid gap-2 text-[11px] text-text-muted md:grid-cols-2">
+                        <div>`↑ / ↓` move active row</div>
+                        <div>`1 / 2 / 3` pick suggestion</div>
+                        <div>`A` approve</div>
+                        <div>`N` needs review</div>
+                        <div>`S` skip</div>
+                        <div>`X` reject</div>
+                        <div>`Enter` apply active row</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border-default bg-surface-card p-3">
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                        <Gauge className="h-3.5 w-3.5" />
+                        Filters
+                      </div>
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        <select
+                          value={reviewConfidenceFilter}
+                          onChange={(event) =>
+                            setReviewConfidenceFilter(
+                              event.target.value as "ALL" | ConfidenceLevel,
+                            )
+                          }
+                          className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs"
+                        >
+                          <option value="ALL">All Confidence</option>
+                          <option value="HIGH">High Confidence</option>
+                          <option value="MEDIUM">Medium Confidence</option>
+                          <option value="LOW">Low Confidence</option>
+                        </select>
+                        <select
+                          value={reviewStatusFilter}
+                          onChange={(event) =>
+                            setReviewStatusFilter(
+                              event.target.value as "ALL" | ReviewStatus,
+                            )
+                          }
+                          className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-xs"
+                        >
+                          <option value="ALL">All Statuses</option>
+                          <option value="APPROVED">Approved</option>
+                          <option value="NEEDS_REVIEW">Needs Review</option>
+                          <option value="REJECTED">Rejected</option>
+                          <option value="SKIPPED">Skipped</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {activeReviewRow && (
+                  <div className="rounded-xl border border-border-default bg-surface-base p-3">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_320px]">
+                      <div className="rounded-xl border border-border-default bg-surface-card p-3">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                          Active WO Row
+                        </div>
+                        <div className="mt-2 font-semibold text-slate-800">
+                          {activeReviewRow.item.description}
+                        </div>
+                        {activeReviewRow.item.boqPath && (
+                          <div className="mt-1 text-xs text-text-muted">
+                            BOQ: {activeReviewRow.item.boqPath}
+                          </div>
+                        )}
+                        {activeReviewRow.item.treeContext && (
+                          <div className="mt-1 text-xs text-text-muted">
+                            WO: {activeReviewRow.item.treeContext}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-border-default bg-surface-card p-3">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                          Selected Candidate
+                        </div>
+                        {(() => {
+                          const selectedSuggestion =
+                            activeReviewRow.suggestions.find(
+                              (suggestion) =>
+                                suggestion.activity.id ===
+                                activeReviewRow.selectedActivityId,
+                            ) || activeReviewRow.suggestions[0];
+                          if (!selectedSuggestion) {
+                            return (
+                              <div className="mt-2 text-xs text-text-muted">
+                                No candidate selected yet.
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="mt-2">
+                              <div className="font-semibold text-slate-800">
+                                {selectedSuggestion.activity.activityCode}{" "}
+                                {selectedSuggestion.activity.activityName}
+                              </div>
+                              <div className="mt-1 text-xs text-text-muted">
+                                {selectedSuggestion.treePath}
+                              </div>
+                              <div className="mt-1 text-[11px] text-text-muted">
+                                Branch: {selectedSuggestion.branchPath}
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getConfidenceTone(
+                                    selectedSuggestion.confidence,
+                                  )}`}
+                                >
+                                  {selectedSuggestion.confidence}
+                                </span>
+                                {selectedSuggestion.learned?.totalBoost ? (
+                                  <span
+                                    title={getLearnedSuggestionSummary(
+                                      selectedSuggestion,
+                                    )}
+                                    className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700"
+                                  >
+                                    Learned
+                                  </span>
+                                ) : null}
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                  Score {selectedSuggestion.score}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="rounded-xl border border-border-default bg-surface-card p-3">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                          <History className="h-3.5 w-3.5" />
+                          Mapping Audit
+                        </div>
+                        {activeReviewRow.currentMappings.length === 0 ? (
+                          <div className="mt-2 text-xs text-text-muted">
+                            No saved mapping history for this WO row yet.
+                          </div>
+                        ) : (
+                          <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+                            {activeReviewRow.currentMappings.map((entry) => (
+                              <div
+                                key={entry.id}
+                                className="rounded-lg bg-surface-base px-2 py-2 text-xs"
+                              >
+                                <div className="font-semibold text-slate-800">
+                                  {entry.activityCode} {entry.activityName}
+                                </div>
+                                {entry.treePath && (
+                                  <div className="mt-1 text-text-muted">
+                                    {entry.treePath}
+                                  </div>
+                                )}
+                                <div className="mt-1 text-text-muted">
+                                  By {entry.createdBy || "system"} •{" "}
+                                  {formatAuditTime(
+                                    entry.updatedOn || entry.createdOn,
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-border-default bg-surface-base p-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-text-disabled">
+                      Bulk Review Table
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllVisibleReviewRows}
+                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+                      >
+                        Select Visible
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearReviewRowSelection}
+                        className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-raised"
+                      >
+                        Clear Selection
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-xl border border-border-default bg-surface-card">
+                    <div className="grid grid-cols-[44px_minmax(0,1.2fr)_110px_110px_110px_130px_100px] gap-2 border-b bg-surface-raised px-3 py-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
+                      <div />
+                      <div>WO Item</div>
+                      <div>Match 1</div>
+                      <div>Match 2</div>
+                      <div>Match 3</div>
+                      <div>Status</div>
+                      <div>Action</div>
+                    </div>
+                    <div
+                      className={`${fullscreen ? "max-h-[58vh]" : "max-h-[420px]"} overflow-y-auto`}
+                    >
+                      {filteredReviewRows.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-sm text-text-muted">
+                          No review rows match the current filters.
+                        </div>
+                      ) : (
+                        filteredReviewRows.map((row) => {
+                          const manualOverride =
+                            row.selectedActivityId !==
+                            row.suggestions[0]?.activity.id;
+                          const isActive =
+                            activeReviewRow?.item.workOrderItemId ===
+                            row.item.workOrderItemId;
+                          const isSelected = reviewSelectedItemIds.includes(
+                            row.item.workOrderItemId,
+                          );
+
+                          return (
+                            <div
+                              key={row.item.workOrderItemId}
+                              className={`grid grid-cols-[44px_minmax(0,1.2fr)_110px_110px_110px_130px_100px] gap-2 border-b border-border-subtle px-3 py-3 text-xs last:border-b-0 ${
+                                isActive ? "bg-primary-muted/40" : ""
+                              }`}
+                              onClick={() =>
+                                setActiveReviewRowId(row.item.workOrderItemId)
+                              }
+                            >
+                              <div className="pt-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() =>
+                                    toggleReviewRowSelection(
+                                      row.item.workOrderItemId,
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="truncate font-semibold text-slate-800">
+                                  {row.item.description}
+                                </div>
+                                {row.item.boqPath && (
+                                  <div className="mt-1 truncate text-text-muted">
+                                    BOQ: {row.item.boqPath}
+                                  </div>
+                                )}
+                                {row.item.treeContext && (
+                                  <div className="mt-1 truncate text-text-muted">
+                                    WO: {row.item.treeContext}
+                                  </div>
+                                )}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getConfidenceTone(
+                                      row.topConfidence,
+                                    )}`}
+                                  >
+                                    {row.topConfidence}
+                                  </span>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${getStatusTone(
+                                      row.status,
+                                    )}`}
+                                  >
+                                    {row.status.replace("_", " ")}
+                                  </span>
+                                  {manualOverride && (
+                                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700">
+                                      Override
+                                    </span>
+                                  )}
+                                </div>
+                                <input
+                                  type="text"
+                                  value={row.overrideReason}
+                                  onChange={(event) =>
+                                    setReviewOverrideReason(
+                                      row.item.workOrderItemId,
+                                      event.target.value,
+                                    )
+                                  }
+                                  placeholder={
+                                    manualOverride
+                                      ? "Override reason required for non-top match"
+                                      : "Optional review note"
+                                  }
+                                  className="mt-2 w-full rounded-lg border border-border-default bg-surface-base px-2 py-1.5 text-[11px]"
+                                />
+                              </div>
+                              {[0, 1, 2].map((index) => {
+                                const suggestion = row.suggestions[index];
+                                if (!suggestion) {
+                                  return (
+                                    <div
+                                      key={`${row.item.workOrderItemId}-empty-${index}`}
+                                      className="rounded-lg border border-dashed border-border-default px-2 py-2 text-[11px] text-text-disabled"
+                                    >
+                                      No match
+                                    </div>
+                                  );
+                                }
+
+                                const suggestionSelected =
+                                  row.selectedActivityId ===
+                                  suggestion.activity.id;
+                                return (
+                                  <button
+                                    key={suggestion.activity.id}
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setBulkReviewSelection(
+                                        row.item.workOrderItemId,
+                                        suggestion.activity.id,
+                                      );
+                                    }}
+                                    className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                                      suggestionSelected
+                                        ? "border-primary/40 bg-primary-muted"
+                                        : "border-border-default hover:bg-surface-base"
+                                    }`}
+                                    title={`${suggestion.activity.activityCode} ${suggestion.activity.activityName}\n${suggestion.treePath}`}
+                                  >
+                                    <div className="truncate font-semibold text-slate-800">
+                                      {suggestion.activity.activityCode}
+                                    </div>
+                                    <div className="mt-1 truncate text-[10px] text-text-muted">
+                                      {suggestion.branchPath}
+                                    </div>
+                                    <div className="mt-1 flex items-center justify-between gap-1">
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                        {suggestion.score}
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        {suggestion.learned?.totalBoost ? (
+                                          <span
+                                            title={getLearnedSuggestionSummary(
+                                              suggestion,
+                                            )}
+                                            className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-violet-700"
+                                          >
+                                            Learned
+                                          </span>
+                                        ) : null}
+                                        <span
+                                          className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${getConfidenceTone(
+                                            suggestion.confidence,
+                                          )}`}
+                                        >
+                                          {suggestion.confidence}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                              <div className="space-y-2">
+                                <select
+                                  value={row.status}
+                                  onChange={(event) =>
+                                    setReviewStatus(
+                                      row.item.workOrderItemId,
+                                      event.target.value as ReviewStatus,
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-border-default bg-surface-base px-2 py-1.5 text-[11px]"
+                                >
+                                  <option value="APPROVED">Approved</option>
+                                  <option value="NEEDS_REVIEW">
+                                    Needs Review
+                                  </option>
+                                  <option value="REJECTED">Rejected</option>
+                                  <option value="SKIPPED">Skipped</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    const topBranch =
+                                      row.suggestions[0]?.branchPath;
+                                    if (topBranch) {
+                                      applyBranchSuggestion(topBranch);
+                                    }
+                                  }}
+                                  className="w-full rounded-lg border border-border-default bg-surface-card px-2 py-1.5 text-[11px] font-semibold text-text-secondary hover:bg-surface-raised"
+                                >
+                                  Branch
+                                </button>
+                              </div>
+                              <div className="flex items-start justify-end">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    !row.selectedActivityId ||
+                                    row.status !== "APPROVED"
+                                  }
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (row.selectedActivityId) {
+                                      void applyBulkReviewRow(
+                                        row.item.workOrderItemId,
+                                        row.selectedActivityId,
+                                      );
+                                    }
+                                  }}
+                                  className="rounded-lg bg-secondary px-3 py-2 text-[11px] font-bold text-white hover:bg-secondary-dark disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={openFullTreeValidation}
+              className="w-full rounded-xl border border-border-default px-4 py-3 text-sm font-semibold text-text-secondary hover:bg-surface-base"
+            >
+              Open Full Tree Validation
+            </button>
+          </div>
+        )}
+      </div>
     </div>
-  </div>
   );
 };
 
@@ -1272,9 +1313,9 @@ const ExecutionMapper: React.FC = () => {
   const [mappingAuditByItem, setMappingAuditByItem] = useState<
     Record<number, MappingAuditEntry[]>
   >({});
-  const [quickSuggestions, setQuickSuggestions] = useState<ActivitySuggestion[]>(
-    [],
-  );
+  const [quickSuggestions, setQuickSuggestions] = useState<
+    ActivitySuggestion[]
+  >([]);
   const [suggestionsByItem, setSuggestionsByItem] = useState<
     Map<number, ActivitySuggestion[]>
   >(new Map());
@@ -1358,7 +1399,9 @@ const ExecutionMapper: React.FC = () => {
               description: direct.description,
               materialCode: boq.boqCode,
               linkedActivities: direct.linkedActivities,
-              boqPath: [boq.boqCode, boq.description].filter(Boolean).join(" > "),
+              boqPath: [boq.boqCode, boq.description]
+                .filter(Boolean)
+                .join(" > "),
               fullContext: context,
               treeContext: [vendor.vendorName, wo.woNumber, boq.description]
                 .filter(Boolean)
@@ -1500,7 +1543,9 @@ const ExecutionMapper: React.FC = () => {
     Object.values(mappingAuditByItem)
       .flat()
       .forEach((entry) => {
-        const entryTimestamp = Date.parse(entry.updatedOn || entry.createdOn || "");
+        const entryTimestamp = Date.parse(
+          entry.updatedOn || entry.createdOn || "",
+        );
         if (
           learnedResetAt > 0 &&
           (!Number.isFinite(entryTimestamp) || entryTimestamp <= learnedResetAt)
@@ -1612,7 +1657,12 @@ const ExecutionMapper: React.FC = () => {
       if (cancelled) return;
 
       const nextSuggestionsByItem = new Map<number, ActivitySuggestion[]>();
-      const batchSize = selectedWoItems.length > 300 ? 6 : selectedWoItems.length > 120 ? 10 : 16;
+      const batchSize =
+        selectedWoItems.length > 300
+          ? 6
+          : selectedWoItems.length > 120
+            ? 10
+            : 16;
 
       for (let index = 0; index < selectedWoItems.length; index += batchSize) {
         const batch = selectedWoItems.slice(index, index + batchSize);
@@ -1637,7 +1687,10 @@ const ExecutionMapper: React.FC = () => {
 
         if (cancelled) return;
 
-        const processed = Math.min(index + batch.length, selectedWoItems.length);
+        const processed = Math.min(
+          index + batch.length,
+          selectedWoItems.length,
+        );
         setSuggestionEngineMessage(
           `Analysing ${selectedWoItems.length} WO row(s) against ${activities.length} schedule activities... processed ${processed}/${selectedWoItems.length}.`,
         );
@@ -1662,7 +1715,12 @@ const ExecutionMapper: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activities.length, indexedActivities, learnedPatternIndex, selectedWoItems]);
+  }, [
+    activities.length,
+    indexedActivities,
+    learnedPatternIndex,
+    selectedWoItems,
+  ]);
 
   useEffect(() => {
     if (!selectionFeedback.active || !isSuggestionEngineRunning) return;
@@ -1710,10 +1768,9 @@ const ExecutionMapper: React.FC = () => {
     >();
 
     selectedWoItems.forEach((item) => {
-      const suggestions = (suggestionsByItem.get(item.workOrderItemId) || []).slice(
-        0,
-        3,
-      );
+      const suggestions = (
+        suggestionsByItem.get(item.workOrderItemId) || []
+      ).slice(0, 3);
       suggestions.forEach((suggestion) => {
         const bucket = branchMap.get(suggestion.branchPath) || {
           scores: [],
@@ -1750,7 +1807,8 @@ const ExecutionMapper: React.FC = () => {
   }, [assistantMode, selectedWoItems, suggestionsByItem]);
 
   const activeWorkbenchItem = useMemo(() => {
-    if (assistantMode !== "workbench" || selectedWoItems.length === 0) return null;
+    if (assistantMode !== "workbench" || selectedWoItems.length === 0)
+      return null;
     if (selectedWoItems.length === 0) return null;
     return (
       selectedWoItems.find(
@@ -1769,8 +1827,9 @@ const ExecutionMapper: React.FC = () => {
       return [];
     }
     return selectedWoItems.map((item) => {
-      const suggestions =
-        (suggestionsByItem.get(item.workOrderItemId) || []).slice(0, 3);
+      const suggestions = (
+        suggestionsByItem.get(item.workOrderItemId) || []
+      ).slice(0, 3);
       const savedMappings = mappingAuditByItem[item.workOrderItemId] || [];
       const currentMappings = savedMappings.map((entry) => {
         const activity = activityById.get(entry.activityId);
@@ -1835,13 +1894,20 @@ const ExecutionMapper: React.FC = () => {
         reviewStatusFilter === "ALL" || row.status === reviewStatusFilter;
       return confidenceOk && statusOk;
     });
-  }, [assistantMode, bulkReviewRows, reviewConfidenceFilter, reviewStatusFilter]);
+  }, [
+    assistantMode,
+    bulkReviewRows,
+    reviewConfidenceFilter,
+    reviewStatusFilter,
+  ]);
 
   const activeReviewRow = useMemo(
     () =>
       filteredReviewRows.find(
         (row) => row.item.workOrderItemId === activeReviewRowId,
-      ) || filteredReviewRows[0] || null,
+      ) ||
+      filteredReviewRows[0] ||
+      null,
     [activeReviewRowId, filteredReviewRows],
   );
 
@@ -1877,8 +1943,9 @@ const ExecutionMapper: React.FC = () => {
       let changed = false;
 
       selectedWoItems.forEach((item) => {
-        const suggestions =
-          (suggestionsByItem.get(item.workOrderItemId) || []).slice(0, 3);
+        const suggestions = (
+          suggestionsByItem.get(item.workOrderItemId) || []
+        ).slice(0, 3);
         const currentSelection = current[item.workOrderItemId];
         const validSelection =
           currentSelection &&
@@ -1925,7 +1992,8 @@ const ExecutionMapper: React.FC = () => {
       }
 
       const activeIndex = filteredReviewRows.findIndex(
-        (row) => row.item.workOrderItemId === activeReviewRow?.item.workOrderItemId,
+        (row) =>
+          row.item.workOrderItemId === activeReviewRow?.item.workOrderItemId,
       );
       const currentRow =
         activeReviewRow || filteredReviewRows[Math.max(0, activeIndex)];
@@ -1935,7 +2003,10 @@ const ExecutionMapper: React.FC = () => {
         event.preventDefault();
         const nextRow =
           filteredReviewRows[
-            Math.min(filteredReviewRows.length - 1, Math.max(activeIndex, 0) + 1)
+            Math.min(
+              filteredReviewRows.length - 1,
+              Math.max(activeIndex, 0) + 1,
+            )
           ];
         setActiveReviewRowId(nextRow.item.workOrderItemId);
         return;
@@ -2042,7 +2113,9 @@ const ExecutionMapper: React.FC = () => {
 
   const fetchMappingAudit = async () => {
     try {
-      const res = await api.get(`/planning/${numericProjectId}/wo-mapper/mappings`);
+      const res = await api.get(
+        `/planning/${numericProjectId}/wo-mapper/mappings`,
+      );
       const grouped = (res.data || []).reduce(
         (
           acc: Record<number, MappingAuditEntry[]>,
@@ -2092,14 +2165,15 @@ const ExecutionMapper: React.FC = () => {
                         linkedActivities: activityLabel,
                       }
                     : sub.woItem,
-                measurements: (sub.measurements || []).map((measurement: any) =>
-                  targetIds.has(measurement.workOrderItemId)
-                    ? {
-                        ...measurement,
-                        mappingStatus: "MAPPED",
-                        linkedActivities: activityLabel,
-                      }
-                    : measurement,
+                measurements: (sub.measurements || []).map(
+                  (measurement: any) =>
+                    targetIds.has(measurement.workOrderItemId)
+                      ? {
+                          ...measurement,
+                          mappingStatus: "MAPPED",
+                          linkedActivities: activityLabel,
+                        }
+                      : measurement,
                 ),
               })),
             })),
@@ -2194,107 +2268,110 @@ const ExecutionMapper: React.FC = () => {
     [activityById, wbsPathById, woItemLookup],
   );
 
-  const handleLinkItems = useCallback(async (
-    workOrderItemIds: number[],
-    targetActivityId: number,
-    options?: {
-      closeModal?: boolean;
-      clearSelection?: boolean;
-      refresh?: boolean;
-      showSuccess?: boolean;
-      mappingRulesByItem?: Record<number, Record<string, unknown>>;
-    },
-  ) => {
-    if (workOrderItemIds.length === 0 || !targetActivityId) return;
+  const handleLinkItems = useCallback(
+    async (
+      workOrderItemIds: number[],
+      targetActivityId: number,
+      options?: {
+        closeModal?: boolean;
+        clearSelection?: boolean;
+        refresh?: boolean;
+        showSuccess?: boolean;
+        mappingRulesByItem?: Record<number, Record<string, unknown>>;
+      },
+    ) => {
+      if (workOrderItemIds.length === 0 || !targetActivityId) return;
 
-    const {
-      closeModal = true,
-      clearSelection = true,
-      refresh = false,
-      showSuccess = true,
-      mappingRulesByItem: providedMappingRulesByItem,
-    } = options || {};
+      const {
+        closeModal = true,
+        clearSelection = true,
+        refresh = false,
+        showSuccess = true,
+        mappingRulesByItem: providedMappingRulesByItem,
+      } = options || {};
 
-    try {
-      const activity = activityById.get(targetActivityId);
-      const activityLabel = [activity?.activityCode, activity?.activityName]
-        .filter(Boolean)
-        .join(" ");
-      const mappingRulesByItem =
-        providedMappingRulesByItem ||
-        buildDirectMappingRulesByItem(workOrderItemIds, targetActivityId);
+      try {
+        const activity = activityById.get(targetActivityId);
+        const activityLabel = [activity?.activityCode, activity?.activityName]
+          .filter(Boolean)
+          .join(" ");
+        const mappingRulesByItem =
+          providedMappingRulesByItem ||
+          buildDirectMappingRulesByItem(workOrderItemIds, targetActivityId);
 
-      setMappingInFlight({
-        active: true,
-        processed: 0,
-        total: workOrderItemIds.length,
-        message:
-          workOrderItemIds.length > 1
-            ? `Mapping ${workOrderItemIds.length} WO rows to ${activityLabel || "the selected activity"}...`
-            : `Mapping selected WO row to ${activityLabel || "the selected activity"}...`,
-      });
-
-      for (let index = 0; index < workOrderItemIds.length; index += 1) {
-        const woItemId = workOrderItemIds[index];
-        await api.post(`/planning/distribute-wo`, {
-          projectId: numericProjectId,
-          activityId: targetActivityId,
-          workOrderItemId: woItemId,
-          quantity: -1,
-          mappingType: "DIRECT",
-          mappingRules: mappingRulesByItem?.[woItemId] || null,
+        setMappingInFlight({
+          active: true,
+          processed: 0,
+          total: workOrderItemIds.length,
+          message:
+            workOrderItemIds.length > 1
+              ? `Mapping ${workOrderItemIds.length} WO rows to ${activityLabel || "the selected activity"}...`
+              : `Mapping selected WO row to ${activityLabel || "the selected activity"}...`,
         });
 
-        setMappingInFlight((current) => ({
-          ...current,
-          processed: index + 1,
-        }));
+        for (let index = 0; index < workOrderItemIds.length; index += 1) {
+          const woItemId = workOrderItemIds[index];
+          await api.post(`/planning/distribute-wo`, {
+            projectId: numericProjectId,
+            activityId: targetActivityId,
+            workOrderItemId: woItemId,
+            quantity: -1,
+            mappingType: "DIRECT",
+            mappingRules: mappingRulesByItem?.[woItemId] || null,
+          });
 
-        if (index < workOrderItemIds.length - 1) {
-          await yieldToMainThread();
+          setMappingInFlight((current) => ({
+            ...current,
+            processed: index + 1,
+          }));
+
+          if (index < workOrderItemIds.length - 1) {
+            await yieldToMainThread();
+          }
         }
-      }
 
-      updateVendorTreeMappingState(workOrderItemIds, activityLabel);
-      updateLocalMappingAudit(
-        workOrderItemIds,
-        targetActivityId,
-        "DIRECT",
-        mappingRulesByItem,
-      );
-
-      if (closeModal) {
-        setIsLinkModalOpen(false);
-      }
-      if (clearSelection) {
-        setSelectedWoItemIds((current) =>
-          current.filter((id) => !workOrderItemIds.includes(id)),
+        updateVendorTreeMappingState(workOrderItemIds, activityLabel);
+        updateLocalMappingAudit(
+          workOrderItemIds,
+          targetActivityId,
+          "DIRECT",
+          mappingRulesByItem,
         );
+
+        if (closeModal) {
+          setIsLinkModalOpen(false);
+        }
+        if (clearSelection) {
+          setSelectedWoItemIds((current) =>
+            current.filter((id) => !workOrderItemIds.includes(id)),
+          );
+        }
+        if (refresh) {
+          setRefreshTrigger((prev) => prev + 1);
+        }
+        if (showSuccess) {
+          alert("Successfully linked to schedule!");
+        }
+      } catch (error) {
+        console.error("Linking failed", error);
+        alert("Linking failed. See console for details.");
+      } finally {
+        setMappingInFlight({
+          active: false,
+          processed: 0,
+          total: 0,
+          message: "",
+        });
       }
-      if (refresh) {
-        setRefreshTrigger((prev) => prev + 1);
-      }
-      if (showSuccess) {
-        alert("Successfully linked to schedule!");
-      }
-    } catch (error) {
-      console.error("Linking failed", error);
-      alert("Linking failed. See console for details.");
-    } finally {
-      setMappingInFlight({
-        active: false,
-        processed: 0,
-        total: 0,
-        message: "",
-      });
-    }
-  }, [
-    activityById,
-    buildDirectMappingRulesByItem,
-    numericProjectId,
-    updateLocalMappingAudit,
-    updateVendorTreeMappingState,
-  ]);
+    },
+    [
+      activityById,
+      buildDirectMappingRulesByItem,
+      numericProjectId,
+      updateLocalMappingAudit,
+      updateVendorTreeMappingState,
+    ],
+  );
 
   const handleLink = async (targetActivityId: number) => {
     await handleLinkItems(selectedWoItemIds, targetActivityId);
@@ -2359,7 +2436,9 @@ const ExecutionMapper: React.FC = () => {
 
   const selectAllVisibleReviewRows = () => {
     setReviewSelectedItemIds(
-      Array.from(new Set(filteredReviewRows.map((row) => row.item.workOrderItemId))),
+      Array.from(
+        new Set(filteredReviewRows.map((row) => row.item.workOrderItemId)),
+      ),
     );
   };
 
@@ -2431,13 +2510,16 @@ const ExecutionMapper: React.FC = () => {
 
   const copyActiveBranchToSelectedRows = () => {
     if (!activeReviewRow || reviewSelectedItemIds.length === 0) {
-      alert("Select review rows first, then keep one active row to copy its branch.");
+      alert(
+        "Select review rows first, then keep one active row to copy its branch.",
+      );
       return;
     }
 
     const selectedSuggestion =
       activeReviewRow.suggestions.find(
-        (suggestion) => suggestion.activity.id === activeReviewRow.selectedActivityId,
+        (suggestion) =>
+          suggestion.activity.id === activeReviewRow.selectedActivityId,
       ) || activeReviewRow.suggestions[0];
 
     if (!selectedSuggestion) {
@@ -2451,7 +2533,8 @@ const ExecutionMapper: React.FC = () => {
         if (!reviewSelectedItemIds.includes(row.item.workOrderItemId)) return;
         const branchMatch =
           row.suggestions.find(
-            (suggestion) => suggestion.branchPath === selectedSuggestion.branchPath,
+            (suggestion) =>
+              suggestion.branchPath === selectedSuggestion.branchPath,
           ) || row.suggestions[0];
         if (branchMatch) {
           next[row.item.workOrderItemId] = branchMatch.activity.id;
@@ -2471,8 +2554,9 @@ const ExecutionMapper: React.FC = () => {
 
   const buildRowMappingRules = (row: ReviewRow, activityId: number) => {
     const selectedSuggestion =
-      row.suggestions.find((suggestion) => suggestion.activity.id === activityId) ||
-      row.suggestions[0];
+      row.suggestions.find(
+        (suggestion) => suggestion.activity.id === activityId,
+      ) || row.suggestions[0];
     const isManualOverride =
       selectedSuggestion &&
       row.suggestions[0] &&
@@ -2502,7 +2586,11 @@ const ExecutionMapper: React.FC = () => {
       return `Row "${row.item.description}" does not have a selected target activity.`;
     }
 
-    if (topSuggestion && activityId !== topSuggestion.activity.id && !row.overrideReason.trim()) {
+    if (
+      topSuggestion &&
+      activityId !== topSuggestion.activity.id &&
+      !row.overrideReason.trim()
+    ) {
       return `Row "${row.item.description}" needs an override reason because it is not using the top suggested match.`;
     }
 
@@ -2545,9 +2633,7 @@ const ExecutionMapper: React.FC = () => {
     }
 
     const validationError = rowsToApply
-      .map((row) =>
-        validateReviewRow(row, row.selectedActivityId as number),
-      )
+      .map((row) => validateReviewRow(row, row.selectedActivityId as number))
       .find(Boolean);
     if (validationError) {
       alert(validationError);
@@ -2605,9 +2691,12 @@ const ExecutionMapper: React.FC = () => {
     if (!numericProjectId) return;
     setDownloadingSheet(true);
     try {
-      const response = await api.get(`/planning/${numericProjectId}/wo-mapper/export`, {
-        responseType: "blob",
-      });
+      const response = await api.get(
+        `/planning/${numericProjectId}/wo-mapper/export`,
+        {
+          responseType: "blob",
+        },
+      );
       downloadBlob(
         new Blob([response.data]),
         withFileExtension(`wo_qty_mapper_${numericProjectId}_matrix`, ".xlsx"),
@@ -2622,7 +2711,7 @@ const ExecutionMapper: React.FC = () => {
 
   return (
     <div className="flex h-full flex-col bg-surface-base">
-      <div className="z-10 flex h-14 items-center justify-between border-b bg-surface-card px-4 shadow-sm">
+      <div className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b bg-surface-card px-4 shadow-sm">
         <div className="flex items-center gap-2 text-text-secondary">
           <Split className="text-primary" size={20} />
           <h1 className="font-bold text-lg">WO Qty Mapper</h1>
@@ -2630,7 +2719,8 @@ const ExecutionMapper: React.FC = () => {
             Project #{numericProjectId}
           </span>
           <span className="text-xs text-text-muted">
-            Confidence review, branch mapping, override audit, and fast keyboard flow are active.
+            Confidence review, branch mapping, override audit, and fast keyboard
+            flow are active.
           </span>
         </div>
 
@@ -2713,7 +2803,8 @@ const ExecutionMapper: React.FC = () => {
                         ? Math.max(
                             12,
                             Math.round(
-                              (mappingInFlight.processed / mappingInFlight.total) *
+                              (mappingInFlight.processed /
+                                mappingInFlight.total) *
                                 100,
                             ),
                           )
@@ -2823,7 +2914,8 @@ const ExecutionMapper: React.FC = () => {
                     WO Qty Mapping Assistant
                   </h2>
                   <p className="text-sm text-text-muted">
-                    Full-screen review board for heavy BOQ-to-schedule mapping with confidence, branch lanes, and audit metadata.
+                    Full-screen review board for heavy BOQ-to-schedule mapping
+                    with confidence, branch lanes, and audit metadata.
                   </p>
                 </div>
                 <button
@@ -2861,10 +2953,14 @@ const ExecutionMapper: React.FC = () => {
                   setActiveReviewRowId={setActiveReviewRowId}
                   selectAllVisibleReviewRows={selectAllVisibleReviewRows}
                   clearReviewRowSelection={clearReviewRowSelection}
-                  approveTopMatchForHighConfidence={approveTopMatchForHighConfidence}
+                  approveTopMatchForHighConfidence={
+                    approveTopMatchForHighConfidence
+                  }
                   markLowConfidenceNeedsReview={markLowConfidenceNeedsReview}
                   applyBranchSuggestion={applyBranchSuggestion}
-                  copyActiveBranchToSelectedRows={copyActiveBranchToSelectedRows}
+                  copyActiveBranchToSelectedRows={
+                    copyActiveBranchToSelectedRows
+                  }
                   applyBulkReviewRow={applyBulkReviewRow}
                   applyBulkReviewAll={applyBulkReviewAll}
                   setActiveWorkbenchItemId={setActiveWorkbenchItemId}

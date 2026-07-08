@@ -257,6 +257,17 @@ class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserv
             ? Icons.check_circle_outline
             : Icons.cancel_outlined;
         break;
+      // ── Planning Phase 2 ──────────────────────────────────────────────────
+      case 'TASK_ASSIGNED':
+        message = 'A task has been assigned to you — tap to view and act.';
+        color = Colors.indigo.shade700;
+        icon = Icons.task_alt_outlined;
+        break;
+      case 'FOLLOWUP_ASSIGNED':
+        message = 'A follow-up action has been assigned to you — check due date.';
+        color = Colors.deepOrange.shade700;
+        icon = Icons.assignment_late_outlined;
+        break;
       // ── New observation lifecycle types (web handoff) ──────────────────────
       case 'QUALITY_CHECKLIST_OBS_RAISED':
         message = 'A quality issue was raised on a checklist item — tap to review.';

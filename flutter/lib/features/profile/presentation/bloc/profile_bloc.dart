@@ -257,8 +257,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       // returns it in this format, so no data-URI wrapping is needed here.
       final base64Data = base64Encode(event.pngBytes);
       await _apiClient.updateUserSignature(base64Data);
-      // Cache locally so the next ProfileSaving emit shows the new signature.
       _cachedSignature = base64Data;
+      // Clear the HTTP response cache so the subsequent LoadProfile fetch
+      // returns the newly saved signature rather than the 3-minute-old
+      // cached empty response from dio_cache_interceptor.
+      await _apiClient.clearCache();
       emit(const ProfileSaveSuccess('Signature saved successfully'));
     } catch (e) {
       emit(ProfileError(_friendly(e)));

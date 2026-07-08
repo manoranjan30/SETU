@@ -175,6 +175,22 @@ class PermissionService {
   /// without needing to check individual sub-permissions.
   bool get hasAnyQualityObsAccess => canReadQualityObs || canCreateQualityObs;
 
+  // ── Planning Phase 2 ─────────────────────────────────────────────────────
+  bool get canReadTask    => can('PLANNING.TASK.READ');
+  bool get canCreateTask  => can('PLANNING.TASK.CREATE');
+  bool get canUpdateTask  => can('PLANNING.TASK.UPDATE');
+  bool get canDeleteTask  => can('PLANNING.TASK.DELETE');
+
+  bool get canReadFollowup   => can('PLANNING.FOLLOWUP.READ');
+  bool get canCreateFollowup => can('PLANNING.FOLLOWUP.CREATE');
+  bool get canUpdateFollowup => can('PLANNING.FOLLOWUP.UPDATE');
+  bool get canDeleteFollowup => can('PLANNING.FOLLOWUP.DELETE');
+
+  bool get canReadJournal   => can('PLANNING.JOURNAL.READ');
+  bool get canCreateJournal => can('PLANNING.JOURNAL.CREATE');
+  bool get canUpdateJournal => can('PLANNING.JOURNAL.UPDATE');
+  bool get canDeleteJournal => can('PLANNING.JOURNAL.DELETE');
+
   // ── Labor ─────────────────────────────────────────────────────────────────
   // Labor entry permissions control daily manpower/headcount tracking.
 

@@ -72,6 +72,12 @@ class PendingDeepLink {
       case 'WORKFLOW_REVERSED':
         return 'quality_approvals';
 
+      // ── Planning Phase 2 (task/follow-up notifications) ─────────────────────
+      case 'TASK_ASSIGNED':
+        return 'planning';
+      case 'FOLLOWUP_ASSIGNED':
+        return 'planning';
+
       // ── Progress ─────────────────────────────────────────────────────────────
       case 'PROGRESS_SUBMITTED':
       case 'PROGRESS_APPROVED':

@@ -10,11 +10,13 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import {
+  AlarmClock,
   AlertTriangle,
   ArrowLeft,
   Bell,
   Building2,
   Camera,
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
@@ -42,6 +44,14 @@ import { getPublicFileUrl } from "../api/baseUrl";
 import { PermissionCode } from "../config/permissions";
 import { useAuth } from "../context/AuthContext";
 import { qualityService } from "../services/quality.service";
+import {
+  planningExtensionService,
+  type FollowUpAction,
+  type PlanningActionSummary,
+  type PlanningAssigneeOption,
+  type ProjectTask,
+  type SiteJournalEntry,
+} from "../services/planning-extension.service";
 import "./styles/mobile.css";
 
 type EpsNode = {
@@ -73,6 +83,14 @@ type ActivityListOption = {
 
 const dateText = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString() : "Not available";
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const commaTags = (value: string) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 const pickName = (value: AnyRecord | null | undefined) =>
   value?.displayName || value?.name || value?.username || value?.fullName || "Not available";
@@ -628,7 +646,7 @@ function ProjectModulesPage() {
     { title: "EHS", subtitle: "Safety observations and incidents", icon: ShieldAlert, to: "ehs", tone: "red" },
     { title: "Search", subtitle: "RFI, location, NCR, cube", icon: Search, to: "search", tone: "blue" },
     { title: "Approvals", subtitle: "My pending actions", icon: Bell, to: "quality/approvals", tone: "amber" },
-    { title: "My Tasks", subtitle: "Action inbox", icon: ClipboardList, to: "tasks", tone: "blue" },
+    { title: "Planning", subtitle: "Tasks, follow-ups, journal", icon: ClipboardList, to: "tasks", tone: "blue" },
     { title: "QR Scan", subtitle: "Signature and lookup", icon: QrCode, to: "qr", tone: "green" },
     { title: "Profile", subtitle: "Signature and account", icon: User, to: "/m/profile", tone: "blue" },
     { title: "Settings", subtitle: "Field mode and display", icon: Settings, to: "/m/settings", tone: "amber" },
@@ -2769,91 +2787,431 @@ function MobileConcreteDocumentPage({ type }: { type: "pour" | "clearance" }) {
 
 function MyTasksPage() {
   const { projectId } = useParams();
-  const { items, loading } = useProjectInspections(projectId);
-  const [ncrs, setNcrs] = useState<AnyRecord[]>([]);
-  const [cubes, setCubes] = useState<AnyRecord[]>([]);
-  const [filter, setFilter] = useState("ALL");
+  const { hasPermission } = useAuth();
+  const { project, locations } = useProjectLocations(projectId);
+  const projectNumber = Number(projectId || 0);
+  const [mode, setMode] = useState<"tasks" | "followups" | "journal">("tasks");
+  const [taskView, setTaskView] = useState<"active" | "completed" | "history">("active");
+  const [followupView, setFollowupView] = useState<"all" | "today" | "overdue" | "history">("all");
+  const [summary, setSummary] = useState<PlanningActionSummary | null>(null);
+  const [assignees, setAssignees] = useState<PlanningAssigneeOption[]>([]);
+  const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [followups, setFollowups] = useState<FollowUpAction[]>([]);
+  const [journals, setJournals] = useState<SiteJournalEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [showFollowupForm, setShowFollowupForm] = useState(false);
+  const [showJournalForm, setShowJournalForm] = useState(false);
+  const [showJournalLocationPicker, setShowJournalLocationPicker] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    description: "",
+    taskType: "GENERAL",
+    priority: "MEDIUM",
+    assignedKey: "",
+    dueDate: "",
+    reminderAt: "",
+    tags: "",
+  });
+  const [followupForm, setFollowupForm] = useState({
+    actionItem: "",
+    assignedKey: "",
+    dueDate: today(),
+    reminderAt: "",
+    priority: "MEDIUM",
+    followupType: "GENERAL",
+    meetingReference: "",
+    remarks: "",
+  });
+  const [journalForm, setJournalForm] = useState({
+    date: today(),
+    weather: "SUNNY",
+    summary: "",
+    workDoneToday: "",
+    progressNotes: "",
+    issuesRaised: "",
+    tomorrowPlan: "",
+    laborCount: "",
+    locationText: "",
+    epsNodeId: "",
+    tags: "",
+  });
+
+  const assigneeMap = useMemo(() => new Map(assignees.map((row) => [planningAssigneeKey(row), row])), [assignees]);
+  const childrenMap = useMemo(() => buildChildrenMap(locations), [locations]);
+  const locationIds = useMemo(() => new Set(locations.map((node) => node.id)), [locations]);
+  const locationRoots = useMemo(() => locations.filter((node) => !node.parentId || !locationIds.has(node.parentId)), [locationIds, locations]);
+  const selectedJournalLocation = locations.find((location) => String(location.id) === String(journalForm.epsNodeId));
+  const selectedJournalLocationPath = formatLocationPath(journalForm.epsNodeId, locations, project);
+
+  const canCreateTask = hasPermission(PermissionCode.PLANNING_TASK_CREATE);
+  const canUpdateTask = hasPermission(PermissionCode.PLANNING_TASK_UPDATE);
+  const canDeleteTask = hasPermission(PermissionCode.PLANNING_TASK_DELETE);
+  const canCreateFollowup = hasPermission(PermissionCode.PLANNING_FOLLOWUP_CREATE);
+  const canUpdateFollowup = hasPermission(PermissionCode.PLANNING_FOLLOWUP_UPDATE);
+  const canDeleteFollowup = hasPermission(PermissionCode.PLANNING_FOLLOWUP_DELETE);
+  const canCreateJournal = hasPermission(PermissionCode.PLANNING_JOURNAL_CREATE);
+  const canUpdateJournal = hasPermission(PermissionCode.PLANNING_JOURNAL_UPDATE);
+  const canDeleteJournal = hasPermission(PermissionCode.PLANNING_JOURNAL_DELETE);
+
+  const refreshSummary = () => {
+    if (!projectNumber) return;
+    planningExtensionService.actionSummary(projectNumber).then(setSummary).catch(() => setSummary(null));
+  };
+
+  const loadCurrent = async () => {
+    if (!projectNumber) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      refreshSummary();
+      if (mode === "tasks") {
+        const rows = taskView === "completed"
+          ? await planningExtensionService.completedTasks(projectNumber)
+          : taskView === "history"
+            ? await planningExtensionService.taskHistory(projectNumber)
+            : await planningExtensionService.activeTasks(projectNumber);
+        setTasks(rows);
+      }
+      if (mode === "followups") {
+        const rows = followupView === "today"
+          ? await planningExtensionService.dueTodayFollowups(projectNumber)
+          : followupView === "overdue"
+            ? await planningExtensionService.overdueFollowups(projectNumber)
+            : followupView === "history"
+              ? await planningExtensionService.followupHistory(projectNumber)
+              : await planningExtensionService.listFollowups(projectNumber);
+        setFollowups(rows);
+      }
+      if (mode === "journal") {
+        setJournals(await planningExtensionService.listJournal(projectNumber));
+      }
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Unable to load planning actions.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!projectId) return;
-    api
-      .get(`/quality/${projectId}/observation-ncr`)
-      .then((res) => setNcrs((res.data || []).filter((row: AnyRecord) => String(row.type || "").toUpperCase() === "NCR")))
-      .catch(() => setNcrs([]));
-    qualityService.getCubeTestRegister(Number(projectId)).then(setCubes).catch(() => setCubes([]));
-  }, [projectId]);
+    if (!projectNumber) return;
+    refreshSummary();
+    planningExtensionService.assigneeOptions(projectNumber).then(setAssignees).catch(() => setAssignees([]));
+  }, [projectNumber]);
 
-  const tasks = useMemo(() => {
-    const rfiTasks = items
-      .filter((item) => isPendingInspection(item) || isRejectedInspection(item))
-      .map((item) => ({
-        id: `rfi-${item.id}`,
-        type: isRejectedInspection(item) ? "REWORK" : "APPROVAL",
-        title: item.rfiNumber || `RFI #${item.id}`,
-        subtitle: `${item.activityName || "Inspection"} / ${item.goLabel || "GO"} / ${item.pendingApprovalDisplay || item.status}`,
-        status: item.status,
-        to: `/m/projects/${projectId}/quality/inspections/${item.id}`,
-      }));
-    const ncrTasks = ncrs
-      .filter((item) => !["CLOSED", "CLOSE"].includes(String(item.status || "").toUpperCase()))
-      .map((item) => ({
-        id: `ncr-${item.id}`,
-        type: "NCR",
-        title: item.sourceReference || "Quality NCR",
-        subtitle: item.description || item.status || "Open NCR",
-        status: item.status || "OPEN",
-        to: `/m/projects/${projectId}/quality/ncr`,
-      }));
-    const today = new Date().toISOString().slice(0, 10);
-    const cubeTasks = cubes
-      .filter((cube) => String(cube.status || "").toUpperCase() !== "APPROVED" && String(cube.dueDate || "").slice(0, 10) <= today)
-      .map((cube) => ({
-        id: `cube-${cube.id}`,
-        type: "CUBE",
-        title: cube.cubeId || `Cube #${cube.id}`,
-        subtitle: `${cube.mixIdOrGrade || "Grade"} / Due ${dateText(cube.dueDate)}`,
-        status: cube.status || "DUE",
-        to: `/m/projects/${projectId}/quality/materials/cubes`,
-      }));
-    return [...rfiTasks, ...ncrTasks, ...cubeTasks];
-  }, [items, ncrs, cubes, projectId]);
+  useEffect(() => {
+    loadCurrent();
+  }, [projectNumber, mode, taskView, followupView]);
 
-  const visible = tasks.filter((task) => filter === "ALL" || task.type === filter);
+  const createTask = async () => {
+    try {
+      const assignee = assigneeMap.get(taskForm.assignedKey);
+      await planningExtensionService.createTask(projectNumber, {
+        title: taskForm.title,
+        description: taskForm.description,
+        taskType: taskForm.taskType,
+        priority: taskForm.priority as any,
+        assignedToType: assignee?.type,
+        assignedToUserId: assignee?.userId || null,
+        assignedToTempUserId: assignee?.tempUserId || null,
+        dueDate: taskForm.dueDate || null,
+        reminderAt: taskForm.reminderAt || null,
+        tags: commaTags(taskForm.tags),
+      });
+      setTaskForm({ title: "", description: "", taskType: "GENERAL", priority: "MEDIUM", assignedKey: "", dueDate: "", reminderAt: "", tags: "" });
+      setShowTaskForm(false);
+      await loadCurrent();
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Unable to create task.");
+    }
+  };
+
+  const createFollowup = async () => {
+    try {
+      const assignee = assigneeMap.get(followupForm.assignedKey);
+      await planningExtensionService.createFollowup(projectNumber, {
+        actionItem: followupForm.actionItem,
+        assignedToType: assignee?.type,
+        assignedToUserId: assignee?.userId,
+        assignedToTempUserId: assignee?.tempUserId || null,
+        dueDate: followupForm.dueDate,
+        reminderAt: followupForm.reminderAt || null,
+        nextReminderAt: followupForm.reminderAt || null,
+        priority: followupForm.priority as any,
+        followupType: followupForm.followupType,
+        meetingReference: followupForm.meetingReference,
+        remarks: followupForm.remarks,
+      });
+      setFollowupForm({ actionItem: "", assignedKey: "", dueDate: today(), reminderAt: "", priority: "MEDIUM", followupType: "GENERAL", meetingReference: "", remarks: "" });
+      setShowFollowupForm(false);
+      await loadCurrent();
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Unable to create follow-up.");
+    }
+  };
+
+  const saveJournal = async () => {
+    try {
+      await planningExtensionService.upsertJournal(projectNumber, {
+        ...journalForm,
+        weather: journalForm.weather as any,
+        epsNodeId: journalForm.epsNodeId ? Number(journalForm.epsNodeId) : null,
+        laborCount: journalForm.laborCount ? Number(journalForm.laborCount) : null,
+        locationText: selectedJournalLocationPath || journalForm.locationText,
+        tags: commaTags(journalForm.tags),
+      });
+      setJournalForm({ date: today(), weather: "SUNNY", summary: "", workDoneToday: "", progressNotes: "", issuesRaised: "", tomorrowPlan: "", laborCount: "", locationText: "", epsNodeId: "", tags: "" });
+      setShowJournalForm(false);
+      await loadCurrent();
+    } catch (err: any) {
+      setMessage(err.response?.data?.message || "Unable to save journal.");
+    }
+  };
 
   return (
-    <MobileShell title="My Tasks" subtitle="Action inbox">
+    <MobileShell title="Planning Actions" subtitle="Tasks, follow-ups and site journal">
       <div className="mobile-stack">
         <section className="mobile-hero-card">
           <div className="mobile-row">
             <div>
-              <span className="mobile-chip">TASK CENTER</span>
-              <h2>{tasks.length}</h2>
-              <p>Pending approvals, rework, NCR and due cube tests</p>
+              <span className="mobile-chip">PLANNING FIELD CORE</span>
+              <h2>{summary?.activeTasks || 0}</h2>
+              <p>Active tasks with {summary?.overdueFollowups || 0} overdue follow-ups</p>
             </div>
             <ClipboardList size={34} />
           </div>
         </section>
+        <div className="mobile-kpi-strip">
+          <button className="mobile-kpi mobile-kpi-button" type="button" onClick={() => setMode("tasks")}><strong>{summary?.activeTasks || 0}</strong><span>Active tasks</span></button>
+          <button className="mobile-kpi mobile-kpi-button" type="button" onClick={() => { setMode("followups"); setFollowupView("today"); }}><strong>{summary?.dueTodayFollowups || 0}</strong><span>Due today</span></button>
+          <button className="mobile-kpi mobile-kpi-button danger" type="button" onClick={() => { setMode("followups"); setFollowupView("overdue"); }}><strong>{summary?.overdueFollowups || 0}</strong><span>Overdue</span></button>
+          <button className="mobile-kpi mobile-kpi-button" type="button" onClick={() => setMode("journal")}><strong>{summary?.todayJournalStatus || "NEW"}</strong><span>Today journal</span></button>
+        </div>
         <div className="mobile-pill-tabs">
-          {["ALL", "APPROVAL", "REWORK", "NCR", "CUBE"].map((key) => (
-            <button key={key} className={filter === key ? "active" : ""} type="button" onClick={() => setFilter(key)}>
-              {key}
+          {(["tasks", "followups", "journal"] as const).map((key) => (
+            <button key={key} className={mode === key ? "active" : ""} type="button" onClick={() => setMode(key)}>
+              {key === "followups" ? "Follow-ups" : key === "journal" ? "Journal" : "Tasks"}
             </button>
           ))}
         </div>
-        {loading && <LoadingCard label="Loading task inbox..." />}
-        {visible.map((task) => (
-          <Link key={task.id} className={`mobile-notification-item ${task.type === "REWORK" || task.type === "NCR" ? "danger" : "warn"}`} to={task.to}>
-            <span />
-            <div>
-              <strong>{task.title}</strong>
-              <small>{task.subtitle}</small>
+        {message && <div className={message.includes("Unable") ? "mobile-chip danger" : "mobile-chip"}>{message}</div>}
+        {loading && <LoadingCard label="Loading planning actions..." />}
+        {mode === "tasks" && (
+          <>
+            <div className="mobile-row">
+              <div className="mobile-pill-tabs">
+                {(["active", "completed", "history"] as const).map((key) => (
+                  <button key={key} className={taskView === key ? "active" : ""} type="button" onClick={() => setTaskView(key)}>{key}</button>
+                ))}
+              </div>
+              {canCreateTask && <button className="mobile-icon-button" type="button" onClick={() => setShowTaskForm(true)}><Plus size={18} /></button>}
             </div>
-            <ChevronRight size={17} />
-          </Link>
-        ))}
-        {!loading && visible.length === 0 && <div className="mobile-card mobile-empty">No tasks in this bucket.</div>}
+            {tasks.map((task) => (
+              <div key={task.id} className="mobile-card mobile-card-pad">
+                <div className="mobile-row">
+                  <div>
+                    <span className={statusChipClass(task.status)}>{task.status}</span>
+                    <h3 className="mobile-title" style={{ marginTop: 8 }}>{task.title}</h3>
+                    <p className="mobile-subtitle">{planningAssigneeLabel(assignees, task.assignedToUserId, task.assignedToTempUserId)}</p>
+                    <p className="mobile-subtitle">{task.taskType || "GENERAL"} / Due {task.dueDate || "not set"} / {task.priority}</p>
+                  </div>
+                  <ClipboardList color="#2e7d43" />
+                </div>
+                {task.description && <p className="mobile-subtitle" style={{ marginTop: 8 }}>{task.description}</p>}
+                <div className="mobile-action-row">
+                  {canUpdateTask && task.status !== "DONE" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.completeTask(projectNumber, task.id); await loadCurrent(); }}>Complete</button>}
+                  {canUpdateTask && task.status === "DONE" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.reopenTask(projectNumber, task.id); await loadCurrent(); }}>Reopen</button>}
+                  {canDeleteTask && <button className="mobile-button danger" type="button" onClick={async () => { await planningExtensionService.deleteTask(projectNumber, task.id); await loadCurrent(); }}>Delete</button>}
+                </div>
+              </div>
+            ))}
+            {!loading && tasks.length === 0 && <div className="mobile-card mobile-empty">No planning tasks found.</div>}
+          </>
+        )}
+        {mode === "followups" && (
+          <>
+            <div className="mobile-row">
+              <div className="mobile-pill-tabs">
+                {(["all", "today", "overdue", "history"] as const).map((key) => (
+                  <button key={key} className={followupView === key ? "active" : ""} type="button" onClick={() => setFollowupView(key)}>{key}</button>
+                ))}
+              </div>
+              {canCreateFollowup && <button className="mobile-icon-button" type="button" onClick={() => setShowFollowupForm(true)}><Plus size={18} /></button>}
+            </div>
+            {followups.map((item) => (
+              <div key={item.id} className="mobile-card mobile-card-pad">
+                <div className="mobile-row">
+                  <div>
+                    <span className={statusChipClass(item.status)}>{item.status}</span>
+                    <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.actionItem}</h3>
+                    <p className="mobile-subtitle">{planningAssigneeLabel(assignees, item.assignedToUserId, item.assignedToTempUserId)}</p>
+                    <p className="mobile-subtitle">{item.followupType || "GENERAL"} / Due {item.dueDate} / {item.priority}</p>
+                  </div>
+                  <AlarmClock color="#2e7d43" />
+                </div>
+                {item.remarks && <p className="mobile-subtitle" style={{ marginTop: 8 }}>{item.remarks}</p>}
+                <div className="mobile-action-row">
+                  {canUpdateFollowup && item.status !== "CLOSED" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.closeFollowup(projectNumber, item.id, "Closed from mobile web"); await loadCurrent(); }}>Close</button>}
+                  {canUpdateFollowup && item.status === "CLOSED" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.reopenFollowup(projectNumber, item.id); await loadCurrent(); }}>Reopen</button>}
+                  {canCreateTask && !item.linkedTaskId && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.convertFollowupToTask(projectNumber, item.id); await loadCurrent(); }}>Make Task</button>}
+                  {canDeleteFollowup && <button className="mobile-button danger" type="button" onClick={async () => { await planningExtensionService.deleteFollowup(projectNumber, item.id); await loadCurrent(); }}>Delete</button>}
+                </div>
+              </div>
+            ))}
+            {!loading && followups.length === 0 && <div className="mobile-card mobile-empty">No follow-ups found.</div>}
+          </>
+        )}
+        {mode === "journal" && (
+          <>
+            <div className="mobile-row">
+              <h3 className="mobile-section-title" style={{ margin: 0 }}>Site Journal</h3>
+              {canCreateJournal && <button className="mobile-icon-button" type="button" onClick={() => setShowJournalForm(true)}><Plus size={18} /></button>}
+            </div>
+            {journals.map((item) => (
+              <div key={item.id} className="mobile-card mobile-card-pad">
+                <div className="mobile-row">
+                  <div>
+                    <span className={statusChipClass(item.status)}>{item.status || "DRAFT"}</span>
+                    <h3 className="mobile-title" style={{ marginTop: 8 }}>{item.date} / {item.weather || "Weather"}</h3>
+                    <p className="mobile-subtitle">{item.locationText || "Project-wide"} / Labour {item.laborCount || "-"}</p>
+                  </div>
+                  <CalendarDays color="#2e7d43" />
+                </div>
+                <p className="mobile-subtitle" style={{ marginTop: 8 }}>{item.summary}</p>
+                {(item.photoUrls || []).length > 0 && (
+                  <div className="mobile-photo-strip">
+                    {(item.photoUrls || []).slice(0, 4).map((photo, index) => <img key={`${item.id}-${index}`} src={getPublicFileUrl(photo)} alt="Journal" />)}
+                  </div>
+                )}
+                <div className="mobile-action-row">
+                  {canUpdateJournal && item.status === "DRAFT" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.submitJournal(projectNumber, item.id); await loadCurrent(); }}>Submit</button>}
+                  {canUpdateJournal && item.status === "SUBMITTED" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.lockJournal(projectNumber, item.id); await loadCurrent(); }}>Lock</button>}
+                  {canUpdateJournal && item.status === "LOCKED" && <button className="mobile-button secondary" type="button" onClick={async () => { await planningExtensionService.reopenJournal(projectNumber, item.id); await loadCurrent(); }}>Reopen</button>}
+                  {canUpdateJournal && (
+                    <label className="mobile-button secondary">
+                      <Camera size={18} /> Photos
+                      <input hidden type="file" accept="image/*" capture="environment" multiple onChange={async (event) => { if (event.target.files) { await planningExtensionService.uploadJournalPhotos(projectNumber, item.id, event.target.files); await loadCurrent(); } }} />
+                    </label>
+                  )}
+                  {canDeleteJournal && <button className="mobile-button danger" type="button" onClick={async () => { await planningExtensionService.deleteJournal(projectNumber, item.id); await loadCurrent(); }}>Delete</button>}
+                </div>
+              </div>
+            ))}
+            {!loading && journals.length === 0 && <div className="mobile-card mobile-empty">No journal entries found.</div>}
+          </>
+        )}
+        {showTaskForm && (
+          <MobileSheet title="Create Task" onClose={() => setShowTaskForm(false)}>
+            <div className="mobile-stack">
+              <input className="mobile-input" placeholder="Task title" value={taskForm.title} onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })} />
+              <MobileAssigneeSelect value={taskForm.assignedKey} options={assignees} onChange={(value) => setTaskForm({ ...taskForm, assignedKey: value })} />
+              <div className="mobile-grid-2">
+                <select className="mobile-select" value={taskForm.taskType} onChange={(event) => setTaskForm({ ...taskForm, taskType: event.target.value })}><option>GENERAL</option><option>CHECKLIST</option><option>SCHEDULE</option><option>FOLLOWUP</option><option>ISSUE</option></select>
+                <select className="mobile-select" value={taskForm.priority} onChange={(event) => setTaskForm({ ...taskForm, priority: event.target.value })}><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select>
+              </div>
+              <input className="mobile-input" type="date" value={taskForm.dueDate} onChange={(event) => setTaskForm({ ...taskForm, dueDate: event.target.value })} />
+              <input className="mobile-input" type="datetime-local" value={taskForm.reminderAt} onChange={(event) => setTaskForm({ ...taskForm, reminderAt: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Description" value={taskForm.description} onChange={(event) => setTaskForm({ ...taskForm, description: event.target.value })} />
+              <input className="mobile-input" placeholder="Tags, comma separated" value={taskForm.tags} onChange={(event) => setTaskForm({ ...taskForm, tags: event.target.value })} />
+              <button className="mobile-button" type="button" onClick={createTask}>Create Task</button>
+            </div>
+          </MobileSheet>
+        )}
+        {showFollowupForm && (
+          <MobileSheet title="Create Follow-up" onClose={() => setShowFollowupForm(false)}>
+            <div className="mobile-stack">
+              <input className="mobile-input" placeholder="Action item" value={followupForm.actionItem} onChange={(event) => setFollowupForm({ ...followupForm, actionItem: event.target.value })} />
+              <MobileAssigneeSelect value={followupForm.assignedKey} options={assignees} onChange={(value) => setFollowupForm({ ...followupForm, assignedKey: value })} />
+              <div className="mobile-grid-2">
+                <select className="mobile-select" value={followupForm.followupType} onChange={(event) => setFollowupForm({ ...followupForm, followupType: event.target.value })}><option>GENERAL</option><option>MEETING</option><option>TASK</option><option>RISK</option><option>PROCUREMENT</option><option>QUALITY</option></select>
+                <select className="mobile-select" value={followupForm.priority} onChange={(event) => setFollowupForm({ ...followupForm, priority: event.target.value })}><option>LOW</option><option>MEDIUM</option><option>HIGH</option></select>
+              </div>
+              <input className="mobile-input" type="date" value={followupForm.dueDate} onChange={(event) => setFollowupForm({ ...followupForm, dueDate: event.target.value })} />
+              <input className="mobile-input" type="datetime-local" value={followupForm.reminderAt} onChange={(event) => setFollowupForm({ ...followupForm, reminderAt: event.target.value })} />
+              <input className="mobile-input" placeholder="Meeting / reference" value={followupForm.meetingReference} onChange={(event) => setFollowupForm({ ...followupForm, meetingReference: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Remarks" value={followupForm.remarks} onChange={(event) => setFollowupForm({ ...followupForm, remarks: event.target.value })} />
+              <button className="mobile-button" type="button" onClick={createFollowup}>Create Follow-up</button>
+            </div>
+          </MobileSheet>
+        )}
+        {showJournalForm && (
+          <MobileSheet title="Site Journal Entry" onClose={() => setShowJournalForm(false)}>
+            <div className="mobile-stack">
+              <div className="mobile-grid-2">
+                <input className="mobile-input" type="date" value={journalForm.date} onChange={(event) => setJournalForm({ ...journalForm, date: event.target.value })} />
+                <select className="mobile-select" value={journalForm.weather} onChange={(event) => setJournalForm({ ...journalForm, weather: event.target.value })}><option>SUNNY</option><option>CLOUDY</option><option>RAINY</option><option>FOGGY</option></select>
+              </div>
+              <button className="mobile-button secondary" type="button" onClick={() => setShowJournalLocationPicker(true)}>
+                {selectedJournalLocation ? `${selectedJournalLocationPath || selectedJournalLocation.name} (${selectedJournalLocation.type})` : "Select location from tree"}
+              </button>
+              <input className="mobile-input" placeholder="Labour count" value={journalForm.laborCount} onChange={(event) => setJournalForm({ ...journalForm, laborCount: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Daily summary" value={journalForm.summary} onChange={(event) => setJournalForm({ ...journalForm, summary: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Work done today" value={journalForm.workDoneToday} onChange={(event) => setJournalForm({ ...journalForm, workDoneToday: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Progress notes" value={journalForm.progressNotes} onChange={(event) => setJournalForm({ ...journalForm, progressNotes: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Issues / constraints" value={journalForm.issuesRaised} onChange={(event) => setJournalForm({ ...journalForm, issuesRaised: event.target.value })} />
+              <textarea className="mobile-textarea" placeholder="Tomorrow plan" value={journalForm.tomorrowPlan} onChange={(event) => setJournalForm({ ...journalForm, tomorrowPlan: event.target.value })} />
+              <input className="mobile-input" placeholder="Tags, comma separated" value={journalForm.tags} onChange={(event) => setJournalForm({ ...journalForm, tags: event.target.value })} />
+              <button className="mobile-button" type="button" onClick={saveJournal}>Save Journal</button>
+            </div>
+          </MobileSheet>
+        )}
+        {showJournalLocationPicker && (
+          <MobileSheet title="Select journal location" onClose={() => setShowJournalLocationPicker(false)}>
+            <div className="mobile-tree-list mobile-tree-list-readable">
+              {locationRoots.map((node) => (
+                <MobileLocationPickerTree
+                  key={node.id}
+                  node={node}
+                  childrenMap={childrenMap}
+                  selectedId={journalForm.epsNodeId}
+                  onSelect={(location) => {
+                    setJournalForm((current) => ({ ...current, epsNodeId: String(location.id), locationText: formatLocationPath(location.id, locations, project) }));
+                    setShowJournalLocationPicker(false);
+                  }}
+                />
+              ))}
+            </div>
+          </MobileSheet>
+        )}
       </div>
     </MobileShell>
+  );
+}
+
+function planningAssigneeKey(option: PlanningAssigneeOption) {
+  return `${option.type}:${option.tempUserId || option.userId}`;
+}
+
+function planningAssigneeLabel(
+  options: PlanningAssigneeOption[],
+  userId?: number | null,
+  tempUserId?: number | null,
+) {
+  const found = options.find((option) =>
+    tempUserId ? option.tempUserId === tempUserId : option.userId === userId,
+  );
+  return found?.label || (userId ? `User #${userId}` : "Unassigned");
+}
+
+function MobileAssigneeSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: PlanningAssigneeOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select className="mobile-select" value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Select assignee</option>
+      {options.map((option) => (
+        <option key={planningAssigneeKey(option)} value={planningAssigneeKey(option)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

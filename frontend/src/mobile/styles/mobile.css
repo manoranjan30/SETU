@@ -30,14 +30,14 @@
 
 .mobile-title {
   margin: 0;
-  font-size: 18px;
-  line-height: 22px;
+  font-size: 19px;
+  line-height: 24px;
   font-weight: 800;
 }
 
 .mobile-subtitle {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   color: #5b6e66;
   font-weight: 650;
 }
@@ -133,6 +133,22 @@
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.mobile-kpi-button {
+  min-width: 118px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mobile-kpi-button.danger {
+  border-color: #f3c4bf;
+  background: linear-gradient(135deg, #ffffff, #fff4f2);
+}
+
+.mobile-kpi-button.danger strong {
+  color: #b42318;
 }
 
 .mobile-hero-card {
@@ -445,8 +461,12 @@
 
 .mobile-tree-list {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin-top: 12px;
+}
+
+.mobile-tree-list-readable {
+  gap: 10px;
 }
 
 .mobile-tree-node {
@@ -465,8 +485,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 48px;
-  padding: 9px 10px;
+  min-height: 54px;
+  padding: 10px 11px;
   cursor: pointer;
   list-style: none;
 }
@@ -483,16 +503,18 @@
 }
 
 .mobile-tree-node summary strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 18px;
 }
 
 .mobile-tree-node summary small {
   grid-column: 2;
   color: #667a71;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -507,7 +529,8 @@
 }
 
 .mobile-tree-node summary button {
-  min-height: 30px;
+  min-height: 34px;
+  min-width: 72px;
   border: 1px solid #c9ded0;
   border-radius: 12px;
   background: #eff9f1;
@@ -518,8 +541,10 @@
 
 .mobile-tree-children {
   display: grid;
-  gap: 6px;
-  padding: 0 8px 8px 20px;
+  gap: 8px;
+  padding: 0 8px 9px 18px;
+  border-left: 2px solid #e4eee8;
+  margin-left: 12px;
 }
 
 .mobile-activity-tree {
@@ -849,6 +874,7 @@
   background: #ffffff;
   color: #17231f;
   font-size: 16px;
+  line-height: 22px;
   outline: none;
 }
 
@@ -1045,14 +1071,14 @@
 }
 
 .mobile-notification-item strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
 }
 
 .mobile-notification-item small {
   margin-top: 2px;
   color: #64766e;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 

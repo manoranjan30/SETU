@@ -29,6 +29,7 @@ import 'package:setu_mobile/features/quality/presentation/pages/snag_list_page.d
 import 'package:setu_mobile/features/quality/presentation/pages/materials_testing_page.dart';
 import 'package:setu_mobile/features/ehs/presentation/pages/ehs_hub_page.dart';
 import 'package:setu_mobile/features/design/presentation/pages/design_register_page.dart';
+import 'package:setu_mobile/features/planning/presentation/pages/planning_hub_page.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/pages/tower_lens_page.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/shared/widgets/connectivity_banner.dart';
@@ -122,9 +123,13 @@ class _DashboardViewState extends State<_DashboardView> {
         ));
         break;
       case 'progress_approvals':
-        // Progress approvals page manages its own cubit internally
         Navigator.push(context, FadeSlideRoute(
           child: ProgressApprovalsPage(projectId: project.id, projectName: project.name),
+        ));
+        break;
+      case 'planning':
+        Navigator.push(context, FadeSlideRoute(
+          child: PlanningHubPage(project: project),
         ));
         break;
       case 'ehs_incidents':
@@ -737,6 +742,15 @@ class _ModuleGrid extends StatelessWidget {
           color: const Color(0xFF065F46),
           onTap: () => _goLabor(context),
         ),
+      // Planning — Schedule, Issues, WO Linker, Micro Schedule
+      _ModuleDef(
+        icon: Icons.timeline_outlined,
+        label: 'Planning',
+        color: const Color(0xFF4F46E5),
+        onTap: () => Navigator.push(context, FadeSlideRoute(
+          child: PlanningHubPage(project: project),
+        )),
+      ),
       // Design register — drawing register with Open With for DWG/PDF files (available to all)
       _ModuleDef(
         icon: Icons.architecture_outlined,
