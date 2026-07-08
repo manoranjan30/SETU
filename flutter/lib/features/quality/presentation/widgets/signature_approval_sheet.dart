@@ -122,8 +122,10 @@ class SignatureApprovalSheet extends StatefulWidget {
     BuildContext context, {
     required String stageName,
     String? pendingDisplay,
+    int? projectId,
     required void Function(
-            String signatureData, String signedBy, String? comments)
+            String signatureData, String signedBy, String? comments,
+            [String? approvalDate])
         onSubmit,
   }) {
     final bloc = context.read<QualityApprovalBloc>();
@@ -143,7 +145,10 @@ class SignatureApprovalSheet extends StatefulWidget {
         child: SignatureApprovalSheet(
           title: 'Approve Stage: $stageName',
           subtitle: pendingDisplay != null ? 'Pending: $pendingDisplay' : null,
-          onSubmit: onSubmit,
+          projectId: projectId,
+          onSubmit: (sig, by, comments) => onSubmit(sig, by, comments),
+          onSubmitWithDate: (sig, by, comments, date) =>
+              onSubmit(sig, by, comments, date),
         ),
       ),
     );
@@ -412,7 +417,41 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
           else
             const SizedBox(height: 8),
 
+          // Approval date — only shown when project backdating is enabled
+          if (_backdatingEnabled) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () async {
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: _approvalDate ?? DateTime.now(),
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now(), // future dates rejected by backend
+                );
+                if (d != null) setState(() => _approvalDate = d);
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Approval Date (optional — today if not set)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+                ),
+                child: Text(
+                  _approvalDate == null
+                      ? 'Today (default)'
+                      : '${_approvalDate!.day.toString().padLeft(2,'0')}/${_approvalDate!.month.toString().padLeft(2,'0')}/${_approvalDate!.year}',
+                  style: TextStyle(
+                    color: _approvalDate == null ? Colors.grey.shade500 : null,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ],
+
           // Optional comments
+          const SizedBox(height: 8),
           TextField(
             controller: _commentsCtrl,
             maxLines: 2,

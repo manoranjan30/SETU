@@ -97,6 +97,10 @@ class RaiseRfi extends QualityRequestEvent {
   // bind to the new inspection — see RfiAttachmentDraft.
   final List<String> attachmentDraftIds;
 
+  /// Optional backdated request date (yyyy-MM-dd). Only included in the
+  /// payload when the project has QUALITY_RFI_BACKDATING enabled.
+  final String? requestDate;
+
   const RaiseRfi({
     required this.projectId,
     required this.epsNodeId,
@@ -115,6 +119,7 @@ class RaiseRfi extends QualityRequestEvent {
     this.goDetails,
     this.relatedChecklistInspectionIds = const [],
     this.attachmentDraftIds = const [],
+    this.requestDate,
   });
   @override
   List<Object?> get props => [
@@ -823,6 +828,9 @@ class QualityRequestBloc
             'relatedChecklistInspectionIds': event.relatedChecklistInspectionIds,
           if (event.attachmentDraftIds.isNotEmpty)
             'attachmentDraftIds': event.attachmentDraftIds,
+          // Optional backdated request date — only sent when the project's
+          // QUALITY_RFI_BACKDATING feature is enabled (checked by the caller).
+          if (event.requestDate != null) 'requestDate': event.requestDate,
         },
         priority: 2,
       );

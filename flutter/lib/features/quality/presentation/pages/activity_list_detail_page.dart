@@ -874,6 +874,10 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
   // this RFI exists, then bound at create time via attachmentDraftIds.
   List<RfiAttachmentDraft> _attachmentDrafts = const [];
 
+  // Backdating: optional manual request date when project setting allows it.
+  bool _backdatingEnabled = false;
+  DateTime? _requestDate; // null = use today (backend default)
+
   bool get _isUnit => widget.activity.applicabilityLevel == 'UNIT';
   bool get _isFloor => !_isUnit;
   bool get _isAdditionalGo => widget.partNo != null;
@@ -886,6 +890,18 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     _loadVendors();
     if (_isUnit) _loadUnits();
     if (_isFloor) _loadRelatedOptions();
+    _loadBackdatingSettings();
+  }
+
+  Future<void> _loadBackdatingSettings() async {
+    try {
+      final settings = await sl<SetuApiClient>().getProjectDateSettings(widget.projectId);
+      if (mounted) {
+        setState(() => _backdatingEnabled = settings['enabled'] as bool? ?? false);
+      }
+    } catch (_) {
+      // Non-fatal — feature stays disabled
+    }
   }
 
   @override
@@ -1080,6 +1096,9 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
     final vendorId = _selectedVendor?['id'] as int?;
     final vendorName = _selectedVendor?['name'] as String?;
     final relatedIds = _selectedRelatedIds.toList();
+    final requestDateStr = (_backdatingEnabled && _requestDate != null)
+        ? '${_requestDate!.year}-${_requestDate!.month.toString().padLeft(2,'0')}-${_requestDate!.day.toString().padLeft(2,'0')}'
+        : null;
     final attachmentIds = _attachmentDrafts
         .where((d) => d.status == DraftUploadStatus.uploaded && d.serverAttachmentId != null)
         .map((d) => d.serverAttachmentId!)
@@ -1107,6 +1126,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
           vendorName: vendorName,
           elementName: elementName,
           attachmentDraftIds: singleUnitAttachmentIds,
+          requestDate: requestDateStr,
         ));
       }
     } else {
@@ -1133,6 +1153,7 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
         goDetails: goDetails,
         relatedChecklistInspectionIds: relatedIds,
         attachmentDraftIds: attachmentIds,
+        requestDate: requestDateStr,
       ));
     }
     Navigator.pop(context);
@@ -1532,6 +1553,37 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
                 hintText: 'Add any comments for the inspector…',
               ),
             ),
+            // Backdated request date — only shown when the project setting enables it
+            if (_backdatingEnabled) ...[
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: _requestDate ?? DateTime.now(),
+                    firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                    lastDate: DateTime.now(),
+                  );
+                  if (d != null) setState(() => _requestDate = d);
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'RFI Request Date (optional — today if not set)',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+                  ),
+                  child: Text(
+                    _requestDate == null
+                        ? 'Today (default)'
+                        : '${_requestDate!.day.toString().padLeft(2,'0')}/${_requestDate!.month.toString().padLeft(2,'0')}/${_requestDate!.year}',
+                    style: TextStyle(
+                      color: _requestDate == null ? Colors.grey.shade500 : null,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
