@@ -33,8 +33,12 @@ import { getPublicFileUrl } from "../../api/baseUrl";
 import SignatureModal from "../../components/quality/SignatureModal";
 import ClearanceDocumentAttachments from "../../components/quality/ClearanceDocumentAttachments";
 import RfiAttachmentManager from "../../components/quality/RfiAttachmentManager";
+import RelatedChecklistTree from "../../components/quality/RelatedChecklistTree";
 import { qualityService } from "../../services/quality.service";
-import type { QualityInspectionAttachment } from "../../types/quality";
+import type {
+  QualityInspectionAttachment,
+  RelatedChecklistOption,
+} from "../../types/quality";
 import { QUALITY_OBSERVATION_RATINGS } from "../../config/qualityObservationRatings";
 
 interface QualityInspection {
@@ -603,6 +607,14 @@ export default function QualityApprovalsPage() {
     useState<any>(null);
   const [loadingRelatedInspection, setLoadingRelatedInspection] =
     useState(false);
+  const [relatedChecklistGroups, setRelatedChecklistGroups] = useState<
+    RelatedChecklistOption[]
+  >([]);
+  const [relatedChecklistInspectionIds, setRelatedChecklistInspectionIds] =
+    useState<number[]>([]);
+  const [loadingRelatedChecklists, setLoadingRelatedChecklists] =
+    useState(false);
+  const [savingRelatedChecklists, setSavingRelatedChecklists] = useState(false);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -675,6 +687,7 @@ export default function QualityApprovalsPage() {
     globalEnabled: boolean;
     projectEnabled: boolean;
     enabled: boolean;
+    projectOverride?: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -738,6 +751,9 @@ export default function QualityApprovalsPage() {
   );
   const canDelegateInspection = hasPermission(
     PermissionCode.QUALITY_INSPECTION_DELEGATE,
+  );
+  const canUpdateInspection = hasPermission(
+    PermissionCode.QUALITY_INSPECTION_UPDATE,
   );
   const canApprovePourCard = hasPermission(
     PermissionCode.QUALITY_POUR_CARD_APPROVE,
@@ -956,6 +972,56 @@ export default function QualityApprovalsPage() {
       setLegacyObservations([]);
     }
   }, [selectedInspectionId, refreshKey]);
+
+  useEffect(() => {
+    const detail = inspectionDetail;
+    if (!detail?.id) {
+      setRelatedChecklistGroups([]);
+      setRelatedChecklistInspectionIds([]);
+      return;
+    }
+
+    setRelatedChecklistInspectionIds(detail.relatedChecklistInspectionIds || []);
+
+    if (
+      !projectId ||
+      !detail.epsNodeId ||
+      detail.status === "APPROVED" ||
+      detail.isLocked
+    ) {
+      setRelatedChecklistGroups([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingRelatedChecklists(true);
+    qualityService
+      .getRelatedChecklistOptions(
+        Number(projectId),
+        Number(detail.epsNodeId),
+        Number(detail.id),
+      )
+      .then((groups) => {
+        if (!cancelled) setRelatedChecklistGroups(groups);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedChecklistGroups([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRelatedChecklists(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    inspectionDetail?.id,
+    inspectionDetail?.epsNodeId,
+    inspectionDetail?.status,
+    inspectionDetail?.isLocked,
+    inspectionDetail?.relatedChecklistInspectionIds,
+    projectId,
+  ]);
 
   useEffect(() => {
     const inspectionId = inspectionDetail?.id;
@@ -2892,6 +2958,43 @@ export default function QualityApprovalsPage() {
     return observations.filter((o) => o.status !== "CLOSED").length;
   }, [observations]);
 
+  const canEditRelatedChecklistLinks = Boolean(
+    inspectionDetail?.id &&
+      inspectionDetail.status !== "APPROVED" &&
+      !inspectionDetail.isLocked &&
+      canUpdateInspection,
+  );
+
+  const saveRelatedChecklistLinks = async () => {
+    if (!inspectionDetail?.id || !canEditRelatedChecklistLinks) return;
+    setSavingRelatedChecklists(true);
+    try {
+      const updated = await qualityService.updateInspectionRelatedChecklists(
+        inspectionDetail.id,
+        relatedChecklistInspectionIds,
+      );
+      setInspectionDetail((current: any) =>
+        current
+          ? {
+              ...current,
+              relatedChecklistInspectionIds:
+                updated.relatedChecklistInspectionIds || [],
+              relatedChecklistInspections:
+                updated.relatedChecklistInspections || [],
+            }
+          : current,
+      );
+      setRefreshKey((key) => key + 1);
+    } catch (error: any) {
+      alert(
+        error.response?.data?.message ||
+          "Failed to update related checklist links.",
+      );
+    } finally {
+      setSavingRelatedChecklists(false);
+    }
+  };
+
   const cardReadiness = useMemo(() => {
     const requiresPourCard = requiresPourCardForSelected;
     const requiresPrePourClearance = requiresPourClearanceForSelected;
@@ -4567,7 +4670,8 @@ export default function QualityApprovalsPage() {
                     </div>
                     {(inspectionDetail.goDetails ||
                       inspectionDetail.relatedChecklistInspections?.length ||
-                      inspectionDetail.attachments?.length) && (
+                      inspectionDetail.attachments?.length ||
+                      canEditRelatedChecklistLinks) && (
                       <div className="mt-3 max-w-4xl rounded-lg border border-border-subtle bg-surface-base p-3 text-sm">
                         {inspectionDetail.goDetails ? (
                           <div>
@@ -4623,6 +4727,54 @@ export default function QualityApprovalsPage() {
                                 ),
                               )}
                             </div>
+                          </div>
+                        ) : null}
+                        {canEditRelatedChecklistLinks ? (
+                          <div
+                            className={
+                              inspectionDetail.goDetails ||
+                              inspectionDetail.relatedChecklistInspections
+                                ?.length
+                                ? "mt-3 border-t border-border-subtle pt-3"
+                                : ""
+                            }
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="text-xs font-semibold uppercase text-text-muted">
+                                  Link Previous Checklist RFIs
+                                </div>
+                                <p className="mt-1 text-xs text-text-muted">
+                                  Available until final approval. Links are
+                                  locked after this RFI becomes approved.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void saveRelatedChecklistLinks()}
+                                disabled={savingRelatedChecklists}
+                                className="rounded-lg border border-secondary bg-secondary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                {savingRelatedChecklists
+                                  ? "Saving..."
+                                  : "Save Links"}
+                              </button>
+                            </div>
+                            <div className="mt-2">
+                              <RelatedChecklistTree
+                                groups={relatedChecklistGroups}
+                                selectedIds={relatedChecklistInspectionIds}
+                                onChange={setRelatedChecklistInspectionIds}
+                                loading={loadingRelatedChecklists}
+                              />
+                            </div>
+                          </div>
+                        ) : inspectionDetail.status === "APPROVED" &&
+                          inspectionDetail.relatedChecklistInspections
+                            ?.length ? (
+                          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                            Related checklist links are locked after final
+                            approval.
                           </div>
                         ) : null}
                         {inspectionDetail.attachments?.length ? (

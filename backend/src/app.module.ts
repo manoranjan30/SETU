@@ -76,6 +76,11 @@ import {
   ProjectTaskComment,
   SiteJournalEntry,
 } from './planning/entities/planning-extension.entity';
+import {
+  PlanningCustomTracker,
+  PlanningCustomTrackerField,
+  PlanningCustomTrackerRecord,
+} from './planning/entities/custom-tracker.entity';
 
 import { ResourcesModule } from './resources/resources.module';
 import { ResourceMaster } from './resources/entities/resource-master.entity';
@@ -296,6 +301,9 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         ProjectTaskComment,
         FollowUpAction,
         SiteJournalEntry,
+        PlanningCustomTracker,
+        PlanningCustomTrackerField,
+        PlanningCustomTrackerRecord,
         // Resources
         ResourceMaster,
         AnalysisTemplate,

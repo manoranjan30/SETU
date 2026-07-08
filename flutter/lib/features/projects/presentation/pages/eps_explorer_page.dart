@@ -205,9 +205,12 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
     // executionReady returns ALL descendant activities — activities for child
     // nodes are accessible by drilling into those children and should not
     // appear at a parent level.
+    // Sort by `sequence` so activities appear in the same order as the schedule
+    // (the API response order is not guaranteed to match schedule sequence).
     final directActivities = state.activities
         .where((a) => a.epsNodeId == state.currentNode.id)
-        .toList();
+        .toList()
+      ..sort((a, b) => (a.sequence ?? 0).compareTo(b.sequence ?? 0));
 
     return ListView(
       padding: const EdgeInsets.all(AppDimensions.paddingMD),

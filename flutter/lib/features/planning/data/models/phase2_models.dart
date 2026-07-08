@@ -376,6 +376,7 @@ class SiteJournalEntry {
   final WeatherCondition? weather;
   final String? journalType;
   final String? locationText;
+  final int? epsNodeId;
   final String summary;
   final String? workDoneToday;
   final String? progressNotes;
@@ -398,7 +399,7 @@ class SiteJournalEntry {
 
   const SiteJournalEntry({
     required this.id, required this.projectId, required this.date,
-    this.authorName, this.weather, this.journalType, this.locationText,
+    this.authorName, this.weather, this.journalType, this.locationText, this.epsNodeId,
     required this.summary, this.workDoneToday, this.progressNotes,
     this.issuesRaised, this.safetyObservations, this.qualityObservations,
     this.decisionsTaken, this.instructionsGiven, this.materialReceived,
@@ -420,6 +421,7 @@ class SiteJournalEntry {
       weather: j['weather'] != null ? WeatherX.fromApi(j['weather'] as String) : null,
       journalType: j['journalType'] as String?,
       locationText: j['locationText'] as String?,
+      epsNodeId: j['epsNodeId'] as int?,
       summary: j['summary'] as String? ?? '',
       workDoneToday: j['workDoneToday'] as String?,
       progressNotes: j['progressNotes'] as String?,

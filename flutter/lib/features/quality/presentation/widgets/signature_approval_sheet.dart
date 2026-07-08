@@ -199,14 +199,9 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
   }
 
   Future<void> _loadBackdatingSettings() async {
-    try {
-      final settings = await sl<SetuApiClient>().getProjectDateSettings(widget.projectId!);
-      if (mounted) {
-        setState(() => _backdatingEnabled = settings['enabled'] as bool? ?? false);
-      }
-    } catch (_) {
-      // Non-fatal — feature simply stays disabled if the endpoint fails.
-    }
+    // Always show the approval date picker — backend validates dates and the
+    // field is optional (omitting it means the backend uses current timestamp).
+    if (mounted) setState(() => _backdatingEnabled = true);
   }
 
   Future<void> _loadSavedSignature() async {

@@ -83,6 +83,9 @@ export class ExecutionProgressEntry {
   @Column({ type: 'text', nullable: true })
   remarks: string | null;
 
+  @Column({ type: 'text', array: true, default: () => 'ARRAY[]::text[]' })
+  photoUrls: string[];
+
   @Column({
     type: 'enum',
     enum: ExecutionProgressEntryStatus,

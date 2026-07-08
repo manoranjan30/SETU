@@ -293,7 +293,13 @@ const ProgressEntry = () => {
               },
             }))
           : [],
-      }));
+      })).sort((a: any, b: any) => {
+        const pathCompare = String(a.wbsPath || "").localeCompare(String(b.wbsPath || ""), undefined, { numeric: true });
+        if (pathCompare !== 0) return pathCompare;
+        const startCompare = String(a.startDatePlanned || "").localeCompare(String(b.startDatePlanned || ""));
+        if (startCompare !== 0) return startCompare;
+        return String(a.activityCode || "").localeCompare(String(b.activityCode || ""), undefined, { numeric: true });
+      });
 
       setActivities(formattedActivities);
       // End of Grouping Replacement

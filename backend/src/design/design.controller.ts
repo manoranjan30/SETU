@@ -85,6 +85,9 @@ export class DesignController {
       drawingNumber: string;
       title: string;
       status?: DrawingStatus | string;
+      targetReleaseDate?: string;
+      actualReleaseDate?: string;
+      responsibleDiscipline?: string;
     },
   ) {
     return this.designService.createRegisterItem({
@@ -93,6 +96,9 @@ export class DesignController {
       drawingNumber: body.drawingNumber,
       title: body.title,
       status: body.status,
+      targetReleaseDate: body.targetReleaseDate || null,
+      actualReleaseDate: body.actualReleaseDate || null,
+      responsibleDiscipline: body.responsibleDiscipline || null,
     });
   }
 
@@ -201,6 +207,9 @@ export class DesignController {
       drawingNumber?: string;
       title?: string;
       status?: DrawingStatus | string;
+      targetReleaseDate?: string | null;
+      actualReleaseDate?: string | null;
+      responsibleDiscipline?: string | null;
     },
   ) {
     return this.designService.updateRegisterItem(registerId, {

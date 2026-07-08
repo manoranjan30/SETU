@@ -14,6 +14,9 @@ interface CreateDrawingModalProps {
     title: string;
     category: { id: number };
     status: string;
+    targetReleaseDate?: string | null;
+    actualReleaseDate?: string | null;
+    responsibleDiscipline?: string | null;
   } | null;
 }
 
@@ -35,6 +38,9 @@ const CreateDrawingModal = ({
   const [drawingNumber, setDrawingNumber] = useState("");
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState("PLANNED");
+  const [targetReleaseDate, setTargetReleaseDate] = useState("");
+  const [actualReleaseDate, setActualReleaseDate] = useState("");
+  const [responsibleDiscipline, setResponsibleDiscipline] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -50,6 +56,9 @@ const CreateDrawingModal = ({
         setTitle(initialData.title);
         setStatus(initialData.status || "PLANNED");
         setCategoryId(initialData.category.id);
+        setTargetReleaseDate(initialData.targetReleaseDate || "");
+        setActualReleaseDate(initialData.actualReleaseDate || "");
+        setResponsibleDiscipline(initialData.responsibleDiscipline || "");
         setFile(null); // Files handled separately for edit
       } else {
         // Reset form
@@ -57,6 +66,9 @@ const CreateDrawingModal = ({
         setTitle("");
         setStatus("PLANNED");
         setCategoryId("");
+        setTargetReleaseDate("");
+        setActualReleaseDate("");
+        setResponsibleDiscipline("");
         setFile(null);
       }
       setError("");
@@ -90,6 +102,9 @@ const CreateDrawingModal = ({
           drawingNumber,
           title,
           status,
+          targetReleaseDate: targetReleaseDate || null,
+          actualReleaseDate: actualReleaseDate || null,
+          responsibleDiscipline: responsibleDiscipline.trim() || null,
         });
 
         // If file is selected in edit mode, it's a new revision (upload separate handled?)
@@ -108,6 +123,9 @@ const CreateDrawingModal = ({
           drawingNumber,
           title,
           status,
+          targetReleaseDate: targetReleaseDate || null,
+          actualReleaseDate: actualReleaseDate || null,
+          responsibleDiscipline: responsibleDiscipline.trim() || null,
         });
 
         const newRegisterId = res.data.id;
@@ -250,6 +268,44 @@ const CreateDrawingModal = ({
                 <option value="ADVANCE_COPY">ADVANCE COPY</option>
                 <option value="REFERENCE_ONLY">REFERENCE ONLY</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">
+                Responsible Discipline
+              </label>
+              <input
+                type="text"
+                value={responsibleDiscipline}
+                onChange={(e) => setResponsibleDiscipline(e.target.value)}
+                className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                placeholder="e.g. Architecture / Structural / MEP"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Target Release Date
+                </label>
+                <input
+                  type="date"
+                  value={targetReleaseDate}
+                  onChange={(e) => setTargetReleaseDate(e.target.value)}
+                  className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Actual Release Date
+                </label>
+                <input
+                  type="date"
+                  value={actualReleaseDate}
+                  onChange={(e) => setActualReleaseDate(e.target.value)}
+                  className="w-full border border-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                />
+              </div>
             </div>
 
             {!isEditMode && (

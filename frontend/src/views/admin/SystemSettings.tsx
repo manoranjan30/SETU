@@ -51,6 +51,18 @@ interface ExportHistoryRow {
   createdAt: string;
 }
 
+interface RfiDateProjectSetting {
+  projectId: number;
+  projectProfileId: number;
+  projectCode?: string | null;
+  projectName: string;
+  globalEnabled: boolean;
+  projectEnabled: boolean;
+  enabled: boolean;
+  projectOverride?: string | null;
+  projectSettingKey: string;
+}
+
 const SystemSettings = () => {
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [mobileAppInfo, setMobileAppInfo] = useState<MobileAppInfo | null>(
@@ -63,6 +75,13 @@ const SystemSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [apkUploading, setApkUploading] = useState(false);
+  const [rfiProjectSettings, setRfiProjectSettings] = useState<
+    RfiDateProjectSetting[]
+  >([]);
+  const [loadingRfiProjects, setLoadingRfiProjects] = useState(false);
+  const [savingRfiProjectId, setSavingRfiProjectId] = useState<number | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -103,6 +122,13 @@ const SystemSettings = () => {
       setSettings((prev) =>
         prev.map((s) => (s.key === key ? { ...s, value } : s)),
       );
+      if (key === "QUALITY_RFI_BACKDATING_ENABLED") {
+        if (value === "true") {
+          fetchRfiProjectSettings();
+        } else {
+          setRfiProjectSettings([]);
+        }
+      }
       setSuccess(`Setting updated successfully`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (e) {
@@ -122,6 +148,64 @@ const SystemSettings = () => {
       setExportHistory(Array.isArray(response.data) ? response.data : []);
     } catch {
       setExportHistory([]);
+    }
+  };
+
+  const fetchRfiProjectSettings = async () => {
+    setLoadingRfiProjects(true);
+    try {
+      const response = await api.get(
+        "/quality/inspections/project-date-settings-list",
+        {
+          headers: { "X-Setu-Silent-Loader": "true" },
+        },
+      );
+      setRfiProjectSettings(
+        Array.isArray(response.data?.projects) ? response.data.projects : [],
+      );
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.message ||
+          "Failed to load project RFI date settings.",
+      );
+      setTimeout(() => setError(null), 3000);
+      setRfiProjectSettings([]);
+    } finally {
+      setLoadingRfiProjects(false);
+    }
+  };
+
+  const updateProjectRfiDateSetting = async (
+    projectId: number,
+    enabled: boolean,
+  ) => {
+    setSavingRfiProjectId(projectId);
+    try {
+      const response = await api.patch(
+        "/quality/inspections/project-date-settings",
+        { enabled },
+        {
+          params: { projectId },
+          headers: { "X-Setu-Silent-Loader": "true" },
+        },
+      );
+      setRfiProjectSettings((prev) =>
+        prev.map((project) =>
+          project.projectId === projectId
+            ? { ...project, ...response.data }
+            : project,
+        ),
+      );
+      setSuccess("Project RFI date setting updated successfully");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.message ||
+          "Failed to update project RFI date setting.",
+      );
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setSavingRfiProjectId(null);
     }
   };
 
@@ -185,6 +269,21 @@ const SystemSettings = () => {
     if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
     return `${Math.ceil(size / 1024)} KB`;
   };
+
+  const rfiBackdatingGlobalSetting = settings.find(
+    (setting) => setting.key === "QUALITY_RFI_BACKDATING_ENABLED",
+  );
+  const rfiBackdatingGlobalEnabled =
+    rfiBackdatingGlobalSetting?.value === "true";
+
+  useEffect(() => {
+    if (!loading && rfiBackdatingGlobalEnabled) {
+      fetchRfiProjectSettings();
+    }
+    if (!loading && !rfiBackdatingGlobalEnabled) {
+      setRfiProjectSettings([]);
+    }
+  }, [loading, rfiBackdatingGlobalEnabled]);
 
   if (loading)
     return (
@@ -432,6 +531,107 @@ const SystemSettings = () => {
                 />
               ))}
             </div>
+            {rfiBackdatingGlobalSetting && (
+              <div className="mt-4 overflow-hidden rounded-xl border border-border-default bg-surface-card shadow-sm">
+                <div className="border-b border-border-subtle bg-surface-base px-5 py-4">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-text-primary">
+                        Project-wise Manual RFI Dates
+                      </h3>
+                      <p className="text-xs text-text-muted">
+                        Select the projects where RFI request and approval date
+                        pickers are allowed.
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        rfiBackdatingGlobalEnabled
+                          ? "bg-success-muted text-green-700"
+                          : "bg-warning-muted text-amber-700"
+                      }`}
+                    >
+                      {rfiBackdatingGlobalEnabled
+                        ? "Global enabled"
+                        : "Global disabled"}
+                    </span>
+                  </div>
+                </div>
+                {!rfiBackdatingGlobalEnabled ? (
+                  <div className="p-5 text-sm text-text-muted">
+                    Turn on <strong>QUALITY_RFI_BACKDATING_ENABLED</strong>{" "}
+                    above to enable project-wise selection.
+                  </div>
+                ) : loadingRfiProjects ? (
+                  <div className="p-5 text-sm text-text-muted">
+                    Loading projects...
+                  </div>
+                ) : rfiProjectSettings.length === 0 ? (
+                  <div className="p-5 text-sm text-text-muted">
+                    No projects found for configuration.
+                  </div>
+                ) : (
+                  <div className="max-h-[360px] overflow-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="sticky top-0 bg-surface-base text-xs uppercase text-text-muted">
+                        <tr>
+                          <th className="px-5 py-3 text-left">Enable</th>
+                          <th className="px-5 py-3 text-left">Project</th>
+                          <th className="px-5 py-3 text-left">Code</th>
+                          <th className="px-5 py-3 text-left">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rfiProjectSettings.map((project) => (
+                          <tr
+                            key={project.projectId}
+                            className="border-t border-border-subtle"
+                          >
+                            <td className="px-5 py-3">
+                              <input
+                                type="checkbox"
+                                checked={project.projectEnabled}
+                                disabled={
+                                  savingRfiProjectId === project.projectId
+                                }
+                                onChange={(event) =>
+                                  updateProjectRfiDateSetting(
+                                    project.projectId,
+                                    event.target.checked,
+                                  )
+                                }
+                                className="h-4 w-4 rounded border-border-default text-primary focus:ring-primary"
+                              />
+                            </td>
+                            <td className="px-5 py-3 font-medium text-text-secondary">
+                              {project.projectName}
+                            </td>
+                            <td className="px-5 py-3 text-text-muted">
+                              {project.projectCode || "-"}
+                            </td>
+                            <td className="px-5 py-3">
+                              <span
+                                className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                  project.enabled
+                                    ? "bg-success-muted text-green-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {savingRfiProjectId === project.projectId
+                                  ? "Saving..."
+                                  : project.enabled
+                                    ? "Date picker enabled"
+                                    : "Date picker hidden"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
 

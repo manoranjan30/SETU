@@ -455,9 +455,10 @@ class _ChecklistTab extends StatelessWidget {
         // Pour Card / Pre-Pour Clearance quick-access panel
         if (state.inspection.requiresPourCard || state.inspection.requiresPourClearanceCard)
           _PourCardPanel(inspection: state.inspection),
-        // Linked checklists — previously approved RFIs referenced by this inspection
-        if (state.inspection.relatedChecklistInspectionIds.isNotEmpty)
-          _LinkedChecklistsSection(inspection: state.inspection),
+        // Linked checklists — previously approved RFIs referenced by this inspection.
+        // Shows linked cards (read-only after approval) and an Edit button before
+        // final approval so the approver can add/remove related checklist links.
+        _LinkedChecklistsSection(inspection: state.inspection),
         // Workflow approval timeline shown only when NOT using stage-level approval
         if (hasWorkflow && !usesStageApproval) _WorkflowTimeline(workflow: state.workflow!),
         if (state.stages.isEmpty)
@@ -645,13 +646,29 @@ class _LinkedChecklistsSection extends StatefulWidget {
 }
 
 class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
-  bool _expanded = false;
+  bool _expanded = true; // default expanded so approver sees links immediately
+
+  bool get _canEdit =>
+      widget.inspection.status != InspectionStatus.approved &&
+      widget.inspection.status != InspectionStatus.provisionallyApproved &&
+      widget.inspection.status != InspectionStatus.reversed;
+
+  void _openEditor(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => BlocProvider.value(
+        value: context.read<QualityApprovalBloc>(),
+        child: _RelatedChecklistEditor(inspection: widget.inspection),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    // The detail response already embeds full summaries for every linked
-    // id (see QualityInspection.relatedChecklistInspections) — no second
-    // round-trip needed to render these cards.
     final linked = widget.inspection.relatedChecklistInspections;
     final count = widget.inspection.relatedChecklistInspectionIds.length;
     return Padding(
@@ -666,43 +683,59 @@ class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            InkWell(
-              onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Icon(Icons.link_rounded, size: 14, color: Colors.amber.shade800),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Linked Checklists ($count)',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.amber.shade900,
-                        ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+              child: Row(
+                children: [
+                  Icon(Icons.link_rounded, size: 14, color: Colors.amber.shade800),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Linked Checklists ($count)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.amber.shade900,
                       ),
                     ),
-                    Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 18,
-                      color: Colors.amber.shade800,
+                  ),
+                  // Edit links — only before final approval
+                  if (_canEdit)
+                    TextButton.icon(
+                      onPressed: () => _openEditor(context),
+                      icon: const Icon(Icons.edit_outlined, size: 13),
+                      label: const Text('Edit Links'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.amber.shade800,
+                        textStyle: const TextStyle(fontSize: 11),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
                     ),
-                  ],
-                ),
+                  InkWell(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 18, color: Colors.amber.shade800,
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (_expanded) ...[
+            if (count == 0 && _canEdit)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                child: Text(
+                  'No linked checklists — tap Edit Links to add previously approved RFIs.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ),
+            if (_expanded && count > 0) ...[
               const Divider(height: 1),
               if (linked.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Text(
-                    'No details available for linked RFIs.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
+                  child: Text('No details available.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                 )
               else
                 ...linked.map((l) => _LinkedInspectionCard(linked: l)),
@@ -710,6 +743,211 @@ class _LinkedChecklistsSectionState extends State<_LinkedChecklistsSection> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bottom sheet for adding/removing related checklist links while an
+/// inspection is pending approval. Uses the same related-options tree as the
+/// Raise RFI dialog but pre-populates with existing linked IDs.
+class _RelatedChecklistEditor extends StatefulWidget {
+  final QualityInspection inspection;
+  const _RelatedChecklistEditor({required this.inspection});
+
+  @override
+  State<_RelatedChecklistEditor> createState() => _RelatedChecklistEditorState();
+}
+
+class _RelatedChecklistEditorState extends State<_RelatedChecklistEditor> {
+  List<Map<String, dynamic>> _groups = [];
+  bool _loading = true;
+  bool _saving = false;
+  Set<int> _selectedIds = {};
+  String _search = '';
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = Set.from(widget.inspection.relatedChecklistInspectionIds);
+    _loadOptions();
+    _searchCtrl.addListener(() => setState(() => _search = _searchCtrl.text.toLowerCase()));
+  }
+
+  @override
+  void dispose() { _searchCtrl.dispose(); super.dispose(); }
+
+  Future<void> _loadOptions() async {
+    try {
+      final raw = await sl<SetuApiClient>().getRelatedChecklistOptions(
+        projectId: widget.inspection.projectId ?? 0,
+        epsNodeId: widget.inspection.epsNodeId ?? 0,
+        excludeInspectionId: widget.inspection.id,
+      );
+      if (mounted) setState(() { _groups = raw; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await sl<SetuApiClient>().updateRelatedChecklists(
+        inspectionId: widget.inspection.id,
+        relatedChecklistInspectionIds: _selectedIds.toList(),
+      );
+      await sl<SetuApiClient>().clearCache();
+      if (!mounted) return;
+      context.read<QualityApprovalBloc>().add(LoadInspectionDetail(widget.inspection));
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Linked checklists updated'), backgroundColor: Colors.green));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e'), backgroundColor: Colors.red.shade700));
+      setState(() => _saving = false);
+    }
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    if (_search.isEmpty) return _groups;
+    return _groups.where((g) {
+      final checklistMatch =
+          (g['checklistName'] as String? ?? '').toLowerCase().contains(_search) ||
+          (g['activityName'] as String? ?? '').toLowerCase().contains(_search) ||
+          (g['checklistNo'] as String? ?? '').toLowerCase().contains(_search);
+      final children = (g['children'] as List<dynamic>?) ?? [];
+      final childMatch = children.any((c) {
+        final m = c as Map<String, dynamic>;
+        return (m['rfiNumber'] as String? ?? '').toLowerCase().contains(_search) ||
+            (m['goLabel'] as String? ?? '').toLowerCase().contains(_search) ||
+            (m['elementName'] as String? ?? '').toLowerCase().contains(_search) ||
+            (m['drawingNo'] as String? ?? '').toLowerCase().contains(_search) ||
+            (m['status'] as String? ?? '').toLowerCase().contains(_search);
+      });
+      return checklistMatch || childMatch;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85, maxChildSize: 0.95, minChildSize: 0.4,
+      expand: false,
+      builder: (_, scrollCtrl) => Column(children: [
+        Center(child: Container(margin: const EdgeInsets.only(top: 12, bottom: 8),
+            width: 40, height: 4,
+            decoration: BoxDecoration(color: Theme.of(context).dividerColor, borderRadius: BorderRadius.circular(2)))),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(children: [
+            const Text('Link Previous Checklist RFIs', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const Spacer(),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
+              child: _saving ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save'),
+            ),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Search checklist, RFI, GO, element…',
+              prefixIcon: Icon(Icons.search, size: 18),
+              isDense: true, border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(vertical: 8),
+            ),
+          ),
+        ),
+        if (_selectedIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Wrap(spacing: 6, runSpacing: 4,
+              children: _selectedIds.map((id) => Chip(
+                label: Text('RFI #$id', style: const TextStyle(fontSize: 11)),
+                deleteIcon: const Icon(Icons.close, size: 14),
+                onDeleted: () => setState(() => _selectedIds.remove(id)),
+                backgroundColor: Colors.amber.shade50,
+                side: BorderSide(color: Colors.amber.shade300),
+                visualDensity: VisualDensity.compact,
+              )).toList()),
+          ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _filtered.isEmpty
+                  ? const Center(child: Text('No related checklists available'))
+                  : ListView.builder(
+                      controller: scrollCtrl,
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                      itemCount: _filtered.length,
+                      itemBuilder: (_, i) {
+                        final group = _filtered[i];
+                        final children = (group['children'] as List<dynamic>?) ?? [];
+                        return Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(color: Theme.of(context).dividerColor),
+                          ),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(group['checklistName'] as String? ?? '',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                Text('${group['activityName'] ?? ''}  ·  ${group['checklistNo'] ?? ''}',
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                              ]),
+                            ),
+                            ...children.map((c) {
+                              final m = c as Map<String, dynamic>;
+                              final inspId = m['inspectionId'] as int? ?? 0;
+                              final selected = _selectedIds.contains(inspId);
+                              final statusStr = m['status'] as String? ?? '';
+                              final statusColor = statusStr == 'APPROVED'
+                                  ? Colors.green.shade700
+                                  : statusStr == 'REJECTED' ? Colors.red.shade700 : Colors.orange.shade700;
+                              return CheckboxListTile(
+                                dense: true,
+                                value: selected,
+                                onChanged: (v) => setState(() =>
+                                    v == true ? _selectedIds.add(inspId) : _selectedIds.remove(inspId)),
+                                title: Text(
+                                  '${m['rfiNumber'] ?? 'RFI #$inspId'}'
+                                  '${m['goLabel'] != null ? '  ·  ${m['goLabel']}' : ''}',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  if (m['elementName'] != null)
+                                    Text('${m['elementName']}${m['drawingNo'] != null ? '  ·  ${m['drawingNo']}' : ''}',
+                                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                                  if (m['goDetails'] != null)
+                                    Text(m['goDetails'] as String, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                                ]),
+                                secondary: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(statusStr, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: statusColor)),
+                                ),
+                              );
+                            }),
+                          ]),
+                        );
+                      },
+                    ),
+        ),
+      ]),
     );
   }
 }
@@ -1229,6 +1467,15 @@ class _StageApprovalMatrix extends StatelessWidget {
   final StageApproval approval;
   const _StageApprovalMatrix({required this.approval});
 
+  static String _fmtApprovalDate(String iso) {
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return '${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')}/${dt.year}';
+    } catch (_) {
+      return iso.split('T').first;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1311,6 +1558,17 @@ class _StageApprovalMatrix extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 9,
                               color: Colors.green.shade600,
+                            ),
+                          ),
+                        ],
+                        // Show approval date when available (from backdated approvals or recorded timestamp)
+                        if (approved && level.approvedAt != null) ...[
+                          const SizedBox(width: 2),
+                          Text(
+                            '· ${_fmtApprovalDate(level.approvedAt!)}',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.green.shade500,
                             ),
                           ),
                         ],

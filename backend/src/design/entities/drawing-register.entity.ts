@@ -61,6 +61,15 @@ export class DrawingRegister {
   @Column({ type: 'timestamp', nullable: true })
   statusUpdatedAt: Date | null;
 
+  @Column({ type: 'date', nullable: true })
+  targetReleaseDate: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  actualReleaseDate: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  responsibleDiscipline: string | null;
+
   // Track the current active revision for quick access
   @Column({ nullable: true })
   currentRevisionId: number;

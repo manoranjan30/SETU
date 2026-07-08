@@ -9,7 +9,11 @@ import {
   Query,
   Patch,
   Delete,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ExecutionService } from './execution.service';
 import { ExecutionBreakdownService } from './execution-breakdown.service';
 import { FEATURES } from '../config/features.config';
@@ -66,6 +70,21 @@ export class ExecutionController {
   @Permissions('EXECUTION.ENTRY.DELETE')
   async deleteLog(@Param('logId') logId: string) {
     return this.service.deleteProgressLog(+logId);
+  }
+
+  @Post('logs/:logId/photos')
+  @Permissions('EXECUTION.ENTRY.UPDATE')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async uploadLogPhotos(
+    @Param('logId') logId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.service.addProgressPhotos(+logId, files);
   }
 
   @Get('breakdown/:activityId/:epsNodeId')

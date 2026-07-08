@@ -17,6 +17,7 @@ import {
   ScrollText,
   HeartPulse,
   ClipboardList,
+  BarChart3,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../../context/AuthContext";
@@ -145,6 +146,12 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
       permission: PermissionCode.PLANNING_TASK_READ,
     },
     {
+      key: "custom_trackers",
+      icon: <BarChart3 size={18} />,
+      label: "Custom Trackers",
+      permission: PermissionCode.PLANNING_CUSTOM_TRACKER_READ,
+    },
+    {
       key: "reports",
       icon: <ScrollText size={18} />,
       label: "Reports",
@@ -216,6 +223,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
           "budget",
           "health",
           "planning_actions",
+          "custom_trackers",
           "reports",
         ].includes(currentView) ? (
           children

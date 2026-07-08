@@ -482,84 +482,78 @@ class _MultiGoProgress extends StatelessWidget {
             runSpacing: 4,
             children: List.generate(totalParts, (i) {
               final partNo = i + 1;
-              final isRaised = raisedPartNos.contains(partNo);
-              // Use goLabel from the matching inspection if available
               final matches = allInspections.where((insp) => insp.partNo == partNo);
               final matchInsp = matches.isEmpty ? null : matches.first;
+              final isRaised = matchInsp != null;
               final goLabel = matchInsp?.goLabel ??
                   (matchInsp?.partLabel?.isNotEmpty == true
                       ? matchInsp!.partLabel!
                       : 'GO $partNo');
-              if (isRaised) {
-                // Already raised — green chip
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+
+              // Status-aware chip colors
+              Color chipColor;
+              Color borderColor;
+              IconData chipIcon;
+              String chipText;
+
+              if (!isRaised) {
+                chipColor = Colors.white;
+                borderColor = onRaisePart != null ? Colors.blue.shade400 : theme.dividerColor;
+                chipIcon = Icons.add_circle_outline;
+                chipText = 'Raise $goLabel';
+              } else {
+                final status = matchInsp!.status;
+                if (status == InspectionStatus.approved ||
+                    status == InspectionStatus.provisionallyApproved) {
+                  chipColor = Colors.amber.shade50;
+                  borderColor = Colors.amber.shade400;
+                  chipIcon = Icons.verified_outlined;
+                  chipText = '$goLabel · Approved';
+                } else if (status == InspectionStatus.rejected) {
+                  chipColor = Colors.red.shade50;
+                  borderColor = Colors.red.shade300;
+                  chipIcon = Icons.cancel_outlined;
+                  chipText = '$goLabel · Rejected';
+                } else {
+                  // pending / partiallyApproved / reversed
+                  chipColor = Colors.green.shade50;
+                  borderColor = Colors.green.shade300;
+                  chipIcon = Icons.pending_outlined;
+                  chipText = '$goLabel · RFI #${matchInsp.id}';
+                }
+              }
+
+              return GestureDetector(
+                onTap: (!isRaised && onRaisePart != null)
+                    ? () => onRaisePart!(partNo, totalParts)
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
+                    color: chipColor,
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.green.shade300),
+                    border: Border.all(color: borderColor),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle_outline,
-                          size: 12, color: Colors.green.shade700),
+                      Icon(chipIcon, size: 12,
+                          color: !isRaised
+                              ? (onRaisePart != null ? Colors.blue.shade700 : theme.disabledColor)
+                              : borderColor),
                       const SizedBox(width: 3),
-                      Text(
-                        matchInsp != null
-                            ? '$goLabel · RFI #${matchInsp.id} Raised'
-                            : '$goLabel Raised',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              } else {
-                // Not yet raised — blue action chip
-                return GestureDetector(
-                  onTap: onRaisePart != null
-                      ? () => onRaisePart!(partNo, totalParts)
-                      : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                          color: onRaisePart != null
-                              ? Colors.blue.shade400
-                              : theme.dividerColor),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_circle_outline,
-                            size: 12,
-                            color: onRaisePart != null
-                                ? Colors.blue.shade700
-                                : theme.disabledColor),
-                        const SizedBox(width: 3),
-                        Text(
-                          'Raise $goLabel',
+                      Text(chipText,
                           style: TextStyle(
                             fontSize: 11,
-                            color: onRaisePart != null
-                                ? Colors.blue.shade700
-                                : theme.disabledColor,
+                            color: !isRaised
+                                ? (onRaisePart != null ? Colors.blue.shade700 : theme.disabledColor)
+                                : borderColor,
                             fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                          )),
+                    ],
                   ),
-                );
-              }
+                ),
+              );
             }),
           ),
         ],

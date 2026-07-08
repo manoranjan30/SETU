@@ -509,7 +509,7 @@ class SetuApiClient {
 
   Future<Map<String, dynamic>> getPlanningActionSummary(int projectId) async {
     try {
-      final response = await _dio.get('/api/planning/projects/$projectId/actions/summary');
+      final response = await _dio.get('/planning/projects/$projectId/actions/summary');
       return response.data as Map<String, dynamic>;
     } catch (_) {
       return {};
@@ -519,7 +519,7 @@ class SetuApiClient {
   // ==================== ASSIGNEE PICKER ====================
 
   Future<List<dynamic>> getAssigneeOptions(int projectId) async {
-    final response = await _dio.get('/api/planning/projects/$projectId/tasks/assignee-options');
+    final response = await _dio.get('/planning/projects/$projectId/tasks/assignee-options');
     return response.data is List ? response.data as List<dynamic> : [];
   }
 
@@ -535,98 +535,98 @@ class SetuApiClient {
   }
 
   Future<List<dynamic>> getTasks(int projectId, {String? subPath}) async {
-    final path = subPath != null ? '/api/planning/projects/$projectId/tasks/$subPath' : '/api/planning/projects/$projectId/tasks';
+    final path = subPath != null ? '/planning/projects/$projectId/tasks/$subPath' : '/planning/projects/$projectId/tasks';
     final response = await _dio.get(path);
     return _unwrapList(response.data);
   }
 
   Future<Map<String, dynamic>> getTask(int projectId, int taskId) async {
-    final response = await _dio.get('/api/planning/projects/$projectId/tasks/$taskId');
+    final response = await _dio.get('/planning/projects/$projectId/tasks/$taskId');
     return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> createTask(int projectId, Map<String, dynamic> data) async {
-    final response = await _dio.post('/api/planning/projects/$projectId/tasks', data: data);
+    final response = await _dio.post('/planning/projects/$projectId/tasks', data: data);
     return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> updateTask(int projectId, int taskId, Map<String, dynamic> data) async {
-    final response = await _dio.patch('/api/planning/projects/$projectId/tasks/$taskId', data: data);
+    final response = await _dio.patch('/planning/projects/$projectId/tasks/$taskId', data: data);
     return response.data as Map<String, dynamic>;
   }
 
   Future<void> updateTaskStatus(int projectId, int taskId, String status) async {
-    await _dio.patch('/api/planning/projects/$projectId/tasks/$taskId/status', data: {'status': status});
+    await _dio.patch('/planning/projects/$projectId/tasks/$taskId/status', data: {'status': status});
   }
 
   Future<void> completeTask(int projectId, int taskId) async {
-    await _dio.post('/api/planning/projects/$projectId/tasks/$taskId/complete');
+    await _dio.post('/planning/projects/$projectId/tasks/$taskId/complete');
   }
 
   Future<void> reopenTask(int projectId, int taskId) async {
-    await _dio.post('/api/planning/projects/$projectId/tasks/$taskId/reopen');
+    await _dio.post('/planning/projects/$projectId/tasks/$taskId/reopen');
   }
 
   Future<void> deleteTask(int projectId, int taskId) async {
-    await _dio.delete('/api/planning/projects/$projectId/tasks/$taskId');
+    await _dio.delete('/planning/projects/$projectId/tasks/$taskId');
   }
 
   Future<List<dynamic>> getTaskComments(int projectId, int taskId) async {
-    final response = await _dio.get('/api/planning/projects/$projectId/tasks/$taskId/comments');
+    final response = await _dio.get('/planning/projects/$projectId/tasks/$taskId/comments');
     return _unwrapList(response.data);
   }
 
   Future<void> addTaskComment(int projectId, int taskId, String comment) async {
-    await _dio.post('/api/planning/projects/$projectId/tasks/$taskId/comments', data: {'comment': comment});
+    await _dio.post('/planning/projects/$projectId/tasks/$taskId/comments', data: {'comment': comment});
   }
 
   // ==================== FOLLOW-UP REGISTER ====================
 
   Future<List<dynamic>> getFollowups(int projectId, {String? subPath}) async {
-    final path = subPath != null ? '/api/planning/projects/$projectId/followups/$subPath' : '/api/planning/projects/$projectId/followups';
+    final path = subPath != null ? '/planning/projects/$projectId/followups/$subPath' : '/planning/projects/$projectId/followups';
     final response = await _dio.get(path);
     return _unwrapList(response.data);
   }
 
   Future<Map<String, dynamic>> createFollowup(int projectId, Map<String, dynamic> data) async {
-    final response = await _dio.post('/api/planning/projects/$projectId/followups', data: data);
+    final response = await _dio.post('/planning/projects/$projectId/followups', data: data);
     return response.data as Map<String, dynamic>;
   }
 
   Future<void> closeFollowup(int projectId, int followupId, {String? remarks}) async {
-    await _dio.post('/api/planning/projects/$projectId/followups/$followupId/close',
+    await _dio.post('/planning/projects/$projectId/followups/$followupId/close',
         data: {if (remarks != null) 'remarks': remarks});
   }
 
   Future<void> reopenFollowup(int projectId, int followupId) async {
-    await _dio.post('/api/planning/projects/$projectId/followups/$followupId/reopen');
+    await _dio.post('/planning/projects/$projectId/followups/$followupId/reopen');
   }
 
   Future<void> snoozeFollowup(int projectId, int followupId, {required String dueDate, required String reminderAt}) async {
-    await _dio.post('/api/planning/projects/$projectId/followups/$followupId/snooze',
+    await _dio.post('/planning/projects/$projectId/followups/$followupId/snooze',
         data: {'dueDate': dueDate, 'reminderAt': reminderAt});
   }
 
   Future<Map<String, dynamic>> convertFollowupToTask(int projectId, int followupId) async {
-    final response = await _dio.post('/api/planning/projects/$projectId/followups/$followupId/convert-to-task');
+    final response = await _dio.post('/planning/projects/$projectId/followups/$followupId/convert-to-task');
     return response.data as Map<String, dynamic>;
   }
 
   Future<void> deleteFollowup(int projectId, int followupId) async {
-    await _dio.delete('/api/planning/projects/$projectId/followups/$followupId');
+    await _dio.delete('/planning/projects/$projectId/followups/$followupId');
   }
 
   // ==================== SITE JOURNAL ====================
 
   Future<List<dynamic>> getJournalEntries(int projectId, {String? search}) async {
-    final response = await _dio.get('/api/planning/projects/$projectId/journal',
+    final response = await _dio.get('/planning/projects/$projectId/journal',
         queryParameters: {if (search != null && search.isNotEmpty) 'q': search});
     return _unwrapList(response.data);
   }
 
   Future<Map<String, dynamic>?> getTodayJournal(int projectId) async {
     try {
-      final response = await _dio.get('/api/planning/projects/$projectId/journal/today');
+      final response = await _dio.get('/planning/projects/$projectId/journal/today');
       return response.data as Map<String, dynamic>?;
     } catch (_) {
       return null;
@@ -635,7 +635,7 @@ class SetuApiClient {
 
   Future<Map<String, dynamic>?> getJournalEntry(int projectId, int journalId) async {
     try {
-      final response = await _dio.get('/api/planning/projects/$projectId/journal/$journalId');
+      final response = await _dio.get('/planning/projects/$projectId/journal/$journalId');
       return response.data as Map<String, dynamic>?;
     } catch (_) {
       return null;
@@ -643,25 +643,25 @@ class SetuApiClient {
   }
 
   Future<Map<String, dynamic>> upsertJournalEntry(int projectId, Map<String, dynamic> data) async {
-    final response = await _dio.post('/api/planning/projects/$projectId/journal', data: data);
+    final response = await _dio.post('/planning/projects/$projectId/journal', data: data);
     return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> updateJournalEntry(int projectId, int journalId, Map<String, dynamic> data) async {
-    final response = await _dio.patch('/api/planning/projects/$projectId/journal/$journalId', data: data);
+    final response = await _dio.patch('/planning/projects/$projectId/journal/$journalId', data: data);
     return response.data as Map<String, dynamic>;
   }
 
   Future<void> submitJournalEntry(int projectId, int journalId) async {
-    await _dio.post('/api/planning/projects/$projectId/journal/$journalId/submit');
+    await _dio.post('/planning/projects/$projectId/journal/$journalId/submit');
   }
 
   Future<void> lockJournalEntry(int projectId, int journalId) async {
-    await _dio.post('/api/planning/projects/$projectId/journal/$journalId/lock');
+    await _dio.post('/planning/projects/$projectId/journal/$journalId/lock');
   }
 
   Future<void> reopenJournalEntry(int projectId, int journalId) async {
-    await _dio.post('/api/planning/projects/$projectId/journal/$journalId/reopen');
+    await _dio.post('/planning/projects/$projectId/journal/$journalId/reopen');
   }
 
   Future<Map<String, dynamic>> uploadJournalPhotos(int projectId, int journalId, List<String> filePaths) async {
@@ -670,7 +670,7 @@ class SetuApiClient {
       files.add(await MultipartFile.fromFile(path, filename: path.split('/').last));
     }
     final response = await _dio.post(
-      '/api/planning/projects/$projectId/journal/$journalId/photos',
+      '/planning/projects/$projectId/journal/$journalId/photos',
       data: FormData.fromMap({'files': files}),
     );
     return response.data as Map<String, dynamic>;
@@ -692,6 +692,25 @@ class SetuApiClient {
   }
 
   // ==================== WO–SCHEDULE LINKER ====================
+
+  /// Links a WO item to a schedule activity via POST /planning/distribute-wo.
+  /// quantity: -1 lets the backend use the full allocated quantity.
+  Future<void> linkWoItemToActivity({
+    required int projectId,
+    required int workOrderItemId,
+    required int activityId,
+    double quantity = -1,
+    String mappingType = 'DIRECT',
+  }) async {
+    await _dio.post('/planning/distribute-wo', data: {
+      'projectId': projectId,
+      'activityId': activityId,
+      'workOrderItemId': workOrderItemId,
+      'quantity': quantity,
+      'mappingType': mappingType,
+      'mappingRules': null,
+    });
+  }
 
   /// Returns the audit of all WO item → activity mappings for the project.
   Future<List<dynamic>> getWoMappings(int projectId) async {
@@ -908,13 +927,31 @@ class SetuApiClient {
 
   /// Returns checklist/activity groups with selectable RFI children for the
   /// "Link Previous Checklist RFIs" tree picker at this project/location.
+  /// Updates the related checklist links on an already-raised inspection.
+  /// Only allowed while inspection.status != APPROVED and !isLocked.
+  Future<Map<String, dynamic>> updateRelatedChecklists({
+    required int inspectionId,
+    required List<int> relatedChecklistInspectionIds,
+  }) async {
+    final response = await _dio.patch(
+      '/quality/inspections/$inspectionId/related-checklists',
+      data: {'relatedChecklistInspectionIds': relatedChecklistInspectionIds},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getRelatedChecklistOptions({
     required int projectId,
     required int epsNodeId,
+    int? excludeInspectionId,
   }) async {
     final response = await _dio.get(
       ApiEndpoints.relatedChecklistOptions,
-      queryParameters: {'projectId': projectId, 'epsNodeId': epsNodeId},
+      queryParameters: {
+        'projectId': projectId,
+        'epsNodeId': epsNodeId,
+        if (excludeInspectionId != null) 'excludeInspectionId': excludeInspectionId,
+      },
     );
     final data = response.data;
     if (data is List) return data.cast<Map<String, dynamic>>();
@@ -927,7 +964,7 @@ class SetuApiClient {
   Future<Map<String, dynamic>> getProjectDateSettings(int projectId) async {
     try {
       final response = await _dio.get(
-        '/api/quality/inspections/project-date-settings',
+        '/quality/inspections/project-date-settings',
         queryParameters: {'projectId': projectId},
       );
       return response.data as Map<String, dynamic>;

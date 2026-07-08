@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
+  MapPin,
   MessageSquare,
   Plus,
   RefreshCw,
@@ -23,12 +24,30 @@ import {
   type ProjectTask,
   type SiteJournalEntry,
 } from "../../services/planning-extension.service";
+import EpsLocationPicker from "../../components/common/EpsLocationPicker";
 
 type Tab = "tasks" | "followups" | "journal";
 type TaskView = "active" | "completed" | "history";
 type FollowupView = "all" | "today" | "overdue" | "history";
 
 const today = () => new Date().toISOString().slice(0, 10);
+const emptyJournalForm = () => ({
+  date: today(),
+  weather: "SUNNY",
+  summary: "",
+  workDoneToday: "",
+  progressNotes: "",
+  issuesRaised: "",
+  safetyObservations: "",
+  qualityObservations: "",
+  decisionsTaken: "",
+  tomorrowPlan: "",
+  laborCount: "",
+  epsNodeId: null as number | null,
+  locationText: "",
+  tags: "",
+  checkpoints: [] as Array<{ text: string; done: boolean; notes: string }>,
+});
 
 export default function PlanningActionsPage() {
   const { projectId } = useParams();
@@ -504,21 +523,7 @@ function JournalPanel({
 }) {
   const [items, setItems] = useState<SiteJournalEntry[]>([]);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<any>({
-    date: today(),
-    weather: "SUNNY",
-    summary: "",
-    workDoneToday: "",
-    progressNotes: "",
-    issuesRaised: "",
-    safetyObservations: "",
-    qualityObservations: "",
-    decisionsTaken: "",
-    tomorrowPlan: "",
-    laborCount: "",
-    locationText: "",
-    tags: "",
-  });
+  const [form, setForm] = useState<any>(emptyJournalForm());
   const load = async () => {
     try {
       setItems(
@@ -539,27 +544,25 @@ function JournalPanel({
       await planningExtensionService.upsertJournal(projectId, {
         ...form,
         laborCount: form.laborCount ? Number(form.laborCount) : null,
+        checkpoints: (form.checkpoints || []).filter((checkpoint: any) =>
+          String(checkpoint.text || "").trim(),
+        ),
       });
-      setForm({
-        date: today(),
-        weather: "SUNNY",
-        summary: "",
-        workDoneToday: "",
-        progressNotes: "",
-        issuesRaised: "",
-        safetyObservations: "",
-        qualityObservations: "",
-        decisionsTaken: "",
-        tomorrowPlan: "",
-        laborCount: "",
-        locationText: "",
-        tags: "",
-      });
+      setForm(emptyJournalForm());
       load();
       onChanged();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Failed to save journal");
     }
+  };
+
+  const updateCheckpoint = (index: number, patch: Record<string, any>) => {
+    setForm((current: any) => ({
+      ...current,
+      checkpoints: (current.checkpoints || []).map((checkpoint: any, itemIndex: number) =>
+        itemIndex === index ? { ...checkpoint, ...patch } : checkpoint,
+      ),
+    }));
   };
 
   return (
@@ -573,20 +576,85 @@ function JournalPanel({
       }
     >
       {(canCreate || canUpdate) && (
-        <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-border-default p-3 md:grid-cols-6">
-          <Input type="date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} />
-          <Select value={form.weather} onChange={(v) => setForm({ ...form, weather: v })} options={["SUNNY", "CLOUDY", "RAINY", "FOGGY"]} />
-          <Input value={form.locationText} onChange={(v) => setForm({ ...form, locationText: v })} placeholder="Location / work front" />
-          <Input value={form.laborCount} onChange={(v) => setForm({ ...form, laborCount: v })} placeholder="Labour count" />
-          <Input value={form.tags} onChange={(v) => setForm({ ...form, tags: v })} placeholder="Tags, comma separated" />
-          <button type="button" onClick={save} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white">
-            Save Journal
-          </button>
-          <textarea value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} placeholder="Executive day summary" className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm md:col-span-3" />
-          <textarea value={form.workDoneToday} onChange={(event) => setForm({ ...form, workDoneToday: event.target.value })} placeholder="Work done today" className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm md:col-span-3" />
-          <textarea value={form.progressNotes} onChange={(event) => setForm({ ...form, progressNotes: event.target.value })} placeholder="Progress notes" className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm md:col-span-2" />
-          <textarea value={form.issuesRaised} onChange={(event) => setForm({ ...form, issuesRaised: event.target.value })} placeholder="Issues and constraints" className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm md:col-span-2" />
-          <textarea value={form.tomorrowPlan} onChange={(event) => setForm({ ...form, tomorrowPlan: event.target.value })} placeholder="Tomorrow plan" className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm md:col-span-2" />
+        <div className="mb-4 rounded-xl border border-border-default bg-surface-card p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
+            <Input type="date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} />
+            <Select value={form.weather} onChange={(v) => setForm({ ...form, weather: v })} options={["SUNNY", "CLOUDY", "RAINY", "FOGGY"]} />
+            <Input value={form.laborCount} onChange={(v) => setForm({ ...form, laborCount: v })} placeholder="Labour count" />
+            <Input value={form.tags} onChange={(v) => setForm({ ...form, tags: v })} placeholder="Tags, comma separated" />
+            <div className="lg:col-span-2">
+              <EpsLocationPicker
+                projectId={projectId}
+                value={form.epsNodeId}
+                placeholder="Select location from project tree"
+                onChange={(nodeId, nodeLabel) =>
+                  setForm({ ...form, epsNodeId: nodeId, locationText: nodeLabel })
+                }
+              />
+            </div>
+            <textarea value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} placeholder="Executive day summary" className="min-h-[92px] rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm lg:col-span-3" />
+            <textarea value={form.workDoneToday} onChange={(event) => setForm({ ...form, workDoneToday: event.target.value })} placeholder="Work done today" className="min-h-[92px] rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm lg:col-span-3" />
+            <textarea value={form.progressNotes} onChange={(event) => setForm({ ...form, progressNotes: event.target.value })} placeholder="Progress notes" className="min-h-[78px] rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm lg:col-span-2" />
+            <textarea value={form.issuesRaised} onChange={(event) => setForm({ ...form, issuesRaised: event.target.value })} placeholder="Issues and constraints" className="min-h-[78px] rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm lg:col-span-2" />
+            <textarea value={form.tomorrowPlan} onChange={(event) => setForm({ ...form, tomorrowPlan: event.target.value })} placeholder="Tomorrow plan" className="min-h-[78px] rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm lg:col-span-2" />
+          </div>
+
+          <div className="mt-4 rounded-lg border border-border-default bg-surface-ground p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-bold text-text-primary">Checkpoints</div>
+                <div className="text-xs text-text-muted">Daily verification points, action checks, and progress checkpoints.</div>
+              </div>
+              <SmallButton
+                onClick={() =>
+                  setForm((current: any) => ({
+                    ...current,
+                    checkpoints: [...(current.checkpoints || []), { text: "", done: false, notes: "" }],
+                  }))
+                }
+              >
+                <Plus size={14} /> Add
+              </SmallButton>
+            </div>
+            {(form.checkpoints || []).length === 0 && (
+              <div className="rounded-lg border border-dashed border-border-default px-3 py-3 text-sm text-text-muted">
+                No checkpoints added.
+              </div>
+            )}
+            <div className="space-y-2">
+              {(form.checkpoints || []).map((checkpoint: any, index: number) => (
+                <div key={index} className="grid grid-cols-1 gap-2 rounded-lg border border-border-default bg-surface-card p-2 md:grid-cols-[auto_1fr_1fr_auto]">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(checkpoint.done)}
+                      onChange={(event) => updateCheckpoint(index, { done: event.target.checked })}
+                    />
+                    Done
+                  </label>
+                  <Input value={checkpoint.text || ""} onChange={(v) => updateCheckpoint(index, { text: v })} placeholder="Checkpoint" />
+                  <Input value={checkpoint.notes || ""} onChange={(v) => updateCheckpoint(index, { notes: v })} placeholder="Notes" />
+                  <SmallButton
+                    danger
+                    onClick={() =>
+                      setForm((current: any) => ({
+                        ...current,
+                        checkpoints: (current.checkpoints || []).filter((_: any, itemIndex: number) => itemIndex !== index),
+                      }))
+                    }
+                  >
+                    <Trash2 size={14} /> Remove
+                  </SmallButton>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <button type="button" onClick={save} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white">
+              Save Journal
+            </button>
+          </div>
         </div>
       )}
       <CardGrid>
@@ -595,13 +663,31 @@ function JournalPanel({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-base font-bold text-text-primary">{item.date} - {item.weather || "Weather not set"}</div>
-                <div className="text-xs text-text-muted">{item.locationText || "Project-wide"} - Labour {item.laborCount || "-"}</div>
+                <div className="flex items-center gap-1 text-xs text-text-muted">
+                  <MapPin size={12} /> {item.locationText || "Project-wide"} - Labour {item.laborCount || "-"}
+                </div>
               </div>
               <Chip value={item.status || "DRAFT"} tone={item.status === "LOCKED" ? "green" : "blue"} />
             </div>
             <p className="mt-2 text-sm text-text-secondary">{item.summary}</p>
             {item.workDoneToday && <p className="mt-2 text-sm text-text-primary"><b>Work:</b> {item.workDoneToday}</p>}
             {item.issuesRaised && <p className="mt-1 text-sm text-red-700"><b>Issues:</b> {item.issuesRaised}</p>}
+            {!!(item.checkpoints || []).length && (
+              <div className="mt-3 rounded-lg border border-border-default bg-surface-ground p-2">
+                <div className="mb-1 text-xs font-bold uppercase text-text-muted">Checkpoints</div>
+                <div className="space-y-1">
+                  {(item.checkpoints || []).map((checkpoint, index) => (
+                    <div key={`${checkpoint.text}-${index}`} className="flex flex-wrap items-start gap-2 text-sm text-text-secondary">
+                      <span className={checkpoint.done ? "font-semibold text-primary" : "font-semibold text-text-muted"}>
+                        {checkpoint.done ? "Done" : "Open"}
+                      </span>
+                      <span className="font-medium text-text-primary">{checkpoint.text}</span>
+                      {checkpoint.notes && <span>- {checkpoint.notes}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
               <Chip value={`${(item.photoUrls || []).length} photos`} tone="slate" />
               {(item.tags || []).map((tag) => <Chip key={tag} value={tag} tone="slate" />)}

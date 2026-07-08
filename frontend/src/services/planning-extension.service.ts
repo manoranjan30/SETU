@@ -111,6 +111,11 @@ export interface SiteJournalEntry {
   photoUrls?: string[];
   attachments?: string[];
   tags?: string[];
+  checkpoints?: Array<{
+    text: string;
+    done?: boolean;
+    notes?: string | null;
+  }>;
   remarks?: string | null;
   submittedAt?: string | null;
   lockedAt?: string | null;

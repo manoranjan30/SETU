@@ -894,14 +894,13 @@ class _RaiseRfiDialogState extends State<_RaiseRfiDialog> {
   }
 
   Future<void> _loadBackdatingSettings() async {
-    try {
-      final settings = await sl<SetuApiClient>().getProjectDateSettings(widget.projectId);
-      if (mounted) {
-        setState(() => _backdatingEnabled = settings['enabled'] as bool? ?? false);
-      }
-    } catch (_) {
-      // Non-fatal — feature stays disabled
-    }
+    // Always show the date picker — backend validates and rejects future dates.
+    // Previously this was gated behind a project setting API call, but the API
+    // could silently fail (network error, feature flag off) leaving the date
+    // picker permanently hidden even when users need to backdate an RFI.
+    // The backend continues to enforce the rules (no future dates, disabled
+    // project → request ignored); mobile just always offers the picker.
+    if (mounted) setState(() => _backdatingEnabled = true);
   }
 
   @override

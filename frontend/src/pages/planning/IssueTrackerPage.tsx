@@ -22,6 +22,7 @@ import {
   type GlobalDepartment,
   type IssuePriority,
   type IssueTrackerIssue,
+  type IssueTrackerProjectOption,
   type IssueTrackerStep,
   type IssueTrackerTag,
   type KanbanColumn,
@@ -665,6 +666,7 @@ function DeptConfigModal({
     coordinatorUserId: "",
     coordinatorName: "",
     isIncludedInDefaultFlow: true,
+    allowMemberSelfClose: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -683,6 +685,7 @@ function DeptConfigModal({
       coordinatorUserId: existing?.coordinatorUserId ? String(existing.coordinatorUserId) : "",
       coordinatorName: existing?.coordinatorName || "",
       isIncludedInDefaultFlow: existing?.isIncludedInDefaultFlow ?? true,
+      allowMemberSelfClose: existing?.allowMemberSelfClose ?? false,
     });
   };
 
@@ -697,6 +700,7 @@ function DeptConfigModal({
         coordinatorUserId: configForm.coordinatorUserId ? Number(configForm.coordinatorUserId) : undefined,
         coordinatorName: coordinator?.fullName || coordinator?.username || configForm.coordinatorName,
         isIncludedInDefaultFlow: configForm.isIncludedInDefaultFlow,
+        allowMemberSelfClose: configForm.allowMemberSelfClose,
       });
       const data = await issueTrackerService.listDeptConfig(projectId);
       setConfigs(data.configs);
@@ -777,6 +781,20 @@ function DeptConfigModal({
                         </select>
                       </div>
                       <div>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={configForm.allowMemberSelfClose}
+                            onChange={(e) => setConfigForm({ ...configForm, allowMemberSelfClose: e.target.checked })}
+                            className="mt-1 rounded"
+                          />
+                          <span>
+                            <span className="block text-sm font-medium text-text-secondary">Allow assigned member self-close</span>
+                            <span className="block text-xs text-text-muted">Department members can close their own responded step without coordinator close.</span>
+                          </span>
+                        </label>
+                      </div>
+                      <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1">Members</label>
                         <div className="flex flex-wrap gap-2">
                           {users.map((u) => (
@@ -826,6 +844,7 @@ export default function IssueTrackerPage() {
   const [tags, setTags] = useState<IssueTrackerTag[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [globalDepts, setGlobalDepts] = useState<GlobalDepartment[]>([]);
+  const [projectOptions, setProjectOptions] = useState<IssueTrackerProjectOption[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [selectedIssue, setSelectedIssue] = useState<IssueTrackerIssue | null>(null);
@@ -837,6 +856,7 @@ export default function IssueTrackerPage() {
   const [filterPriority, setFilterPriority] = useState("");
 
   const [tagForm, setTagForm] = useState({ name: "", description: "", departmentId: "" });
+  const [copySourceProjectId, setCopySourceProjectId] = useState("");
   const [tagLoading, setTagLoading] = useState(false);
 
   const visibleKanbanColumns = useMemo(() => {
@@ -854,6 +874,13 @@ export default function IssueTrackerPage() {
   }, [kanbanData]);
 
   useEffect(() => { if (pId) loadAll(); }, [pId]);
+
+  useEffect(() => {
+    issueTrackerService
+      .listProjectOptions()
+      .then((items) => setProjectOptions(items.filter((project) => project.id !== pId)))
+      .catch(() => setProjectOptions([]));
+  }, [pId]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -897,6 +924,18 @@ export default function IssueTrackerPage() {
       setTagForm({ name: "", description: "", departmentId: "" });
       const updated = await issueTrackerService.listTags(pId);
       setTags(updated);
+    } finally {
+      setTagLoading(false);
+    }
+  };
+
+  const copyTagsFromProject = async () => {
+    if (!copySourceProjectId) return;
+    setTagLoading(true);
+    try {
+      await issueTrackerService.copyTagsFromProject(pId, Number(copySourceProjectId));
+      setCopySourceProjectId("");
+      await loadAll();
     } finally {
       setTagLoading(false);
     }
@@ -1091,6 +1130,31 @@ export default function IssueTrackerPage() {
                   <Plus size={16} />
                 </button>
               </div>
+            </div>
+            <div className="border border-border rounded-xl p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-text-primary">Copy Tags From Another Project</h3>
+              <div className="flex gap-3">
+                <select
+                  className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-surface-page focus:outline-none"
+                  value={copySourceProjectId}
+                  onChange={(e) => setCopySourceProjectId(e.target.value)}
+                >
+                  <option value="">Select source project</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={copyTagsFromProject}
+                  disabled={tagLoading || !copySourceProjectId}
+                  className="px-3 py-2 bg-surface-card border border-border rounded-lg text-sm font-medium hover:border-blue-400 disabled:opacity-50"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="text-xs text-text-muted">
+                Copies active tags and skips duplicates with the same department and tag name.
+              </p>
             </div>
             <div className="space-y-2">
               {tags.map((tag) => (

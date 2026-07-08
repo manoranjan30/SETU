@@ -691,6 +691,7 @@ export class PlanningExtensionService {
       photoUrls: this.normalizeTextArray(body.photoUrls || existing?.photoUrls),
       attachments: this.normalizeTextArray(body.attachments || existing?.attachments),
       tags: this.normalizeTextArray(body.tags || existing?.tags),
+      checkpoints: this.normalizeJournalCheckpoints(body.checkpoints || existing?.checkpoints),
       remarks: body.remarks || null,
     };
     return this.journalRepo.save(
@@ -769,6 +770,10 @@ export class PlanningExtensionService {
       attachments:
         body.attachments !== undefined ? this.normalizeTextArray(body.attachments) : entry.attachments,
       tags: body.tags !== undefined ? this.normalizeTextArray(body.tags) : entry.tags,
+      checkpoints:
+        body.checkpoints !== undefined
+          ? this.normalizeJournalCheckpoints(body.checkpoints)
+          : entry.checkpoints,
       remarks: body.remarks !== undefined ? body.remarks || null : entry.remarks,
     });
     return this.journalRepo.save(entry);
@@ -923,6 +928,18 @@ export class PlanningExtensionService {
       .map((item) => ({
         text: String(item?.text || item || '').trim(),
         done: Boolean(item?.done),
+      }))
+      .filter((item) => item.text);
+  }
+
+  private normalizeJournalCheckpoints(value: any) {
+    if (!value) return [];
+    const values = Array.isArray(value) ? value : [];
+    return values
+      .map((item) => ({
+        text: String(item?.text || item || '').trim(),
+        done: Boolean(item?.done),
+        notes: item?.notes ? String(item.notes).trim() : null,
       }))
       .filter((item) => item.text);
   }

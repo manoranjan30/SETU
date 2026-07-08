@@ -238,6 +238,7 @@ export class IssueTrackerService {
     config.coordinatorUserId = dto.coordinatorUserId || null;
     config.coordinatorName = dto.coordinatorName || null;
     config.isIncludedInDefaultFlow = dto.isIncludedInDefaultFlow ?? true;
+    config.allowMemberSelfClose = dto.allowMemberSelfClose ?? false;
     return this.deptConfigRepo.save(config);
   }
 
@@ -286,6 +287,36 @@ export class IssueTrackerService {
     entity.departmentName = dept.name;
     entity.isActive = dto.isActive ?? entity.isActive;
     return this.tagRepo.save(entity);
+  }
+
+  async copyTagsFromProject(projectId: number, sourceProjectId: number) {
+    if (!sourceProjectId || sourceProjectId === projectId) {
+      throw new BadRequestException('Select another project to copy tags from');
+    }
+    const sourceTags = await this.tagRepo.find({
+      where: { projectId: sourceProjectId, isActive: true },
+      order: { departmentName: 'ASC', name: 'ASC' },
+    });
+    if (!sourceTags.length) return { copied: 0, skipped: 0 };
+
+    const existingTags = await this.tagRepo.find({ where: { projectId } });
+    const existingKeys = new Set(
+      existingTags.map((tag) => `${tag.departmentId}:${tag.name.trim().toLowerCase()}`),
+    );
+    const toCreate = sourceTags
+      .filter((tag) => !existingKeys.has(`${tag.departmentId}:${tag.name.trim().toLowerCase()}`))
+      .map((tag) =>
+        this.tagRepo.create({
+          projectId,
+          name: tag.name,
+          description: tag.description,
+          departmentId: tag.departmentId,
+          departmentName: tag.departmentName,
+          isActive: true,
+        }),
+      );
+    if (toCreate.length) await this.tagRepo.save(toCreate);
+    return { copied: toCreate.length, skipped: sourceTags.length - toCreate.length };
   }
 
   // ─── Issues ───────────────────────────────────────────────────────────────
@@ -417,6 +448,8 @@ export class IssueTrackerService {
   ) {
     const userId = this.getUserId(user);
     const userDeptIds = await this.getDeptIdsForUser(projectId, userId);
+    const projectConfigs = await this.deptConfigRepo.find({ where: { projectId } });
+    const configByDepartment = new Map(projectConfigs.map((config) => [config.departmentId, config]));
 
     const issues = await this.issueRepo.find({
       where: { projectId },
@@ -459,6 +492,16 @@ export class IssueTrackerService {
       const issueSteps = stepsByIssue.get(issue.id) || [];
       const isRelevantToCurrentUser =
         issue.currentDepartmentId != null && userDeptIds.includes(issue.currentDepartmentId);
+      const activeStep = issueSteps.find((s) => s.status === IssueTrackerStepStatus.ACTIVE);
+      const activeConfig =
+        activeStep?.departmentId != null
+          ? configByDepartment.get(activeStep.departmentId)
+          : null;
+      const isCoordinator = Boolean(activeConfig?.coordinatorUserId === userId);
+      const canSelfClose =
+        userId != null &&
+        Boolean(activeConfig?.allowMemberSelfClose) &&
+        (activeConfig?.memberUserIds || []).includes(userId);
       return {
         ...issue,
         steps: issueSteps,
@@ -468,14 +511,10 @@ export class IssueTrackerService {
           issue.status !== IssueTrackerStatus.CLOSED &&
           issueSteps.some((s) => s.status === IssueTrackerStepStatus.ACTIVE && !s.memberRespondedAt),
         canCoordinatorClose:
-          isRelevantToCurrentUser &&
+          (this.isAdmin(user) || isCoordinator || canSelfClose) &&
           issue.status !== IssueTrackerStatus.CLOSED &&
-          issueSteps.some(
-            (s) =>
-              s.status === IssueTrackerStepStatus.ACTIVE &&
-              s.memberRespondedAt != null &&
-              s.coordinatorClosedAt == null,
-          ),
+          Boolean(activeStep?.memberRespondedAt) &&
+          activeStep?.coordinatorClosedAt == null,
         canClose:
           (this.isAdmin(user) || user?.permissions?.includes?.('PLANNING.MATRIX.UPDATE')) &&
           issue.status === IssueTrackerStatus.COMPLETED,
@@ -530,6 +569,9 @@ export class IssueTrackerService {
     if (!activeStep) throw new BadRequestException('No active department step is pending');
 
     const userId = this.getUserId(user);
+    if (activeStep.departmentId == null) {
+      throw new BadRequestException('Active step department is not configured');
+    }
     const deptConfig = await this.deptConfigRepo.findOne({
       where: { projectId, departmentId: activeStep.departmentId },
     });
@@ -617,7 +659,11 @@ export class IssueTrackerService {
     });
 
     const isCoordinator = deptConfig?.coordinatorUserId === userId;
-    if (!this.isAdmin(user) && !isCoordinator) {
+    const isSelfCloseAllowed =
+      userId != null &&
+      Boolean(deptConfig?.allowMemberSelfClose) &&
+      (deptConfig?.memberUserIds || []).includes(userId);
+    if (!this.isAdmin(user) && !isCoordinator && !isSelfCloseAllowed) {
       throw new ForbiddenException('Only the department coordinator can close this step');
     }
 

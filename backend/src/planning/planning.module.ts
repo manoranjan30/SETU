@@ -81,6 +81,13 @@ import {
 } from './entities/planning-extension.entity';
 import { PlanningExtensionController } from './planning-extension.controller';
 import { PlanningExtensionService } from './planning-extension.service';
+import {
+  PlanningCustomTracker,
+  PlanningCustomTrackerField,
+  PlanningCustomTrackerRecord,
+} from './entities/custom-tracker.entity';
+import { CustomTrackerController } from './custom-tracker.controller';
+import { CustomTrackerService } from './custom-tracker.service';
 
 @Module({
   imports: [
@@ -141,6 +148,9 @@ import { PlanningExtensionService } from './planning-extension.service';
       ProjectTaskComment,
       FollowUpAction,
       SiteJournalEntry,
+      PlanningCustomTracker,
+      PlanningCustomTrackerField,
+      PlanningCustomTrackerRecord,
     ]),
     WbsModule,
     NotificationsModule,
@@ -152,6 +162,7 @@ import { PlanningExtensionService } from './planning-extension.service';
     BudgetController,
     ProjectHealthController,
     PlanningExtensionController,
+    CustomTrackerController,
   ],
   providers: [
     PlanningService,
@@ -167,6 +178,7 @@ import { PlanningExtensionService } from './planning-extension.service';
     SmartDistributeService,
     ProjectHealthService,
     PlanningExtensionService,
+    CustomTrackerService,
   ],
   exports: [
     PlanningService,
@@ -179,6 +191,7 @@ import { PlanningExtensionService } from './planning-extension.service';
     BudgetService,
     ProjectHealthService,
     PlanningExtensionService,
+    CustomTrackerService,
   ],
 })
 export class PlanningModule {}
