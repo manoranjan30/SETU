@@ -57,6 +57,23 @@ import { Budget } from './planning/entities/budget.entity';
 import { BudgetLineItem } from './planning/entities/budget-line-item.entity';
 import { BudgetBoqMap } from './planning/entities/budget-boq-map.entity';
 import { BudgetLineActivityMap } from './planning/entities/budget-line-activity-map.entity';
+import {
+  ProjectHealthBurnRow,
+  ProjectHealthCatchupPlan,
+  ProjectHealthCycleMetric,
+  ProjectHealthEscalationRule,
+  ProjectHealthMilestone,
+  ProjectHealthReport,
+  ProjectHealthResourceRow,
+  ProjectHealthRisk,
+  ProjectHealthScoreConfig,
+} from './planning/entities/project-health.entity';
+import {
+  FollowUpAction,
+  ProjectTask,
+  ProjectTaskComment,
+  SiteJournalEntry,
+} from './planning/entities/planning-extension.entity';
 
 import { ResourcesModule } from './resources/resources.module';
 import { ResourceMaster } from './resources/entities/resource-master.entity';
@@ -262,6 +279,19 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         BudgetLineItem,
         BudgetBoqMap,
         BudgetLineActivityMap,
+        ProjectHealthReport,
+        ProjectHealthBurnRow,
+        ProjectHealthResourceRow,
+        ProjectHealthCycleMetric,
+        ProjectHealthRisk,
+        ProjectHealthCatchupPlan,
+        ProjectHealthMilestone,
+        ProjectHealthEscalationRule,
+        ProjectHealthScoreConfig,
+        ProjectTask,
+        ProjectTaskComment,
+        FollowUpAction,
+        SiteJournalEntry,
         // Resources
         ResourceMaster,
         AnalysisTemplate,

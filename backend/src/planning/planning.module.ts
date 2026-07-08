@@ -59,6 +59,28 @@ import { Budget } from './entities/budget.entity';
 import { BudgetLineItem } from './entities/budget-line-item.entity';
 import { BudgetBoqMap } from './entities/budget-boq-map.entity';
 import { BudgetLineActivityMap } from './entities/budget-line-activity-map.entity';
+import { ProjectProfile } from '../eps/project-profile.entity';
+import {
+  ProjectHealthBurnRow,
+  ProjectHealthCatchupPlan,
+  ProjectHealthCycleMetric,
+  ProjectHealthEscalationRule,
+  ProjectHealthMilestone,
+  ProjectHealthReport,
+  ProjectHealthResourceRow,
+  ProjectHealthRisk,
+  ProjectHealthScoreConfig,
+} from './entities/project-health.entity';
+import { ProjectHealthController } from './project-health.controller';
+import { ProjectHealthService } from './project-health.service';
+import {
+  FollowUpAction,
+  ProjectTask,
+  ProjectTaskComment,
+  SiteJournalEntry,
+} from './entities/planning-extension.entity';
+import { PlanningExtensionController } from './planning-extension.controller';
+import { PlanningExtensionService } from './planning-extension.service';
 
 @Module({
   imports: [
@@ -105,12 +127,32 @@ import { BudgetLineActivityMap } from './entities/budget-line-activity-map.entit
       BudgetLineItem,
       BudgetBoqMap,
       BudgetLineActivityMap,
+      ProjectProfile,
+      ProjectHealthReport,
+      ProjectHealthBurnRow,
+      ProjectHealthResourceRow,
+      ProjectHealthCycleMetric,
+      ProjectHealthRisk,
+      ProjectHealthCatchupPlan,
+      ProjectHealthMilestone,
+      ProjectHealthEscalationRule,
+      ProjectHealthScoreConfig,
+      ProjectTask,
+      ProjectTaskComment,
+      FollowUpAction,
+      SiteJournalEntry,
     ]),
     WbsModule,
     NotificationsModule,
     MilestoneModule,
   ],
-  controllers: [PlanningController, CostController, BudgetController],
+  controllers: [
+    PlanningController,
+    CostController,
+    BudgetController,
+    ProjectHealthController,
+    PlanningExtensionController,
+  ],
   providers: [
     PlanningService,
     CostService,
@@ -123,6 +165,8 @@ import { BudgetLineActivityMap } from './entities/budget-line-activity-map.entit
     BuildingLineCoordinateService,
     IssueTrackerService,
     SmartDistributeService,
+    ProjectHealthService,
+    PlanningExtensionService,
   ],
   exports: [
     PlanningService,
@@ -133,6 +177,8 @@ import { BudgetLineActivityMap } from './entities/budget-line-activity-map.entit
     IssueTrackerService,
     CostService,
     BudgetService,
+    ProjectHealthService,
+    PlanningExtensionService,
   ],
 })
 export class PlanningModule {}

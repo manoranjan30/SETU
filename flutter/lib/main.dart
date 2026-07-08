@@ -14,6 +14,10 @@ import 'package:setu_mobile/core/sync/background_download_service.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/core/sync/connectivity_sync_service.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:setu_mobile/features/planning/presentation/bloc/issue_tracker_bloc.dart';
+import 'package:setu_mobile/features/planning/presentation/bloc/micro_schedule_bloc.dart';
+import 'package:setu_mobile/features/planning/presentation/bloc/planning_phase2_bloc.dart';
+import 'package:setu_mobile/features/planning/presentation/bloc/schedule_viewer_bloc.dart';
 import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/progress/presentation/bloc/progress_bloc.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dart';
@@ -219,4 +223,9 @@ void initDependencies({
   // LaborBloc is API-only (no offline/sync requirement) — no database needed.
   sl.registerFactory(() => LaborBloc(apiClient: sl()));
   sl.registerFactory(() => EhsIncidentBloc(apiClient: sl(), syncService: sl()));
+  // Planning module blocs
+  sl.registerFactory(() => IssueTrackerBloc(apiClient: sl()));
+  sl.registerFactory(() => ScheduleViewerBloc(apiClient: sl()));
+  sl.registerFactory(() => MicroScheduleBloc(apiClient: sl()));
+  sl.registerFactory(() => PlanningPhase2Bloc(apiClient: sl()));
 }

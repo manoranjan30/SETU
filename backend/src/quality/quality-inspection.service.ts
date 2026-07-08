@@ -376,9 +376,13 @@ export class QualityInspectionService {
           .filter((id): id is number => typeof id === 'number'),
       ),
     );
-    const [allEpsNodes, units, rooms, relatedInspections, requesters] =
+    const [epsById, units, rooms, relatedInspections, requesters] =
       await Promise.all([
-        this.epsNodeRepo.find(),
+        this.loadEpsAncestryMap(
+          inspections
+            .map((inspection) => inspection.epsNodeId)
+            .filter((id): id is number => typeof id === 'number'),
+        ),
         unitIds.length
           ? this.qualityUnitRepo.find({ where: { id: In(unitIds) } })
           : Promise.resolve([]),
@@ -396,7 +400,6 @@ export class QualityInspectionService {
           : Promise.resolve([]),
       ]);
 
-    const epsById = new Map<number, EpsNode>(allEpsNodes.map((n) => [n.id, n]));
     const unitsById = new Map<number, QualityUnit>(units.map((u) => [u.id, u]));
     const roomsById = new Map<number, QualityRoom>(rooms.map((r) => [r.id, r]));
     const relatedById = new Map(
@@ -3339,6 +3342,31 @@ export class QualityInspectionService {
     }
 
     return path;
+  }
+
+  private async loadEpsAncestryMap(nodeIds: number[]): Promise<Map<number, EpsNode>> {
+    const epsById = new Map<number, EpsNode>();
+    let pendingIds = Array.from(new Set(nodeIds.filter(Boolean)));
+
+    while (pendingIds.length > 0) {
+      const missingIds = pendingIds.filter((id) => !epsById.has(id));
+      if (missingIds.length === 0) break;
+
+      const nodes = await this.epsNodeRepo.find({
+        where: { id: In(missingIds) },
+      });
+      if (nodes.length === 0) break;
+
+      pendingIds = [];
+      for (const node of nodes) {
+        epsById.set(node.id, node);
+        if (node.parentId && !epsById.has(node.parentId)) {
+          pendingIds.push(node.parentId);
+        }
+      }
+    }
+
+    return epsById;
   }
 
   private async buildEpsLocationPath(nodeId: number | undefined) {

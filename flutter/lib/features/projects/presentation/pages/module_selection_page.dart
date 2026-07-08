@@ -15,6 +15,7 @@ import 'package:setu_mobile/features/quality/presentation/pages/nc_register_page
 import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
+import 'package:setu_mobile/features/planning/presentation/pages/planning_hub_page.dart';
 import 'package:setu_mobile/features/progress/presentation/pages/progress_approvals_page.dart';
 import 'package:setu_mobile/injection_container.dart';
 
@@ -137,6 +138,17 @@ class ModuleSelectionPage extends StatelessWidget {
               onTap: () => _navigateToNcRegister(context),
             ),
           ],
+          // ── Planning ──────────────────────────────────────────────────────
+          const Divider(height: 1),
+          _ModuleRow(
+            icon: Icons.timeline_outlined,
+            title: 'Planning',
+            subtitle: 'Schedule, Issues, WO Linker, Look-Ahead & Progress',
+            color: const Color(0xFF4F46E5),
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => PlanningHubPage(project: project),
+            )),
+          ),
           // ── EHS Observations ──────────────────────────────────────────────
           // Permission gate: user must have any EHS access
           if (ps.hasAnyEhsAccess) ...[

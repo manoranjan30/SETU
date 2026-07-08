@@ -1936,19 +1936,10 @@ class _ActionBar extends StatelessWidget {
                     textStyle: const TextStyle(fontSize: 12),
                   ),
                 ),
-              // Workflow advance — signature-required approve for multi-level
-              // workflow. Requires QUALITY.INSPECTION.STAGE_APPROVE, matching
-              // the backend guard on POST :id/workflow/advance.
-              if (useWorkflow && isAssignedApprover && !hasPendingObs && ps.canStageApprove)
-                FilledButton.icon(
-                  onPressed: () => SignatureApprovalSheet.show(context),
-                  icon: const Icon(Icons.verified_outlined, size: 16),
-                  label: const Text('Approve'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    textStyle: const TextStyle(fontSize: 12),
-                  ),
-                ),
+              // Overall workflow Approve button removed — per-stage "Approve Stage"
+              // buttons handle each approval level; once all stages are approved
+              // the inspection is considered fully approved without a separate
+              // overall advance action.
             ],
           ),
         ],
