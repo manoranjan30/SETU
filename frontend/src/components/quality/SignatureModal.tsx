@@ -53,6 +53,8 @@ interface SignatureModalProps {
   title?: string;
   description?: string;
   actionLabel?: string;
+  allowActionDate?: boolean;
+  actionDateLabel?: string;
 }
 
 export default function SignatureModal({
@@ -62,11 +64,16 @@ export default function SignatureModal({
   title = "Digital Signature Required",
   description = "Please provide your signature to proceed.",
   actionLabel = "Authorize Action",
+  allowActionDate = false,
+  actionDateLabel = "Approval Date",
 }: SignatureModalProps) {
   const { user } = useAuth();
   const sigCanvas = useRef<any>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [useSaved, setUseSaved] = useState<boolean>(false);
+  const [actionDate, setActionDate] = useState<string>(
+    new Date().toISOString().slice(0, 10),
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -81,6 +88,7 @@ export default function SignatureModal({
             setSavedSignature(null);
             setUseSaved(false);
           }
+          setActionDate(new Date().toISOString().slice(0, 10));
         })
         .catch((err) => {
           console.error("Failed to load signature", err);
@@ -110,6 +118,7 @@ export default function SignatureModal({
       signerDesignation: user?.designation || null,
       signerRoles: user?.roles || [],
       source: "SETU_WEB_SIGNATURE_MODAL",
+      ...(allowActionDate ? { approvalDate: actionDate } : {}),
     };
     if (useSaved && savedSignature) {
       onSign(savedSignature, true, evidence);
@@ -195,6 +204,24 @@ export default function SignatureModal({
                   </span>
                 </div>
               </label>
+            </div>
+          )}
+
+          {allowActionDate && (
+            <div className="mb-4">
+              <label className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                {actionDateLabel}
+              </label>
+              <input
+                type="date"
+                value={actionDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => setActionDate(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                This date will be saved as the approval signature date.
+              </p>
             </div>
           )}
 

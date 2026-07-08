@@ -87,6 +87,13 @@ export class SystemSettingsService implements OnApplicationBootstrap {
         group: 'QUALITY',
       },
       {
+        key: 'QUALITY_RFI_BACKDATING_ENABLED',
+        value: 'false',
+        description:
+          'Allow project-enabled Quality RFI request and approval dates to be selected manually from the web/mobile apps.',
+        group: 'QUALITY',
+      },
+      {
         key: 'EHS_OBSERVATION_WEEKLY_EXPORT_ENABLED',
         value: 'false',
         description:

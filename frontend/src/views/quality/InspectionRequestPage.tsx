@@ -270,6 +270,9 @@ export default function InspectionRequestPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
+  const canUpdateInspection = hasPermission(
+    PermissionCode.QUALITY_INSPECTION_UPDATE,
+  );
   const canReadPourCard = hasPermission(PermissionCode.QUALITY_POUR_CARD_READ);
   const canUpdatePourCard = hasPermission(
     PermissionCode.QUALITY_POUR_CARD_UPDATE,
@@ -312,6 +315,14 @@ export default function InspectionRequestPage() {
   const [drawingNo, setDrawingNo] = useState("");
   const [elementName, setElementName] = useState("");
   const [goDetails, setGoDetails] = useState("");
+  const [rfiRequestDate, setRfiRequestDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [rfiDateSettings, setRfiDateSettings] = useState<{
+    globalEnabled: boolean;
+    projectEnabled: boolean;
+    enabled: boolean;
+  } | null>(null);
   const [relatedChecklistInspectionIds, setRelatedChecklistInspectionIds] =
     useState<number[]>([]);
   const [relatedChecklistGroups, setRelatedChecklistGroups] = useState<
@@ -356,6 +367,22 @@ export default function InspectionRequestPage() {
   const [generatingSignatureQrIndex, setGeneratingSignatureQrIndex] =
     useState<number | null>(null);
 
+  const updateProjectRfiDateSetting = async (enabled: boolean) => {
+    if (!projectId) return;
+    try {
+      const saved = await qualityService.updateRfiDateSettings(
+        Number(projectId),
+        enabled,
+      );
+      setRfiDateSettings(saved);
+    } catch (err: any) {
+      alert(
+        err.response?.data?.message ||
+          "Failed to update project RFI date setting.",
+      );
+    }
+  };
+
   // Load active vendors for internal users
   useEffect(() => {
     if (projectId && !user?.isTempUser) {
@@ -371,6 +398,14 @@ export default function InspectionRequestPage() {
       .getConcreteGrades(Number(projectId))
       .then((grades) => setConcreteGrades(grades.filter((grade: any) => grade.isActive)))
       .catch(() => setConcreteGrades([]));
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    qualityService
+      .getRfiDateSettings(Number(projectId))
+      .then(setRfiDateSettings)
+      .catch(() => setRfiDateSettings(null));
   }, [projectId]);
 
   // Helper for correct image URLs.
@@ -1021,6 +1056,7 @@ export default function InspectionRequestPage() {
     goDetails: goDetails.trim() || undefined,
     relatedChecklistInspectionIds,
     attachmentDraftIds: rfiAttachments.map((attachment) => attachment.id),
+    ...(rfiDateSettings?.enabled ? { requestDate: rfiRequestDate } : {}),
     ...extra,
   });
 
@@ -1216,6 +1252,7 @@ export default function InspectionRequestPage() {
     setDrawingNo("");
     setElementName("");
     setGoDetails("");
+    setRfiRequestDate(new Date().toISOString().slice(0, 10));
     setRelatedChecklistInspectionIds([]);
     setRfiAttachments([]);
     setLoadingRelatedChecklists(true);
@@ -1453,6 +1490,49 @@ export default function InspectionRequestPage() {
             QA/QC Approvals.
           </p>
         </div>
+        {rfiDateSettings && (
+          <div className="flex max-w-sm items-center gap-3 rounded-lg border border-border-default bg-surface-base px-3 py-2">
+            <div className="text-right">
+              <div className="text-xs font-semibold text-text-secondary">
+                Manual RFI Dates
+              </div>
+              <div className="text-[11px] text-text-muted">
+                {rfiDateSettings.globalEnabled
+                  ? rfiDateSettings.enabled
+                    ? "Enabled for this project"
+                    : "Disabled for this project"
+                  : "Disabled globally in Admin Settings"}
+              </div>
+            </div>
+            {canUpdateInspection ? (
+              <button
+                type="button"
+                onClick={() =>
+                  updateProjectRfiDateSetting(!rfiDateSettings.projectEnabled)
+                }
+                disabled={!rfiDateSettings.globalEnabled}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  rfiDateSettings.projectEnabled
+                    ? "bg-secondary"
+                    : "bg-gray-300"
+                }`}
+                title={
+                  rfiDateSettings.globalEnabled
+                    ? "Enable or disable manual request/approval dates for this project"
+                    : "Enable QUALITY_RFI_BACKDATING_ENABLED in Admin Settings first"
+                }
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    rfiDateSettings.projectEnabled
+                      ? "translate-x-6"
+                      : "translate-x-1"
+                  }`}
+                />
+              </button>
+            ) : null}
+          </div>
+        )}
       </header>
 
       <div className="flex-1 flex overflow-hidden">
@@ -2980,6 +3060,24 @@ export default function InspectionRequestPage() {
                   </span>
                   {quickRaiseConfig.mode === "GO_SINGLE" &&
                     quickRaiseConfig.partNo ? null : null}
+                </div>
+              )}
+
+              {rfiDateSettings?.enabled && (
+                <div>
+                  <label className="text-xs font-semibold text-text-secondary">
+                    RFI Request Date
+                  </label>
+                  <input
+                    type="date"
+                    value={rfiRequestDate}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(event) => setRfiRequestDate(event.target.value)}
+                    className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
+                  />
+                  <p className="mt-1 text-xs text-text-muted">
+                    This date will be saved as the RFI raised/requested date.
+                  </p>
                 </div>
               )}
 

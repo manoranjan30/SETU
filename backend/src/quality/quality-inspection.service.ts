@@ -57,6 +57,7 @@ import {
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
 import { QualityInspectionAttachmentService } from './quality-inspection-attachment.service';
+import { SystemSettingsService } from '../common/system-settings.service';
 
 export interface CreateInspectionDto {
   projectId: number;
@@ -106,6 +107,7 @@ export interface ExpandGoSeriesDto {
 @Injectable()
 export class QualityInspectionService {
   private readonly logger = new Logger(QualityInspectionService.name);
+  private readonly rfiBackdatingGlobalKey = 'QUALITY_RFI_BACKDATING_ENABLED';
 
   constructor(
     @InjectRepository(QualityInspection)
@@ -160,10 +162,83 @@ export class QualityInspectionService {
     private readonly approvalRuntimeService: ApprovalRuntimeService,
     private readonly customerMilestoneService: CustomerMilestoneService,
     private readonly attachmentService: QualityInspectionAttachmentService,
+    private readonly systemSettings: SystemSettingsService,
   ) {}
+
+  async getRfiDateSettings(projectId: number) {
+    const globalEnabled = await this.systemSettings.getSettingBool(
+      this.rfiBackdatingGlobalKey,
+    );
+    const projectValue = await this.systemSettings.getSetting(
+      this.rfiBackdatingProjectKey(projectId),
+    );
+    const projectEnabled = projectValue === 'true';
+    return {
+      globalEnabled,
+      projectEnabled,
+      enabled: globalEnabled && projectEnabled,
+      projectSettingKey: this.rfiBackdatingProjectKey(projectId),
+    };
+  }
+
+  async updateRfiDateSettings(projectId: number, enabled: boolean) {
+    await this.systemSettings.updateSetting(
+      this.rfiBackdatingProjectKey(projectId),
+      enabled ? 'true' : 'false',
+    );
+    return this.getRfiDateSettings(projectId);
+  }
 
   private deriveInspectionProcessCode(dto: CreateInspectionDto): string {
     return (dto.processCode || 'QA_QC_APPROVAL').trim().toUpperCase();
+  }
+
+  private rfiBackdatingProjectKey(projectId: number) {
+    return `QUALITY_RFI_BACKDATING_PROJECT_${projectId}`;
+  }
+
+  private todayIsoDate() {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  private parseIsoDateOnly(value: unknown, label: string) {
+    const text = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      throw new BadRequestException(`${label} must be a valid date.`);
+    }
+    const date = new Date(`${text}T12:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) {
+      throw new BadRequestException(`${label} must be a valid date.`);
+    }
+    if (text > this.todayIsoDate()) {
+      throw new BadRequestException(`${label} cannot be in the future.`);
+    }
+    return text;
+  }
+
+  private async assertRfiBackdatingEnabled(projectId: number) {
+    const settings = await this.getRfiDateSettings(projectId);
+    if (!settings.enabled) {
+      throw new BadRequestException(
+        'Manual RFI request/approval dates are not enabled for this project.',
+      );
+    }
+  }
+
+  private async resolveRfiRequestDate(projectId: number, requestedDate?: string) {
+    if (!requestedDate) return this.todayIsoDate();
+    await this.assertRfiBackdatingEnabled(projectId);
+    return this.parseIsoDateOnly(requestedDate, 'RFI request date');
+  }
+
+  private async resolveRfiApprovalTimestamp(
+    projectId: number,
+    approvalDate?: unknown,
+  ) {
+    if (!approvalDate) return new Date();
+    await this.assertRfiBackdatingEnabled(projectId);
+    const date = this.parseIsoDateOnly(approvalDate, 'RFI approval date');
+    return new Date(`${date}T12:00:00.000Z`);
   }
 
   private deriveInspectionDocumentType(
@@ -927,6 +1002,10 @@ export class QualityInspectionService {
       dto.attachmentDraftIds,
       userId,
     );
+    const requestDate = await this.resolveRfiRequestDate(
+      dto.projectId,
+      dto.requestDate,
+    );
 
     // 7. Create Inspection
     const inspection = this.inspectionRepo.create({
@@ -948,7 +1027,7 @@ export class QualityInspectionService {
       goDetails: dto.goDetails?.trim() || null,
       relatedChecklistInspectionIds,
       comments: dto.comments,
-      requestDate: dto.requestDate || new Date().toISOString().split('T')[0],
+      requestDate,
       status: InspectionStatus.PENDING,
       requestedById: userId,
       vendorId: finalVendorId,
@@ -1508,7 +1587,10 @@ export class QualityInspectionService {
         stage.inspection.projectId,
         userId,
       );
-      const now = new Date();
+      const now = await this.resolveRfiApprovalTimestamp(
+        stage.inspection.projectId,
+        signatureEvidence?.approvalDate,
+      );
       stage.completedAt = now;
       stage.completedBy = String(userId);
 
@@ -1538,6 +1620,7 @@ export class QualityInspectionService {
         sourceType: signer.sourceType,
         signatureData,
         lockHash: fingerprint,
+        createdAt: now,
         metadata: {
           timestamp: now,
           ...(signatureEvidence || {}),
@@ -1652,7 +1735,10 @@ export class QualityInspectionService {
       userId,
     );
 
-    const now = new Date();
+    const now = await this.resolveRfiApprovalTimestamp(
+      stage.inspection.projectId,
+      signatureEvidence?.approvalDate,
+    );
     stage.completedAt = now;
     stage.completedBy = String(userId);
 
@@ -1687,6 +1773,7 @@ export class QualityInspectionService {
           sourceType: signer.sourceType,
           signatureData,
           lockHash: fingerprint,
+          createdAt: now,
           metadata: {
             timestamp: now,
             ...(signatureEvidence || {}),
@@ -1928,11 +2015,15 @@ export class QualityInspectionService {
     );
 
     const signer = await this.getApproverSnapshot(inspection.projectId, userId);
+    const approvalTimestamp = await this.resolveRfiApprovalTimestamp(
+      inspection.projectId,
+      signatureEvidence?.approvalDate,
+    );
 
     const fingerprint = this.complianceService.generateFingerprint({
       stageId: 0,
       items: [],
-      metadata: { timestamp: new Date(), user: String(userId) },
+      metadata: { timestamp: approvalTimestamp, user: String(userId) },
     });
     const signature = this.signatureRepo.create({
       inspectionId,
@@ -1947,8 +2038,9 @@ export class QualityInspectionService {
       sourceType: signer.sourceType,
       signatureData,
       lockHash: fingerprint,
+      createdAt: approvalTimestamp,
       metadata: {
-        timestamp: new Date(),
+        timestamp: approvalTimestamp,
         ...(signatureEvidence || {}),
         identityBound: true,
         signatureMode:
@@ -1959,10 +2051,10 @@ export class QualityInspectionService {
 
     // Mark as APPROVED
     inspection.status = InspectionStatus.APPROVED;
-    inspection.inspectionDate = new Date().toISOString().split('T')[0];
+    inspection.inspectionDate = approvalTimestamp.toISOString().split('T')[0];
     inspection.inspectedBy = signer.displayName;
     inspection.isLocked = true;
-    inspection.lockedAt = new Date();
+    inspection.lockedAt = approvalTimestamp;
     inspection.lockedByUserId = userId;
     if (comments) inspection.comments = comments;
     await this.inspectionRepo.save(inspection);

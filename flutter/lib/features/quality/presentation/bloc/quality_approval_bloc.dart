@@ -101,14 +101,19 @@ class ApproveStage extends QualityApprovalEvent {
   final String? comments;
   final String? signatureData;
   final String? signedBy;
+  /// Optional backdated approval date (yyyy-MM-dd). Only submitted when the
+  /// project has QUALITY_RFI_BACKDATING enabled — otherwise the backend uses
+  /// the current timestamp.
+  final String? approvalDate;
   const ApproveStage({
     required this.stageId,
     this.comments,
     this.signatureData,
     this.signedBy,
+    this.approvalDate,
   });
   @override
-  List<Object?> get props => [stageId, comments, signedBy];
+  List<Object?> get props => [stageId, comments, signedBy, approvalDate];
 }
 
 /// Raise a new defect observation on the current inspection's activity.
@@ -680,6 +685,7 @@ class QualityApprovalBloc
         comments: event.comments,
         signatureData: event.signatureData,
         signedBy: event.signedBy,
+        approvalDate: event.approvalDate,
       );
 
       // Extract stage approval state from the response.

@@ -919,6 +919,22 @@ class SetuApiClient {
     return [];
   }
 
+  /// Returns whether manual RFI request and approval date backdating is enabled
+  /// for this project. When `enabled == true`, show date pickers in the RFI
+  /// raise dialog and the stage approval sheet.
+  Future<Map<String, dynamic>> getProjectDateSettings(int projectId) async {
+    try {
+      final response = await _dio.get(
+        '/api/quality/inspections/project-date-settings',
+        queryParameters: {'projectId': projectId},
+      );
+      return response.data as Map<String, dynamic>;
+    } catch (_) {
+      // If the endpoint isn't available yet (older backend), default to disabled.
+      return {'enabled': false, 'globalEnabled': false, 'projectEnabled': false};
+    }
+  }
+
   /// Uploads an RFI attachment before the RFI itself exists. [clientUploadId]
   /// must be generated and persisted by the caller before the first attempt
   /// so retries reuse the same UUID — the backend returns the existing draft
@@ -1166,6 +1182,8 @@ class SetuApiClient {
     String? comments,
     String? signatureData,
     String? signedBy,
+    /// yyyy-MM-dd — only sent when project backdating is enabled.
+    String? approvalDate,
   }) async {
     final response = await _dio.post(
       ApiEndpoints.approveStage(inspectionId, stageId),
@@ -1173,6 +1191,12 @@ class SetuApiClient {
         if (comments != null && comments.isNotEmpty) 'comments': comments,
         if (signatureData != null) 'signatureData': signatureData,
         if (signedBy != null) 'signedBy': signedBy,
+        if (approvalDate != null) 'approvalDate': approvalDate,
+        if (approvalDate != null)
+          'signatureEvidence': {
+            'approvalDate': approvalDate,
+            'mode': 'SAVED_PROFILE',
+          },
       },
     );
     return response.data as Map<String, dynamic>;

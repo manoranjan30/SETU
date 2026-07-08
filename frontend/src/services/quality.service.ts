@@ -32,6 +32,35 @@ const annotatedExtensionFor = (file: File | Blob) => {
 };
 
 export const qualityService = {
+  getRfiDateSettings: async (projectId: number): Promise<{
+    globalEnabled: boolean;
+    projectEnabled: boolean;
+    enabled: boolean;
+    projectSettingKey?: string;
+  }> => {
+    const res = await api.get(`${BASE_URL}/inspections/project-date-settings`, {
+      params: { projectId },
+    });
+    return res.data;
+  },
+
+  updateRfiDateSettings: async (
+    projectId: number,
+    enabled: boolean,
+  ): Promise<{
+    globalEnabled: boolean;
+    projectEnabled: boolean;
+    enabled: boolean;
+    projectSettingKey?: string;
+  }> => {
+    const res = await api.patch(
+      `${BASE_URL}/inspections/project-date-settings`,
+      { enabled },
+      { params: { projectId } },
+    );
+    return res.data;
+  },
+
   getRelatedChecklistOptions: async (
     projectId: number,
     epsNodeId: number,
