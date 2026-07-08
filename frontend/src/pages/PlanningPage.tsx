@@ -21,6 +21,7 @@ import LaborCountView from "../views/labor/LaborCountView";
 import PlanningReportsPage from "./planning/PlanningReportsPage";
 import ProjectHealthPage from "./planning/ProjectHealthPage";
 import PlanningActionsPage from "./planning/PlanningActionsPage";
+import CustomTrackerPage from "./planning/CustomTrackerPage";
 
 const PlanningPage = () => {
   const { projectId } = useParams();
@@ -81,6 +82,8 @@ const PlanningPage = () => {
         return <ProjectHealthPage />;
       case "planning_actions":
         return <PlanningActionsPage />;
+      case "custom_trackers":
+        return <CustomTrackerPage />;
       case "reports":
         return <PlanningReportsPage />;
       case "recovery":

@@ -152,8 +152,27 @@ export class QualityInspectionController {
   getRelatedOptions(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Query('epsNodeId', ParseIntPipe) epsNodeId: number,
+    @Query('excludeInspectionId') excludeInspectionId?: string,
   ) {
-    return this.service.getRelatedChecklistOptions(projectId, epsNodeId);
+    const excludeId = Number(excludeInspectionId);
+    return this.service.getRelatedChecklistOptions(
+      projectId,
+      epsNodeId,
+      Number.isInteger(excludeId) && excludeId > 0 ? excludeId : undefined,
+    );
+  }
+
+  @Patch(':id/related-checklists')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
+  @Auditable('QUALITY', 'UPDATE_RFI_RELATED_CHECKLISTS', 'id')
+  updateRelatedChecklists(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { relatedChecklistInspectionIds?: number[] },
+  ) {
+    return this.service.updateRelatedChecklistLinks(
+      id,
+      body.relatedChecklistInspectionIds,
+    );
   }
 
   @Post('attachment-drafts')
@@ -375,6 +394,12 @@ export class QualityInspectionController {
     return this.workflowService.getEligibleApprovers(projectId);
   }
 
+  @Get('project-date-settings-list')
+  @Permissions('ADMIN.SETTINGS.MANAGE')
+  listProjectDateSettings() {
+    return this.service.listRfiDateProjectSettings();
+  }
+
   @Get('project-date-settings')
   @Permissions('QUALITY.INSPECTION.READ')
   getProjectDateSettings(@Query('projectId', ParseIntPipe) projectId: number) {
@@ -382,7 +407,7 @@ export class QualityInspectionController {
   }
 
   @Patch('project-date-settings')
-  @Permissions('QUALITY.INSPECTION.UPDATE')
+  @Permissions('QUALITY.INSPECTION.UPDATE', 'ADMIN.SETTINGS.MANAGE')
   updateProjectDateSettings(
     @Query('projectId', ParseIntPipe) projectId: number,
     @Body('enabled') enabled: boolean | string | number,

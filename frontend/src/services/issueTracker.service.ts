@@ -26,6 +26,7 @@ export type DeptProjectConfig = {
   coordinatorUserId?: number | null;
   coordinatorName?: string | null;
   isIncludedInDefaultFlow: boolean;
+  allowMemberSelfClose?: boolean;
 };
 
 export type IssueTrackerTag = {
@@ -129,6 +130,11 @@ export type KanbanColumn = {
   issues: IssueTrackerIssue[];
 };
 
+export type IssueTrackerProjectOption = {
+  id: number;
+  name: string;
+};
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const issueTrackerService = {
@@ -136,6 +142,23 @@ export const issueTrackerService = {
   async listUsers(projectId: number) {
     const res = await api.get(`/planning/${projectId}/issue-tracker/users`);
     return res.data as { id: number; username: string; fullName?: string | null }[];
+  },
+  async listProjectOptions() {
+    const res = await api.get(`/eps`);
+    const nodes = Array.isArray(res.data) ? res.data : [];
+    const flattened: IssueTrackerProjectOption[] = [];
+    const walk = (items: any[]) => {
+      items.forEach((item) => {
+        const type = String(item.type || item.nodeType || "").toUpperCase();
+        const isProject = type === "PROJECT" || type === "PROJECTS";
+        if (isProject) {
+          flattened.push({ id: Number(item.id), name: item.name || item.nodeName || item.label || `Project ${item.id}` });
+        }
+        if (Array.isArray(item.children)) walk(item.children);
+      });
+    };
+    walk(nodes);
+    return flattened.filter((item) => Number.isFinite(item.id));
   },
 
   // Global Departments (Admin)
@@ -171,6 +194,7 @@ export const issueTrackerService = {
     coordinatorUserId?: number;
     coordinatorName?: string;
     isIncludedInDefaultFlow?: boolean;
+    allowMemberSelfClose?: boolean;
   }) {
     const res = await api.post(`/planning/${projectId}/issue-tracker/dept-config`, body);
     return res.data as DeptProjectConfig;
@@ -192,6 +216,10 @@ export const issueTrackerService = {
   async updateTag(projectId: number, id: number, body: { name: string; description?: string; departmentId: number; isActive?: boolean }) {
     const res = await api.put(`/planning/${projectId}/issue-tracker/tags/${id}`, body);
     return res.data as IssueTrackerTag;
+  },
+  async copyTagsFromProject(projectId: number, sourceProjectId: number) {
+    const res = await api.post(`/planning/${projectId}/issue-tracker/tags/copy-from-project`, { sourceProjectId });
+    return res.data as { copied: number; skipped: number };
   },
 
   // Issues

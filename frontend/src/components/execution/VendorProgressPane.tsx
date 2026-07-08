@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Loader2,
   ChevronLeft,
+  Upload,
 } from "lucide-react";
 import { executionService } from "../../services/execution.service";
 import type {
@@ -87,6 +88,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
     new Date().toISOString().split("T")[0],
   );
   const [remarks, setRemarks] = useState("");
+  const [photos, setPhotos] = useState<FileList | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -172,7 +174,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
         });
 
       if (entries.length > 0) {
-        await api.post("/execution/progress/micro", {
+        const response = await api.post("/execution/progress/micro", {
           projectId,
           activityId: activity.id,
           epsNodeId,
@@ -180,8 +182,21 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
           date: progressDate,
           remarks,
         });
+        const savedLogs = Array.isArray(response.data) ? response.data : [];
+        if (photos?.length && savedLogs.length) {
+          await Promise.all(
+            savedLogs.map((log: any) => {
+              const formData = new FormData();
+              Array.from(photos).forEach((file) => formData.append("files", file));
+              return api.post(`/execution/logs/${log.id}/photos`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+            }),
+          );
+        }
         alert("Progress submitted successfully. It is now pending approval.");
         onProgressSaved();
+        setPhotos(null);
         // Go back to vendors list on success
         setPaneView("vendors");
       }
@@ -458,7 +473,7 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
                   className="w-full px-3 py-2 border border-border-default rounded text-sm focus:ring-primary focus:border-primary"
                 />
               </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-2">
                 <textarea
                   rows={2}
                   placeholder="Enter remarks (optional)..."
@@ -467,6 +482,17 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
                   className="w-full px-3 py-2 border border-border-default rounded text-sm focus:ring-primary focus:border-primary"
                 />
               </div>
+              <label className="flex min-h-[66px] cursor-pointer flex-col items-center justify-center rounded border border-dashed border-border-default bg-surface-base px-3 py-2 text-center text-xs font-semibold text-text-secondary hover:border-primary">
+                <Upload className="mb-1 h-4 w-4" />
+                {photos?.length ? `${photos.length} photo(s) selected` : "Attach progress photos"}
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => setPhotos(event.target.files)}
+                />
+              </label>
             </div>
             <div className="mt-4 flex justify-end">
               <button

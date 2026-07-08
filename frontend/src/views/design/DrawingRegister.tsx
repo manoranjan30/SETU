@@ -31,6 +31,9 @@ interface RegisterItem {
   };
   status: string;
   statusUpdatedAt?: string | null;
+  targetReleaseDate?: string | null;
+  actualReleaseDate?: string | null;
+  responsibleDiscipline?: string | null;
   latestRevisionDate?: string | null;
   latestRevisionUploadedAt?: string | null;
   currentRevisionUnread?: boolean;
@@ -160,6 +163,9 @@ const DrawingRegister = () => {
         title: item.title,
         categoryName: item.category?.name || "-",
         status: STATUS_LABELS[item.status] || item.status,
+        responsibleDiscipline: item.responsibleDiscipline || "-",
+        targetReleaseDate: item.targetReleaseDate,
+        actualReleaseDate: item.actualReleaseDate,
         statusUpdatedAt: item.statusUpdatedAt,
         latestRevisionNumber: item.currentRevision?.revisionNumber || "-",
         latestRevisionDate: item.latestRevisionDate,
@@ -175,6 +181,19 @@ const DrawingRegister = () => {
     { key: "title", label: "Title" },
     { key: "categoryName", label: "Category" },
     { key: "status", label: "Status" },
+    { key: "responsibleDiscipline", label: "Discipline" },
+    {
+      key: "targetReleaseDate",
+      label: "Target Release",
+      formatter: (value: unknown) =>
+        typeof value === "string" ? formatDateOnly(value) : "-",
+    },
+    {
+      key: "actualReleaseDate",
+      label: "Actual Release",
+      formatter: (value: unknown) =>
+        typeof value === "string" ? formatDateOnly(value) : "-",
+    },
     {
       key: "statusUpdatedAt",
       label: "Status Updated",
@@ -380,6 +399,24 @@ const DrawingRegister = () => {
         headerName: "Status Updated",
         width: 180,
         valueFormatter: (params: any) => formatDateTime(params.value),
+      },
+      {
+        field: "responsibleDiscipline",
+        headerName: "Discipline",
+        width: 150,
+        valueFormatter: (params: any) => params.value || "-",
+      },
+      {
+        field: "targetReleaseDate",
+        headerName: "Target Release",
+        width: 150,
+        valueFormatter: (params: any) => formatDateOnly(params.value),
+      },
+      {
+        field: "actualReleaseDate",
+        headerName: "Actual Release",
+        width: 150,
+        valueFormatter: (params: any) => formatDateOnly(params.value),
       },
       {
         field: "latestRevisionDate",

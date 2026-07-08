@@ -72,6 +72,10 @@ export class SetDeptProjectConfigDto {
   @IsOptional()
   @IsBoolean()
   isIncludedInDefaultFlow?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowMemberSelfClose?: boolean;
 }
 
 // ─── Tags ─────────────────────────────────────────────────────────────────────

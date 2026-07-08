@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
+import { extname, join } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { BoqItem } from '../boq/entities/boq-item.entity';
 import { BoqSubItem } from '../boq/entities/boq-sub-item.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
@@ -174,6 +177,29 @@ export class ExecutionService {
     }
 
     return results;
+  }
+
+  async addProgressPhotos(logId: number, files: Express.Multer.File[] = []) {
+    const entry = await this.executionEntryRepo.findOne({ where: { id: logId } });
+    if (!entry) throw new BadRequestException('Progress log not found');
+    const urls = files.map((file) => this.persistProgressPhoto(entry.projectId, logId, file));
+    entry.photoUrls = [...(entry.photoUrls || []), ...urls];
+    const saved = await this.executionEntryRepo.save(entry);
+    return this.toCompatLogDto(saved);
+  }
+
+  private persistProgressPhoto(
+    projectId: number,
+    logId: number,
+    file: Express.Multer.File,
+  ) {
+    const root = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
+    const folder = join(root, 'execution', 'progress', String(projectId), String(logId));
+    mkdirSync(folder, { recursive: true });
+    const extension = extname(file.originalname || '') || '.jpg';
+    const fileName = `${randomUUID()}${extension}`;
+    writeFileSync(join(folder, fileName), file.buffer);
+    return `/uploads/execution/progress/${projectId}/${logId}/${fileName}`;
   }
 
   async getProjectProgressLogs(
@@ -1275,6 +1301,7 @@ export class ExecutionService {
       reviewedBy: entry.approvedBy,
       reviewedAt: entry.approvedAt,
       rejectionReason: entry.rejectionReason,
+      photoUrls: entry.photoUrls || [],
       measurementElement: {
         id:
           entry.workOrderItem?.measurementElementId ||

@@ -7,7 +7,9 @@ import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/features/planning/data/models/phase2_models.dart';
 import 'package:setu_mobile/features/planning/presentation/bloc/planning_phase2_bloc.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
+import 'package:setu_mobile/injection_container.dart';
 
 class SiteJournalPage extends StatefulWidget {
   final Project project;
@@ -327,11 +329,16 @@ class _JournalEntryFormPageState extends State<JournalEntryFormPage> {
   WeatherCondition? _weather;
   String _journalType = 'DAILY_PROGRESS';
   bool _submitting = false;
+  // EPS node selection for location (mirrors how site observations work)
+  int? _epsNodeId;
+  String? _epsNodeLabel; // display label from node name chain
 
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
+    _epsNodeId = e?.epsNodeId;
+    _epsNodeLabel = e?.locationText;
     _ctrls = {
       'summary': TextEditingController(text: e?.summary ?? ''),
       'locationText': TextEditingController(text: e?.locationText ?? ''),
@@ -373,7 +380,9 @@ class _JournalEntryFormPageState extends State<JournalEntryFormPage> {
       'journalType': _journalType,
       if (_weather != null) 'weather': _weather!.apiValue,
       'summary': _ctrls['summary']!.text.trim(),
-      if (_v('locationText') != null) 'locationText': _v('locationText'),
+      if (_epsNodeId != null) 'epsNodeId': _epsNodeId,
+      if ((_epsNodeLabel ?? _v('locationText')) != null)
+        'locationText': _epsNodeLabel ?? _v('locationText'),
       if (_v('workDoneToday') != null) 'workDoneToday': _v('workDoneToday'),
       if (_v('progressNotes') != null) 'progressNotes': _v('progressNotes'),
       if (_v('issuesRaised') != null) 'issuesRaised': _v('issuesRaised'),
@@ -394,6 +403,41 @@ class _JournalEntryFormPageState extends State<JournalEntryFormPage> {
       context.read<PlanningPhase2Bloc>().add(SaveJournalEntry(widget.project.id, data, existingId: widget.existing?.id));
       Navigator.of(context).pop();
     }
+  }
+
+  /// Opens a searchable EPS node picker and returns (epsNodeId, label) or null.
+  Future<(int, String)?> _pickLocation(BuildContext context) async {
+    final api = sl<SetuApiClient>();
+    // Flatten EPS tree into a searchable list
+    List<Map<String, dynamic>> nodes = [];
+    try {
+      final raw = await api.getEpsTreeForProject(widget.project.id);
+      void flatten(List<dynamic> list, String prefix) {
+        for (final n in list) {
+          final m = n as Map<String, dynamic>;
+          final label = prefix.isEmpty ? (m['label'] ?? m['name'] ?? '') as String
+              : '$prefix > ${(m['label'] ?? m['name'] ?? '')}';
+          nodes.add({'id': m['id'], 'label': label, 'type': m['type'] ?? ''});
+          final children = m['children'] as List<dynamic>? ?? [];
+          if (children.isNotEmpty) flatten(children, label);
+        }
+      }
+      flatten(raw, '');
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load location tree — check connection')));
+      }
+      return null;
+    }
+    if (!mounted) return null;
+    return showModalBottomSheet<(int, String)>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => _EpsPickerSheet(nodes: nodes),
+    );
   }
 
   Future<void> _uploadPhotos() async {
@@ -456,7 +500,29 @@ class _JournalEntryFormPageState extends State<JournalEntryFormPage> {
             const SizedBox(height: 12),
             _F(_ctrls['summary']!, 'Day Summary *', maxLines: 3, required: true),
             const SizedBox(height: 10),
-            _F(_ctrls['locationText']!, 'Location (e.g. Tower A / 12th Floor)'),
+            // EPS location picker — shows current selection and opens a floor/unit selector
+            InkWell(
+              onTap: () async {
+                final result = await _pickLocation(context);
+                if (result != null) {
+                  setState(() { _epsNodeId = result.$1; _epsNodeLabel = result.$2; });
+                }
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Location (EPS Node)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  suffixIcon: Icon(Icons.location_on_outlined, size: 18),
+                ),
+                child: Text(
+                  _epsNodeLabel ?? 'Select location (optional)',
+                  style: TextStyle(color: _epsNodeLabel == null ? Colors.grey.shade500 : null, fontSize: 13),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _F(_ctrls['locationText']!, 'Location Detail (floor, unit, area — optional)'),
             const SizedBox(height: 10),
             _F(_ctrls['workDoneToday']!, 'Work Done Today', maxLines: 2),
             const SizedBox(height: 10),
@@ -519,4 +585,98 @@ class _F extends StatelessWidget {
     decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
     validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null,
   );
+}
+
+/// Simple searchable EPS node picker shown as a bottom sheet.
+class _EpsPickerSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> nodes;
+  const _EpsPickerSheet({required this.nodes});
+
+  @override
+  State<_EpsPickerSheet> createState() => _EpsPickerSheetState();
+}
+
+class _EpsPickerSheetState extends State<_EpsPickerSheet> {
+  final _searchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.nodes;
+    _searchCtrl.addListener(() {
+      final q = _searchCtrl.text.toLowerCase();
+      setState(() => _filtered = q.isEmpty
+          ? widget.nodes
+          : widget.nodes.where((n) => (n['label'] as String).toLowerCase().contains(q)).toList());
+    });
+  }
+
+  @override
+  void dispose() { _searchCtrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, scrollCtrl) => Column(children: [
+        Center(child: Container(
+          margin: const EdgeInsets.only(top: 12, bottom: 8),
+          width: 40, height: 4,
+          decoration: BoxDecoration(color: Theme.of(context).dividerColor, borderRadius: BorderRadius.circular(2)),
+        )),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            const Text('Select Location', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Spacer(),
+            TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Skip')),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            controller: _searchCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Search block, tower, floor…',
+              prefixIcon: Icon(Icons.search, size: 18),
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 8),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+            itemCount: _filtered.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final n = _filtered[i];
+              final label = n['label'] as String;
+              final type = n['type'] as String? ?? '';
+              return ListTile(
+                dense: true,
+                leading: Icon(
+                  type == 'FLOOR' ? Icons.layers_outlined
+                      : type == 'TOWER' || type == 'BUILDING' ? Icons.apartment_outlined
+                      : type == 'UNIT' ? Icons.door_front_door_outlined
+                      : Icons.account_tree_outlined,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: Text(label, style: const TextStyle(fontSize: 13)),
+                onTap: () => Navigator.pop(context, (n['id'] as int, label)),
+              );
+            },
+          ),
+        ),
+      ]),
+    );
+  }
 }

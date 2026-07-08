@@ -8,6 +8,7 @@ import { toRelativePaths } from '../common/path.utils';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, In } from 'typeorm';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
+import { ProjectProfile } from '../eps/project-profile.entity';
 import {
   ActivityObservation,
   ActivityObservationStatus,
@@ -134,6 +135,8 @@ export class QualityInspectionService {
     private readonly sequenceRepo: Repository<QualitySequenceEdge>,
     @InjectRepository(EpsNode)
     private readonly epsNodeRepo: Repository<EpsNode>,
+    @InjectRepository(ProjectProfile)
+    private readonly projectProfileRepo: Repository<ProjectProfile>,
     @InjectRepository(ActivityObservation)
     private readonly observationRepo: Repository<ActivityObservation>,
     @InjectRepository(User)
@@ -172,10 +175,15 @@ export class QualityInspectionService {
     const projectValue = await this.systemSettings.getSetting(
       this.rfiBackdatingProjectKey(projectId),
     );
-    const projectEnabled = projectValue === 'true';
+    const normalizedProjectValue = String(projectValue || '').trim().toLowerCase();
+    const projectEnabled =
+      projectValue == null
+        ? false
+        : ['true', '1', 'yes', 'on'].includes(normalizedProjectValue);
     return {
       globalEnabled,
       projectEnabled,
+      projectOverride: projectValue,
       enabled: globalEnabled && projectEnabled,
       projectSettingKey: this.rfiBackdatingProjectKey(projectId),
     };
@@ -187,6 +195,35 @@ export class QualityInspectionService {
       enabled ? 'true' : 'false',
     );
     return this.getRfiDateSettings(projectId);
+  }
+
+  async listRfiDateProjectSettings() {
+    const projects = await this.projectProfileRepo.find({
+      relations: ['epsNode'],
+      order: { projectName: 'ASC', id: 'ASC' },
+    });
+    const rows = await Promise.all(
+      projects
+        .filter((project) => project.epsNode?.id)
+        .map(async (project) => {
+          const projectId = project.epsNode.id;
+          const settings = await this.getRfiDateSettings(projectId);
+          return {
+            projectId,
+            projectProfileId: project.id,
+            projectCode: project.projectCode,
+            projectName:
+              project.projectName || project.epsNode.name || `Project ${projectId}`,
+            ...settings,
+          };
+        }),
+    );
+    return {
+      globalEnabled: rows[0]?.globalEnabled ?? (await this.systemSettings.getSettingBool(
+        this.rfiBackdatingGlobalKey,
+      )),
+      projects: rows,
+    };
   }
 
   private deriveInspectionProcessCode(dto: CreateInspectionDto): string {
@@ -239,6 +276,24 @@ export class QualityInspectionService {
     await this.assertRfiBackdatingEnabled(projectId);
     const date = this.parseIsoDateOnly(approvalDate, 'RFI approval date');
     return new Date(`${date}T12:00:00.000Z`);
+  }
+
+  private buildRfiSignatureMetadata(
+    effectiveApprovalAt: Date,
+    actualSignedAt: Date,
+    signatureEvidence?: Record<string, unknown>,
+    extra?: Record<string, unknown>,
+  ) {
+    const effectiveIso = effectiveApprovalAt.toISOString();
+    const actualIso = actualSignedAt.toISOString();
+    return {
+      timestamp: effectiveApprovalAt,
+      ...(signatureEvidence || {}),
+      effectiveApprovalAt: effectiveIso,
+      actualSignedAt: actualIso,
+      isBackdatedSignature: effectiveIso !== actualIso,
+      ...(extra || {}),
+    };
   }
 
   private deriveInspectionDocumentType(
@@ -1591,6 +1646,7 @@ export class QualityInspectionService {
         stage.inspection.projectId,
         signatureEvidence?.approvalDate,
       );
+      const actualSignedAt = new Date();
       stage.completedAt = now;
       stage.completedBy = String(userId);
 
@@ -1621,14 +1677,12 @@ export class QualityInspectionService {
         signatureData,
         lockHash: fingerprint,
         createdAt: now,
-        metadata: {
-          timestamp: now,
-          ...(signatureEvidence || {}),
+        metadata: this.buildRfiSignatureMetadata(now, actualSignedAt, signatureEvidence, {
           identityBound: true,
           signatureMode:
             (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
           directStageApproval: true,
-        } as any,
+        }) as any,
       });
       const approval = await this.signatureRepo.save(approvalEntity);
 
@@ -1739,6 +1793,7 @@ export class QualityInspectionService {
       stage.inspection.projectId,
       signatureEvidence?.approvalDate,
     );
+    const actualSignedAt = new Date();
     stage.completedAt = now;
     stage.completedBy = String(userId);
 
@@ -1774,13 +1829,11 @@ export class QualityInspectionService {
           signatureData,
           lockHash: fingerprint,
           createdAt: now,
-          metadata: {
-            timestamp: now,
-            ...(signatureEvidence || {}),
+          metadata: this.buildRfiSignatureMetadata(now, actualSignedAt, signatureEvidence, {
             identityBound: true,
             signatureMode:
               (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
-          } as any,
+          }) as any,
         }),
       ),
     );
@@ -2019,6 +2072,7 @@ export class QualityInspectionService {
       inspection.projectId,
       signatureEvidence?.approvalDate,
     );
+    const actualSignedAt = new Date();
 
     const fingerprint = this.complianceService.generateFingerprint({
       stageId: 0,
@@ -2039,13 +2093,16 @@ export class QualityInspectionService {
       signatureData,
       lockHash: fingerprint,
       createdAt: approvalTimestamp,
-      metadata: {
-        timestamp: approvalTimestamp,
-        ...(signatureEvidence || {}),
+      metadata: this.buildRfiSignatureMetadata(
+        approvalTimestamp,
+        actualSignedAt,
+        signatureEvidence,
+        {
         identityBound: true,
         signatureMode:
           (signatureEvidence?.mode as string | undefined) || 'UNKNOWN',
-      } as any,
+        },
+      ) as any,
     });
     await this.signatureRepo.save(signature);
 
@@ -2292,6 +2349,48 @@ export class QualityInspectionService {
     return ids;
   }
 
+  async updateRelatedChecklistLinks(
+    inspectionId: number,
+    relatedChecklistInspectionIds?: number[],
+  ) {
+    const inspection = await this.inspectionRepo.findOne({
+      where: { id: inspectionId },
+    });
+    if (!inspection) throw new NotFoundException('Inspection not found');
+    if (inspection.status === InspectionStatus.APPROVED || inspection.isLocked) {
+      throw new BadRequestException(
+        'Related checklist links cannot be changed after final approval.',
+      );
+    }
+
+    const ids = this.normalizeRelatedChecklistInspectionIds(
+      relatedChecklistInspectionIds,
+    );
+    if (ids.includes(inspection.id)) {
+      throw new BadRequestException('An RFI cannot be linked to itself.');
+    }
+    if (ids.length) {
+      const related = await this.inspectionRepo.find({
+        where: {
+          id: In(ids),
+          projectId: inspection.projectId,
+          epsNodeId: inspection.epsNodeId,
+        },
+      });
+      const foundIds = new Set(related.map((item) => item.id));
+      const missingIds = ids.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        throw new BadRequestException(
+          `Related checklist RFI(s) not found at the selected project location: ${missingIds.join(', ')}.`,
+        );
+      }
+    }
+
+    inspection.relatedChecklistInspectionIds = ids;
+    const saved = await this.inspectionRepo.save(inspection);
+    return this.attachRelatedChecklistSummaries(saved);
+  }
+
   private async attachRelatedChecklistSummaries(inspection: any) {
     const ids = this.normalizeRelatedChecklistInspectionIds(
       inspection.relatedChecklistInspectionIds,
@@ -2329,7 +2428,11 @@ export class QualityInspectionService {
     };
   }
 
-  async getRelatedChecklistOptions(projectId: number, epsNodeId: number) {
+  async getRelatedChecklistOptions(
+    projectId: number,
+    epsNodeId: number,
+    excludeInspectionId?: number,
+  ) {
     const inspections = await this.inspectionRepo.find({
       where: {
         projectId,
@@ -2340,6 +2443,7 @@ export class QualityInspectionService {
     });
     const eligible = inspections.filter(
       (inspection) =>
+        inspection.id !== excludeInspectionId &&
         inspection.status !== InspectionStatus.CANCELED &&
         inspection.status !== InspectionStatus.REJECTED,
     );

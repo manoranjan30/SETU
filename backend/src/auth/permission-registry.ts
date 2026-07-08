@@ -216,6 +216,11 @@ export const PLANNING_PERMISSIONS: PermissionDef[] = [
   perm('PLANNING.JOURNAL.CREATE', 'Create Site Journal Entries', 'PLANNING', C),
   perm('PLANNING.JOURNAL.UPDATE', 'Update Site Journal Entries', 'PLANNING', U),
   perm('PLANNING.JOURNAL.DELETE', 'Delete Site Journal Entries', 'PLANNING', D),
+  perm('PLANNING.CUSTOM_TRACKER.READ', 'View Custom Trackers', 'PLANNING', R),
+  perm('PLANNING.CUSTOM_TRACKER.CREATE', 'Create Custom Trackers', 'PLANNING', C),
+  perm('PLANNING.CUSTOM_TRACKER.UPDATE', 'Update Custom Tracker Records', 'PLANNING', U),
+  perm('PLANNING.CUSTOM_TRACKER.DELETE', 'Archive Custom Trackers and Records', 'PLANNING', D),
+  perm('PLANNING.CUSTOM_TRACKER.CONFIG', 'Configure Custom Tracker Fields', 'PLANNING', S),
 ];
 
 export const MILESTONE_PERMISSIONS: PermissionDef[] = [

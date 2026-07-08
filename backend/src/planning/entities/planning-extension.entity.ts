@@ -348,6 +348,13 @@ export class SiteJournalEntry {
   @Column({ type: 'text', array: true, default: () => 'ARRAY[]::text[]' })
   tags: string[];
 
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  checkpoints: Array<{
+    text: string;
+    done?: boolean;
+    notes?: string | null;
+  }>;
+
   @Column({ type: 'text', nullable: true })
   remarks: string | null;
 

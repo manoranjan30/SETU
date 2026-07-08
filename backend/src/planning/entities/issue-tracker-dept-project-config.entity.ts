@@ -32,6 +32,9 @@ export class IssueTrackerDeptProjectConfig {
   @Column({ type: 'boolean', default: true })
   isIncludedInDefaultFlow: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  allowMemberSelfClose: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

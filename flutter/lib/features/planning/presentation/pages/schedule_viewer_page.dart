@@ -51,7 +51,26 @@ class _ScheduleViewerPageState extends State<ScheduleViewerPage> {
           }
           if (state is ScheduleVersionsLoaded) {
             if (state.versions.isEmpty) {
-              return const Center(child: Text('No schedule versions found.\nImport a schedule from the web app.', textAlign: TextAlign.center));
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.calendar_month_outlined, size: 64, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text('No schedule versions found',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    SizedBox(height: 8),
+                    Text(
+                      'Create a schedule version in the web app under:\n'
+                      'Planning → Schedule → New Version\n\n'
+                      'If you already have a schedule imported, ensure at least\n'
+                      'one version (Baseline, Revised, or Working) is created.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                  ]),
+                ),
+              );
             }
             return ListView.separated(
               padding: const EdgeInsets.all(16),

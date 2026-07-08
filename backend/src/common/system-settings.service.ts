@@ -168,7 +168,7 @@ export class SystemSettingsService implements OnApplicationBootstrap {
 
   async getSettingBool(key: string): Promise<boolean> {
     const val = await this.getSetting(key);
-    return val === 'true';
+    return ['true', '1', 'yes', 'on'].includes(String(val || '').trim().toLowerCase());
   }
 
   async getAllSettings() {

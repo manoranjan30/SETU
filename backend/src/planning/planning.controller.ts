@@ -273,6 +273,15 @@ export class PlanningController {
     return this.issueTrackerService.createTag(projectId, body);
   }
 
+  @Post(':projectId/issue-tracker/tags/copy-from-project')
+  @Permissions('PLANNING.MATRIX.UPDATE')
+  copyIssueTrackerTags(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body('sourceProjectId', ParseIntPipe) sourceProjectId: number,
+  ) {
+    return this.issueTrackerService.copyTagsFromProject(projectId, sourceProjectId);
+  }
+
   @Put(':projectId/issue-tracker/tags/:id')
   @Permissions('PLANNING.MATRIX.UPDATE')
   updateIssueTrackerTag(

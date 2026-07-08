@@ -213,6 +213,9 @@ Suggested JSON:
 
 - Render linked checklist cards with activity, RFI number, GO, element,
   drawing, date, and status.
+- Before final approval, allow checker/approver users to add or remove linked
+  previous checklist RFIs from the approval/detail screen using the same
+  related checklist tree used while raising an RFI.
 - Open linked RFI detail without discarding the active approval form.
 - Show checklist responses, signatures, observations, and attachments.
 - Preview `annotatedUrl` when present; otherwise use `originalUrl`.
@@ -220,11 +223,55 @@ Suggested JSON:
 - Hide mutation controls when `isLocked` is true.
 - Keep dialogs and drawers inside the active fullscreen host.
 
+### Related Checklist Linking During Approval
+
+When an RFI is already raised but not finally approved, mobile should show
+`Link Previous Checklist RFIs` on the approval/detail screen.
+
+Load options with the current RFI excluded:
+
+```http
+GET /api/quality/inspections/related-options?projectId=2&epsNodeId=410&excludeInspectionId=180
+```
+
+Save selected links:
+
+```http
+PATCH /api/quality/inspections/180/related-checklists
+Content-Type: application/json
+
+{
+  "relatedChecklistInspectionIds": [161, 166]
+}
+```
+
+Response is the updated inspection summary including:
+
+```json
+{
+  "relatedChecklistInspectionIds": [161, 166],
+  "relatedChecklistInspections": []
+}
+```
+
+Rules:
+
+- Show this editor only while `inspection.status != APPROVED` and
+  `inspection.isLocked != true`.
+- Hide/disable the editor after final approval. Existing linked RFIs remain
+  visible as read-only cards.
+- Backend rejects links after final approval or lock.
+- Backend rejects self-linking and cross-project/cross-location links.
+- After saving, refresh the active inspection detail and approval list cache.
+
 ## Acceptance Checklist
 
 - GO 1 is the only initial GO.
 - Add GO reserves one unique next number under concurrent requests.
 - Related tree selections match web selections.
+- Related checklist links can be edited from the approval screen before final
+  approval.
+- Related checklist links become read-only after final approval.
 - Cross-project/location links show the backend validation error.
 - Online and offline attachment submissions bind correctly.
 - Duplicate retries do not create duplicate files.
@@ -315,3 +362,7 @@ Rules:
 - If dates are omitted, backend behaves as before.
 - The selected approval date is saved as the approval signature timestamp used
   by workflow history and PDF/report date display.
+- Backend also stores the real server signing timestamp in hidden signature
+  metadata as `actualSignedAt`, with `effectiveApprovalAt` and
+  `isBackdatedSignature` for audit. Mobile should not display `actualSignedAt`
+  in normal approval screens.

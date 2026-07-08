@@ -1,7 +1,7 @@
 name: setu_mobile
 description: SETU Construction Project Management Mobile App
 publish_to: 'none'
-version: 1.0.1+22
+version: 1.0.1+24
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

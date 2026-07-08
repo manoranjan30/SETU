@@ -36,6 +36,7 @@ export const qualityService = {
     globalEnabled: boolean;
     projectEnabled: boolean;
     enabled: boolean;
+    projectOverride?: string | null;
     projectSettingKey?: string;
   }> => {
     const res = await api.get(`${BASE_URL}/inspections/project-date-settings`, {
@@ -51,6 +52,7 @@ export const qualityService = {
     globalEnabled: boolean;
     projectEnabled: boolean;
     enabled: boolean;
+    projectOverride?: string | null;
     projectSettingKey?: string;
   }> => {
     const res = await api.patch(
@@ -64,10 +66,22 @@ export const qualityService = {
   getRelatedChecklistOptions: async (
     projectId: number,
     epsNodeId: number,
+    excludeInspectionId?: number,
   ): Promise<RelatedChecklistOption[]> => {
     const res = await api.get(`${BASE_URL}/inspections/related-options`, {
-      params: { projectId, epsNodeId },
+      params: { projectId, epsNodeId, excludeInspectionId },
     });
+    return res.data;
+  },
+
+  updateInspectionRelatedChecklists: async (
+    inspectionId: number,
+    relatedChecklistInspectionIds: number[],
+  ) => {
+    const res = await api.patch(
+      `${BASE_URL}/inspections/${inspectionId}/related-checklists`,
+      { relatedChecklistInspectionIds },
+    );
     return res.data;
   },
 
