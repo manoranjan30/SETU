@@ -42,6 +42,8 @@ import { MeasurementProgress } from './boq/entities/measurement-progress.entity'
 import { BoqSubItem } from './boq/entities/boq-sub-item.entity';
 import { TableViewConfig } from './common/entities/table-view-config.entity';
 import { SystemSetting } from './common/entities/system-setting.entity';
+import { ExportPreset } from './common/entities/export-preset.entity';
+import { ExportHistory } from './common/entities/export-history.entity';
 import { AuthOtpChallenge } from './auth/entities/auth-otp-challenge.entity';
 import { PlanningModule } from './planning/planning.module';
 import { WoActivityPlan } from './planning/entities/wo-activity-plan.entity';
@@ -267,6 +269,8 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         MeasurementElement,
         MeasurementProgress,
         TableViewConfig,
+        ExportPreset,
+        ExportHistory,
         WoActivityPlan,
         RecoveryPlan,
         ScheduleVersion,

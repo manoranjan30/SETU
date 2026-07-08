@@ -157,7 +157,13 @@ class _RfiAttachmentPickerState extends State<RfiAttachmentPicker> {
       );
       if (!mounted) return;
       if (shouldAnnotate == true) {
-        final result = await ImageAnnotationPage.show(context, annotationSourcePath);
+        final result = await ImageAnnotationPage.show(
+          context, annotationSourcePath,
+          // Pass PDF page info so the exported JSON includes pdfPageNumber.
+          // Currently always page 1 since _renderPdfFirstPage renders page 1.
+          pdfPageNumber: isPdf ? 1 : null,
+          pdfPageCount: isPdf ? 1 : null, // updated if multi-page support is added
+        );
         if (result != null) {
           annotatedPath = result.flattenedImagePath;
           annotationDataJson = result.shapesJsonPath.isNotEmpty

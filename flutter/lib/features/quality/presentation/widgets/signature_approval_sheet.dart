@@ -28,11 +28,24 @@ class SignatureApprovalSheet extends StatefulWidget {
   final void Function(String signatureData, String signedBy, String? comments)
       onSubmit;
 
+  /// If provided, the sheet loads the project's backdating settings and shows
+  /// an optional approval date picker when backdating is enabled.
+  /// The selected date (yyyy-MM-dd) is passed to [onSubmitWithDate].
+  final int? projectId;
+  final void Function(
+    String signatureData,
+    String signedBy,
+    String? comments,
+    String? approvalDate,
+  )? onSubmitWithDate;
+
   const SignatureApprovalSheet({
     super.key,
     required this.title,
     this.subtitle,
     required this.onSubmit,
+    this.projectId,
+    this.onSubmitWithDate,
   });
 
   /// Show the sheet for advancing the legacy workflow step.
@@ -155,6 +168,10 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
   bool _submitting = false;
   int _activeTab = 0; // 0 = saved, 1 = draw
 
+  // Backdating — loaded when widget.projectId is provided
+  bool _backdatingEnabled = false;
+  DateTime? _approvalDate; // null = use current timestamp (default)
+
   @override
   void initState() {
     super.initState();
@@ -165,6 +182,7 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
       }
     });
     _loadSavedSignature();
+    if (widget.projectId != null) _loadBackdatingSettings();
   }
 
   @override
@@ -173,6 +191,17 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
     _commentsCtrl.dispose();
     _signatureCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadBackdatingSettings() async {
+    try {
+      final settings = await sl<SetuApiClient>().getProjectDateSettings(widget.projectId!);
+      if (mounted) {
+        setState(() => _backdatingEnabled = settings['enabled'] as bool? ?? false);
+      }
+    } catch (_) {
+      // Non-fatal — feature simply stays disabled if the endpoint fails.
+    }
   }
 
   Future<void> _loadSavedSignature() async {
@@ -233,11 +262,16 @@ class _SignatureApprovalSheetState extends State<SignatureApprovalSheet>
         ? authState.user.fullName
         : 'Approver';
 
-    widget.onSubmit(
-      signatureData!,
-      signedBy,
-      _commentsCtrl.text.trim().isEmpty ? null : _commentsCtrl.text.trim(),
-    );
+    final comments = _commentsCtrl.text.trim().isEmpty ? null : _commentsCtrl.text.trim();
+    final approvalDateStr = (_backdatingEnabled && _approvalDate != null)
+        ? '${_approvalDate!.year}-${_approvalDate!.month.toString().padLeft(2,'0')}-${_approvalDate!.day.toString().padLeft(2,'0')}'
+        : null;
+
+    if (widget.onSubmitWithDate != null) {
+      widget.onSubmitWithDate!(signatureData!, signedBy, comments, approvalDateStr);
+    } else {
+      widget.onSubmit(signatureData!, signedBy, comments);
+    }
 
     if (mounted) Navigator.of(context).pop(true);
   }

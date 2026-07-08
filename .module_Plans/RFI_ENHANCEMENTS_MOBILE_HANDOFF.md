@@ -233,3 +233,85 @@ Suggested JSON:
 - Approved evidence is read-only.
 - Existing RFI workflows continue to use the backend workflow response as the
   source of truth.
+
+## Manual RFI Request And Approval Dates
+
+Backend now supports optional manual RFI request and stage approval dates.
+This is disabled by default.
+
+Global admin setting:
+
+```text
+QUALITY_RFI_BACKDATING_ENABLED
+```
+
+Project setting:
+
+```http
+GET /api/quality/inspections/project-date-settings?projectId=2
+```
+
+Response:
+
+```json
+{
+  "globalEnabled": true,
+  "projectEnabled": true,
+  "enabled": true,
+  "projectSettingKey": "QUALITY_RFI_BACKDATING_PROJECT_2"
+}
+```
+
+Project update:
+
+```http
+PATCH /api/quality/inspections/project-date-settings?projectId=2
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+```
+
+Use `enabled == true` to show date pickers. If false, hide date fields and let
+the backend use today/current timestamp.
+
+When `enabled` is true, add optional `requestDate` to the existing RFI create
+payload:
+
+```json
+{
+  "projectId": 2,
+  "epsNodeId": 410,
+  "activityId": 3,
+  "requestDate": "2026-07-08"
+}
+```
+
+When `enabled` is true, show an approval date picker in the signature approval
+screen and submit the selected date with stage approval:
+
+```http
+POST /api/quality/inspections/{inspectionId}/stages/{stageId}/approve
+Content-Type: application/json
+
+{
+  "signatureData": "data:image/png;base64,...",
+  "approvalDate": "2026-07-08",
+  "signatureEvidence": {
+    "approvalDate": "2026-07-08",
+    "mode": "SAVED_PROFILE"
+  },
+  "comments": "Stage approved from mobile app"
+}
+```
+
+Rules:
+
+- Date format must be `yyyy-MM-dd`.
+- Future dates are rejected.
+- If the feature is not enabled globally and for the project, the backend
+  rejects manually supplied dates.
+- If dates are omitted, backend behaves as before.
+- The selected approval date is saved as the approval signature timestamp used
+  by workflow history and PDF/report date display.

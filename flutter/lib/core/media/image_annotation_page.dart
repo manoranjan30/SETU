@@ -47,7 +47,8 @@ class AnnotationResult {
   final String shapesJsonPath;
 
   /// Parsed shape data — see module docs for the schema. Coordinates are in
-  /// original-image pixels, not screen/widget pixels.
+  /// original-image pixels, not screen/widget pixels. Includes pdfPageNumber
+  /// and pdfPageCount when the source was a PDF page raster.
   final Map<String, dynamic> shapesJson;
 
   const AnnotationResult({
@@ -71,15 +72,35 @@ class AnnotationResult {
 class ImageAnnotationPage extends StatefulWidget {
   final String imagePath;
 
-  const ImageAnnotationPage({super.key, required this.imagePath});
+  /// When this raster was rendered from a PDF, the 1-based page number and
+  /// total page count are stored here so they can be included in the exported
+  /// annotation JSON for round-trip fidelity.
+  final int? pdfPageNumber;
+  final int? pdfPageCount;
+
+  const ImageAnnotationPage({
+    super.key,
+    required this.imagePath,
+    this.pdfPageNumber,
+    this.pdfPageCount,
+  });
 
   /// Push the annotation editor and return the export result, or null if
   /// the user cancelled.
-  static Future<AnnotationResult?> show(BuildContext context, String imagePath) {
+  static Future<AnnotationResult?> show(
+    BuildContext context,
+    String imagePath, {
+    int? pdfPageNumber,
+    int? pdfPageCount,
+  }) {
     return Navigator.of(context).push<AnnotationResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => ImageAnnotationPage(imagePath: imagePath),
+        builder: (_) => ImageAnnotationPage(
+          imagePath: imagePath,
+          pdfPageNumber: pdfPageNumber,
+          pdfPageCount: pdfPageCount,
+        ),
       ),
     );
   }
@@ -357,6 +378,10 @@ class _ImageAnnotationPageState extends State<ImageAnnotationPage> {
       'imageWidth': _imageWidth,
       'imageHeight': _imageHeight,
       'shapes': shapes,
+      // Included when the source image was rendered from a PDF page, so the
+      // recipient knows which page the markup corresponds to.
+      if (widget.pdfPageNumber != null) 'pdfPageNumber': widget.pdfPageNumber,
+      if (widget.pdfPageCount != null) 'pdfPageCount': widget.pdfPageCount,
     };
   }
 

@@ -671,12 +671,25 @@ export default function QualityApprovalsPage() {
   const [rejectionTexts, setRejectionTexts] = useState<Record<string, string>>(
     {},
   );
+  const [rfiDateSettings, setRfiDateSettings] = useState<{
+    globalEnabled: boolean;
+    projectEnabled: boolean;
+    enabled: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (selectedInspectionId) {
       setWorkflowStripCollapsed(true);
     }
   }, [selectedInspectionId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    qualityService
+      .getRfiDateSettings(Number(projectId))
+      .then(setRfiDateSettings)
+      .catch(() => setRfiDateSettings(null));
+  }, [projectId]);
 
   const selectedInspectionSummary = useMemo(
     () =>
@@ -2554,6 +2567,7 @@ export default function QualityApprovalsPage() {
     return api.post(`/quality/inspections/${inspectionId}/stages/${stageId}/approve`, {
       signatureData,
       signatureEvidence,
+      approvalDate: signatureEvidence?.approvalDate,
       comments: "Stage approved from checklist stage action",
     });
   };
@@ -7903,6 +7917,8 @@ export default function QualityApprovalsPage() {
             ? "Sign to approve this checklist stage."
             : "Sign to grant final approval for this RFI."
         }
+        allowActionDate={Boolean(rfiDateSettings?.enabled)}
+        actionDateLabel="RFI Approval Date"
       />
       <SignatureModal
         isOpen={showClearanceSignoffSignature}

@@ -375,6 +375,21 @@ export class QualityInspectionController {
     return this.workflowService.getEligibleApprovers(projectId);
   }
 
+  @Get('project-date-settings')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getProjectDateSettings(@Query('projectId', ParseIntPipe) projectId: number) {
+    return this.service.getRfiDateSettings(projectId);
+  }
+
+  @Patch('project-date-settings')
+  @Permissions('QUALITY.INSPECTION.UPDATE')
+  updateProjectDateSettings(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Body('enabled') enabled: boolean,
+  ) {
+    return this.service.updateRfiDateSettings(projectId, Boolean(enabled));
+  }
+
   @Post(':id/workflow/advance')
   @Permissions('QUALITY.INSPECTION.STAGE_APPROVE')
   advanceWorkflow(
@@ -461,6 +476,7 @@ export class QualityInspectionController {
       signatureData?: string;
       comments?: string;
       signatureEvidence?: Record<string, unknown>;
+      approvalDate?: string;
     },
     @Request() req,
   ) {
@@ -473,6 +489,7 @@ export class QualityInspectionController {
       this.isAdminRequest(req),
       {
         ...(body.signatureEvidence || {}),
+        ...(body.approvalDate ? { approvalDate: body.approvalDate } : {}),
         ...this.getSignatureRequestMeta(req),
       },
     );
@@ -488,6 +505,7 @@ export class QualityInspectionController {
       signatureData?: string;
       comments?: string;
       signatureEvidence?: Record<string, unknown>;
+      approvalDate?: string;
     },
     @Request() req,
   ) {
@@ -499,6 +517,7 @@ export class QualityInspectionController {
       this.isAdminRequest(req),
       {
         ...(body.signatureEvidence || {}),
+        ...(body.approvalDate ? { approvalDate: body.approvalDate } : {}),
         ...this.getSignatureRequestMeta(req),
       },
     );

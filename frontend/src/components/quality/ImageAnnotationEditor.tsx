@@ -291,7 +291,7 @@ export default function ImageAnnotationEditor({
   };
 
   const undo = () => {
-    const previous = history.at(-1);
+    const previous = history[history.length - 1];
     if (!previous) return;
     setFuture((current) => [shapes, ...current]);
     setShapes(previous);
