@@ -30,9 +30,10 @@ class SetuApiClient {
   static final _cacheStore = MemCacheStore();
   static final _cacheOptions = CacheOptions(
     store: _cacheStore,
-    // forceCache: cache every successful GET for up to 3 minutes, even when
-    // the server sends no Cache-Control header (most of our endpoints don't).
-    policy: CachePolicy.forceCache,
+    // Request-first caching: respect backend Cache-Control headers. Workflow,
+    // approval, observation, task, follow-up, and journal endpoints return
+    // no-store so actions are visible immediately after mutation.
+    policy: CachePolicy.request,
     maxStale: const Duration(minutes: 3),
     // Serve stale cached data on any network error EXCEPT auth errors —
     // keeps the app usable on poor construction-site connectivity.
@@ -80,6 +81,7 @@ class SetuApiClient {
     // 4. PrettyDioLogger    — only in debug builds; logs to console for developer inspection.
     _dio.interceptors.addAll([
       DioCacheInterceptor(options: _cacheOptions),
+      _MutationCacheInvalidationInterceptor(),
       _AuthInterceptor(_tokenManager, _dio),
       _ErrorInterceptor(),
       if (kDebugMode)
@@ -2192,6 +2194,21 @@ class SetuApiClient {
 ///    by the `_retry` extra flag to prevent infinite loops). If refresh
 ///    succeeds, the original request is replayed with the new token.
 ///    If refresh fails, tokens are cleared (forces re-login).
+class _MutationCacheInvalidationInterceptor extends Interceptor {
+  @override
+  Future<void> onResponse(
+    Response response,
+    ResponseInterceptorHandler handler,
+  ) async {
+    final method = response.requestOptions.method.toUpperCase();
+    final statusCode = response.statusCode ?? 0;
+    if (method != 'GET' && statusCode >= 200 && statusCode < 400) {
+      await SetuApiClient._cacheStore.clean();
+    }
+    handler.next(response);
+  }
+}
+
 class _AuthInterceptor extends Interceptor {
   final TokenManager _tokenManager;
 

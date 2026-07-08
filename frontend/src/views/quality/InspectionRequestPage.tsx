@@ -3063,23 +3063,28 @@ export default function InspectionRequestPage() {
                 </div>
               )}
 
-              {rfiDateSettings?.enabled && (
-                <div>
-                  <label className="text-xs font-semibold text-text-secondary">
-                    RFI Request Date
-                  </label>
-                  <input
-                    type="date"
-                    value={rfiRequestDate}
-                    max={new Date().toISOString().slice(0, 10)}
-                    onChange={(event) => setRfiRequestDate(event.target.value)}
-                    className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm"
-                  />
-                  <p className="mt-1 text-xs text-text-muted">
-                    This date will be saved as the RFI raised/requested date.
-                  </p>
-                </div>
-              )}
+              <div>
+                <label className="text-xs font-semibold text-text-secondary">
+                  RFI Request Date
+                </label>
+                <input
+                  type="date"
+                  value={rfiRequestDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  disabled={!rfiDateSettings?.enabled}
+                  onChange={(event) => setRfiRequestDate(event.target.value)}
+                  className="w-full mt-1 border border-border-default rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <p className="mt-1 text-xs text-text-muted">
+                  {rfiDateSettings?.enabled
+                    ? "This date will be saved as the RFI raised/requested date."
+                    : rfiDateSettings
+                      ? rfiDateSettings.globalEnabled
+                        ? "Enable Manual RFI Dates for this project to change the request date."
+                        : "Enable QUALITY_RFI_BACKDATING_ENABLED in Admin Settings, then enable it for this project."
+                      : "Manual date setting is loading. The current date will be used until it is enabled."}
+                </p>
+              </div>
 
               <div>
                 <label className="text-xs font-semibold text-text-secondary">

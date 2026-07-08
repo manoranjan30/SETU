@@ -385,9 +385,11 @@ export class QualityInspectionController {
   @Permissions('QUALITY.INSPECTION.UPDATE')
   updateProjectDateSettings(
     @Query('projectId', ParseIntPipe) projectId: number,
-    @Body('enabled') enabled: boolean,
+    @Body('enabled') enabled: boolean | string | number,
   ) {
-    return this.service.updateRfiDateSettings(projectId, Boolean(enabled));
+    const normalized =
+      enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+    return this.service.updateRfiDateSettings(projectId, normalized);
   }
 
   @Post(':id/workflow/advance')

@@ -54,7 +54,9 @@ interface SignatureModalProps {
   description?: string;
   actionLabel?: string;
   allowActionDate?: boolean;
+  showActionDate?: boolean;
   actionDateLabel?: string;
+  actionDateDisabledMessage?: string;
 }
 
 export default function SignatureModal({
@@ -65,7 +67,9 @@ export default function SignatureModal({
   description = "Please provide your signature to proceed.",
   actionLabel = "Authorize Action",
   allowActionDate = false,
+  showActionDate = false,
   actionDateLabel = "Approval Date",
+  actionDateDisabledMessage = "Manual approval date selection is not enabled.",
 }: SignatureModalProps) {
   const { user } = useAuth();
   const sigCanvas = useRef<any>(null);
@@ -207,7 +211,7 @@ export default function SignatureModal({
             </div>
           )}
 
-          {allowActionDate && (
+          {(allowActionDate || showActionDate) && (
             <div className="mb-4">
               <label className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                 {actionDateLabel}
@@ -217,10 +221,13 @@ export default function SignatureModal({
                 value={actionDate}
                 max={new Date().toISOString().slice(0, 10)}
                 onChange={(event) => setActionDate(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+                disabled={!allowActionDate}
+                className="mt-1 w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
               />
               <p className="mt-1 text-xs text-text-muted">
-                This date will be saved as the approval signature date.
+                {allowActionDate
+                  ? "This date will be saved as the approval signature date."
+                  : actionDateDisabledMessage}
               </p>
             </div>
           )}

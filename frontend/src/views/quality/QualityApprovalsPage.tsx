@@ -7918,7 +7918,13 @@ export default function QualityApprovalsPage() {
             : "Sign to grant final approval for this RFI."
         }
         allowActionDate={Boolean(rfiDateSettings?.enabled)}
+        showActionDate
         actionDateLabel="RFI Approval Date"
+        actionDateDisabledMessage={
+          rfiDateSettings?.globalEnabled
+            ? "Enable Manual RFI Dates for this project to change the approval date."
+            : "Enable QUALITY_RFI_BACKDATING_ENABLED in Admin Settings, then enable it for this project."
+        }
       />
       <SignatureModal
         isOpen={showClearanceSignoffSignature}

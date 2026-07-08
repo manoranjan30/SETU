@@ -1026,16 +1026,25 @@ class _StageSectionState extends State<_StageSection> {
   /// Opens the [SignatureApprovalSheet] to capture the approver's signature
   /// then dispatches [ApproveStage] for this stage.
   void _showStageApproveDialog(BuildContext context, InspectionStage stage) {
+    // Resolve projectId from the bloc state so the sheet can load backdating
+    // settings without needing the inspection passed down through the widget tree.
+    final blocState = context.read<QualityApprovalBloc>().state;
+    final projectId = blocState is InspectionDetailLoaded
+        ? blocState.inspection.projectId
+        : null;
+
     SignatureApprovalSheet.showForStage(
       context,
       stageName: stage.stageName ?? 'Stage',
       pendingDisplay: stage.stageApproval?.pendingDisplay,
-      onSubmit: (signatureData, signedBy, comments) {
+      projectId: projectId,
+      onSubmit: (signatureData, signedBy, comments, [approvalDate]) {
         context.read<QualityApprovalBloc>().add(ApproveStage(
               stageId: stage.id,
               signatureData: signatureData,
               signedBy: signedBy,
               comments: comments,
+              approvalDate: approvalDate,
             ));
       },
     );

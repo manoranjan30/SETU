@@ -34,7 +34,7 @@ export class PlanningExtensionController {
   constructor(private readonly planningExt: PlanningExtensionService) {}
 
   @Get('actions/summary')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions(
     'PLANNING.TASK.READ',
@@ -46,7 +46,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   listTasks(
@@ -57,7 +57,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/assignee-options')
-  @Header('Cache-Control', 'private, max-age=180')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions(
     'PLANNING.TASK.READ',
@@ -69,7 +69,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/my')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   myTasks(
@@ -81,7 +81,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/active')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   activeTasks(
@@ -92,7 +92,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/completed')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   completedTasks(
@@ -103,7 +103,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/history')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   taskHistory(
@@ -114,7 +114,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/:id')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   getTask(
@@ -183,7 +183,7 @@ export class PlanningExtensionController {
   }
 
   @Get('tasks/:id/comments')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.TASK.READ')
   listTaskComments(
@@ -205,7 +205,7 @@ export class PlanningExtensionController {
   }
 
   @Get('followups')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.FOLLOWUP.READ')
   listFollowups(
@@ -216,7 +216,7 @@ export class PlanningExtensionController {
   }
 
   @Get('followups/my')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.FOLLOWUP.READ')
   myFollowups(
@@ -228,7 +228,7 @@ export class PlanningExtensionController {
   }
 
   @Get('followups/overdue')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.FOLLOWUP.READ')
   overdueFollowups(
@@ -239,7 +239,7 @@ export class PlanningExtensionController {
   }
 
   @Get('followups/due-today')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.FOLLOWUP.READ')
   dueTodayFollowups(
@@ -250,7 +250,7 @@ export class PlanningExtensionController {
   }
 
   @Get('followups/history')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.FOLLOWUP.READ')
   followupHistory(
@@ -261,7 +261,7 @@ export class PlanningExtensionController {
   }
 
   @Get('followups/:id')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.FOLLOWUP.READ')
   getFollowup(
@@ -346,7 +346,7 @@ export class PlanningExtensionController {
   }
 
   @Get('journal')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.JOURNAL.READ')
   listJournal(
@@ -357,7 +357,7 @@ export class PlanningExtensionController {
   }
 
   @Get('journal/today')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.JOURNAL.READ')
   todayJournal(@Param('projectId', ParseIntPipe) projectId: number) {
@@ -365,7 +365,7 @@ export class PlanningExtensionController {
   }
 
   @Get('journal/calendar')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.JOURNAL.READ')
   journalCalendar(
@@ -376,7 +376,7 @@ export class PlanningExtensionController {
   }
 
   @Get('journal/search')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.JOURNAL.READ')
   searchJournal(
@@ -387,7 +387,7 @@ export class PlanningExtensionController {
   }
 
   @Get('journal/:id')
-  @Header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
   @Header('Vary', 'Authorization')
   @Permissions('PLANNING.JOURNAL.READ')
   getJournal(
