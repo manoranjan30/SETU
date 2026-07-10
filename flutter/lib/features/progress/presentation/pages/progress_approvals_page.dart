@@ -246,8 +246,12 @@ class _ProgressApprovalsView extends StatelessWidget {
           // Group items: towerName → floorName → list of items
           final grouped = <String, Map<String, List<Map<String, dynamic>>>>{};
           for (final item in items) {
-            final tower = item['towerName'] as String? ?? 'Unassigned Tower';
-            final floor = item['floorName'] as String? ?? 'Unassigned Floor';
+            final tower = (item['towerName'] as String?)?.isNotEmpty == true
+                ? item['towerName'] as String
+                : 'Not Assigned';
+            final floor = (item['floorName'] as String?)?.isNotEmpty == true
+                ? item['floorName'] as String
+                : 'Not Assigned';
             grouped.putIfAbsent(tower, () => {});
             grouped[tower]!.putIfAbsent(floor, () => []);
             grouped[tower]![floor]!.add(item);
@@ -465,13 +469,17 @@ class _PendingApprovalTile extends StatelessWidget {
         item['user']?['username'] as String? ??
         item['submittedByName'] as String? ??
         item['updatedBy'] as String?;
-    // Full WBS path from backend (preferred), falling back to older fields
+    // Location path: EPS tower/floor path
     final locationPath = item['locationPath'] as String? ??
         item['wbsPath'] as String? ??
         item['epsNodeLabel'] as String? ??
         item['locationLabel'] as String? ??
         meLoc?['label'] as String? ??
         meLoc?['name'] as String?;
+    // Schedule WBS path: WBS hierarchy > Activity name
+    final schedulePath = item['schedulePath'] as String?;
+    // WO tree path: Vendor > WO Number > Item description
+    final woTreePath = item['woTreePath'] as String?;
     final remarks = item['remarks'] as String? ?? item['notes'] as String?;
     // progressSummary from backend
     final ps = item['progressSummary'] as Map<String, dynamic>?;
@@ -523,31 +531,20 @@ class _PendingApprovalTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Full WBS location path
-                  if (locationPath != null) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.location_on_outlined,
-                            size: 12,
-                            color: theme.colorScheme.primary
-                                .withValues(alpha: 0.7)),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            locationPath,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 11,
-                                color: theme.colorScheme.primary
-                                    .withValues(alpha: 0.8)),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
+                  // Schedule path: WBS hierarchy > Activity
+                  if (schedulePath != null)
+                    _PathRow(icon: Icons.account_tree_outlined, text: schedulePath, theme: theme,
+                        color: theme.colorScheme.secondary),
+                  // WO tree path: Vendor > WO > Item
+                  if (woTreePath != null)
+                    _PathRow(icon: Icons.work_outline, text: woTreePath, theme: theme,
+                        color: theme.colorScheme.tertiary),
+                  // EPS location path: tower/floor context
+                  if (locationPath != null)
+                    _PathRow(icon: Icons.location_on_outlined, text: locationPath, theme: theme,
+                        color: theme.colorScheme.primary),
+                  if (schedulePath != null || woTreePath != null || locationPath != null)
                     const SizedBox(height: 4),
-                  ],
                   // Date + submitted qty
                   Row(
                     children: [
@@ -711,6 +708,45 @@ class _QtyDivider extends StatelessWidget {
       height: 28,
       color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
       margin: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+}
+
+class _PathRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final ThemeData theme;
+  final Color color;
+
+  const _PathRow({
+    required this.icon,
+    required this.text,
+    required this.theme,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 11, color: color.withValues(alpha: 0.7)),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: color.withValues(alpha: 0.85),
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

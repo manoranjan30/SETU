@@ -192,6 +192,7 @@ const isEditableTarget = (target: EventTarget | null) => {
 type AssistantPanelProps = {
   fullscreen?: boolean;
   selectedWoItems: SelectedWoItem[];
+  schedulePathByItemId: Record<number, string>;
   isSuggestionEngineRunning: boolean;
   suggestionEngineMessage: string;
   assistantMode: "suggestions" | "workbench" | "review";
@@ -249,6 +250,7 @@ type AssistantPanelProps = {
 const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
   fullscreen = false,
   selectedWoItems,
+  schedulePathByItemId,
   isSuggestionEngineRunning,
   suggestionEngineMessage,
   assistantMode,
@@ -408,6 +410,12 @@ const MapperAssistantPanel: React.FC<AssistantPanelProps> = ({
                     {item.treeContext && (
                       <div className="mt-1 text-text-muted">
                         WO Path: {item.treeContext}
+                      </div>
+                    )}
+                    {schedulePathByItemId[item.workOrderItemId] && (
+                      <div className="mt-1 text-emerald-700">
+                        Schedule Path:{" "}
+                        {schedulePathByItemId[item.workOrderItemId]}
                       </div>
                     )}
                   </div>
@@ -1822,6 +1830,40 @@ const ExecutionMapper: React.FC = () => {
     return suggestionsByItem.get(activeWorkbenchItem.workOrderItemId) || [];
   }, [activeWorkbenchItem, assistantMode, suggestionsByItem]);
 
+  const schedulePathBySelectedItemId = useMemo(() => {
+    const pathByItemId: Record<number, string> = {};
+
+    selectedWoItems.forEach((item) => {
+      const savedMapping = mappingAuditByItem[item.workOrderItemId]?.[0];
+      if (savedMapping) {
+        const activity = activityById.get(savedMapping.activityId);
+        const savedPath =
+          savedMapping.treePath ||
+          (activity
+            ? wbsPathById.get(activity.wbsNode?.id || activity.wbsNodeId)
+            : "");
+        if (savedPath) {
+          pathByItemId[item.workOrderItemId] = savedPath;
+          return;
+        }
+      }
+
+      const suggestedPath =
+        suggestionsByItem.get(item.workOrderItemId)?.[0]?.treePath || "";
+      if (suggestedPath) {
+        pathByItemId[item.workOrderItemId] = suggestedPath;
+      }
+    });
+
+    return pathByItemId;
+  }, [
+    activityById,
+    mappingAuditByItem,
+    selectedWoItems,
+    suggestionsByItem,
+    wbsPathById,
+  ]);
+
   const bulkReviewRows = useMemo<ReviewRow[]>(() => {
     if (assistantMode !== "review") {
       return [];
@@ -2864,6 +2906,7 @@ const ExecutionMapper: React.FC = () => {
 
           <MapperAssistantPanel
             selectedWoItems={selectedWoItems}
+            schedulePathByItemId={schedulePathBySelectedItemId}
             isSuggestionEngineRunning={isSuggestionEngineRunning}
             suggestionEngineMessage={suggestionEngineMessage}
             assistantMode={assistantMode}
@@ -2930,6 +2973,7 @@ const ExecutionMapper: React.FC = () => {
                 <MapperAssistantPanel
                   fullscreen
                   selectedWoItems={selectedWoItems}
+                  schedulePathByItemId={schedulePathBySelectedItemId}
                   isSuggestionEngineRunning={isSuggestionEngineRunning}
                   suggestionEngineMessage={suggestionEngineMessage}
                   assistantMode={assistantMode}

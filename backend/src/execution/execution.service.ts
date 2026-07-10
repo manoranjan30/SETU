@@ -22,6 +22,7 @@ import {
 } from '../workdoc/entities/work-order-item.entity';
 import { MicroScheduleActivity } from '../micro-schedule/entities/micro-schedule-activity.entity';
 import { MicroQuantityLedger } from '../micro-schedule/entities/micro-quantity-ledger.entity';
+import { WbsNode } from '../wbs/entities/wbs.entity';
 import { PushNotificationService } from '../notifications/push-notification.service';
 import { NotificationComposerService } from '../notifications/notification-composer.service';
 
@@ -1229,8 +1230,12 @@ export class ExecutionService {
       .createQueryBuilder('entry')
       .leftJoinAndSelect('entry.workOrderItem', 'workOrderItem')
       .leftJoinAndSelect('workOrderItem.boqItem', 'boqItem')
+      .leftJoinAndSelect('workOrderItem.workOrder', 'workOrder')
+      .leftJoinAndSelect('workOrder.vendor', 'vendor')
       .leftJoinAndSelect('entry.woActivityPlan', 'woActivityPlan')
       .leftJoinAndSelect('woActivityPlan.activity', 'activity')
+      .leftJoinAndSelect('activity.wbsNode', 'activityWbsNode')
+      .leftJoinAndSelect('woActivityPlan.executionEpsNode', 'planEpsNode')
       .leftJoinAndSelect('entry.executionEpsNode', 'executionEpsNode')
       .where('entry.status = :status', { status })
       .andWhere(
@@ -1258,18 +1263,31 @@ export class ExecutionService {
       await this.buildProgressApprovalSummaryByPlanId(rows);
     const locationContextByNodeId =
       await this.buildLocationContextByNodeId(rows);
-    const data = rows.map((row) =>
-      this.toCompatLogDto(row, {
+    const schedulePathByEntryId = await this.buildSchedulePathByEntries(rows);
+    const data = rows.map((row) => {
+      // Prefer entry-level EPS node; fall back to plan-level EPS node
+      const effectiveEpsNodeId =
+        row.executionEpsNodeId ?? row.woActivityPlan?.executionEpsNodeId ?? null;
+      const woTreePath = [
+        (row.workOrderItem as any)?.workOrder?.vendor?.name,
+        (row.workOrderItem as any)?.workOrder?.woNumber,
+        row.workOrderItem?.description,
+      ]
+        .filter(Boolean)
+        .join(' > ') || undefined;
+      return this.toCompatLogDto(row, {
         progressSummary:
           row.woActivityPlanId != null
             ? progressSummaryByPlanId.get(Number(row.woActivityPlanId))
             : undefined,
         locationContext:
-          row.executionEpsNodeId != null
-            ? locationContextByNodeId.get(Number(row.executionEpsNodeId))
+          effectiveEpsNodeId != null
+            ? locationContextByNodeId.get(Number(effectiveEpsNodeId))
             : undefined,
-      }),
-    );
+        schedulePath: schedulePathByEntryId.get(row.id),
+        woTreePath,
+      });
+    });
     return hasPaging
       ? {
           data,
@@ -1376,11 +1394,55 @@ export class ExecutionService {
     return summaryByPlanId;
   }
 
+  private async buildSchedulePathByEntries(
+    entries: ExecutionProgressEntry[],
+  ): Promise<Map<number, string>> {
+    const pathByEntryId = new Map<number, string>();
+    const wbsNodeIds = new Set<number>();
+    for (const e of entries) {
+      const nodeId = e.woActivityPlan?.activity?.wbsNode?.id;
+      if (nodeId) wbsNodeIds.add(Number(nodeId));
+    }
+    if (!wbsNodeIds.size) return pathByEntryId;
+
+    const allWbsNodes = await this.dataSource
+      .getRepository(WbsNode)
+      .find({ select: ['id', 'wbsName', 'parentId'] });
+    const wbsById = new Map(allWbsNodes.map((n) => [Number(n.id), n]));
+
+    const buildPath = (nodeId: number): string => {
+      const parts: string[] = [];
+      let currentId: number | null = nodeId;
+      const visited = new Set<number>();
+      while (currentId != null && !visited.has(currentId)) {
+        visited.add(currentId);
+        const node = wbsById.get(currentId);
+        if (!node) break;
+        parts.unshift(node.wbsName);
+        currentId = node.parentId == null ? null : Number(node.parentId);
+      }
+      return parts.join(' > ');
+    };
+
+    for (const entry of entries) {
+      const wbsNodeId = entry.woActivityPlan?.activity?.wbsNode?.id;
+      const actName = entry.woActivityPlan?.activity?.activityName;
+      if (!wbsNodeId && !actName) continue;
+      let path = wbsNodeId ? buildPath(Number(wbsNodeId)) : '';
+      if (actName) path = path ? `${path} > ${actName}` : actName;
+      if (path) pathByEntryId.set(entry.id, path);
+    }
+    return pathByEntryId;
+  }
+
   private async buildLocationContextByNodeId(entries: ExecutionProgressEntry[]) {
     const nodeIds = [
       ...new Set(
         entries
-          .map((entry) => Number(entry.executionEpsNodeId || 0))
+          .flatMap((entry) => [
+            Number(entry.executionEpsNodeId || 0),
+            Number(entry.woActivityPlan?.executionEpsNodeId || 0),
+          ])
           .filter((id) => id > 0),
       ),
     ];
@@ -1458,6 +1520,8 @@ export class ExecutionService {
         floorName: string;
         levels: Array<{ id: number; name: string; type: string }>;
       };
+      schedulePath?: string;
+      woTreePath?: string;
     },
   ) {
     const boqItem = entry.workOrderItem?.boqItem;
@@ -1491,8 +1555,10 @@ export class ExecutionService {
         : null,
       locationPath: extras?.locationContext?.path || epsNode?.name || null,
       locationLevels: extras?.locationContext?.levels || [],
-      towerName: extras?.locationContext?.towerName || 'Unassigned Tower',
-      floorName: extras?.locationContext?.floorName || 'Unassigned Floor',
+      towerName: extras?.locationContext?.towerName || null,
+      floorName: extras?.locationContext?.floorName || null,
+      schedulePath: extras?.schedulePath || null,
+      woTreePath: extras?.woTreePath || null,
       measurementElement: {
         id:
           entry.workOrderItem?.measurementElementId ||

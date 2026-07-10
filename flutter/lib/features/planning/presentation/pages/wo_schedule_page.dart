@@ -160,9 +160,15 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
       }
       for (final r in roots) flattenLeaves(r);
 
-      // Build activity-id → node map so already-linked WO items get full WBS paths
+      // Build activity-id → node map so already-linked WO items get full WBS paths.
+      // Index ALL positive-ID nodes (not just leaves) because a version-activity tree
+      // may mark an activity as non-leaf when it has sub-activities in the schedule.
       final actNodeById = <int, _WbsNode>{};
-      for (final leaf in leaves) { actNodeById[leaf.id] = leaf; }
+      void indexNode(_WbsNode n) {
+        if (n.id > 0) actNodeById[n.id] = n; // negative IDs are WBS header nodes
+        for (final c in n.children) indexNode(c);
+      }
+      for (final r in roots) indexNode(r);
 
       // Resolve full path for every WO item that already has a linkedActivityId
       void resolveLinkedPaths(List<_WoItem> items) {
@@ -717,10 +723,13 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
   Set<int> _computeVisibleForSearch(String q) {
     final visible = <int>{};
     bool visit(_WbsNode n) {
+      // Never search inside hidden subtrees
+      if (_hiddenNodes.contains(n.id)) return false;
       final selfMatches = n.name.toLowerCase().contains(q) || (n.code?.toLowerCase().contains(q) ?? false);
       if (selfMatches) {
         // Mark self and ALL descendants visible (parent match → show full subtree)
         void markAll(_WbsNode x) {
+          if (_hiddenNodes.contains(x.id)) return;
           visible.add(x.id);
           for (final c in x.children) markAll(c);
         }
@@ -744,10 +753,10 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
   // and all visible branches are auto-expanded.
 
   Widget _buildNode(_WbsNode node, {int depth = 0, Set<int>? visibleIds}) {
+    // Hidden nodes are never shown — even in search mode
+    if (_hiddenNodes.contains(node.id)) return const SizedBox.shrink();
     // Search mode: skip nodes not in the visible set
     if (visibleIds != null && !visibleIds.contains(node.id)) return const SizedBox.shrink();
-    // Normal mode: skip hidden nodes (hides entire subtree)
-    if (visibleIds == null && _hiddenNodes.contains(node.id)) return const SizedBox.shrink();
 
     if (node.isLeaf) {
       return _LeafTile(node: node, depth: depth, onTap: () => Navigator.pop(context, node));
