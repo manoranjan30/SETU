@@ -1710,12 +1710,12 @@ export class WorkDocService {
       where: { projectId },
       relations: ['activity'],
     });
-    // Map: workOrderItemId -> activity name(s)
-    const woItemActivityMap = new Map<number, string[]>();
+    // Map: workOrderItemId -> { activityId, activityName }[]
+    const woItemPlanMap = new Map<number, { activityId: number; activityName: string }[]>();
     for (const plan of plans) {
-      const arr = woItemActivityMap.get(plan.workOrderItemId) || [];
-      arr.push(plan.activity?.activityName || `Activity #${plan.activityId}`);
-      woItemActivityMap.set(plan.workOrderItemId, arr);
+      const arr = woItemPlanMap.get(plan.workOrderItemId) || [];
+      arr.push({ activityId: plan.activityId, activityName: plan.activity?.activityName || `Activity #${plan.activityId}` });
+      woItemPlanMap.set(plan.workOrderItemId, arr);
     }
 
     // 3. Build hierarchical tree: Vendor → WO → BOQ Main → Sub → Measurement
@@ -1761,8 +1761,8 @@ export class WorkDocService {
       }
       const boqNode = woNode.boqItems.get(boqItemId);
 
-      const linkedActivities = woItemActivityMap.get(item.id) || [];
-      const mappingStatus = linkedActivities.length > 0 ? 'MAPPED' : 'UNMAPPED';
+      const planLinks = woItemPlanMap.get(item.id) || [];
+      const mappingStatus = planLinks.length > 0 ? 'MAPPED' : 'UNMAPPED';
 
       const woItemFlat = {
         workOrderItemId: item.id,
@@ -1775,7 +1775,8 @@ export class WorkDocService {
         rate: Number(item.rate),
         amount: Number(item.amount),
         mappingStatus,
-        linkedActivities: linkedActivities.join(', '),
+        linkedActivities: planLinks.map(p => p.activityName).join(', '),
+        linkedActivityId: planLinks.length > 0 ? planLinks[0].activityId : null,
       };
 
       // Place into correct hierarchy level

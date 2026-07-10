@@ -173,7 +173,12 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({
   }, [currentView, isRecognizedView, onViewChange, visibleMenuItems]);
 
   return (
-    <div className="ui-shell flex min-h-full overflow-hidden ui-animate-page">
+    <div
+      className={clsx(
+        "ui-shell flex overflow-hidden ui-animate-page",
+        currentView === "mapper" ? "h-full min-h-0" : "min-h-full",
+      )}
+    >
       {/* Sidebar */}
       <div className="w-64 bg-surface-card border-r border-border-default flex flex-col h-full shadow-lg z-10 ui-animate-card">
         <div className="p-4 border-b border-border-subtle flex-shrink-0">

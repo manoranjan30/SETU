@@ -502,7 +502,7 @@ class _MultiGoProgress extends StatelessWidget {
                 chipIcon = Icons.add_circle_outline;
                 chipText = 'Raise $goLabel';
               } else {
-                final status = matchInsp!.status;
+                final status = matchInsp.status;
                 if (status == InspectionStatus.approved ||
                     status == InspectionStatus.provisionallyApproved) {
                   chipColor = Colors.amber.shade50;

@@ -43,7 +43,10 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
             {record.microActivityName || record.name}
           </div>
           {record.workOrderItemDescription && (
-            <div className="text-[11px] text-text-muted truncate">
+            <div
+              className="text-[11px] text-text-muted break-words"
+              title={record.workOrderItemDescription}
+            >
               WO: {record.workOrderItemDescription}
             </div>
           )}
@@ -62,7 +65,10 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
           {record.displayLabel || record.name}
         </div>
         {record.workOrderItemDescription && (
-          <div className="text-[11px] text-text-muted truncate">
+          <div
+            className="text-[11px] text-text-muted break-words"
+            title={record.workOrderItemDescription}
+          >
             WO: {record.workOrderItemDescription}
           </div>
         )}
@@ -337,7 +343,10 @@ export const VendorProgressPane: React.FC<VendorProgressPaneProps> = ({
                         {boqEntry.boqItem.description}
                       </p>
                       {boqEntry.workOrderItemDescription && (
-                        <p className="text-[11px] text-text-muted mt-1">
+                        <p
+                          className="mt-1 text-[11px] text-text-muted break-words"
+                          title={boqEntry.workOrderItemDescription}
+                        >
                           WO Description:{" "}
                           <span className="font-medium text-text-secondary">
                             {boqEntry.workOrderItemDescription}

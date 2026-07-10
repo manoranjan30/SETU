@@ -693,6 +693,25 @@ class SetuApiClient {
 
   // ==================== WO–SCHEDULE LINKER ====================
 
+  /// All WBS nodes for a project (flat, sorted by wbsCode).
+  /// Returns list of { id, parentId, wbsCode, wbsName, wbsLevel, sequenceNo, ... }
+  Future<List<dynamic>> getWbsNodes(int projectId) async {
+    final response = await _dio.get('/projects/$projectId/wbs');
+    return response.data is List ? response.data as List<dynamic> : [];
+  }
+
+  /// All base activities for a project (excludes version copies, includes wbsNode.id).
+  /// Returns list of { id, activityCode, activityName, wbsNode: { id, ... }, ... }
+  Future<List<dynamic>> getWbsActivities(int projectId) async {
+    final response = await _dio.get('/projects/$projectId/wbs/activities');
+    return response.data is List ? response.data as List<dynamic> : [];
+  }
+
+  /// Removes all WO-item → activity links for [workOrderItemId].
+  Future<void> unlinkWoItem({required int workOrderItemId}) async {
+    await _dio.post('/planning/unlink-wo', data: {'workOrderItemId': workOrderItemId});
+  }
+
   /// Links a WO item to a schedule activity via POST /planning/distribute-wo.
   /// quantity: -1 lets the backend use the full allocated quantity.
   Future<void> linkWoItemToActivity({

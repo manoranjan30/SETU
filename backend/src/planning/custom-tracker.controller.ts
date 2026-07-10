@@ -9,8 +9,10 @@ import {
   Post,
   Query,
   Request,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -85,6 +87,22 @@ export class CustomTrackerController {
     @Param('trackerId', ParseIntPipe) trackerId: number,
   ) {
     return this.customTracker.analytics(projectId, trackerId);
+  }
+
+  @Get(':trackerId/report.csv')
+  @Permissions('PLANNING.CUSTOM_TRACKER.READ')
+  async exportReportCsv(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('trackerId', ParseIntPipe) trackerId: number,
+    @Res() res: Response,
+  ) {
+    const csv = await this.customTracker.exportReportCsv(projectId, trackerId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="custom-tracker-${trackerId}-report.csv"`,
+    );
+    res.send(csv);
   }
 
   @Post(':trackerId/fields')

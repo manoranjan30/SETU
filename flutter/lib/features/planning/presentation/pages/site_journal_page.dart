@@ -31,6 +31,36 @@ class _SiteJournalPageState extends State<SiteJournalPage> {
   @override
   void dispose() { _searchCtrl.dispose(); super.dispose(); }
 
+  Future<void> _addEntry() async {
+    final bloc = context.read<PlanningPhase2Bloc>();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (date == null || !mounted) return;
+    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    final state = bloc.state;
+    SiteJournalEntry? existing;
+    if (state is JournalLoaded) {
+      if (state.todayEntry?.date == dateStr) {
+        existing = state.todayEntry;
+      } else {
+        for (final e in state.entries) {
+          if (e.date == dateStr) { existing = e; break; }
+        }
+      }
+    }
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => BlocProvider.value(
+        value: bloc,
+        child: JournalEntryFormPage(project: widget.project, date: dateStr, existing: existing),
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final ps = PermissionService.of(context);
@@ -45,6 +75,13 @@ class _SiteJournalPageState extends State<SiteJournalPage> {
               onPressed: () => context.read<PlanningPhase2Bloc>().add(LoadJournal(widget.project.id))),
         ],
       ),
+      floatingActionButton: ps.canCreateJournal
+          ? FloatingActionButton.extended(
+              onPressed: _addEntry,
+              icon: const Icon(Icons.add),
+              label: const Text('New Entry'),
+            )
+          : null,
       body: BlocConsumer<PlanningPhase2Bloc, Phase2State>(
         listener: (ctx, state) {
           if (state is Phase2ActionSuccess) {

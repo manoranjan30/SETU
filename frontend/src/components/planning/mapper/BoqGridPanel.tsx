@@ -567,7 +567,7 @@ const BoqGridPanel: React.FC<Props> = ({
   return (
     <div className="flex flex-col h-full w-full">
       {/* Search + Controls */}
-      <div className="p-2 border-b bg-surface-base flex gap-2 items-center">
+      <div className="sticky top-0 z-20 flex items-center gap-2 border-b bg-surface-base p-2">
         <div className="relative flex-1">
           <Search
             size={16}
@@ -613,7 +613,7 @@ const BoqGridPanel: React.FC<Props> = ({
       </div>
 
       {/* Column Headers */}
-      <div className="flex items-center px-4 py-2 bg-surface-raised border-b text-[11px] font-semibold text-text-muted uppercase tracking-wider">
+      <div className="sticky top-[53px] z-20 flex items-center border-b bg-surface-raised px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-muted shadow-sm">
         <div className="flex-1 min-w-0">Description</div>
         <div className="w-20 text-right">Qty</div>
         <div className="w-14 text-center">UoM</div>

@@ -18,6 +18,10 @@ const Dashboard = () => {
     "/dashboard/eps",
     "/dashboard/eps/",
   ].includes(location.pathname.toLowerCase());
+  const routeSearchParams = new URLSearchParams(location.search);
+  const routeOwnsScroll =
+    location.pathname.toLowerCase().includes("/planning") &&
+    routeSearchParams.get("view") === "mapper";
 
   useEffect(() => {
     const handleRouteLoadingStart = () => {
@@ -79,7 +83,11 @@ const Dashboard = () => {
             <BackButton />
           </div>
         )}
-        <div className="flex-1 overflow-y-auto">
+        <div
+          className={`min-h-0 flex-1 ${
+            routeOwnsScroll ? "overflow-hidden" : "overflow-y-auto"
+          }`}
+        >
           <Outlet />
         </div>
         {showRouteLoader && (

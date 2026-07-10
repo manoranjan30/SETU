@@ -253,6 +253,37 @@ export class ExecutionBreakdownService {
 
     // 4. Build Vendor-grouped structure
     const vendorMap = new Map<number | string, any>();
+    const workOrderItemDescriptionPathCache = new Map<number, string>();
+    const buildWorkOrderItemDescriptionPath = async (
+      item: WorkOrderItem,
+    ): Promise<string> => {
+      const itemId = Number(item.id || 0);
+      if (itemId && workOrderItemDescriptionPathCache.has(itemId)) {
+        return workOrderItemDescriptionPathCache.get(itemId)!;
+      }
+
+      const labels: string[] = [];
+      const visited = new Set<number>();
+      let current: Pick<
+        WorkOrderItem,
+        'id' | 'description' | 'parentWorkOrderItemId'
+      > | null = item;
+
+      while (current?.id && !visited.has(Number(current.id))) {
+        visited.add(Number(current.id));
+        if (current.description) labels.unshift(current.description);
+        current = current.parentWorkOrderItemId
+          ? await this.workOrderItemRepo.findOne({
+              where: { id: Number(current.parentWorkOrderItemId) },
+              select: ['id', 'description', 'parentWorkOrderItemId'],
+            })
+          : null;
+      }
+
+      const descriptionPath = labels.join(' > ') || item.description || '';
+      if (itemId) workOrderItemDescriptionPathCache.set(itemId, descriptionPath);
+      return descriptionPath;
+    };
 
     for (const plan of plans) {
       const workOrderItem =
@@ -281,6 +312,8 @@ export class ExecutionBreakdownService {
       const vId = plan.vendorId || vendor?.id || 'DIRECT';
       const vName = vendor?.name || 'Direct Execution (No Vendor)';
       const vCode = vendor?.vendorCode || null;
+      const workOrderItemDescription =
+        await buildWorkOrderItemDescriptionPath(workOrderItem);
 
       if (!vendorMap.has(vId)) {
         vendorMap.set(vId, {
@@ -341,14 +374,14 @@ export class ExecutionBreakdownService {
           microActivityId: ma.id,
           microActivityName: ma.name,
           microActivityDescription: ma.description || null,
-          workOrderItemDescription: workOrderItem.description || null,
+          workOrderItemDescription: workOrderItemDescription || null,
           workOrderNumber: workOrder?.woNumber || null,
           wbsPath: wbsContext.path,
           wbsParentName: wbsContext.parentName,
           wbsGrandparentName: wbsContext.grandparentName,
           displayLabel: [
             ma.name,
-            workOrderItem.description || null,
+            workOrderItemDescription || null,
             [wbsContext.grandparentName, wbsContext.parentName]
               .filter(Boolean)
               .join(' > ') || null,
@@ -356,7 +389,7 @@ export class ExecutionBreakdownService {
             .filter(Boolean)
             .join(' | '),
           subtitle: [
-            workOrderItem.description || null,
+            workOrderItemDescription || null,
             [wbsContext.grandparentName, wbsContext.parentName]
               .filter(Boolean)
               .join(' > ') || null,
@@ -389,13 +422,13 @@ export class ExecutionBreakdownService {
           microActivityId: null,
           microActivityName: null,
           microActivityDescription: null,
-          workOrderItemDescription: workOrderItem.description || null,
+          workOrderItemDescription: workOrderItemDescription || null,
           workOrderNumber: workOrder?.woNumber || null,
           wbsPath: wbsContext.path,
           wbsParentName: wbsContext.parentName,
           wbsGrandparentName: wbsContext.grandparentName,
           displayLabel: 'Unallocated Qty Balance',
-          subtitle: workOrderItem.description || null,
+          subtitle: workOrderItemDescription || null,
           allocatedQty: balanceQty,
           executedQty: Number(directExecutedQty),
           balanceQty: Math.max(0, balanceQty - Number(directExecutedQty)),
@@ -407,7 +440,7 @@ export class ExecutionBreakdownService {
         boqSubItemId,
         workOrderItemId: plan.workOrderItemId,
         planId: plan?.id ?? null,
-        workOrderItemDescription: workOrderItem.description || null,
+        workOrderItemDescription: workOrderItemDescription || null,
         scope: {
           total: totalPlanQty,
           allocated: totalMicroAllocatedQty,
