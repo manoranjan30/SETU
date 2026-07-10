@@ -502,6 +502,11 @@ export class IssueTrackerService {
         userId != null &&
         Boolean(activeConfig?.allowMemberSelfClose) &&
         (activeConfig?.memberUserIds || []).includes(userId);
+      const canFinalSelfClose = this.canSelfCloseCompletedIssue(
+        issue,
+        issueSteps,
+        user,
+      );
       return {
         ...issue,
         steps: issueSteps,
@@ -516,7 +521,9 @@ export class IssueTrackerService {
           Boolean(activeStep?.memberRespondedAt) &&
           activeStep?.coordinatorClosedAt == null,
         canClose:
-          (this.isAdmin(user) || user?.permissions?.includes?.('PLANNING.MATRIX.UPDATE')) &&
+          (this.isAdmin(user) ||
+            user?.permissions?.includes?.('PLANNING.MATRIX.UPDATE') ||
+            canFinalSelfClose) &&
           issue.status === IssueTrackerStatus.COMPLETED,
       };
     });
@@ -803,8 +810,19 @@ export class IssueTrackerService {
   ) {
     const issue = await this.issueRepo.findOne({ where: { id: issueId, projectId } });
     if (!issue) throw new NotFoundException('Issue not found');
-    if (!this.isAdmin(user) && !user?.permissions?.includes?.('PLANNING.MATRIX.UPDATE')) {
+    const steps = await this.stepRepo.find({
+      where: { issueId, projectId },
+      order: { sequenceNo: 'ASC' },
+    });
+    if (
+      !this.isAdmin(user) &&
+      !user?.permissions?.includes?.('PLANNING.MATRIX.UPDATE') &&
+      !this.canSelfCloseCompletedIssue(issue, steps, user)
+    ) {
       throw new ForbiddenException('You do not have permission to close issues');
+    }
+    if (issue.status !== IssueTrackerStatus.COMPLETED) {
+      throw new BadRequestException('Issue can be finally closed only after all departments are completed');
     }
     issue.status = IssueTrackerStatus.CLOSED;
     issue.closedDate = new Date();
@@ -830,6 +848,21 @@ export class IssueTrackerService {
     }
 
     return this.getIssueDetail(projectId, issueId, user);
+  }
+
+  private canSelfCloseCompletedIssue(
+    issue: IssueTrackerIssue,
+    steps: IssueTrackerStep[],
+    user: any,
+  ) {
+    const userId = this.getUserId(user);
+    if (!userId || issue.status !== IssueTrackerStatus.COMPLETED) return false;
+    if (issue.raisedByUserId === userId) return true;
+    return steps.some(
+      (step) =>
+        step.status === IssueTrackerStepStatus.COMPLETED &&
+        step.respondedByUserId === userId,
+    );
   }
 
   // ─── Priority Change ──────────────────────────────────────────────────────

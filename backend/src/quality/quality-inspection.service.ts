@@ -198,30 +198,37 @@ export class QualityInspectionService {
   }
 
   async listRfiDateProjectSettings() {
-    const projects = await this.projectProfileRepo.find({
-      relations: ['epsNode'],
-      order: { projectName: 'ASC', id: 'ASC' },
-    });
+    const [projectNodes, profiles] = await Promise.all([
+      this.epsNodeRepo.find({
+        where: { type: EpsNodeType.PROJECT },
+        relations: ['projectProfile'],
+        order: { name: 'ASC', id: 'ASC' },
+      }),
+      this.projectProfileRepo.find({ relations: ['epsNode'] }),
+    ]);
+    const profileByProjectId = new Map(
+      profiles
+        .filter((profile) => profile.epsNode?.id)
+        .map((profile) => [profile.epsNode.id, profile]),
+    );
     const rows = await Promise.all(
-      projects
-        .filter((project) => project.epsNode?.id)
-        .map(async (project) => {
-          const projectId = project.epsNode.id;
-          const settings = await this.getRfiDateSettings(projectId);
-          return {
-            projectId,
-            projectProfileId: project.id,
-            projectCode: project.projectCode,
-            projectName:
-              project.projectName || project.epsNode.name || `Project ${projectId}`,
-            ...settings,
-          };
-        }),
+      projectNodes.map(async (project) => {
+        const profile = project.projectProfile || profileByProjectId.get(project.id);
+        const settings = await this.getRfiDateSettings(project.id);
+        return {
+          projectId: project.id,
+          projectProfileId: profile?.id || null,
+          projectCode: profile?.projectCode || null,
+          projectName: profile?.projectName || project.name || `Project ${project.id}`,
+          ...settings,
+        };
+      }),
+    );
+    const globalEnabled = await this.systemSettings.getSettingBool(
+      this.rfiBackdatingGlobalKey,
     );
     return {
-      globalEnabled: rows[0]?.globalEnabled ?? (await this.systemSettings.getSettingBool(
-        this.rfiBackdatingGlobalKey,
-      )),
+      globalEnabled,
       projects: rows,
     };
   }

@@ -219,11 +219,13 @@ class ScheduleActivity {
   final double percentComplete;
   final int? totalFloat;
   final bool isCritical;
+  final int? epsNodeId;
 
   const ScheduleActivity({
     required this.id, required this.name, this.activityCode,
     this.startDate, this.finishDate, this.actualStart, this.actualFinish,
     this.percentComplete = 0, this.totalFloat, this.isCritical = false,
+    this.epsNodeId,
   });
 
   factory ScheduleActivity.fromJson(Map<String, dynamic> j) {
@@ -239,6 +241,7 @@ class ScheduleActivity {
       percentComplete: ((j['percentComplete'] ?? act['percentComplete'] ?? 0) as num).toDouble(),
       totalFloat: j['totalFloat'] as int? ?? j['float'] as int?,
       isCritical: j['isCritical'] as bool? ?? false,
+      epsNodeId: j['epsNodeId'] as int? ?? act['epsNodeId'] as int?,
     );
   }
 }

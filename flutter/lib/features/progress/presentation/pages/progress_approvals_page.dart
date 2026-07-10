@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/injection_container.dart';
-import 'package:setu_mobile/shared/widgets/paginated_list_view.dart';
 
 // ─────────────────────────────────────── Cubit ──────────────────────────────
 // The approvals feature is self-contained in this file — it owns its own
@@ -244,52 +243,67 @@ class _ProgressApprovalsView extends StatelessWidget {
             );
           }
 
+          // Group items: towerName → floorName → list of items
+          final grouped = <String, Map<String, List<Map<String, dynamic>>>>{};
+          for (final item in items) {
+            final tower = item['towerName'] as String? ?? 'Unassigned Tower';
+            final floor = item['floorName'] as String? ?? 'Unassigned Floor';
+            grouped.putIfAbsent(tower, () => {});
+            grouped[tower]!.putIfAbsent(floor, () => []);
+            grouped[tower]![floor]!.add(item);
+          }
+
+          // Build a flat ordered list of widgets for the ListView
+          final rows = <Widget>[];
+          for (final tower in grouped.keys) {
+            rows.add(_TowerHeader(name: tower));
+            for (final floor in grouped[tower]!.keys) {
+              rows.add(_FloorHeader(name: floor));
+              final floorItems = grouped[tower]![floor]!;
+              for (int i = 0; i < floorItems.length; i++) {
+                final item = floorItems[i];
+                final id = item['id'] as int;
+                rows.add(_PendingApprovalTile(
+                  item: item,
+                  isSelected: selected.contains(id),
+                  onToggle: () => context.read<_ApprovalsCubit>().toggle(id),
+                ));
+                if (i < floorItems.length - 1) rows.add(const Divider(height: 1, indent: 56));
+              }
+            }
+          }
+
           return Column(
             children: [
               // ── Bulk selection bar ───────────────────────────────────────
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 color: Theme.of(context).colorScheme.surfaceContainerLow,
                 child: Row(
                   children: [
-                    // "Select all" checkbox — tristate when partially selected
                     Checkbox(
-                      value: selected.length == items.length &&
-                          items.isNotEmpty,
-                      tristate: selected.isNotEmpty &&
-                          selected.length < items.length,
-                      onChanged: (_) =>
-                          context.read<_ApprovalsCubit>().toggleAll(),
+                      value: selected.length == items.length && items.isNotEmpty,
+                      tristate: selected.isNotEmpty && selected.length < items.length,
+                      onChanged: (_) => context.read<_ApprovalsCubit>().toggleAll(),
                     ),
-                    // Shows pending count or selection count
                     Text(
-                      selected.isEmpty
-                          ? '${items.length} pending'
-                          : '${selected.length} selected',
+                      selected.isEmpty ? '${items.length} pending' : '${selected.length} selected',
                       style: const TextStyle(fontSize: 13),
                     ),
                     const Spacer(),
-                    // Bulk action buttons — only visible when items are
-                    // selected AND the user holds EXECUTION.ENTRY.APPROVE.
                     if (selected.isNotEmpty && ps.canApproveProgress) ...[
-                      // Reject button — opens dialog to capture reason
                       OutlinedButton(
-                        onPressed: () =>
-                            _showRejectDialog(context),
+                        onPressed: () => _showRejectDialog(context),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red.shade700,
-                          side: BorderSide(
-                              color: Colors.red.shade400),
+                          side: BorderSide(color: Colors.red.shade400),
                           textStyle: const TextStyle(fontSize: 12),
                         ),
                         child: const Text('Reject'),
                       ),
                       const SizedBox(width: 8),
-                      // Approve button — dispatches approval immediately
                       FilledButton(
-                        onPressed: () =>
-                            context.read<_ApprovalsCubit>().approve(),
+                        onPressed: () => context.read<_ApprovalsCubit>().approve(),
                         style: FilledButton.styleFrom(
                           backgroundColor: Colors.green.shade700,
                           textStyle: const TextStyle(fontSize: 12),
@@ -300,23 +314,12 @@ class _ProgressApprovalsView extends StatelessWidget {
                   ],
                 ),
               ),
-              // ── Pending approval list ────────────────────────────────────
+              // ── Grouped approval list ────────────────────────────────────
               Expanded(
-                child: PaginatedListView<Map<String, dynamic>>(
-                  items: items,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  separatorBuilder: (_) => const Divider(height: 1),
-                  itemBuilder: (_, item, __) {
-                    final id = item['id'] as int;
-                    final isSelected = selected.contains(id);
-                    return _PendingApprovalTile(
-                      item: item,
-                      isSelected: isSelected,
-                      // Tapping the row toggles its selection
-                      onToggle: () =>
-                          context.read<_ApprovalsCubit>().toggle(id),
-                    );
-                  },
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemCount: rows.length,
+                  itemBuilder: (_, i) => rows[i],
                 ),
               ),
             ],
@@ -368,6 +371,51 @@ class _ProgressApprovalsView extends StatelessWidget {
 
 // ─────────────────────────────────────── Tile ───────────────────────────────
 
+class _TowerHeader extends StatelessWidget {
+  final String name;
+  const _TowerHeader({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context).colorScheme.primaryContainer,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Text(
+        name,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _FloorHeader extends StatelessWidget {
+  final String name;
+  const _FloorHeader({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      padding: const EdgeInsets.fromLTRB(24, 6, 16, 6),
+      child: Text(
+        name,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
 /// Single row in the pending approvals list.
 /// Shows a checkbox, activity name, date, quantity, and submitter name.
 /// Highlighted with a tinted background when selected.
@@ -409,7 +457,6 @@ class _PendingApprovalTile extends StatelessWidget {
     final date = item['date'] as String? ?? item['logDate'] as String? ?? '—';
     final qtyRaw = item['quantity'] ?? item['executedQty'] ?? item['qty'];
     final qty = qtyRaw != null ? qtyRaw.toString() : '—';
-    // UOM: try flat fields first, then nested boqItem
     final rawUnit = item['unit'] ?? item['uom'] ?? meBoq?['uom'];
     final unit = (rawUnit != null && rawUnit.toString() != 'null')
         ? rawUnit.toString()
@@ -418,17 +465,20 @@ class _PendingApprovalTile extends StatelessWidget {
         item['user']?['username'] as String? ??
         item['submittedByName'] as String? ??
         item['updatedBy'] as String?;
-    // Location / WBS context
-    final location = item['epsNodeLabel'] as String? ??
+    // Full WBS path from backend (preferred), falling back to older fields
+    final locationPath = item['locationPath'] as String? ??
+        item['wbsPath'] as String? ??
+        item['epsNodeLabel'] as String? ??
         item['locationLabel'] as String? ??
-        item['epsNode']?['label'] as String? ??
         meLoc?['label'] as String? ??
         meLoc?['name'] as String?;
-    final wbsPath = item['wbsPath'] as String? ?? item['wbsCode'] as String?;
     final remarks = item['remarks'] as String? ?? item['notes'] as String?;
-    // Cumulative progress if available
-    final cumulative = item['cumulativeQuantity'] ?? item['cumulative'];
-    final targetQty = item['targetQuantity'] ?? item['plannedQuantity'];
+    // progressSummary from backend
+    final ps = item['progressSummary'] as Map<String, dynamic>?;
+    final totalQty = ps?['totalQuantity'];
+    final approvedTillLast = ps?['approvedTillLast'];
+    final presentSubmitted = ps?['presentSubmitted'];
+    final totalIncPresent = ps?['totalApprovalIncludingPresent'];
 
     return InkWell(
       onTap: onToggle,
@@ -473,9 +523,10 @@ class _PendingApprovalTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Location / WBS path
-                  if (location != null || wbsPath != null) ...[
+                  // Full WBS location path
+                  if (locationPath != null) ...[
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(Icons.location_on_outlined,
                             size: 12,
@@ -484,22 +535,20 @@ class _PendingApprovalTile extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            [if (wbsPath != null) wbsPath,
-                             if (location != null) location]
-                                .join(' · '),
+                            locationPath,
                             style: theme.textTheme.bodySmall?.copyWith(
                                 fontSize: 11,
                                 color: theme.colorScheme.primary
                                     .withValues(alpha: 0.8)),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                   ],
-                  // Date + quantity row
+                  // Date + submitted qty
                   Row(
                     children: [
                       Icon(Icons.calendar_today_outlined,
@@ -521,19 +570,31 @@ class _PendingApprovalTile extends StatelessWidget {
                           unit.isNotEmpty ? '$qty $unit' : qty,
                           style: theme.textTheme.bodySmall?.copyWith(
                               fontWeight: FontWeight.w600)),
-                      // Cumulative vs target if available
-                      if (cumulative != null && targetQty != null) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '(cum: $cumulative / $targetQty $unit)',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 10,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.5)),
-                        ),
-                      ],
                     ],
                   ),
+                  // Quantity breakdown: total / prev approved / this / total-if-approved
+                  if (totalQty != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          _QtyCell(label: 'Total', value: totalQty, unit: unit, theme: theme),
+                          _QtyDivider(theme: theme),
+                          _QtyCell(label: 'Prev Approved', value: approvedTillLast, unit: unit, theme: theme),
+                          _QtyDivider(theme: theme),
+                          _QtyCell(label: 'This', value: presentSubmitted, unit: unit, theme: theme,
+                              highlight: true),
+                          _QtyDivider(theme: theme),
+                          _QtyCell(label: 'Total incl.', value: totalIncPresent, unit: unit, theme: theme),
+                        ],
+                      ),
+                    ),
+                  ],
                   // Submitted-by line
                   if (submittedBy != null) ...[
                     const SizedBox(height: 2),
@@ -584,6 +645,72 @@ class _PendingApprovalTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _QtyCell extends StatelessWidget {
+  final String label;
+  final dynamic value;
+  final String unit;
+  final ThemeData theme;
+  final bool highlight;
+
+  const _QtyCell({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.theme,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayVal = value != null ? value.toString() : '—';
+    final valWithUnit = unit.isNotEmpty ? '$displayVal $unit' : displayVal;
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 9,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            valWithUnit,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              fontWeight: highlight ? FontWeight.bold : FontWeight.w500,
+              color: highlight
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QtyDivider extends StatelessWidget {
+  final ThemeData theme;
+  const _QtyDivider({required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 28,
+      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
 }

@@ -244,11 +244,14 @@ class _ActivityListBody extends StatelessWidget {
                       // not see Raise RFI/GO buttons regardless of status.
                       final canRaiseRfi = ps.canRaiseRfi &&
                           status == ActivityDisplayStatus.ready;
-                      // Allow raising additional parts / units when the
-                      // activity isn't locked or fully approved.
+                      // Allow raising additional parts / units when not locked.
                       final canRaiseMore = ps.canRaiseRfi &&
                           status != ActivityDisplayStatus.locked &&
-                              status != ActivityDisplayStatus.approved;
+                          status != ActivityDisplayStatus.approved;
+                      // "Add GO" is allowed even after full approval — users
+                      // may legitimately need additional GOs for re-work.
+                      final canAddGo = ps.canRaiseRfi &&
+                          status != ActivityDisplayStatus.locked;
 
                       return ActivityCard(
                         row: row,
@@ -274,8 +277,9 @@ class _ActivityListBody extends StatelessWidget {
                             ? (inspection) =>
                                 _openInspectionApproval(context, inspection)
                             : null,
-                        // Add GO: reserve and raise the next GO in the series
-                        onExpandGo: canRaiseMore &&
+                        // Add GO: allowed for all non-locked activities,
+                        // including fully-approved ones (re-work scenario).
+                        onExpandGo: canAddGo &&
                                 row.allInspections.isNotEmpty &&
                                 row.activity.applicabilityLevel != 'UNIT'
                             ? () => _showAddGoDialog(context, row)

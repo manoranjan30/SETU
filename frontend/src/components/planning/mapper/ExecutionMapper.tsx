@@ -2710,21 +2710,21 @@ const ExecutionMapper: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col bg-surface-base">
-      <div className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b bg-surface-card px-4 shadow-sm">
-        <div className="flex items-center gap-2 text-text-secondary">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-base">
+      <div className="sticky top-0 z-50 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b bg-surface-card px-4 py-2 shadow-sm">
+        <div className="flex min-w-0 items-center gap-2 text-text-secondary">
           <Split className="text-primary" size={20} />
-          <h1 className="font-bold text-lg">WO Qty Mapper</h1>
+          <h1 className="shrink-0 font-bold text-lg">WO Qty Mapper</h1>
           <span className="rounded-full bg-info-muted px-2 py-0.5 text-xs font-medium text-blue-800">
             Project #{numericProjectId}
           </span>
-          <span className="text-xs text-text-muted">
+          <span className="truncate text-xs text-text-muted">
             Confidence review, branch mapping, override audit, and fast keyboard
             flow are active.
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={handleDownloadMatrixSheet}

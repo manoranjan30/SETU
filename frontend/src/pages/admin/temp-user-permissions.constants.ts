@@ -9,6 +9,7 @@ export const TEMP_USER_ASSIGNABLE_PERMISSIONS = {
     { key: "QUALITY.INSPECTION.RAISE", label: "Raise RFI" },
     { key: "QUALITY.INSPECTION.READ", label: "View RFIs" },
     { key: "QUALITY.INSPECTION.APPROVE", label: "Approve RFI via Release Strategy" },
+    { key: "QUALITY.OBSERVATION.CREATE", label: "Raise Checklist Observations" },
     { key: "QUALITY.OBSERVATION.RESOLVE", label: "Submit QC Rectification" },
     { key: "QUALITY.SITE_OBS.READ", label: "View Observations" },
     { key: "QUALITY.SITE_OBS.RECTIFY", label: "Submit Rectification" },

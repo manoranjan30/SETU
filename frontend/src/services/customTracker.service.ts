@@ -17,7 +17,8 @@ export type CustomTrackerFieldType =
   | "PERCENT"
   | "STATUS"
   | "USER"
-  | "CURRENCY";
+  | "CURRENCY"
+  | "FORMULA";
 
 export interface CustomTrackerCategory {
   key: string;
@@ -82,6 +83,13 @@ export interface CustomTrackerAnalytics {
     count: number;
     averageProgress: number;
   }>;
+  parentLocationRollup?: Array<{
+    level: number;
+    location: string;
+    count: number;
+    averageProgress: number;
+    sums: Record<string, number>;
+  }>;
   fieldSummary: Record<
     string,
     { label: string; count: number; sum: number; average: number; max: number }
@@ -119,6 +127,11 @@ export const customTrackerService = {
   analytics(projectId: number, trackerId: number): Promise<CustomTrackerAnalytics> {
     return api
       .get(`${base(projectId)}/${trackerId}/analytics`)
+      .then((response) => response.data);
+  },
+  exportReportCsv(projectId: number, trackerId: number): Promise<Blob> {
+    return api
+      .get(`${base(projectId)}/${trackerId}/report.csv`, { responseType: "blob" })
       .then((response) => response.data);
   },
   createField(

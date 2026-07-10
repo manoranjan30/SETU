@@ -3050,6 +3050,66 @@ export class PlanningService {
 
   // --- Activity-Centric Execution Logic ---
 
+  /**
+   * Returns the full WBS tree for a project as a depth-annotated flat list
+   * in depth-first order. WBS summary nodes (id < 0) are included as
+   * non-selectable headers; activities are leaves (id > 0).
+   * Used by the mobile WO–Schedule Linker picker.
+   */
+  async getScheduleTreeForProject(projectId: number): Promise<
+    { id: number; name: string; code: string | null; depth: number; isLeaf: boolean }[]
+  > {
+    const [wbsNodes, activities] = await Promise.all([
+      this.wbsRepo.find({ where: { projectId }, order: { sequenceNo: 'ASC', id: 'ASC' } }),
+      this.activityRepo.find({ where: { projectId }, relations: ['wbsNode'], order: { id: 'ASC' } }),
+    ]);
+
+    // Build child-map for WBS nodes
+    const childrenOf = new Map<number | null, typeof wbsNodes>();
+    for (const n of wbsNodes) {
+      const key = n.parentId ?? null;
+      if (!childrenOf.has(key)) childrenOf.set(key, []);
+      childrenOf.get(key)!.push(n);
+    }
+
+    // Group activities by their WBS node id
+    const activsByWbs = new Map<number | null, typeof activities>();
+    for (const a of activities) {
+      const key = a.wbsNode?.id ?? null;
+      if (!activsByWbs.has(key)) activsByWbs.set(key, []);
+      activsByWbs.get(key)!.push(a);
+    }
+
+    const result: { id: number; name: string; code: string | null; depth: number; isLeaf: boolean }[] = [];
+
+    const visitWbs = (nodeId: number, depth: number) => {
+      const node = wbsNodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      // Emit WBS summary node (negative id so it never clashes with activity ids)
+      result.push({ id: -(node.id), name: node.wbsName ?? '', code: node.wbsCode ?? null, depth, isLeaf: false });
+      // Emit activities directly under this WBS node (leaf activities)
+      for (const a of activsByWbs.get(nodeId) ?? []) {
+        result.push({ id: a.id, name: a.activityName ?? '', code: a.activityCode ?? null, depth: depth + 1, isLeaf: true });
+      }
+      // Recurse into child WBS nodes
+      for (const child of childrenOf.get(nodeId) ?? []) {
+        visitWbs(child.id, depth + 1);
+      }
+    };
+
+    // Start from root WBS nodes (those whose parentId is not in this project's WBS nodes)
+    const wbsIds = new Set(wbsNodes.map((n) => n.id));
+    const rootNodes = wbsNodes.filter((n) => !n.parentId || !wbsIds.has(n.parentId));
+    for (const root of rootNodes) visitWbs(root.id, 0);
+
+    // Activities with no WBS node (safety net)
+    for (const a of activsByWbs.get(null) ?? []) {
+      result.push({ id: a.id, name: a.activityName ?? '', code: a.activityCode ?? null, depth: 0, isLeaf: true });
+    }
+
+    return result;
+  }
+
   async findActivitiesWithBoq(
     projectId: number,
     wbsNodeId?: number,
@@ -3113,6 +3173,7 @@ export class PlanningService {
         'activity.masterActivityId',
         'activWbs.wbsName as wbs_wbsName',
         'activWbs.wbsCode as wbs_wbsCode',
+        'activWbs.sequenceNo as wbs_sequenceNo',
         'parent.wbsName as parent_wbsName',
         'parent.wbsCode as parent_wbsCode',
         'grandparent.wbsName as grandparent_wbsName',
@@ -3253,6 +3314,11 @@ export class PlanningService {
           r.boqItem_epsNodeId ?? r.boqitem_epsnodeid ??   // BOQ fallback
           null;
 
+        // wbs_sequenceNo is the WBS node's position within its parent — used by mobile
+        // to sort activities in schedule order (same order as shown in the web schedule view).
+        const wbsSeqNo =
+          r.wbs_sequenceNo ?? r.wbs_sequenceno ?? r.wbs_sequence_no ?? 0;
+
         groupedMap.set(activityId, {
           id: activityId,
           activityName: r.activity_activityName,
@@ -3264,6 +3330,7 @@ export class PlanningService {
           wbsPath: pathParts.join(' > '),
           parentWbs: wbsInfo, // Explicit field for UI
           epsNodeId,          // EPS node the BOQ item belongs to
+          sequence: Number(wbsSeqNo) || 0, // for mobile schedule-order sort
           plans: [],
         });
       }
@@ -3288,7 +3355,11 @@ export class PlanningService {
         const validBoqItemId =
           r.plan_boqItemId || r.boqItem_id || r.plan_boq_item_id;
 
-        let finalPlannedQty = parseFloat(r.plan_plannedQuantity);
+        // TypeORM getRawMany() may return the column as camelCase, snake_case, or lowercase
+        // depending on the DB naming strategy — try all three variants.
+        let finalPlannedQty = parseFloat(
+          r.plan_plannedQuantity ?? r.plan_planned_quantity ?? r.plan_plannedquantity,
+        );
 
         // Prevent cost items (qty=1) from showing as planned quantity if not actually planned
         if (isNaN(finalPlannedQty) || finalPlannedQty <= 0) {

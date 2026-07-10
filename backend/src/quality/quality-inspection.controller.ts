@@ -223,6 +223,29 @@ export class QualityInspectionController {
     );
   }
 
+  @Get('project-date-settings-list')
+  @Permissions('ADMIN.SETTINGS.MANAGE')
+  listProjectDateSettings() {
+    return this.service.listRfiDateProjectSettings();
+  }
+
+  @Get('project-date-settings')
+  @Permissions('QUALITY.INSPECTION.READ')
+  getProjectDateSettings(@Query('projectId', ParseIntPipe) projectId: number) {
+    return this.service.getRfiDateSettings(projectId);
+  }
+
+  @Patch('project-date-settings')
+  @Permissions('QUALITY.INSPECTION.UPDATE', 'ADMIN.SETTINGS.MANAGE')
+  updateProjectDateSettings(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Body('enabled') enabled: boolean | string | number,
+  ) {
+    const normalized =
+      enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+    return this.service.updateRfiDateSettings(projectId, normalized);
+  }
+
   @Get(':id')
   @Permissions('QUALITY.INSPECTION.READ')
   @MobileCacheHeaders()
@@ -392,29 +415,6 @@ export class QualityInspectionController {
   @Permissions('QUALITY.INSPECTION.READ')
   getEligibleApprovers(@Query('projectId', ParseIntPipe) projectId: number) {
     return this.workflowService.getEligibleApprovers(projectId);
-  }
-
-  @Get('project-date-settings-list')
-  @Permissions('ADMIN.SETTINGS.MANAGE')
-  listProjectDateSettings() {
-    return this.service.listRfiDateProjectSettings();
-  }
-
-  @Get('project-date-settings')
-  @Permissions('QUALITY.INSPECTION.READ')
-  getProjectDateSettings(@Query('projectId', ParseIntPipe) projectId: number) {
-    return this.service.getRfiDateSettings(projectId);
-  }
-
-  @Patch('project-date-settings')
-  @Permissions('QUALITY.INSPECTION.UPDATE', 'ADMIN.SETTINGS.MANAGE')
-  updateProjectDateSettings(
-    @Query('projectId', ParseIntPipe) projectId: number,
-    @Body('enabled') enabled: boolean | string | number,
-  ) {
-    const normalized =
-      enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
-    return this.service.updateRfiDateSettings(projectId, normalized);
   }
 
   @Post(':id/workflow/advance')

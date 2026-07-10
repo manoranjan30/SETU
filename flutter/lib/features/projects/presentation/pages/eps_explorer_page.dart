@@ -31,11 +31,19 @@ class EpsExplorerPage extends StatefulWidget {
 }
 
 class _EpsExplorerPageState extends State<EpsExplorerPage> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
-    // Kick off the initial hierarchy load when the page mounts
     context.read<ProjectBloc>().add(LoadProjectHierarchy(widget.project.id));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -97,8 +105,12 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
           ],
         ),
         body: BlocConsumer<ProjectBloc, ProjectState>(
-          // Show a floating error snack on any ProjectError state
           listener: (context, state) {
+            // Clear search whenever the user navigates to a different node
+            if (state is EpsExplorerState && _searchQuery.isNotEmpty) {
+              _searchCtrl.clear();
+              setState(() => _searchQuery = '');
+            }
             if (state is ProjectError) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -202,43 +214,97 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
   /// the currently-viewed node.
   Widget _buildItemsList(EpsExplorerState state) {
     // Only show activities directly assigned to the current node.
-    // executionReady returns ALL descendant activities — activities for child
-    // nodes are accessible by drilling into those children and should not
-    // appear at a parent level.
-    // Sort by `sequence` so activities appear in the same order as the schedule
-    // (the API response order is not guaranteed to match schedule sequence).
-    final directActivities = state.activities
+    // Sort by `sequence` (WBS sequenceNo from backend) so activities appear in
+    // the same order as the project schedule.
+    final allDirect = state.activities
         .where((a) => a.epsNodeId == state.currentNode.id)
         .toList()
-      ..sort((a, b) => (a.sequence ?? 0).compareTo(b.sequence ?? 0));
+      ..sort((a, b) {
+        final diff = (a.sequence ?? 0).compareTo(b.sequence ?? 0);
+        if (diff != 0) return diff;
+        // Secondary sort: activity code alphabetical (WBS order)
+        final ac = a.code ?? '';
+        final bc = b.code ?? '';
+        if (ac.isNotEmpty && bc.isNotEmpty) return ac.compareTo(bc);
+        return a.name.compareTo(b.name);
+      });
 
-    return ListView(
-      padding: const EdgeInsets.all(AppDimensions.paddingMD),
-      children: [
-        // ── Folder items section ───────────────────────────────────────────
-        if (state.childNodes.isNotEmpty) ...[
-          _buildSectionHeader(
-            _getSectionLabel(state.childNodes),
-            state.childNodes.length,
-            _getSectionIcon(state.childNodes),
-          ),
-          const SizedBox(height: 8),
-          ...state.childNodes.map((node) => _buildFolderItem(node, state)),
-        ],
+    // Filter by search query when the user has typed something
+    final q = _searchQuery.toLowerCase();
+    final directActivities = q.isEmpty
+        ? allDirect
+        : allDirect
+            .where((a) =>
+                a.name.toLowerCase().contains(q) ||
+                (a.code?.toLowerCase().contains(q) ?? false) ||
+                (a.wbsPath?.toLowerCase().contains(q) ?? false))
+            .toList();
 
-        // ── Leaf activity items — only those directly on this node ─────────
-        if (directActivities.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _buildSectionHeader(
-            'Activities',
-            directActivities.length,
-            Icons.assignment_outlined,
+    // Show search bar only when there are activities on this node
+    final hasActivities = allDirect.isNotEmpty;
+
+    return Column(children: [
+      // ── Activity search bar — only when this floor has activities ────────
+      if (hasActivities)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _searchQuery = v),
+            decoration: InputDecoration(
+              hintText: 'Search activities…',
+              prefixIcon: const Icon(Icons.search, size: 18),
+              isDense: true,
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 16),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+            ),
           ),
-          const SizedBox(height: 8),
-          ...directActivities.map((activity) => _buildActivityItem(activity, state)),
-        ],
-      ],
-    );
+        ),
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.all(AppDimensions.paddingMD),
+          children: [
+            // ── Folder items section ───────────────────────────────────────
+            if (state.childNodes.isNotEmpty) ...[
+              _buildSectionHeader(
+                _getSectionLabel(state.childNodes),
+                state.childNodes.length,
+                _getSectionIcon(state.childNodes),
+              ),
+              const SizedBox(height: 8),
+              ...state.childNodes.map((node) => _buildFolderItem(node, state)),
+            ],
+
+            // ── Leaf activity items — only those directly on this node ─────
+            if (directActivities.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildSectionHeader(
+                q.isNotEmpty ? 'Activities (${directActivities.length} of ${allDirect.length})' : 'Activities',
+                directActivities.length,
+                Icons.assignment_outlined,
+              ),
+              const SizedBox(height: 8),
+              ...directActivities.map((activity) => _buildActivityItem(activity, state)),
+            ] else if (q.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              Center(
+                child: Text('No activities match "$_searchQuery"',
+                    style: const TextStyle(color: AppColors.textSecondary)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ]);
   }
 
   /// Small header row with an icon, section name, and an item count badge.

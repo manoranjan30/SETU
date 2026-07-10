@@ -24,7 +24,8 @@ export type CustomTrackerFieldType =
   | 'PERCENT'
   | 'STATUS'
   | 'USER'
-  | 'CURRENCY';
+  | 'CURRENCY'
+  | 'FORMULA';
 
 @Entity('planning_custom_trackers')
 @Index('IDX_planning_custom_trackers_project_status', ['projectId', 'status'])

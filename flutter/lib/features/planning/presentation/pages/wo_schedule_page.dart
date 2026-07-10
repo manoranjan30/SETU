@@ -6,11 +6,8 @@ import 'package:setu_mobile/injection_container.dart';
 /// WO–Schedule Linker — browse Work Order items and link them to schedule activities.
 ///
 /// Left-side tree: Vendor → Work Order → BOQ item → sub-items/measurement items.
-/// Tapping a linkable leaf item opens an activity search sheet to link it.
+/// Tapping the link icon on a leaf item opens an EPS-tree activity picker.
 /// Already-linked items show a green indicator; unlinked show orange.
-///
-/// Data is cached via dio_cache_interceptor (3-min TTL). Refresh button forces
-/// a fresh fetch by clearing the cache first.
 class WoSchedulePage extends StatefulWidget {
   final Project project;
   const WoSchedulePage({super.key, required this.project});
@@ -19,31 +16,29 @@ class WoSchedulePage extends StatefulWidget {
   State<WoSchedulePage> createState() => _WoSchedulePageState();
 }
 
-class _WoSchedulePageState extends State<WoSchedulePage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tab;
+class _WoSchedulePageState extends State<WoSchedulePage> {
   bool _loading = true;
   String? _error;
 
-  // WO items tree from the backend
   List<_VendorNode> _vendors = [];
-
-  // Schedule activities for linking (loaded from active version)
-  List<_ScheduleActivity> _activities = [];
+  List<_WbsNode> _wbsRoots = [];
+  List<_WbsNode> _leavesInOrder = [];
   bool _activitiesLoaded = false;
 
-  // Expand/collapse state keyed by node ID
+  // Expand/collapse state for the WO tree (keyed by node string key)
   final Set<String> _expanded = {};
+
+  // Per-item linking spinner: workOrderItemId → true while API call in flight
+  final Map<int, bool> _linking = {};
+
+  // Persists within the session
+  static _WbsNode? _lastLinked;
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
     _load();
   }
-
-  @override
-  void dispose() { _tab.dispose(); super.dispose(); }
 
   Future<void> _load({bool force = false}) async {
     setState(() { _loading = true; _error = null; });
@@ -51,72 +46,150 @@ class _WoSchedulePageState extends State<WoSchedulePage>
       final api = sl<SetuApiClient>();
       if (force) await api.clearCache();
 
-      // Load WO items tree
-      final raw = await api.getWoItemsTree(widget.project.id);
-      final vendors = _parseVendorTree(raw);
+      // Load WO tree and schedule versions in parallel
+      final parallel = await Future.wait([
+        api.getWoItemsTree(widget.project.id),
+        api.getScheduleVersions(widget.project.id),
+      ]);
+      final vendors = _parseVendorTree(parallel[0]);
 
-      // Load schedule activities — try versioned schedule first (active/working version),
-      // fall back to execution-ready activities from the WBS when no versions exist.
-      List<_ScheduleActivity> activities = [];
-      try {
-        final versions = await api.getScheduleVersions(widget.project.id);
-        if (versions.isNotEmpty) {
+      // Primary: version activities (for projects with a published schedule version)
+      final roots = <_WbsNode>[];
+      final stack = <_WbsNode>[];
+
+      void addToTree(_WbsNode node) {
+        while (stack.isNotEmpty && !_isChildCode(node.code, stack.last.code)) {
+          stack.removeLast();
+        }
+        if (stack.isEmpty) roots.add(node); else stack.last.children.add(node);
+        stack.add(node);
+      }
+
+      final versions = parallel[1] as List;
+      if (versions.isNotEmpty) {
+        try {
           final versionList = versions.cast<Map<String, dynamic>>();
           final activeVersion = versionList.firstWhere(
-              (v) => v['isActive'] == true,
-              orElse: () => versionList.first);
+              (v) => v['isActive'] == true, orElse: () => versionList.first);
           final actRaw = await api.getVersionActivities(activeVersion['id'] as int);
-          activities = actRaw
-              .map((e) => _ScheduleActivity.fromJson(e as Map<String, dynamic>))
-              .where((a) => a.name.isNotEmpty)
-              .toList();
-        }
-      } catch (_) {
-        // Version fetch failed — fall through to WBS fallback below.
-      }
-
-      // Fallback: load activities from EPS tree when no versioned schedule exists.
-      // getExecutionReadyActivities aggregates recursively from the root node.
-      if (activities.isEmpty) {
-        try {
-          final epsTree = await api.getEpsTreeForProject(widget.project.id);
-          // Collect all unique EPS node IDs and fetch activities for each root
-          final rootNodeIds = (epsTree).cast<Map<String, dynamic>>()
-              .map((n) => n['id'] as int?)
-              .whereType<int>()
-              .toList();
-          final seen = <int>{};
-          for (final nodeId in rootNodeIds) {
-            final raw = await api.getExecutionReadyActivities(widget.project.id, nodeId);
-            for (final e in raw) {
-              final m = e as Map<String, dynamic>;
-              final id = m['id'] as int? ?? 0;
-              if (id != 0 && seen.add(id)) {
-                final name = m['activityName'] as String? ?? m['name'] as String? ?? '';
-                final code = m['activityCode'] as String? ?? m['code'] as String?;
-                if (name.isNotEmpty) {
-                  activities.add(_ScheduleActivity(id: id, name: name, activityCode: code));
-                }
-              }
-            }
+          for (final e in actRaw) {
+            final m = e as Map<String, dynamic>;
+            final act = m['activity'] as Map<String, dynamic>? ?? m;
+            final id = m['activityId'] as int? ?? act['id'] as int? ?? 0;
+            final name = act['name'] as String? ?? act['activityName'] as String? ?? '';
+            final code = act['activityCode'] as String? ?? act['code'] as String?;
+            if (id == 0 || name.isEmpty) continue;
+            addToTree(_WbsNode(id: id, name: name, code: code));
           }
         } catch (_) {
-          // WBS fallback also failed — activities list stays empty.
+          roots.clear(); stack.clear();
         }
       }
 
-      // Sort by activity code / name for consistent display
-      activities.sort((a, b) {
-        final codeA = a.activityCode ?? '';
-        final codeB = b.activityCode ?? '';
-        if (codeA.isNotEmpty && codeB.isNotEmpty) return codeA.compareTo(codeB);
-        return a.name.compareTo(b.name);
-      });
+      // Fallback: use the existing WBS controller endpoints (these power the web viewer
+      // and are guaranteed to work for all projects regardless of schedule versions).
+      if (roots.isEmpty) {
+        try {
+          final results = await Future.wait([
+            api.getWbsNodes(widget.project.id),
+            api.getWbsActivities(widget.project.id),
+          ]);
+          final wbsRaw = results[0];
+          final actRaw = results[1];
+
+          // Pass 1: create _WbsNode for each WBS node (negative id avoids collision with activity ids)
+          final wbsById = <int, _WbsNode>{};
+          for (final e in wbsRaw) {
+            final m = e as Map<String, dynamic>;
+            final dbId = m['id'] as int? ?? 0;
+            final name = m['wbsName'] as String? ?? '';
+            final code = m['wbsCode'] as String?;
+            if (dbId == 0 || name.isEmpty) continue;
+            wbsById[dbId] = _WbsNode(id: -dbId, name: name, code: code);
+          }
+
+          // Pass 2: wire WBS parent-child links; collect roots
+          final wbsRoots = <_WbsNode>[];
+          for (final e in wbsRaw) {
+            final m = e as Map<String, dynamic>;
+            final dbId = m['id'] as int? ?? 0;
+            final parentId = m['parentId'] as int?;
+            if (dbId == 0 || !wbsById.containsKey(dbId)) continue;
+            final node = wbsById[dbId]!;
+            if (parentId != null && wbsById.containsKey(parentId)) {
+              wbsById[parentId]!.children.add(node);
+            } else {
+              wbsRoots.add(node);
+            }
+          }
+
+          // Pass 3: attach activity leaves to their WBS parent (appended after WBS children)
+          for (final e in actRaw) {
+            final m = e as Map<String, dynamic>;
+            final id = m['id'] as int? ?? 0;
+            final name = m['activityName'] as String? ?? '';
+            final code = m['activityCode'] as String?;
+            final wbsNodeId = (m['wbsNode'] as Map<String, dynamic>?)?['id'] as int?;
+            if (id == 0 || name.isEmpty) continue;
+            final leaf = _WbsNode(id: id, name: name, code: code, forceLeaf: true);
+            if (wbsNodeId != null && wbsById.containsKey(wbsNodeId)) {
+              wbsById[wbsNodeId]!.children.add(leaf);
+            } else {
+              wbsRoots.add(leaf); // orphan activity — show at root
+            }
+          }
+
+          roots.addAll(wbsRoots);
+        } catch (e) {
+          debugPrint('[WoSchedule] WBS fallback failed: $e');
+        }
+      }
+
+      // Build fullPath on each node (WBS breadcrumb shown below WO item after linking)
+      void buildPaths(_WbsNode n, String parentPath) {
+        n.fullPath = parentPath.isEmpty ? n.name : '$parentPath > ${n.name}';
+        for (final c in n.children) buildPaths(c, n.fullPath);
+      }
+      for (final r in roots) buildPaths(r, '');
+
+      // Flatten leaves in WBS order for search and "Suggested Next"
+      final leaves = <_WbsNode>[];
+      void flattenLeaves(_WbsNode n) {
+        if (n.isLeaf) leaves.add(n);
+        else { for (final c in n.children) { flattenLeaves(c); } }
+      }
+      for (final r in roots) flattenLeaves(r);
+
+      // Build activity-id → node map so already-linked WO items get full WBS paths
+      final actNodeById = <int, _WbsNode>{};
+      for (final leaf in leaves) { actNodeById[leaf.id] = leaf; }
+
+      // Resolve full path for every WO item that already has a linkedActivityId
+      void resolveLinkedPaths(List<_WoItem> items) {
+        for (final item in items) {
+          final actId = item.linkedActivityId;
+          if (actId != null && actNodeById.containsKey(actId)) {
+            item.linkedActivities = actNodeById[actId]!.fullPath;
+          }
+        }
+      }
+      for (final v in vendors) {
+        for (final wo in v.workOrders) {
+          for (final b in wo.boqItems) {
+            resolveLinkedPaths(b.directWoItems);
+            for (final s in b.subItems) {
+              if (s.woItem != null) resolveLinkedPaths([s.woItem!]);
+              resolveLinkedPaths(s.measurements);
+            }
+          }
+        }
+      }
 
       if (mounted) {
         setState(() {
           _vendors = vendors;
-          _activities = activities;
+          _wbsRoots = roots;
+          _leavesInOrder = leaves;
           _activitiesLoaded = true;
           _loading = false;
         });
@@ -124,6 +197,42 @@ class _WoSchedulePageState extends State<WoSchedulePage>
     } catch (e) {
       if (mounted) setState(() { _error = 'Failed to load: $e'; _loading = false; });
     }
+  }
+
+  /// True if [child]'s WBS code is a direct descendant of [parent]'s code.
+  static bool _isChildCode(String? child, String? parent) {
+    if (child == null || parent == null || child.length <= parent.length) return false;
+    if (!child.startsWith(parent)) return false;
+    final sep = child[parent.length];
+    return sep == '.' || sep == '-' || sep == ' ';
+  }
+
+  /// The leaf immediately after the last-linked one — for floor-by-floor linking.
+  _WbsNode? get _suggestedNext {
+    if (_lastLinked == null) return null;
+    final idx = _leavesInOrder.indexWhere((n) => n.id == _lastLinked!.id);
+    if (idx == -1 || idx >= _leavesInOrder.length - 1) return null;
+    return _leavesInOrder[idx + 1];
+  }
+
+  /// Returns the ancestor node IDs (parent → grandparent chain) for [target],
+  /// traversing [_wbsRoots]. Used to auto-expand the picker to the last linked level.
+  List<int> _getAncestorIds(_WbsNode? target) {
+    if (target == null) return [];
+    final path = <int>[];
+    bool find(List<_WbsNode> nodes) {
+      for (final n in nodes) {
+        path.add(n.id);
+        if (n.id == target.id) return true;
+        if (!n.isLeaf && find(n.children)) return true;
+        path.removeLast();
+      }
+      return false;
+    }
+    find(_wbsRoots);
+    // Remove the target leaf itself — we only want the ancestors to expand
+    if (path.isNotEmpty && path.last == target.id) path.removeLast();
+    return path;
   }
 
   List<_VendorNode> _parseVendorTree(dynamic raw) {
@@ -172,6 +281,7 @@ class _WoSchedulePageState extends State<WoSchedulePage>
     uom: m['uom'] as String? ?? '',
     mappingStatus: m['mappingStatus'] as String? ?? 'UNMAPPED',
     linkedActivities: m['linkedActivities'] as String? ?? '',
+    linkedActivityId: m['linkedActivityId'] as int?,
     isLeaf: m['isExecutableLeaf'] as bool? ?? true,
   );
 
@@ -182,32 +292,78 @@ class _WoSchedulePageState extends State<WoSchedulePage>
   }
 
   Future<void> _linkItem(_WoItem item) async {
-    if (_activities.isEmpty) {
+    if (_leavesInOrder.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No schedule activities available to link to')));
       return;
     }
-    final selected = await showModalBottomSheet<_ScheduleActivity>(
+    final selected = await showModalBottomSheet<_WbsNode>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => _ActivityPickerSheet(activities: _activities, current: item.linkedActivities),
+      builder: (_) => _WbsTreePickerSheet(
+        roots: _wbsRoots,
+        leavesInOrder: _leavesInOrder,
+        currentLinked: item.linkedActivities,
+        currentLinkedId: item.linkedActivityId,
+        lastLinked: _lastLinked,
+        suggestedNext: _suggestedNext,
+        initialExpanded: _getAncestorIds(_lastLinked),
+      ),
     );
-    if (selected == null || !mounted) return;
+    if (!mounted) return;
+
+    // null means user dismissed without selecting
+    if (selected == null) return;
+
+    // selected.id == -1 is the special "unlink" sentinel
+    final isUnlink = selected.id == -1;
+    setState(() => _linking[item.workOrderItemId] = true);
     try {
-      await sl<SetuApiClient>().linkWoItemToActivity(
-        projectId: widget.project.id,
-        workOrderItemId: item.workOrderItemId,
-        activityId: selected.id,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Linked to ${selected.name}'), backgroundColor: Colors.green.shade700));
-      _load(force: true);
+      final api = sl<SetuApiClient>();
+      if (isUnlink) {
+        await api.unlinkWoItem(workOrderItemId: item.workOrderItemId);
+        if (!mounted) return;
+        setState(() {
+          item.mappingStatus = 'UNMAPPED';
+          item.linkedActivities = '';
+          item.linkedActivityId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Activity unlinked')));
+      } else {
+        await api.linkWoItemToActivity(
+          projectId: widget.project.id,
+          workOrderItemId: item.workOrderItemId,
+          activityId: selected.id,
+        );
+        if (!mounted) return;
+        setState(() {
+          item.mappingStatus = 'MAPPED';
+          item.linkedActivities = selected.fullPath;
+          item.linkedActivityId = selected.id;
+          _lastLinked = selected;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Linked to ${selected.name}'), backgroundColor: Colors.green.shade700));
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Link failed: $e'), backgroundColor: Colors.red.shade700));
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${isUnlink ? "Unlink" : "Link"} failed',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          Text(msg, style: const TextStyle(fontSize: 12)),
+        ]),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(label: 'Dismiss', textColor: Colors.white, onPressed: () {}),
+      ));
+    } finally {
+      if (mounted) setState(() => _linking.remove(item.workOrderItemId));
     }
   }
 
@@ -250,11 +406,10 @@ class _WoSchedulePageState extends State<WoSchedulePage>
                       _summaryChip('Unmapped', _countByStatus('UNMAPPED'), Colors.orange),
                       const Spacer(),
                       if (_activitiesLoaded)
-                        Text('${_activities.length} schedule activities',
+                        Text('${_leavesInOrder.length} schedule activities',
                             style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                     ]),
                   ),
-                  // WO Tree
                   Expanded(
                     child: _vendors.isEmpty
                         ? const Center(child: Text('No active Work Orders found for this project.'))
@@ -411,28 +566,44 @@ class _WoSchedulePageState extends State<WoSchedulePage>
 
   Widget _buildWoItemRow(_WoItem item) {
     final isMapped = item.mappingStatus == 'MAPPED';
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.fromLTRB(64, 0, 12, 0),
-      leading: Icon(
-        isMapped ? Icons.link : Icons.link_off,
-        size: 16,
-        color: isMapped ? Colors.green.shade600 : Colors.orange.shade600,
+    final isLinking = _linking[item.workOrderItemId] == true;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.fromLTRB(64, 0, 12, 0),
+        leading: isLinking
+            ? SizedBox(width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.indigo.shade400))
+            : Icon(isMapped ? Icons.link : Icons.link_off, size: 16,
+                color: isMapped ? Colors.green.shade600 : Colors.orange.shade600),
+        title: Text(item.description, style: const TextStyle(fontSize: 12)),
+        subtitle: Text(
+          item.qty > 0 ? '${item.qty} ${item.uom}' : '',
+          style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+        ),
+        trailing: item.isLeaf && !isLinking
+            ? IconButton(
+                icon: Icon(isMapped ? Icons.edit_outlined : Icons.add_link,
+                    size: 18, color: isMapped ? Colors.blue.shade600 : Colors.orange.shade700),
+                tooltip: isMapped ? 'Change / unlink' : 'Link to activity',
+                onPressed: () => _linkItem(item),
+              )
+            : null,
       ),
-      title: Text(item.description, style: const TextStyle(fontSize: 12)),
-      subtitle: item.linkedActivities.isNotEmpty
-          ? Text('→ ${item.linkedActivities}', style: TextStyle(fontSize: 10, color: Colors.green.shade700))
-          : Text('${item.qty > 0 ? "${item.qty} ${item.uom}" : ""}${isMapped ? "" : " · Tap to link"}',
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-      trailing: item.isLeaf
-          ? IconButton(
-              icon: Icon(isMapped ? Icons.edit_outlined : Icons.add_link,
-                  size: 18, color: isMapped ? Colors.blue.shade600 : Colors.orange.shade700),
-              tooltip: isMapped ? 'Change link' : 'Link to activity',
-              onPressed: () => _linkItem(item),
-            )
-          : null,
-    );
+      // Linked activity full path — shown below the tile when mapped
+      if (isMapped && item.linkedActivities.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(80, 0, 12, 6),
+          child: Row(children: [
+            Icon(Icons.account_tree_outlined, size: 11, color: Colors.green.shade600),
+            const SizedBox(width: 4),
+            Expanded(child: Text(
+              item.linkedActivities,
+              style: TextStyle(fontSize: 10, color: Colors.green.shade700, height: 1.3),
+            )),
+          ]),
+        ),
+    ]);
   }
 }
 
@@ -442,108 +613,458 @@ class _VendorNode { final int id; final String name; final List<_WoNode> workOrd
 class _WoNode { final int id; final String number; final List<_BoqItemNode> boqItems; const _WoNode({required this.id, required this.number, required this.boqItems}); }
 class _BoqItemNode { final int id; final String code; final String description; final String uom; final List<_WoItem> directWoItems; final List<_SubItemNode> subItems; const _BoqItemNode({required this.id, required this.code, required this.description, required this.uom, required this.directWoItems, required this.subItems}); }
 class _SubItemNode { final int id; final String description; final _WoItem? woItem; final List<_WoItem> measurements; const _SubItemNode({required this.id, required this.description, this.woItem, required this.measurements}); }
-class _WoItem { final int workOrderItemId; final String description; final double qty; final String uom; final String mappingStatus; final String linkedActivities; final bool isLeaf; const _WoItem({required this.workOrderItemId, required this.description, required this.qty, required this.uom, required this.mappingStatus, required this.linkedActivities, required this.isLeaf}); }
 
-class _ScheduleActivity {
+/// WO item — mutable fields updated inline after link/unlink without full reload.
+class _WoItem {
+  final int workOrderItemId;
+  final String description;
+  final double qty;
+  final String uom;
+  String mappingStatus;
+  String linkedActivities; // full path shown in subtitle
+  int? linkedActivityId;   // actual activity id for unlink detection
+  final bool isLeaf;
+  _WoItem({required this.workOrderItemId, required this.description, required this.qty, required this.uom, required this.mappingStatus, required this.linkedActivities, this.linkedActivityId, required this.isLeaf});
+}
+
+// ── WBS tree node ─────────────────────────────────────────────────────────────
+
+/// One node in the WBS tree.
+/// [forceLeaf] = true for activities in the depth-based tree that happen to
+/// have no children but are explicitly marked as leaf activities by the backend.
+/// [fullPath] is built lazily when the node is selected.
+class _WbsNode {
   final int id;
   final String name;
-  final String? activityCode;
-  const _ScheduleActivity({required this.id, required this.name, this.activityCode});
-  factory _ScheduleActivity.fromJson(Map<String, dynamic> j) {
-    final act = j['activity'] as Map<String, dynamic>? ?? j;
-    return _ScheduleActivity(
-      id: j['activityId'] as int? ?? act['id'] as int? ?? 0,
-      name: act['name'] as String? ?? act['activityName'] as String? ?? '',
-      activityCode: act['activityCode'] as String?,
-    );
-  }
+  final String? code;
+  final bool forceLeaf; // true → always selectable (never a collapsible header)
+  final List<_WbsNode> children = [];
+  String fullPath = ''; // populated when building the tree for display
+
+  _WbsNode({required this.id, required this.name, this.code, this.forceLeaf = false});
+
+  bool get isLeaf => forceLeaf || children.isEmpty;
+
+  /// Total selectable (leaf) activities in this subtree.
+  int get leafCount => isLeaf ? 1 : children.fold(0, (s, c) => s + c.leafCount);
+
+  /// Sentinel returned by the picker to signal "unlink this item".
+  static final _WbsNode unlink = _WbsNode(id: -1, name: 'Unlink', forceLeaf: true);
 }
 
-// ── Activity picker sheet ─────────────────────────────────────────────────────
+// ── WBS tree picker sheet ─────────────────────────────────────────────────────
 
-class _ActivityPickerSheet extends StatefulWidget {
-  final List<_ScheduleActivity> activities;
-  final String current;
-  const _ActivityPickerSheet({required this.activities, required this.current});
+class _WbsTreePickerSheet extends StatefulWidget {
+  final List<_WbsNode> roots;
+  final List<_WbsNode> leavesInOrder;
+  final String currentLinked;
+  final int? currentLinkedId;  // used to show "Unlink" option
+  final _WbsNode? lastLinked;
+  final _WbsNode? suggestedNext;
+  final List<int> initialExpanded; // ancestor IDs to auto-expand on open
+
+  const _WbsTreePickerSheet({
+    required this.roots,
+    required this.leavesInOrder,
+    required this.currentLinked,
+    this.currentLinkedId,
+    this.lastLinked,
+    this.suggestedNext,
+    this.initialExpanded = const [],
+  });
 
   @override
-  State<_ActivityPickerSheet> createState() => _ActivityPickerSheetState();
+  State<_WbsTreePickerSheet> createState() => _WbsTreePickerSheetState();
 }
 
-class _ActivityPickerSheetState extends State<_ActivityPickerSheet> {
+class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
   final _searchCtrl = TextEditingController();
-  List<_ScheduleActivity> _filtered = [];
+  String _query = '';
+  final Set<int> _expanded = {};
+  // Nodes hidden by the user (entire subtree hidden) — allowed at depths 0, 1, 2
+  final Set<int> _hiddenNodes = {};
+  bool _allCollapsed = false;
 
   @override
   void initState() {
     super.initState();
-    _filtered = widget.activities;
-    _searchCtrl.addListener(() {
-      final q = _searchCtrl.text.toLowerCase();
-      setState(() => _filtered = q.isEmpty
-          ? widget.activities
-          : widget.activities.where((a) =>
-              a.name.toLowerCase().contains(q) ||
-              (a.activityCode?.toLowerCase().contains(q) ?? false)).toList());
-    });
+    if (widget.initialExpanded.isNotEmpty) {
+      // Expand only the path leading to the last linked activity
+      _expanded.addAll(widget.initialExpanded);
+    } else {
+      // No prior link: expand all roots so user sees top level
+      for (final root in widget.roots) {
+        _expanded.add(root.id);
+      }
+    }
   }
 
   @override
   void dispose() { _searchCtrl.dispose(); super.dispose(); }
 
+  void _collapseAll() => setState(() { _expanded.clear(); _allCollapsed = true; });
+
+  void _expandAll() {
+    void addAll(_WbsNode n) {
+      if (!n.isLeaf) { _expanded.add(n.id); for (final c in n.children) addAll(c); }
+    }
+    setState(() { _allCollapsed = false; for (final r in widget.roots) addAll(r); });
+  }
+
+  // Returns the set of node IDs that should be visible for the given search query.
+  // A node is visible if it matches OR any ancestor matches (show all children)
+  // OR any descendant matches (show path to match).
+  Set<int> _computeVisibleForSearch(String q) {
+    final visible = <int>{};
+    bool visit(_WbsNode n) {
+      final selfMatches = n.name.toLowerCase().contains(q) || (n.code?.toLowerCase().contains(q) ?? false);
+      if (selfMatches) {
+        // Mark self and ALL descendants visible (parent match → show full subtree)
+        void markAll(_WbsNode x) {
+          visible.add(x.id);
+          for (final c in x.children) markAll(c);
+        }
+        markAll(n);
+        return true;
+      }
+      bool anyChild = false;
+      for (final c in n.children) {
+        if (visit(c)) anyChild = true;
+      }
+      if (anyChild) visible.add(n.id); // show this branch because a child matched
+      return anyChild;
+    }
+    for (final r in widget.roots) visit(r);
+    return visible;
+  }
+
+  // ── Recursive node builder ────────────────────────────────────────────────
+  //
+  // [visibleIds] is non-null only in search mode — only nodes in the set are shown,
+  // and all visible branches are auto-expanded.
+
+  Widget _buildNode(_WbsNode node, {int depth = 0, Set<int>? visibleIds}) {
+    // Search mode: skip nodes not in the visible set
+    if (visibleIds != null && !visibleIds.contains(node.id)) return const SizedBox.shrink();
+    // Normal mode: skip hidden nodes (hides entire subtree)
+    if (visibleIds == null && _hiddenNodes.contains(node.id)) return const SizedBox.shrink();
+
+    if (node.isLeaf) {
+      return _LeafTile(node: node, depth: depth, onTap: () => Navigator.pop(context, node));
+    }
+
+    final isSearchMode = visibleIds != null;
+    // In search mode always expand so matched paths are visible
+    final isExpanded = isSearchMode ? true : _expanded.contains(node.id);
+    final color = _depthColor(depth);
+    final leftPad = 12.0 + depth * 14.0;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      InkWell(
+        onTap: isSearchMode ? null : () => setState(() {
+          if (isExpanded) _expanded.remove(node.id); else _expanded.add(node.id);
+        }),
+        child: Container(
+          color: color.withValues(alpha: 0.06 + depth * 0.012),
+          padding: EdgeInsets.fromLTRB(leftPad, 9, 12, 9),
+          child: Row(children: [
+            Icon(_depthIcon(depth), size: 13, color: color),
+            const SizedBox(width: 6),
+            Expanded(child: Text(
+              node.code != null ? '${node.code}  ${node.name}' : node.name,
+              style: TextStyle(
+                fontSize: (13 - depth.clamp(0, 2)).toDouble(),
+                fontWeight: FontWeight.w700, color: color,
+              ),
+            )),
+            // Hide button for L1/L2/L3 (depth 0-2) — only in normal mode
+            if (!isSearchMode && depth <= 2)
+              GestureDetector(
+                onTap: () => setState(() => _hiddenNodes.add(node.id)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(Icons.visibility_off_outlined, size: 14, color: color.withValues(alpha: 0.6)),
+                ),
+              ),
+            if (!isSearchMode) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                child: Text('${node.leafCount}',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+              ),
+              const SizedBox(width: 4),
+              Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 16, color: color),
+            ],
+          ]),
+        ),
+      ),
+      if (isExpanded)
+        ...node.children.map((child) => _buildNode(child, depth: depth + 1, visibleIds: visibleIds)),
+    ]);
+  }
+
+  static Color _depthColor(int depth) {
+    switch (depth % 4) {
+      case 0: return Colors.indigo.shade700;
+      case 1: return Colors.blue.shade700;
+      case 2: return Colors.teal.shade700;
+      default: return Colors.green.shade700;
+    }
+  }
+
+  static IconData _depthIcon(int depth) {
+    switch (depth) {
+      case 0: return Icons.corporate_fare_outlined;
+      case 1: return Icons.domain_outlined;
+      case 2: return Icons.layers_outlined;
+      default: return Icons.subdirectory_arrow_right;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isSearching = _query.isNotEmpty;
+    final isMapped = widget.currentLinkedId != null;
+    final hiddenCount = _hiddenNodes.length;
     return DraggableScrollableSheet(
-      initialChildSize: 0.85,
+      initialChildSize: 0.88,
       maxChildSize: 0.95,
       minChildSize: 0.5,
       expand: false,
       builder: (_, scrollCtrl) => Column(children: [
-        Center(child: Container(margin: const EdgeInsets.only(top: 12, bottom: 8), width: 40, height: 4,
-            decoration: BoxDecoration(color: Theme.of(context).dividerColor, borderRadius: BorderRadius.circular(2)))),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text('Link to Schedule Activity', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
-        if (widget.current.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Text('Currently: ${widget.current}',
-                style: TextStyle(fontSize: 11, color: Colors.green.shade700)),
-          ),
+        // Handle
+        Center(child: Container(
+          margin: const EdgeInsets.only(top: 10, bottom: 4),
+          width: 36, height: 4,
+          decoration: BoxDecoration(color: Theme.of(context).dividerColor, borderRadius: BorderRadius.circular(2)),
+        )),
+        // Title row
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(14, 0, 10, 2),
+          child: Row(children: [
+            const Icon(Icons.account_tree_outlined, size: 17, color: Colors.indigo),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Link to Schedule Activity',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+            if (!isSearching)
+              TextButton.icon(
+                onPressed: _allCollapsed ? _expandAll : _collapseAll,
+                icon: Icon(_allCollapsed ? Icons.unfold_more : Icons.unfold_less, size: 14),
+                label: Text(_allCollapsed ? 'Expand All' : 'Collapse All',
+                    style: const TextStyle(fontSize: 11)),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+          ]),
+        ),
+        // Currently linked row + Unlink button
+        if (isMapped)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 2),
+            child: Row(children: [
+              Icon(Icons.link, size: 13, color: Colors.green.shade600),
+              const SizedBox(width: 4),
+              Expanded(child: Text(widget.currentLinked,
+                  style: TextStyle(fontSize: 11, color: Colors.green.shade700),
+                  overflow: TextOverflow.ellipsis, maxLines: 2)),
+              const SizedBox(width: 6),
+              TextButton.icon(
+                onPressed: () => Navigator.pop(context, _WbsNode.unlink),
+                icon: const Icon(Icons.link_off, size: 13),
+                label: const Text('Unlink', style: TextStyle(fontSize: 11)),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.red.shade600,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ]),
+          ),
+        // Hidden-sections bar
+        if (hiddenCount > 0 && !isSearching)
+          InkWell(
+            onTap: () => setState(() => _hiddenNodes.clear()),
+            child: Container(
+              width: double.infinity,
+              color: Colors.orange.shade50,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              child: Row(children: [
+                Icon(Icons.visibility_outlined, size: 13, color: Colors.orange.shade700),
+                const SizedBox(width: 6),
+                Text('$hiddenCount section${hiddenCount > 1 ? "s" : ""} hidden — tap to show all',
+                    style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
+              ]),
+            ),
+          ),
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
           child: TextField(
             controller: _searchCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Search activity name or code…',
-              prefixIcon: Icon(Icons.search, size: 18),
-              border: OutlineInputBorder(),
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Search — parent match shows all children…',
+              prefixIcon: const Icon(Icons.search, size: 18),
+              border: const OutlineInputBorder(),
               isDense: true,
-              contentPadding: EdgeInsets.symmetric(vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              suffixIcon: _query.isNotEmpty
+                  ? IconButton(icon: const Icon(Icons.clear, size: 16),
+                      onPressed: () { _searchCtrl.clear(); setState(() => _query = ''); })
+                  : null,
             ),
           ),
         ),
+        const Divider(height: 1),
         Expanded(
-          child: ListView.separated(
-            controller: scrollCtrl,
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-            itemCount: _filtered.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final a = _filtered[i];
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.timeline_outlined, size: 18, color: Colors.indigo),
-                title: Text('${a.activityCode != null ? "${a.activityCode} · " : ""}${a.name}',
-                    style: const TextStyle(fontSize: 13)),
-                onTap: () => Navigator.pop(context, a),
-              );
-            },
-          ),
+          child: isSearching
+              ? _buildSearchTree(scrollCtrl)
+              : _buildTreeView(scrollCtrl),
         ),
       ]),
+    );
+  }
+
+  // ── Search tree (search mode) ─────────────────────────────────────────────
+  // Renders the tree filtered to only matching subtrees, auto-expanded.
+
+  Widget _buildSearchTree(ScrollController ctrl) {
+    final visibleIds = _computeVisibleForSearch(_query.toLowerCase());
+    final visibleRoots = widget.roots.where((r) => visibleIds.contains(r.id)).toList();
+    if (visibleRoots.isEmpty) {
+      return Center(child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text('No activities match "$_query"',
+            style: const TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+      ));
+    }
+    return ListView(
+      controller: ctrl,
+      padding: const EdgeInsets.only(bottom: 24),
+      children: visibleRoots.map((r) => _buildNode(r, visibleIds: visibleIds)).toList(),
+    );
+  }
+
+  // ── Tree view (default mode) ──────────────────────────────────────────────
+
+  Widget _buildTreeView(ScrollController ctrl) {
+    final suggested = widget.suggestedNext;
+    final lastLinked = widget.lastLinked;
+    return ListView(
+      controller: ctrl,
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        // ── Suggested Next ───────────────────────────────────────────────────
+        if (suggested != null) ...[
+          _PinHeader(
+            icon: Icons.arrow_forward_rounded,
+            label: 'Suggested Next',
+            color: Colors.deepPurple.shade700,
+          ),
+          _LeafTile(
+            node: suggested,
+            depth: 0,
+            highlightColor: Colors.deepPurple.shade50,
+            highlightIcon: Icons.bolt_rounded,
+            highlightIconColor: Colors.deepPurple.shade600,
+            onTap: () => Navigator.pop(context, suggested),
+          ),
+          const Divider(height: 1),
+        ],
+        // ── Last Linked (only if different from suggested) ────────────────────
+        if (lastLinked != null && lastLinked.id != suggested?.id) ...[
+          _PinHeader(
+            icon: Icons.history_rounded,
+            label: 'Last Linked',
+            color: Colors.teal.shade700,
+          ),
+          _LeafTile(
+            node: lastLinked,
+            depth: 0,
+            highlightColor: Colors.teal.shade50,
+            highlightIcon: Icons.check_circle_outline_rounded,
+            highlightIconColor: Colors.teal.shade600,
+            onTap: () => Navigator.pop(context, lastLinked),
+          ),
+          const Divider(height: 1),
+        ],
+        // ── WBS tree (_buildNode handles hidden nodes at any depth) ──────────
+        ...widget.roots.map((root) => _buildNode(root)),
+      ],
+    );
+  }
+}
+
+// ── Shared sub-widgets ────────────────────────────────────────────────────────
+
+class _PinHeader extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _PinHeader({required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: color.withValues(alpha: 0.07),
+    padding: const EdgeInsets.fromLTRB(14, 8, 12, 8),
+    child: Row(children: [
+      Icon(icon, size: 13, color: color),
+      const SizedBox(width: 6),
+      Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    ]),
+  );
+}
+
+class _LeafTile extends StatelessWidget {
+  final _WbsNode node;
+  final int depth;
+  final bool showCode;
+  final Color? highlightColor;
+  final IconData? highlightIcon;
+  final Color? highlightIconColor;
+  final VoidCallback onTap;
+
+  const _LeafTile({
+    required this.node,
+    required this.depth,
+    required this.onTap,
+    this.showCode = true,
+    this.highlightColor,
+    this.highlightIcon,
+    this.highlightIconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final leftPad = 16.0 + depth * 14.0;
+    final isHighlighted = highlightColor != null;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        color: highlightColor,
+        padding: EdgeInsets.fromLTRB(leftPad, 10, 12, 10),
+        child: Row(children: [
+          Icon(
+            highlightIcon ?? Icons.radio_button_unchecked,
+            size: 14,
+            color: highlightIconColor ?? Colors.indigo.shade300,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              showCode && node.code != null ? '${node.code} · ${node.name}' : node.name,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isHighlighted ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ])),
+        ]),
+      ),
     );
   }
 }

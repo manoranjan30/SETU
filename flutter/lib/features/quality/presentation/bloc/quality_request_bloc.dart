@@ -495,6 +495,7 @@ class QualityRequestBloc
           projectId: projectId,
           epsNodeId: epsNodeId,
           listId: list.id,
+          limit: 1000,
         ),
       ]).timeout(const Duration(seconds: 10));
 

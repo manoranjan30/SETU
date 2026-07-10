@@ -25,6 +25,7 @@ const FIELD_TYPES: CustomTrackerFieldType[] = [
   'STATUS',
   'USER',
   'CURRENCY',
+  'FORMULA',
 ];
 
 const RECORD_STATUSES: CustomTrackerRecordStatus[] = [
@@ -293,6 +294,16 @@ export class CustomTrackerService {
     const byStatus: Record<string, number> = {};
     const byLocation: Record<string, { count: number; progressTotal: number }> =
       {};
+    const parentLocationRollup: Record<
+      string,
+      {
+        level: number;
+        location: string;
+        count: number;
+        progressTotal: number;
+        sums: Record<string, number>;
+      }
+    > = {};
     const byCategory: Record<string, Record<string, number>> = {};
     const fieldSummary: Record<
       string,
@@ -300,7 +311,7 @@ export class CustomTrackerService {
     > = {};
 
     const numericFields = fields.filter((field) =>
-      ['NUMBER', 'PERCENT', 'CURRENCY'].includes(field.fieldType),
+      ['NUMBER', 'PERCENT', 'CURRENCY', 'FORMULA'].includes(field.fieldType),
     );
     numericFields.forEach((field) => {
       fieldSummary[field.key] = {
@@ -318,6 +329,24 @@ export class CustomTrackerService {
       byLocation[location] ||= { count: 0, progressTotal: 0 };
       byLocation[location].count += 1;
       byLocation[location].progressTotal += Number(record.progressPercent || 0);
+      const locationParts = location
+        .split('>')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      locationParts.forEach((_, index) => {
+        const rollupKey = locationParts.slice(0, index + 1).join(' > ');
+        parentLocationRollup[rollupKey] ||= {
+          level: index + 1,
+          location: rollupKey,
+          count: 0,
+          progressTotal: 0,
+          sums: {},
+        };
+        parentLocationRollup[rollupKey].count += 1;
+        parentLocationRollup[rollupKey].progressTotal += Number(
+          record.progressPercent || 0,
+        );
+      });
 
       Object.entries(record.categoryValues || {}).forEach(([key, value]) => {
         byCategory[key] ||= {};
@@ -333,6 +362,19 @@ export class CustomTrackerService {
         summary.count += 1;
         summary.sum += numericValue;
         summary.max = Math.max(summary.max, numericValue);
+        locationParts.forEach((_, index) => {
+          const rollupKey = locationParts.slice(0, index + 1).join(' > ');
+          parentLocationRollup[rollupKey] ||= {
+            level: index + 1,
+            location: rollupKey,
+            count: 0,
+            progressTotal: 0,
+            sums: {},
+          };
+          parentLocationRollup[rollupKey].sums[field.key] =
+            (parentLocationRollup[rollupKey].sums[field.key] || 0) +
+            numericValue;
+        });
       });
     });
 
@@ -356,8 +398,73 @@ export class CustomTrackerService {
         count: data.count,
         averageProgress: data.count ? data.progressTotal / data.count : 0,
       })),
+      parentLocationRollup: Object.values(parentLocationRollup)
+        .map((data) => ({
+          level: data.level,
+          location: data.location,
+          count: data.count,
+          averageProgress: data.count ? data.progressTotal / data.count : 0,
+          sums: data.sums,
+        }))
+        .sort((a, b) => a.level - b.level || a.location.localeCompare(b.location)),
       fieldSummary,
     };
+  }
+
+  async exportReportCsv(projectId: number, trackerId: number) {
+    const tracker = await this.findTracker(projectId, trackerId);
+    const [fields, records] = await Promise.all([
+      this.listFields(trackerId),
+      this.recordRepo.find({ where: { projectId, trackerId } }),
+    ]);
+    const chartConfig = this.asPlainObject(tracker.chartConfig);
+    const groupLevels = this.asStringArray(chartConfig.groupLevels).length
+      ? this.asStringArray(chartConfig.groupLevels)
+      : tracker.locationScopeTypes?.length
+        ? tracker.locationScopeTypes
+        : ['BLOCK', 'TOWER', 'FLOOR', 'UNIT'];
+    const slicers = this.asPlainObject(chartConfig.slicers);
+    const configuredValueKeys = this.asStringArray(chartConfig.valueFields);
+    const numericFields = fields.filter((field) =>
+      ['NUMBER', 'PERCENT', 'CURRENCY', 'FORMULA'].includes(field.fieldType),
+    );
+    const valueFields = configuredValueKeys.length
+      ? numericFields.filter((field) => configuredValueKeys.includes(field.key))
+      : numericFields.slice(0, 4);
+    const categories = tracker.categoryConfig || [];
+    const filteredRecords = records.filter((record) =>
+      Object.entries(slicers).every(([key, value]) => {
+        if (!value) return true;
+        return (
+          this.getTrackerGroupValue(record, key, categories) === String(value)
+        );
+      }),
+    );
+    const rows = this.flattenReportRows(
+      this.buildReportPivotRows(
+        filteredRecords,
+        groupLevels,
+        valueFields,
+        categories,
+      ),
+    );
+    const headers = [
+      'Level',
+      'Group',
+      'Count',
+      'Average Progress',
+      ...valueFields.map((field) => `Sum ${field.label}`),
+    ];
+    const csvRows = rows.map((row) => [
+      row.level + 1,
+      row.label,
+      row.count,
+      row.averageProgress.toFixed(2),
+      ...valueFields.map((field) => (row.sums[field.key] || 0).toFixed(2)),
+    ]);
+    return [headers, ...csvRows]
+      .map((row) => row.map((value) => this.csvValue(value)).join(','))
+      .join('\n');
   }
 
   private async findTracker(projectId: number, trackerId: number) {
@@ -402,6 +509,7 @@ export class CustomTrackerService {
   ) {
     const values: Record<string, any> = {};
     fields.forEach((field) => {
+      if (field.fieldType === 'FORMULA') return;
       const value = rawValues?.[field.key];
       if (
         field.required &&
@@ -424,7 +532,83 @@ export class CustomTrackerService {
       }
       values[field.key] = value;
     });
+    fields
+      .filter((field) => field.fieldType === 'FORMULA')
+      .forEach((field) => {
+        values[field.key] = this.evaluateFormula(field.formula, values);
+      });
     return values;
+  }
+
+  private evaluateFormula(formula: string | null, values: Record<string, any>) {
+    const expression = String(formula || '').trim();
+    if (!expression) return null;
+    if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(expression)) {
+      throw new BadRequestException(
+        'Formula can only use field keys, numbers, and + - * / operators',
+      );
+    }
+    const hydrated = expression.replace(
+      /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g,
+      (token) => {
+        const value = Number(values[token]);
+        return Number.isFinite(value) ? String(value) : '0';
+      },
+    );
+    try {
+      const result = this.evalArithmetic(hydrated);
+      return Number.isFinite(result) ? result : null;
+    } catch {
+      throw new BadRequestException(`Invalid formula: ${expression}`);
+    }
+  }
+
+  /** Safe arithmetic evaluator — no eval/Function. Handles +, -, *, /, parentheses. */
+  private evalArithmetic(expr: string): number {
+    let pos = 0;
+    const skip = () => { while (expr[pos] === ' ') pos++; };
+    const parseExpr = (): number => {
+      let v = parseTerm();
+      skip();
+      while (expr[pos] === '+' || expr[pos] === '-') {
+        const op = expr[pos++];
+        const r = parseTerm();
+        v = op === '+' ? v + r : v - r;
+        skip();
+      }
+      return v;
+    };
+    const parseTerm = (): number => {
+      let v = parsePrimary();
+      skip();
+      while (expr[pos] === '*' || expr[pos] === '/') {
+        const op = expr[pos++];
+        const r = parsePrimary();
+        v = op === '*' ? v * r : v / r;
+        skip();
+      }
+      return v;
+    };
+    const parsePrimary = (): number => {
+      skip();
+      if (expr[pos] === '(') {
+        pos++;
+        const v = parseExpr();
+        skip();
+        if (expr[pos] === ')') pos++;
+        return v;
+      }
+      let s = '';
+      if (expr[pos] === '-') s += expr[pos++];
+      while (pos < expr.length && /[0-9.]/.test(expr[pos])) s += expr[pos++];
+      const n = Number(s);
+      if (!Number.isFinite(n)) throw new Error('bad number');
+      return n;
+    };
+    const result = parseExpr();
+    skip();
+    if (pos !== expr.length) throw new Error('unexpected token');
+    return result;
   }
 
   private normalizeCategories(raw: any) {
@@ -480,5 +664,95 @@ export class CustomTrackerService {
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '')
       .slice(0, 80);
+  }
+
+  private getTrackerGroupValue(
+    record: PlanningCustomTrackerRecord,
+    groupKey: string,
+    categories: Array<{ key: string; label: string; options?: string[] }>,
+  ) {
+    const path = String(record.locationText || 'Unmapped')
+      .split('>')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const locationIndex = ['BLOCK', 'TOWER', 'FLOOR', 'UNIT', 'ROOM'].indexOf(
+      groupKey,
+    );
+    if (locationIndex >= 0) return path[locationIndex] || 'Unmapped';
+    if (groupKey === 'STATUS') return record.status;
+    const category = categories.find((item) => item.key === groupKey);
+    if (category) return record.categoryValues?.[category.key] || 'Unspecified';
+    return 'Unspecified';
+  }
+
+  private buildReportPivotRows(
+    records: PlanningCustomTrackerRecord[],
+    groupLevels: string[],
+    valueFields: PlanningCustomTrackerField[],
+    categories: Array<{ key: string; label: string; options?: string[] }>,
+  ) {
+    type ReportRow = {
+      key: string;
+      label: string;
+      level: number;
+      count: number;
+      averageProgress: number;
+      sums: Record<string, number>;
+      children: ReportRow[];
+    };
+    const roots: ReportRow[] = [];
+    const index = new Map<string, ReportRow>();
+    records.forEach((record) => {
+      let branch = roots;
+      let parentKey = '';
+      groupLevels.forEach((groupKey, level) => {
+        const label = this.getTrackerGroupValue(record, groupKey, categories);
+        const key = `${parentKey}/${groupKey}:${label}`;
+        let row = index.get(key);
+        if (!row) {
+          row = {
+            key,
+            label,
+            level,
+            count: 0,
+            averageProgress: 0,
+            sums: {},
+            children: [],
+          };
+          index.set(key, row);
+          branch.push(row);
+        }
+        row.count += 1;
+        row.averageProgress += Number(record.progressPercent || 0);
+        valueFields.forEach((field) => {
+          const value = Number(record.values?.[field.key]);
+          if (Number.isFinite(value)) {
+            row!.sums[field.key] = (row!.sums[field.key] || 0) + value;
+          }
+        });
+        branch = row.children;
+        parentKey = key;
+      });
+    });
+    const finalize = (rows: ReportRow[]) => {
+      rows.forEach((row) => {
+        row.averageProgress = row.count ? row.averageProgress / row.count : 0;
+        finalize(row.children);
+      });
+    };
+    finalize(roots);
+    return roots;
+  }
+
+  private flattenReportRows<T extends { children: T[] }>(rows: T[]): T[] {
+    return rows.flatMap((row) => [row, ...this.flattenReportRows(row.children)]);
+  }
+
+  private csvValue(value: unknown) {
+    let text = String(value ?? '');
+    // Neutralise CSV formula injection: prefix formula triggers with a literal quote
+    // so spreadsheet apps (Excel, Google Sheets) treat the cell as plain text.
+    if (/^[=+\-@\t\r]/.test(text)) text = "'" + text;
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   }
 }

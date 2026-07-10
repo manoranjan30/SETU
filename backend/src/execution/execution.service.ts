@@ -1254,7 +1254,22 @@ export class ExecutionService {
       ? await query.skip(offset).take(limit).getManyAndCount()
       : [await query.getMany(), undefined];
 
-    const data = rows.map((row) => this.toCompatLogDto(row));
+    const progressSummaryByPlanId =
+      await this.buildProgressApprovalSummaryByPlanId(rows);
+    const locationContextByNodeId =
+      await this.buildLocationContextByNodeId(rows);
+    const data = rows.map((row) =>
+      this.toCompatLogDto(row, {
+        progressSummary:
+          row.woActivityPlanId != null
+            ? progressSummaryByPlanId.get(Number(row.woActivityPlanId))
+            : undefined,
+        locationContext:
+          row.executionEpsNodeId != null
+            ? locationContextByNodeId.get(Number(row.executionEpsNodeId))
+            : undefined,
+      }),
+    );
     return hasPaging
       ? {
           data,
@@ -1280,10 +1295,171 @@ export class ExecutionService {
     if (!row) {
       throw new BadRequestException('Progress log not found after save.');
     }
-    return this.toCompatLogDto(row);
+    const progressSummaryByPlanId =
+      await this.buildProgressApprovalSummaryByPlanId([row]);
+    const locationContextByNodeId =
+      await this.buildLocationContextByNodeId([row]);
+    return this.toCompatLogDto(row, {
+      progressSummary:
+        row.woActivityPlanId != null
+          ? progressSummaryByPlanId.get(Number(row.woActivityPlanId))
+          : undefined,
+      locationContext:
+        row.executionEpsNodeId != null
+          ? locationContextByNodeId.get(Number(row.executionEpsNodeId))
+          : undefined,
+    });
   }
 
-  private toCompatLogDto(entry: ExecutionProgressEntry) {
+  private async buildProgressApprovalSummaryByPlanId(
+    entries: ExecutionProgressEntry[],
+  ) {
+    const planIds = [
+      ...new Set(
+        entries
+          .map((entry) => Number(entry.woActivityPlanId || 0))
+          .filter((id) => id > 0),
+      ),
+    ];
+    const summaryByPlanId = new Map<
+      number,
+      {
+        plannedQuantity: number;
+        approvedTillLast: number;
+        pendingQuantity: number;
+      }
+    >();
+    if (!planIds.length) return summaryByPlanId;
+
+    const [plans, approvedRows, pendingRows] = await Promise.all([
+      this.planRepo.find({
+        where: { id: In(planIds) },
+        select: ['id', 'plannedQuantity'],
+      }),
+      this.executionEntryRepo
+        .createQueryBuilder('entry')
+        .select('entry.woActivityPlanId', 'planId')
+        .addSelect('COALESCE(SUM(entry.enteredQty), 0)', 'qty')
+        .where('entry.woActivityPlanId IN (:...planIds)', { planIds })
+        .andWhere('entry.status = :status', {
+          status: ExecutionProgressEntryStatus.APPROVED,
+        })
+        .groupBy('entry.woActivityPlanId')
+        .getRawMany<{ planId: string; qty: string }>(),
+      this.executionEntryRepo
+        .createQueryBuilder('entry')
+        .select('entry.woActivityPlanId', 'planId')
+        .addSelect('COALESCE(SUM(entry.enteredQty), 0)', 'qty')
+        .where('entry.woActivityPlanId IN (:...planIds)', { planIds })
+        .andWhere('entry.status = :status', {
+          status: ExecutionProgressEntryStatus.PENDING,
+        })
+        .groupBy('entry.woActivityPlanId')
+        .getRawMany<{ planId: string; qty: string }>(),
+    ]);
+
+    const approvedByPlanId = new Map(
+      approvedRows.map((row) => [Number(row.planId), Number(row.qty || 0)]),
+    );
+    const pendingByPlanId = new Map(
+      pendingRows.map((row) => [Number(row.planId), Number(row.qty || 0)]),
+    );
+
+    for (const plan of plans) {
+      summaryByPlanId.set(Number(plan.id), {
+        plannedQuantity: Number(plan.plannedQuantity || 0),
+        approvedTillLast: approvedByPlanId.get(Number(plan.id)) || 0,
+        pendingQuantity: pendingByPlanId.get(Number(plan.id)) || 0,
+      });
+    }
+
+    return summaryByPlanId;
+  }
+
+  private async buildLocationContextByNodeId(entries: ExecutionProgressEntry[]) {
+    const nodeIds = [
+      ...new Set(
+        entries
+          .map((entry) => Number(entry.executionEpsNodeId || 0))
+          .filter((id) => id > 0),
+      ),
+    ];
+    const contextByNodeId = new Map<
+      number,
+      {
+        path: string;
+        towerName: string;
+        floorName: string;
+        levels: Array<{ id: number; name: string; type: string }>;
+      }
+    >();
+    if (!nodeIds.length) return contextByNodeId;
+
+    const nodes = await this.epsRepo.find({
+      select: ['id', 'name', 'type', 'parentId'],
+      order: { id: 'ASC' },
+    });
+    const nodeById = new Map(nodes.map((node) => [Number(node.id), node]));
+
+    const buildLevels = (nodeId: number) => {
+      const levels: EpsNode[] = [];
+      const visited = new Set<number>();
+      let currentId: number | null = Number(nodeId);
+      while (currentId != null && !visited.has(currentId)) {
+        visited.add(currentId);
+        const node = nodeById.get(currentId);
+        if (!node) break;
+        levels.unshift(node);
+        currentId = node.parentId == null ? null : Number(node.parentId);
+      }
+      return levels.map((node) => ({
+        id: Number(node.id),
+        name: node.name,
+        type: String(node.type || ''),
+      }));
+    };
+
+    for (const nodeId of nodeIds) {
+      const levels = buildLevels(nodeId);
+      const tower =
+        [...levels]
+          .reverse()
+          .find((level) =>
+            ['TOWER', 'BLOCK'].includes(level.type.toUpperCase()),
+          ) || null;
+      const floor =
+        [...levels]
+          .reverse()
+          .find((level) =>
+            ['FLOOR', 'LEVEL'].includes(level.type.toUpperCase()),
+          ) || null;
+      contextByNodeId.set(nodeId, {
+        path: levels.map((level) => level.name).join(' / '),
+        towerName: tower?.name || 'Unassigned Tower',
+        floorName: floor?.name || 'Unassigned Floor',
+        levels,
+      });
+    }
+
+    return contextByNodeId;
+  }
+
+  private toCompatLogDto(
+    entry: ExecutionProgressEntry,
+    extras?: {
+      progressSummary?: {
+        plannedQuantity: number;
+        approvedTillLast: number;
+        pendingQuantity: number;
+      };
+      locationContext?: {
+        path: string;
+        towerName: string;
+        floorName: string;
+        levels: Array<{ id: number; name: string; type: string }>;
+      };
+    },
+  ) {
     const boqItem = entry.workOrderItem?.boqItem;
     const activity = entry.woActivityPlan?.activity;
     const epsNode = entry.executionEpsNode;
@@ -1302,6 +1478,21 @@ export class ExecutionService {
       reviewedAt: entry.approvedAt,
       rejectionReason: entry.rejectionReason,
       photoUrls: entry.photoUrls || [],
+      progressSummary: extras?.progressSummary
+        ? {
+            totalQuantity: extras.progressSummary.plannedQuantity,
+            approvedTillLast: extras.progressSummary.approvedTillLast,
+            presentSubmitted: Number(entry.enteredQty || 0),
+            totalApprovalIncludingPresent:
+              extras.progressSummary.approvedTillLast +
+              Number(entry.enteredQty || 0),
+            pendingQuantity: extras.progressSummary.pendingQuantity,
+          }
+        : null,
+      locationPath: extras?.locationContext?.path || epsNode?.name || null,
+      locationLevels: extras?.locationContext?.levels || [],
+      towerName: extras?.locationContext?.towerName || 'Unassigned Tower',
+      floorName: extras?.locationContext?.floorName || 'Unassigned Floor',
       measurementElement: {
         id:
           entry.workOrderItem?.measurementElementId ||
@@ -1328,6 +1519,8 @@ export class ExecutionService {
               id: epsNode.id,
               nodeName: epsNode.name,
               type: epsNode.type,
+              path: extras?.locationContext?.path || epsNode.name,
+              levels: extras?.locationContext?.levels || [],
             }
           : null,
       },

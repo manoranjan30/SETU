@@ -272,7 +272,9 @@ export class AuthService {
     if (
       expanded.has('QUALITY.INSPECTION.RAISE') ||
       expanded.has('QUALITY.INSPECTION.READ') ||
-      expanded.has('QUALITY.INSPECTION.APPROVE')
+      expanded.has('QUALITY.INSPECTION.APPROVE') ||
+      expanded.has('QUALITY.OBSERVATION.CREATE') ||
+      expanded.has('QUALITY.OBSERVATION.RESOLVE')
     ) {
       expanded.add('QUALITY.ACTIVITYLIST.READ');
       expanded.add('QUALITY.ACTIVITY.READ');

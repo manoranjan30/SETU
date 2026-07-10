@@ -512,6 +512,12 @@ export class PlanningController {
     return this.planningService.getGapAnalysis(projectId);
   }
 
+  @Get(':projectId/schedule-tree')
+  @Permissions('PLANNING.MATRIX.READ')
+  async getScheduleTreeForProject(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.planningService.getScheduleTreeForProject(projectId);
+  }
+
   @Get(':projectId/execution-ready')
   @Permissions('PLANNING.MATRIX.READ')
   async getExecutionReadyActivities(
