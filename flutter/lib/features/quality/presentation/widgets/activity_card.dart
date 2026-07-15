@@ -141,8 +141,12 @@ class _ActivityCardState extends State<ActivityCard> {
                   ),
                 ],
 
-                // Raise RFI button (only for "ready" activities)
-                if (!locked && widget.onRaiseRfi != null) ...[
+                // Raise RFI button — only before any GO is raised.
+                // Once allInspections is non-empty the multi-go / unit-wise
+                // section handles further raises via "Add GO" chips.
+                if (!locked &&
+                    widget.onRaiseRfi != null &&
+                    widget.row.allInspections.isEmpty) ...[
                   const SizedBox(height: 10),
                   Align(
                     alignment: Alignment.centerRight,

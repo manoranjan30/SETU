@@ -27,6 +27,7 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
   late final TabController _tabCtrl;
 
   static const _tabKeys = [
+    'MY_PENDING',
     'PENDING',
     'ALL',
     'APPROVED',
@@ -34,7 +35,8 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
     'DASHBOARD'
   ];
   static const _labels = [
-    'Pending',
+    'My Pending',
+    'All Pending',
     'All',
     'Approved',
     'Rejected',
@@ -48,6 +50,8 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
     'REJECTED': const [],
   };
 
+  List<QualityInspection> _myPendingInspections = const [];
+
   InspectionsLoaded? _lastInspections;
   String _selectedFloor = 'All Floors';
   bool _showOverdueOnly = false;
@@ -59,8 +63,15 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
     super.initState();
     _tabCtrl = TabController(length: _tabKeys.length, vsync: this);
     _tabCtrl.addListener(_onTabChanged);
+    _loadMyPending();
     _loadInspections('PENDING');
     _loadInspections('ALL');
+  }
+
+  void _loadMyPending() {
+    context.read<QualityApprovalBloc>().add(
+          LoadMyPendingInspections(projectId: widget.projectId),
+        );
   }
 
   @override
@@ -76,11 +87,19 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
         );
   }
 
-  String _tabToFilter(String tabKey) => tabKey == 'DASHBOARD' ? 'ALL' : tabKey;
+  String _tabToFilter(String tabKey) {
+    if (tabKey == 'DASHBOARD' || tabKey == 'MY_PENDING') return 'ALL';
+    return tabKey;
+  }
 
   void _onTabChanged() {
     if (_tabCtrl.indexIsChanging) return;
-    _loadInspections(_tabToFilter(_tabKeys[_tabCtrl.index]));
+    final key = _tabKeys[_tabCtrl.index];
+    if (key == 'MY_PENDING') {
+      _loadMyPending();
+    } else {
+      _loadInspections(_tabToFilter(key));
+    }
   }
 
   Future<void> _openDetail(
@@ -97,9 +116,14 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
 
     if (!mounted) return;
 
-    final filter = _tabToFilter(activeTab);
-    _loadInspections(filter);
-    if (filter != 'ALL') _loadInspections('ALL');
+    if (activeTab == 'MY_PENDING') {
+      _loadMyPending();
+      _loadInspections('PENDING');
+    } else {
+      final filter = _tabToFilter(activeTab);
+      _loadInspections(filter);
+      if (filter != 'ALL') _loadInspections('ALL');
+    }
   }
 
   List<QualityInspection> _cached(String filter) =>
@@ -167,6 +191,9 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
             _lastInspections = state;
             _cacheByFilter[state.activeFilter] = state.inspections;
           }
+          if (state is MyPendingInspectionsLoaded) {
+            _myPendingInspections = state.inspections;
+          }
 
           final loading = state is QualityApprovalLoading;
           final activeFilter = _tabToFilter(_tabKeys[_tabCtrl.index]);
@@ -194,7 +221,13 @@ class _QualityApprovalsPageState extends State<QualityApprovalsPage>
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
                   _InspectionList(
-                    title: 'Pending Approvals',
+                    title: 'My Pending Approvals',
+                    inspections: _myPendingInspections,
+                    onRefresh: _loadMyPending,
+                    onInspectionTap: (x) => _openDetail(x, 'MY_PENDING'),
+                  ),
+                  _InspectionList(
+                    title: 'All Pending Approvals',
                     inspections: _cached('PENDING'),
                     onRefresh: () => _loadInspections('PENDING'),
                     onInspectionTap: (x) => _openDetail(x, 'PENDING'),

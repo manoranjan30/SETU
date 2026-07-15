@@ -35,11 +35,17 @@ class ProgressEntryPage extends StatefulWidget {
   /// (matches what the web frontend sends as selectedEpsIds[0]).
   final int currentEpsNodeId;
 
+  /// Full EPS location path, e.g. "Block A › Tower 1 › 1st Floor".
+  /// Passed from the EPS explorer so the user can identify exactly where
+  /// this activity is in the site hierarchy.
+  final String? epsPath;
+
   const ProgressEntryPage({
     super.key,
     required this.activity,
     required this.project,
     required this.currentEpsNodeId,
+    this.epsPath,
   });
 
   @override
@@ -107,16 +113,38 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
     setState(() => _localPendingQty.addAll(map));
   }
 
-  /// Detect whether this activity has a micro schedule.
-  /// On network error, silently fall back to master mode.
+  /// Detect whether this activity has a micro schedule, then pick the
+  /// correct progress-entry mode:
+  ///   1. Micro schedule → breakdown UI (existing behaviour).
+  ///   2. No micro, but BOQ plans in widget.activity.plans → plans UI.
+  ///   3. No micro AND plans empty (WO-linked activity whose plans aren't
+  ///      returned by /execution-ready) → try the breakdown endpoint as a
+  ///      fallback.  The /execution/breakdown endpoint returns WO scope as
+  ///      BALANCE items even without a micro schedule — exactly what the web
+  ///      portal shows in its progress reporting portal.
   Future<void> _checkMicroSchedule() async {
     try {
       final hasMicro =
           await sl<SetuApiClient>().hasMicroSchedule(widget.activity.id);
       if (!mounted) return;
-      setState(() => _hasMicro = hasMicro);
-      // Immediately fetch the breakdown if micro schedule is active
-      if (hasMicro) _fetchBreakdown();
+
+      if (hasMicro) {
+        setState(() => _hasMicro = true);
+        _fetchBreakdown();
+        return;
+      }
+
+      // No micro schedule and plans already loaded → plain master-schedule mode.
+      if (widget.activity.plans.isNotEmpty) {
+        setState(() => _hasMicro = false);
+        return;
+      }
+
+      // Plans are empty: WO-linked activity whose execution_eps_node_id is not
+      // set in wo_activity_plan, so /execution-ready returned no plans.
+      // Fall back to the breakdown endpoint — keeps _hasMicro == null (spinner)
+      // until we know whether breakdown data exists.
+      await _fetchBreakdown(resolveMode: true);
     } catch (_) {
       // Network error — fall back to master mode silently
       if (!mounted) return;
@@ -126,7 +154,11 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
 
   /// Fetch the execution breakdown for this activity / EPS node.
   /// Populates [_breakdown] and creates one controller per breakdown line item.
-  Future<void> _fetchBreakdown() async {
+  ///
+  /// [resolveMode] — when true (WO fallback path), also sets [_hasMicro] based
+  /// on whether the breakdown has vendor data.  Without vendor data the page
+  /// falls through to the "No BOQ plans" message.
+  Future<void> _fetchBreakdown({bool resolveMode = false}) async {
     setState(() {
       _microLoading = true;
       _microError = null;
@@ -154,12 +186,19 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
         _breakdown = bd;
         _microControllers.addAll(controllers);
         _microLoading = false;
+        // In fallback mode: show breakdown UI if WO data was returned,
+        // otherwise fall through to "No BOQ plans".
+        if (resolveMode) {
+          _hasMicro = bd.vendorBreakdown.isNotEmpty;
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _microLoading = false;
         _microError = 'Failed to load breakdown: $e';
+        // Fallback mode: treat error as "no breakdown" → show plans/error UI.
+        if (resolveMode) _hasMicro = false;
       });
     }
   }
@@ -501,10 +540,46 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 15)),
                     const SizedBox(height: 2),
-                    // Project name as subtitle
+                    // Project name
                     Text(widget.project.name,
                         style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 12)),
+                    // EPS location path (Tower › Block › Floor)
+                    if (widget.epsPath?.isNotEmpty == true) ...[
+                      const SizedBox(height: 3),
+                      Row(children: [
+                        const Icon(Icons.location_on_outlined,
+                            size: 11, color: AppColors.textSecondary),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            widget.epsPath!,
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.textSecondary),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ]),
+                    ],
+                    // WBS schedule path (Structure > Floor > Activity)
+                    if (widget.activity.wbsPath?.isNotEmpty == true) ...[
+                      const SizedBox(height: 3),
+                      Row(children: [
+                        const Icon(Icons.account_tree_outlined,
+                            size: 11, color: AppColors.textSecondary),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            widget.activity.wbsPath!,
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.textSecondary),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ]),
+                    ],
                   ],
                 ),
               ),
@@ -779,6 +854,24 @@ class _ProgressEntryPageState extends State<ProgressEntryPage> {
                           fontWeight: FontWeight.w600)),
                 ),
             ]),
+            // WO schedule tree path — helps the user identify the exact scope
+            if (boqBd.workOrderItemDescription?.isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                const Icon(Icons.account_tree_outlined,
+                    size: 11, color: AppColors.textSecondary),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    boqBd.workOrderItemDescription!,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ]),
+            ],
             const SizedBox(height: 10),
 
             // Overall progress bar for this BOQ item

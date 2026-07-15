@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -316,6 +317,7 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
         lastLinked: _lastLinked,
         suggestedNext: _suggestedNext,
         initialExpanded: _getAncestorIds(_lastLinked),
+        projectId: widget.project.id,
       ),
     );
     if (!mounted) return;
@@ -508,12 +510,23 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
     final key = 'b${b.id}_$woId';
     final expanded = _expanded.contains(key);
     final allItems = [...b.directWoItems, ...b.subItems.expand((s) => [if (s.woItem != null) s.woItem!, ...s.measurements])];
-    final mappedCount = allItems.where((i) => i.mappingStatus == 'MAPPED').length;
+    // Non-leaf "master" items (isLeaf=false) are grouping nodes — not directly
+    // linkable — so exclude them from the colour and count logic.
+    final linkableItems = allItems.where((i) => i.isLeaf).toList();
+    final mappedCount = linkableItems.where((i) => i.mappingStatus == 'MAPPED').length;
+    // Background colour signals linking completion at a glance
+    final bgColor = linkableItems.isEmpty
+        ? Colors.blue.shade50
+        : mappedCount == linkableItems.length
+            ? Colors.green.shade50   // all items linked
+            : mappedCount > 0
+                ? Colors.amber.shade50  // partially linked
+                : Colors.red.shade50;   // none linked
     return Column(children: [
       InkWell(
         onTap: () => _toggleExpand(key),
         child: Container(
-          color: Colors.blue.shade50,
+          color: bgColor,
           padding: const EdgeInsets.fromLTRB(44, 8, 12, 8),
           child: Row(children: [
             const Icon(Icons.list_alt_outlined, size: 15, color: Colors.blue),
@@ -523,16 +536,16 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               if (b.uom.isNotEmpty) Text(b.uom, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
             ])),
-            if (allItems.isNotEmpty)
+            if (linkableItems.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: mappedCount == allItems.length ? Colors.green.shade50 : Colors.orange.shade50,
+                  color: mappedCount == linkableItems.length ? Colors.green.shade50 : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('$mappedCount/${allItems.length}',
+                child: Text('$mappedCount/${linkableItems.length}',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-                        color: mappedCount == allItems.length ? Colors.green.shade700 : Colors.orange.shade700)),
+                        color: mappedCount == linkableItems.length ? Colors.green.shade700 : Colors.orange.shade700)),
               ),
             const SizedBox(width: 4),
             Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey),
@@ -549,14 +562,28 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
   Widget _buildSubItemNode(_SubItemNode s, int boqId) {
     final key = 'sub${s.id}_$boqId';
     final expanded = _expanded.contains(key);
+    // Collect all WO items under this sub-item to derive linking status
+    final subItems = [if (s.woItem != null) s.woItem!, ...s.measurements];
+    final linkableSubItems = subItems.where((i) => i.isLeaf).toList();
+    final mappedCount = linkableSubItems.where((i) => i.mappingStatus == 'MAPPED').length;
+    final bgColor = linkableSubItems.isEmpty
+        ? Colors.teal.shade50
+        : mappedCount == linkableSubItems.length
+            ? Colors.green.shade50
+            : mappedCount > 0
+                ? Colors.amber.shade50
+                : Colors.red.shade50;
     return Column(children: [
       InkWell(
         onTap: () => _toggleExpand(key),
         child: Container(
-          color: Colors.teal.shade50,
+          color: bgColor,
           padding: const EdgeInsets.fromLTRB(56, 7, 12, 7),
           child: Row(children: [
-            const Icon(Icons.subdirectory_arrow_right, size: 14, color: Colors.teal),
+            Icon(Icons.subdirectory_arrow_right, size: 14,
+                color: mappedCount == linkableSubItems.length && linkableSubItems.isNotEmpty
+                    ? Colors.green.shade700
+                    : Colors.teal),
             const SizedBox(width: 4),
             Expanded(child: Text(s.description, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500))),
             Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 14, color: Colors.grey),
@@ -573,7 +600,11 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
   Widget _buildWoItemRow(_WoItem item) {
     final isMapped = item.mappingStatus == 'MAPPED';
     final isLinking = _linking[item.workOrderItemId] == true;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    // Row tint reflects the mapping state of this specific item
+    final rowBg = isMapped ? Colors.green.shade50 : Colors.red.shade50;
+    return ColoredBox(
+      color: rowBg,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ListTile(
         dense: true,
         contentPadding: const EdgeInsets.fromLTRB(64, 0, 12, 0),
@@ -609,7 +640,8 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
             )),
           ]),
         ),
-    ]);
+      ]),
+    );
   }
 }
 
@@ -668,6 +700,7 @@ class _WbsTreePickerSheet extends StatefulWidget {
   final _WbsNode? lastLinked;
   final _WbsNode? suggestedNext;
   final List<int> initialExpanded; // ancestor IDs to auto-expand on open
+  final int projectId; // used to persist hidden-section state per device
 
   const _WbsTreePickerSheet({
     required this.roots,
@@ -677,6 +710,7 @@ class _WbsTreePickerSheet extends StatefulWidget {
     this.lastLinked,
     this.suggestedNext,
     this.initialExpanded = const [],
+    required this.projectId,
   });
 
   @override
@@ -687,9 +721,12 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   final Set<int> _expanded = {};
-  // Nodes hidden by the user (entire subtree hidden) — allowed at depths 0, 1, 2
-  final Set<int> _hiddenNodes = {};
+  // Nodes hidden by the user — persisted to SharedPreferences so the
+  // preference survives across picker opens until the user taps "show all".
+  Set<int> _hiddenNodes = {};
   bool _allCollapsed = false;
+
+  String get _prefKey => 'wbs_hidden_${widget.projectId}';
 
   @override
   void initState() {
@@ -703,6 +740,26 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
         _expanded.add(root.id);
       }
     }
+    _loadHiddenNodes();
+  }
+
+  Future<void> _loadHiddenNodes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(_prefKey);
+    if (stored != null && mounted) {
+      setState(() {
+        _hiddenNodes = stored
+            .map((s) => int.tryParse(s) ?? -1)
+            .where((id) => id >= 0)
+            .toSet();
+      });
+    }
+  }
+
+  Future<void> _saveHiddenNodes() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        _prefKey, _hiddenNodes.map((id) => '$id').toList());
   }
 
   @override
@@ -789,7 +846,10 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
             // Hide button for L1/L2/L3 (depth 0-2) — only in normal mode
             if (!isSearchMode && depth <= 2)
               GestureDetector(
-                onTap: () => setState(() => _hiddenNodes.add(node.id)),
+                onTap: () {
+                  setState(() => _hiddenNodes.add(node.id));
+                  _saveHiddenNodes();
+                },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Icon(Icons.visibility_off_outlined, size: 14, color: color.withValues(alpha: 0.6)),
@@ -896,7 +956,10 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
         // Hidden-sections bar
         if (hiddenCount > 0 && !isSearching)
           InkWell(
-            onTap: () => setState(() => _hiddenNodes.clear()),
+            onTap: () {
+              setState(() => _hiddenNodes.clear());
+              _saveHiddenNodes();
+            },
             child: Container(
               width: double.infinity,
               color: Colors.orange.shade50,

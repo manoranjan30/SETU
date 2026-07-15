@@ -494,7 +494,7 @@ class QualityApprovalBloc
       // PENDING/APPROVED records fit within this window (sorted by createdAt DESC).
       final raw = await _apiClient.getQualityInspections(
         projectId: event.projectId,
-        limit: 100,
+        limit: 500,
       );
       final all = raw
           .map((e) => QualityInspection.fromJson(e as Map<String, dynamic>))

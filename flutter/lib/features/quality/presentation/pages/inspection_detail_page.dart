@@ -459,6 +459,7 @@ class _ChecklistTab extends StatelessWidget {
         // Shows linked cards (read-only after approval) and an Edit button before
         // final approval so the approver can add/remove related checklist links.
         _LinkedChecklistsSection(inspection: state.inspection),
+        _CurrentRfiInfoPanel(inspection: state.inspection),
         // Workflow approval timeline shown only when NOT using stage-level approval
         if (hasWorkflow && !usesStageApproval) _WorkflowTimeline(workflow: state.workflow!),
         if (state.stages.isEmpty)
@@ -626,6 +627,113 @@ class _PourCardPanel extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Current RFI Info Panel
+// ---------------------------------------------------------------------------
+
+/// Shows key RFI details (GO, drawing, element, description) below the linked
+/// checklists list so the approver can see the inspection context at a glance.
+/// Only rendered when at least one field is populated.
+class _CurrentRfiInfoPanel extends StatelessWidget {
+  final QualityInspection inspection;
+  const _CurrentRfiInfoPanel({required this.inspection});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasGo = inspection.goLabel != null || inspection.goNo != null;
+    final hasDrawing = inspection.drawingNo?.isNotEmpty ?? false;
+    final hasElement = inspection.elementName?.isNotEmpty ?? false;
+    final hasComments = inspection.comments?.isNotEmpty ?? false;
+    if (!hasGo && !hasDrawing && !hasElement && !hasComments) {
+      return const SizedBox.shrink();
+    }
+
+    final goText = inspection.goLabel ?? 'GO ${inspection.goNo}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: Colors.teal.shade100),
+        ),
+        color: Colors.teal.shade50,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(Icons.info_outline, size: 14, color: Colors.teal.shade700),
+                const SizedBox(width: 6),
+                Text(
+                  'RFI Details',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.teal.shade800,
+                  ),
+                ),
+                if (hasGo) ...[
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade700,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      goText,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+              if (inspection.goDetails?.isNotEmpty ?? false) ...[
+                const SizedBox(height: 4),
+                _infoRow(context, Icons.water_drop_outlined, inspection.goDetails!),
+              ],
+              if (hasDrawing) ...[
+                const SizedBox(height: 4),
+                _infoRow(context, Icons.architecture_outlined, 'Drawing: ${inspection.drawingNo}'),
+              ],
+              if (hasElement) ...[
+                const SizedBox(height: 4),
+                _infoRow(context, Icons.category_outlined, 'Element: ${inspection.elementName}'),
+              ],
+              if (hasComments) ...[
+                const SizedBox(height: 4),
+                _infoRow(context, Icons.notes_outlined, inspection.comments!),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(BuildContext context, IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 12, color: Colors.teal.shade600),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 11, color: Colors.teal.shade800),
+          ),
+        ),
+      ],
     );
   }
 }

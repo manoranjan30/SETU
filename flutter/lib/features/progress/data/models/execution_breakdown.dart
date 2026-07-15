@@ -67,6 +67,10 @@ class BoqItemBreakdown {
   final String? uom;
   final int? workOrderItemId;
 
+  /// Full WO schedule tree path, e.g. "Civil Work > Brickwork > 1st Floor".
+  /// Built by the backend's buildWorkOrderItemDescriptionPath.
+  final String? workOrderItemDescription;
+
   /// Total planned quantity for this BOQ item across the whole activity.
   final double totalScope;
 
@@ -84,6 +88,7 @@ class BoqItemBreakdown {
     required this.description,
     this.uom,
     this.workOrderItemId,
+    this.workOrderItemDescription,
     required this.totalScope,
     required this.allocatedToMicro,
     required this.balanceDirect,
@@ -107,6 +112,7 @@ class BoqItemBreakdown {
           boqItem['description'] as String? ?? boqItem['name'] as String? ?? '',
       uom: boqItem['uom'] as String?,
       workOrderItemId: json['workOrderItemId'] as int?,
+      workOrderItemDescription: json['workOrderItemDescription'] as String?,
       totalScope: toDouble(scope['total']),
       allocatedToMicro: toDouble(scope['allocated']),
       balanceDirect: toDouble(scope['balance']),
