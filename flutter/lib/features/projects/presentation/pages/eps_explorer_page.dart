@@ -888,6 +888,9 @@ class _EpsExplorerPageState extends State<EpsExplorerPage> {
             // Pass the exact EPS node the user is viewing — mirrors the web
             // frontend's selectedEpsIds[0] so micro activities are found.
             currentEpsNodeId: state.currentNode.id,
+            // Full breadcrumb so the user can identify the site location
+            // e.g. "Block A › Tower 1 › 1st Floor".
+            epsPath: state.currentPath.map((n) => n.name).join(' › '),
           ),
         ),
       ),

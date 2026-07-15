@@ -377,18 +377,17 @@ class ProjectBloc extends Bloc<ProjectEvent, ProjectState> {
     // Check if we already have activities cached in memory for this node
     final cachedActivities = currentState.activityIndexByEpsNode[event.node.id];
 
-    // Emit navigation immediately so the UI responds instantly
+    // Emit navigation immediately so the UI responds instantly with cached data.
+    // Always proceed to the network fetch below so plans/qty stay fresh — a
+    // stale in-memory cache was causing "No BOQ plans" after WO linking.
     emit(currentState.copyWith(
       currentPath: newPath,
       currentNode: event.node,
       childNodes: event.node.children,
       activities: cachedActivities ?? const [],
-      // Show loading spinner only if we haven't loaded activities yet
+      // Show loading spinner only when there is no cached data at all
       isLoadingChildren: cachedActivities == null,
     ));
-
-    // If already cached, nothing more to do
-    if (cachedActivities != null) return;
 
     // Fetch activities for this EPS node from the backend.
     // GET /planning/:epsNodeId/execution-ready — same endpoint the web app uses.

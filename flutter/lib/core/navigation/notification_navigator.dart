@@ -39,6 +39,9 @@ class NotificationNavigator {
       case 'QUALITY_CHECKLIST_OBSERVATION':
         await _openChecklistObservation(context, link, project);
         break;
+      case 'RFI_WORKFLOW':
+        await _openRfiInspection(context, link, project);
+        break;
       case 'QUALITY_SITE_OBSERVATION':
         await _openQualitySiteObs(context, link, project);
         break;
@@ -107,6 +110,34 @@ class NotificationNavigator {
     }
   }
 
+  // ── RFI workflow (raised / approved / rejected) ───────────────────────────
+
+  static Future<void> _openRfiInspection(
+    BuildContext context,
+    PendingDeepLink link,
+    Project project,
+  ) async {
+    if (link.inspectionId == null) return;
+    try {
+      final raw =
+          await sl<SetuApiClient>().getQualityInspectionDetail(link.inspectionId!);
+      final inspection = QualityInspection.fromJson(raw);
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => sl<QualityApprovalBloc>()
+              ..add(LoadInspectionDetail(inspection)),
+            child: InspectionDetailPage(inspection: inspection),
+          ),
+        ),
+      );
+    } catch (_) {
+      // Fetch failed — user is already on the quality approvals list.
+    }
+  }
+
   // ── EHS site observation ───────────────────────────────────────────────────
 
   static Future<void> _openEhsSiteObs(
@@ -142,6 +173,23 @@ class NotificationNavigator {
     if (explicit != null && explicit.isNotEmpty) return explicit;
     if (type.startsWith('QUALITY_CHECKLIST_OBS_')) {
       return 'QUALITY_CHECKLIST_OBSERVATION';
+    }
+    if (type == 'RFI_RAISED' ||
+        type == 'RFI_APPROVED' ||
+        type == 'RFI_FULLY_APPROVED' ||
+        type == 'RFI_WORKFLOW_REJECTED' ||
+        type == 'RFI_APPROVAL_REVERSED' ||
+        type == 'PENDING_APPROVAL' ||
+        type == 'STAGE_LEVEL_PENDING' ||
+        type == 'STAGE_APPROVED' ||
+        type == 'INSPECTION_APPROVED' ||
+        type == 'APPROVED' ||
+        type == 'INSPECTION_REJECTED' ||
+        type == 'REJECTED' ||
+        type == 'WORKFLOW_STEP_ASSIGNED' ||
+        type == 'WORKFLOW_DELEGATED' ||
+        type == 'WORKFLOW_REVERSED') {
+      return 'RFI_WORKFLOW';
     }
     if (type.startsWith('QUALITY_SITE_OBS_') ||
         type == 'QUALITY_OBS_RAISED' ||
