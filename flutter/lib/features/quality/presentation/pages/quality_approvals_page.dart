@@ -481,13 +481,6 @@ class _InspectionCard extends StatelessWidget {
     final progress = inspection.totalStages == 0
         ? 0.0
         : inspection.completedStages / math.max(inspection.totalStages, 1);
-    // Prefer the stage-driven pending label; fall back to old workflow level display
-    final pendingLabel = inspection.pendingApprovalDisplay ??
-        inspection.pendingApprovalLabel ??
-        (inspection.workflowCurrentLevel != null &&
-                inspection.workflowTotalLevels != null
-            ? 'L${inspection.workflowCurrentLevel}/${inspection.workflowTotalLevels}'
-            : null);
     final age = _ageLabel(inspection.requestDateTime);
     final overdue = _isOverdue(inspection);
 
@@ -555,9 +548,7 @@ class _InspectionCard extends StatelessWidget {
             if (inspection.requestDate.isNotEmpty)
               _detailRow(context, Icons.calendar_today_outlined,
                   'Raised ${inspection.requestDate}'),
-            if (pendingLabel != null)
-              _detailRow(context, Icons.pending_actions_outlined, pendingLabel,
-                  color: Colors.blue.shade700),
+            _ApprovalLevelsRow(inspection: inspection),
             if (age != null)
               _detailRow(
                 context,
@@ -635,6 +626,192 @@ class _InspectionCard extends StatelessWidget {
     if (status == 'SUBMITTED') return Colors.orange.shade700;
     if (status == 'REJECTED') return Colors.red.shade700;
     return Colors.blue.shade700;
+  }
+}
+
+/// Compact one-line row showing approval level progress.
+///
+/// Priority: stage-level approval dots (most detailed) → workflow-level
+/// pipeline → text-only fallback. The row is the same height as a
+/// [_InspectionCard._detailRow] so it never expands the card.
+class _ApprovalLevelsRow extends StatelessWidget {
+  final QualityInspection inspection;
+  const _ApprovalLevelsRow({required this.inspection});
+
+  @override
+  Widget build(BuildContext context) {
+    // New stage-based approval: each stage has per-level data
+    final stagesWithApproval =
+        inspection.stages.where((s) => s.stageApproval != null).toList();
+    if (stagesWithApproval.isNotEmpty) {
+      return _fromStages(context, stagesWithApproval);
+    }
+
+    // Old workflow run: use workflowCurrentLevel / workflowTotalLevels
+    final current = inspection.workflowCurrentLevel;
+    final total = inspection.workflowTotalLevels;
+    if (current != null && total != null && total > 0) {
+      return _workflowPipeline(context, current, total);
+    }
+
+    // Plain text fallback (pendingApprovalDisplay / Label)
+    final text =
+        inspection.pendingApprovalDisplay ?? inspection.pendingApprovalLabel;
+    if (text != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 5),
+        child: Row(children: [
+          Icon(Icons.pending_actions_outlined,
+              size: 13, color: Colors.blue.shade700),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // ── Old-system: single linear pipeline of N level dots ───────────────────
+
+  Widget _workflowPipeline(BuildContext context, int current, int total) {
+    final dots = <Widget>[];
+    for (int i = 1; i <= total; i++) {
+      final approved = i < current;
+      final pending = i == current;
+      if (i > 1) {
+        dots.add(Container(
+          width: 6,
+          height: 1.5,
+          color: approved ? Colors.green.shade300 : Colors.grey.shade300,
+        ));
+      }
+      dots.add(Tooltip(
+        message: approved
+            ? 'L$i — Approved'
+            : pending
+                ? 'L$i — Pending'
+                : 'L$i — Waiting',
+        child: Icon(
+          approved ? Icons.circle : Icons.circle_outlined,
+          size: 8,
+          color: approved
+              ? Colors.green.shade600
+              : pending
+                  ? Colors.orange.shade700
+                  : Colors.grey.shade400,
+        ),
+      ));
+    }
+
+    final role = _extractRole(inspection.pendingApprovalDisplay);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.pending_actions_outlined,
+              size: 13, color: Colors.blue.shade600),
+          const SizedBox(width: 6),
+          ...dots,
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              role != null ? 'L$current · $role' : 'L$current of $total',
+              style: TextStyle(fontSize: 11, color: Colors.orange.shade700),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── New stage-based system: per-stage dot clusters ────────────────────────
+
+  Widget _fromStages(BuildContext context, List<InspectionStage> stages) {
+    final clusters = <Widget>[];
+    for (int si = 0; si < stages.length; si++) {
+      final stage = stages[si];
+      final approval = stage.stageApproval!;
+      final total = approval.requiredLevelCount;
+      final approvedCount = approval.approvedLevelCount;
+
+      if (si > 0) clusters.add(const SizedBox(width: 5));
+
+      final levelDots = <Widget>[];
+      for (int li = 0; li < total; li++) {
+        final isApproved = li < approvedCount;
+        final isPending = li == approvedCount && !approval.fullyApproved;
+        if (li > 0) {
+          levelDots.add(Container(
+            width: 3,
+            height: 1.5,
+            color:
+                isApproved ? Colors.green.shade300 : Colors.grey.shade300,
+          ));
+        }
+        levelDots.add(Icon(
+          isApproved ? Icons.circle : Icons.circle_outlined,
+          size: 7,
+          color: isApproved
+              ? Colors.green.shade600
+              : isPending
+                  ? Colors.orange.shade700
+                  : Colors.grey.shade400,
+        ));
+      }
+
+      clusters.add(Tooltip(
+        message:
+            '${stage.stageName ?? "Stage ${si + 1}"}: $approvedCount/$total approved',
+        child: Row(mainAxisSize: MainAxisSize.min, children: levelDots),
+      ));
+    }
+
+    final label = inspection.pendingApprovalLabel ??
+        _extractRole(inspection.pendingApprovalDisplay);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.pending_actions_outlined,
+              size: 13, color: Colors.blue.shade600),
+          const SizedBox(width: 6),
+          ...clusters,
+          if (label != null) ...[
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 11, color: Colors.orange.shade700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Extracts the approver role from strings like
+  // "Stage Pre-Execution - Level 2 Pending: QC Engineer" → "QC Engineer"
+  String? _extractRole(String? display) {
+    if (display == null) return null;
+    final colonIdx = display.lastIndexOf(':');
+    if (colonIdx >= 0 && colonIdx < display.length - 1) {
+      return display.substring(colonIdx + 1).trim();
+    }
+    return null;
   }
 }
 
