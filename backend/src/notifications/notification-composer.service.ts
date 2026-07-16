@@ -165,6 +165,7 @@ export class NotificationComposerService {
       [input.stageName ? `RFI #${input.inspectionId}` : null],
       {
         type: input.stageName ? 'STAGE_LEVEL_PENDING' : 'PENDING_APPROVAL',
+        module: 'QUALITY',
         inspectionId: String(input.inspectionId),
       },
     );
@@ -181,6 +182,7 @@ export class NotificationComposerService {
       [input.comments ? `Remarks: ${input.comments}` : null],
       {
         type: input.decisionLabel.toUpperCase().replace(/\s+/g, '_'),
+        module: 'QUALITY',
         inspectionId: String(input.inspectionId),
       },
     );
@@ -197,6 +199,7 @@ export class NotificationComposerService {
       [input.delegateName ? `Assigned to: ${input.delegateName}` : null],
       {
         type: 'WORKFLOW_DELEGATED',
+        module: 'QUALITY',
         inspectionId: String(input.inspectionId),
       },
     );

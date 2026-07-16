@@ -641,17 +641,29 @@ export class QualityInspectionService {
   }
 
   async getMyPendingInspections(projectId: number, userId: number) {
-    return this.inspectionRepo
-      .createQueryBuilder('i')
-      .leftJoinAndSelect('i.activity', 'activity')
-      .leftJoinAndSelect('i.epsNode', 'eps')
-      .where('i.projectId = :projectId', { projectId })
-      .andWhere('i.requestedById = :userId', { userId })
-      .andWhere('i.status NOT IN (:...closedStatuses)', {
-        closedStatuses: ['APPROVED', 'CANCELED'],
-      })
-      .orderBy('i.createdAt', 'DESC')
-      .getMany();
+    const inspections = (await this.getInspections(
+      projectId,
+      undefined,
+      undefined,
+      userId,
+      false,
+    )) as any[];
+    const userRoleIds = await this.getUserProjectRoleIds(projectId, userId);
+
+    return inspections.filter((inspection) => {
+      if (
+        [InspectionStatus.APPROVED, InspectionStatus.CANCELED].includes(
+          inspection.status,
+        )
+      ) {
+        return false;
+      }
+      return this.inspectionHasActionableApprovalForUser(
+        inspection,
+        userId,
+        userRoleIds,
+      );
+    });
   }
 
   async getInspectionDetails(
@@ -2801,6 +2813,55 @@ export class QualityInspectionService {
       currentUserBlockedReason: blockedReason,
       currentUserActionHint: actionHint,
     };
+  }
+
+  private inspectionHasActionableApprovalForUser(
+    inspection: any,
+    userId: number,
+    userRoleIds: number[],
+  ) {
+    if (inspection.workflowSummary?.currentUserCanApprove) {
+      return true;
+    }
+
+    return (inspection.stages || []).some((stage: any) =>
+      this.stageHasActionableApprovalForUser(
+        stage?.stageApproval,
+        userId,
+        userRoleIds,
+      ),
+    );
+  }
+
+  private stageHasActionableApprovalForUser(
+    stageApproval: any,
+    userId: number,
+    userRoleIds: number[],
+  ) {
+    if (!stageApproval || stageApproval.fullyApproved) {
+      return false;
+    }
+
+    const activeLevel =
+      stageApproval.pendingLevels?.[0]?.stepOrder ??
+      stageApproval.levels?.find((level: any) => !level.approved)?.stepOrder ??
+      null;
+    if (activeLevel == null) {
+      return false;
+    }
+
+    const assignedLevels = (stageApproval.levels || [])
+      .filter((level: any) =>
+        this.matchesStepForUser(level, userId, userRoleIds, false),
+      )
+      .map((level: any) => Number(level.stepOrder))
+      .filter((level: number) => Number.isFinite(level));
+
+    if (assignedLevels.length === 0) {
+      return false;
+    }
+
+    return Math.max(...assignedLevels) >= Number(activeLevel);
   }
 
   async expandGoSeries(dto: ExpandGoSeriesDto) {

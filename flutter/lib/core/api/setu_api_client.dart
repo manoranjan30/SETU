@@ -1199,7 +1199,38 @@ class SetuApiClient {
     return response.data;
   }
 
-  /// Returns only inspections where the current user is the next required approver.
+  /// Returns inspections where the current user is the next required approver
+  /// at ANY stage, considering both release strategy levels AND vendor approval
+  /// levels.
+  ///
+  /// ── BACKEND HANDOFF (for backend LLM) ─────────────────────────────────────
+  /// The backend handler for GET /quality/inspections/my-pending must:
+  ///
+  /// 1. Identify the current user's roles:
+  ///    a. Their organisational role(s) from the release strategy
+  ///       (e.g. QC Engineer, Project Manager, Client Representative).
+  ///    b. Their vendor company membership (if they belong to a vendor/contractor
+  ///       organisation).
+  ///
+  /// 2. Find inspections where ANY stage has a StageApprovalLevel row where:
+  ///    - `approved = false`  (the level has not yet been signed off)
+  ///    - The previous level (stepOrder - 1) is `approved = true` OR it is
+  ///      the first step (so the level is genuinely "next" in the chain)
+  ///    - The step's required approver role matches one of the current user's
+  ///      roles (from the release strategy configuration)
+  ///    - OR: for vendor-gated levels, the step targets the vendor company and
+  ///      the user belongs to that vendor.
+  ///
+  /// 3. Return all such inspections (not just those at a specific workflow level).
+  ///    Many projects use multi-stage checklists where different stages can be
+  ///    at different approval levels simultaneously — so "my pending" must cover
+  ///    any stage where the user is the next signer, not just the top-level
+  ///    workflowCurrentLevel field.
+  ///
+  /// 4. Include `pendingApprovalDisplay`, `pendingApprovalLabel`, and per-stage
+  ///    `stageApproval` data in the response so the Flutter list view can render
+  ///    the compact level pipeline without a second API call.
+  /// ──────────────────────────────────────────────────────────────────────────
   ///
   /// Scoped to a project so the approvals dashboard does not show records
   /// from unrelated projects.
