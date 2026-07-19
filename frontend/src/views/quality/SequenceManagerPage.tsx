@@ -69,6 +69,8 @@ interface Activity {
   requiresPourCard?: boolean;
   requiresPourClearanceCard?: boolean;
   pourClearanceTriggerStageTemplateId?: number | null;
+  prePourClearanceApprovalRequirement?: "SUBMITTED" | "APPROVED";
+  pourCardTriggerStageTemplateId?: number | null;
   pourClearanceSignoffTemplate?: PourClearanceSignoffTemplateEntry[];
   floorVisibility?: FloorVisibilityConfig;
 }
@@ -197,6 +199,19 @@ const SortableRow = ({
         return `Stage #${activity.pourClearanceTriggerStageTemplateId}`;
       })()
     : null;
+  const pourCardTriggerLabel = activity.pourCardTriggerStageTemplateId
+    ? (() => {
+        for (const checklist of checklists) {
+          const stage = (checklist.stages || []).find(
+            (entry) => entry.id === activity.pourCardTriggerStageTemplateId,
+          );
+          if (stage) {
+            return `${checklist.name}: ${stage.name}`;
+          }
+        }
+        return `Stage #${activity.pourCardTriggerStageTemplateId}`;
+      })()
+    : null;
 
   return (
     <div
@@ -289,6 +304,11 @@ const SortableRow = ({
                     Pour Card
                   </span>
                 ) : null}
+                {activity.requiresPourCard && pourCardTriggerLabel ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-900 px-1.5 py-0.5 rounded border border-violet-200 font-medium">
+                    Pour Card After: {pourCardTriggerLabel}
+                  </span>
+                ) : null}
                 {activity.requiresPourClearanceCard ? (
                   <span className="inline-flex items-center gap-1 text-xs bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100 font-medium">
                     Pour Clearance
@@ -298,6 +318,15 @@ const SortableRow = ({
                 pourClearanceTriggerLabel ? (
                   <span className="inline-flex items-center gap-1 text-xs bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded border border-cyan-200 font-medium">
                     After: {pourClearanceTriggerLabel}
+                  </span>
+                ) : null}
+                {activity.requiresPourClearanceCard ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded border border-cyan-200 font-medium">
+                    Gate:{" "}
+                    {activity.prePourClearanceApprovalRequirement ===
+                    "APPROVED"
+                      ? "Approved"
+                      : "Submitted"}
                   </span>
                 ) : null}
               </div>
@@ -566,6 +595,10 @@ const ActivityForm = ({
     requiresPourClearanceCard: initial?.requiresPourClearanceCard || false,
     pourClearanceTriggerStageTemplateId:
       initial?.pourClearanceTriggerStageTemplateId ?? null,
+    prePourClearanceApprovalRequirement:
+      initial?.prePourClearanceApprovalRequirement || "SUBMITTED",
+    pourCardTriggerStageTemplateId:
+      initial?.pourCardTriggerStageTemplateId ?? null,
     pourClearanceSignoffTemplate:
       initial?.pourClearanceSignoffTemplate?.length
         ? initial.pourClearanceSignoffTemplate
@@ -645,6 +678,25 @@ const ActivityForm = ({
       set("pourClearanceTriggerStageTemplateId", null);
     }
   }, [form.pourClearanceTriggerStageTemplateId, pourClearanceStageOptions]);
+
+  useEffect(() => {
+    if (!form.requiresPourCard && form.pourCardTriggerStageTemplateId) {
+      set("pourCardTriggerStageTemplateId", null);
+      return;
+    }
+    if (
+      form.pourCardTriggerStageTemplateId &&
+      !pourClearanceStageOptions.some(
+        (stage) => stage.id === form.pourCardTriggerStageTemplateId,
+      )
+    ) {
+      set("pourCardTriggerStageTemplateId", null);
+    }
+  }, [
+    form.requiresPourCard,
+    form.pourCardTriggerStageTemplateId,
+    pourClearanceStageOptions,
+  ]);
 
   const updateSignoffTemplateRow = (
     id: string,
@@ -951,6 +1003,37 @@ const ActivityForm = ({
               inspection.
             </div>
           </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-text-secondary">
+                Clearance Required Before Next Approvals
+              </label>
+              <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border-default bg-white p-1 text-xs font-semibold">
+                {(["SUBMITTED", "APPROVED"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      set("prePourClearanceApprovalRequirement", value)
+                    }
+                    className={`rounded-md px-3 py-2 transition ${
+                      form.prePourClearanceApprovalRequirement === value
+                        ? "bg-cyan-700 text-white shadow-sm"
+                        : "text-text-secondary hover:bg-cyan-50"
+                    }`}
+                  >
+                    {value === "APPROVED"
+                      ? "Approval required"
+                      : "Submitted is enough"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-dashed border-cyan-300 bg-white/70 px-3 py-2 text-xs text-cyan-900">
+              This controls whether later checklist stages and final approval
+              wait for clearance submission only or formal clearance approval.
+            </div>
+          </div>
           <div className="rounded-lg border border-border-subtle bg-white p-3">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1023,6 +1106,50 @@ const ActivityForm = ({
                   pour clearance card.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {form.requiresPourCard && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+          <div>
+            <div className="text-sm font-semibold text-emerald-900">
+              Pour Card Activation
+            </div>
+            <div className="mt-1 text-xs text-emerald-800">
+              Leave blank to show the pour card immediately, or choose the
+              checklist stage after which the card should become active.
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-text-secondary">
+                Activate After Stage
+              </label>
+              <select
+                className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
+                value={form.pourCardTriggerStageTemplateId ?? ""}
+                onChange={(e) =>
+                  set(
+                    "pourCardTriggerStageTemplateId",
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+              >
+                <option value="">
+                  Show immediately when Pour Card is enabled
+                </option>
+                {pourClearanceStageOptions.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.checklistName} - Stage {stage.sequence || "?"}:{" "}
+                    {stage.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-lg border border-dashed border-emerald-300 bg-white/70 px-3 py-2 text-xs text-emerald-900">
+              After activation, later checklist stages require pour card
+              submission. The final checklist stage requires pour card approval.
             </div>
           </div>
         </div>

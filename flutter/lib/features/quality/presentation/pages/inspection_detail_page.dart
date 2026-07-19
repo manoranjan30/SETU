@@ -449,12 +449,57 @@ class _ChecklistTab extends StatelessWidget {
       return const Center(child: Text('No checklist stages defined'));
     }
 
+    final sortedStages = List<InspectionStage>.from(state.stages)
+      ..sort((a, b) => (a.sequence ?? 0).compareTo(b.sequence ?? 0));
+    final finalBlockers = state.inspection.finalApprovalBlockers;
+
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         // Pour Card / Pre-Pour Clearance quick-access panel
         if (state.inspection.requiresPourCard || state.inspection.requiresPourClearanceCard)
           _PourCardPanel(inspection: state.inspection),
+        // Final approval blockers — shown when cardSummary reports blockers
+        if (finalBlockers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: Card(
+              elevation: 0,
+              color: Colors.red.shade50,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.red.shade200),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(Icons.block_outlined, size: 14, color: Colors.red.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Blocked — cannot complete final approval:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red.shade800,
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 4),
+                    ...finalBlockers.map((msg) => Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('• ', style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
+                            Expanded(child: Text(msg, style: TextStyle(fontSize: 11, color: Colors.red.shade700))),
+                          ]),
+                        )),
+                  ],
+                ),
+              ),
+            ),
+          ),
         // Linked checklists — previously approved RFIs referenced by this inspection.
         // Shows linked cards (read-only after approval) and an Edit button before
         // final approval so the approver can add/remove related checklist links.
@@ -462,16 +507,16 @@ class _ChecklistTab extends StatelessWidget {
         _CurrentRfiInfoPanel(inspection: state.inspection),
         // Workflow approval timeline shown only when NOT using stage-level approval
         if (hasWorkflow && !usesStageApproval) _WorkflowTimeline(workflow: state.workflow!),
-        if (state.stages.isEmpty)
+        if (sortedStages.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
             child: Center(child: Text('No checklist stages defined')),
           )
         else
-          // One collapsible card per stage
+          // One collapsible card per stage, in checklist sequence order
           ...List.generate(
-            state.stages.length,
-            (i) => _StageSection(stage: state.stages[i], stageIndex: i),
+            sortedStages.length,
+            (i) => _StageSection(stage: sortedStages[i], stageIndex: i),
           ),
       ],
     );
@@ -547,55 +592,67 @@ class _PourCardPanel extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  if (inspection.requiresPourCard)
+                  if (inspection.requiresPourCard) ...[
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PourCardPage(
-                              inspectionId: inspection.id,
-                              projectId: inspection.projectId,
-                              activityName: inspection.activityName,
-                              locationLabel: inspection.locationDisplay,
+                      child: inspection.pourCardActive
+                          ? OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PourCardPage(
+                                    inspectionId: inspection.id,
+                                    projectId: inspection.projectId,
+                                    activityName: inspection.activityName,
+                                    locationLabel: inspection.locationDisplay,
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(Icons.assignment_outlined, size: 14),
+                              label: const Text('Pour Card'),
+                              style: OutlinedButton.styleFrom(
+                                textStyle: const TextStyle(fontSize: 12),
+                                foregroundColor: Colors.blue.shade700,
+                                side: BorderSide(color: Colors.blue.shade300),
+                              ),
+                            )
+                          : _LockedCardHint(
+                              label: 'Pour Card',
+                              triggerStage: inspection.pourCardTriggerStageName,
                             ),
-                          ),
-                        ),
-                        icon: const Icon(Icons.assignment_outlined, size: 14),
-                        label: const Text('Pour Card'),
-                        style: OutlinedButton.styleFrom(
-                          textStyle: const TextStyle(fontSize: 12),
-                          foregroundColor: Colors.blue.shade700,
-                          side: BorderSide(color: Colors.blue.shade300),
-                        ),
-                      ),
                     ),
+                  ],
                   if (inspection.requiresPourCard && inspection.requiresPourClearanceCard)
                     const SizedBox(width: 8),
-                  if (inspection.requiresPourClearanceCard)
+                  if (inspection.requiresPourClearanceCard) ...[
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PrePourClearancePage(
-                              inspectionId: inspection.id,
-                              activityName: inspection.activityName,
-                              locationLabel: inspection.locationDisplay,
-                              projectId: inspection.projectId,
-                              epsNodeId: inspection.epsNodeId,
+                      child: inspection.prePourClearanceActive
+                          ? OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PrePourClearancePage(
+                                    inspectionId: inspection.id,
+                                    activityName: inspection.activityName,
+                                    locationLabel: inspection.locationDisplay,
+                                    projectId: inspection.projectId,
+                                    epsNodeId: inspection.epsNodeId,
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(Icons.checklist_outlined, size: 14),
+                              label: const Text('Clearance'),
+                              style: OutlinedButton.styleFrom(
+                                textStyle: const TextStyle(fontSize: 12),
+                                foregroundColor: Colors.teal.shade700,
+                                side: BorderSide(color: Colors.teal.shade300),
+                              ),
+                            )
+                          : _LockedCardHint(
+                              label: 'Pre-Pour Clearance',
+                              triggerStage: inspection.prePourClearanceTriggerStageName,
                             ),
-                          ),
-                        ),
-                        icon: const Icon(Icons.checklist_outlined, size: 14),
-                        label: const Text('Clearance'),
-                        style: OutlinedButton.styleFrom(
-                          textStyle: const TextStyle(fontSize: 12),
-                          foregroundColor: Colors.teal.shade700,
-                          side: BorderSide(color: Colors.teal.shade300),
-                        ),
-                      ),
                     ),
+                  ],
                 ],
               ),
               // Cube Register — always shown for pour card activities (read-only link)
@@ -626,6 +683,54 @@ class _PourCardPanel extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Locked Card Hint
+// ---------------------------------------------------------------------------
+
+/// Compact placeholder shown in place of a Pour Card or Clearance button
+/// when the card is not yet active. Shows a lock icon and the trigger stage name.
+class _LockedCardHint extends StatelessWidget {
+  final String label;
+  final String? triggerStage;
+  const _LockedCardHint({required this.label, this.triggerStage});
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = triggerStage != null
+        ? 'Unlocks after: $triggerStage'
+        : 'Not yet active';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade500),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade600)),
+                Text(hint,
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1517,6 +1622,36 @@ class _StageSectionState extends State<_StageSection> {
                       .add(UpdateItemRemarks(itemId: item.id, remarks: text)),
                 )),
 
+          // Stage approval blockers — shown when cardSummary reports this stage is gated
+          if (_expanded)
+            Builder(builder: (ctx) {
+              final blocState = ctx.read<QualityApprovalBloc>().state;
+              final stageBlockers = blocState is InspectionDetailLoaded
+                  ? (blocState.inspection.approvalBlockersByStageId[stage.id.toString()] ?? [])
+                  : <String>[];
+              if (stageBlockers.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: stageBlockers
+                      .map((msg) => Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.lock_outline, size: 12, color: Colors.red.shade600),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(msg,
+                                    style: TextStyle(
+                                        fontSize: 11, color: Colors.red.shade700)),
+                              ),
+                            ],
+                          ))
+                      .toList(),
+                ),
+              );
+            }),
+
           // Bottom row: Save Progress + Approve Stage
           if (_expanded && stage.items.isNotEmpty)
             Padding(
@@ -1543,18 +1678,38 @@ class _StageSectionState extends State<_StageSection> {
                   // status alone isn't a permission check.
                   if (stage.canApprove && ps.canStageApprove) ...[
                     const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: () =>
-                          _showStageApproveDialog(context, stage),
-                      icon: const Icon(Icons.verified_outlined, size: 16),
-                      label: const Text('Approve Stage'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green.shade700,
-                        textStyle: const TextStyle(fontSize: 12),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                      ),
-                    ),
+                    Builder(builder: (ctx) {
+                      final blocState = ctx.read<QualityApprovalBloc>().state;
+                      final stageBlockers = blocState is InspectionDetailLoaded
+                          ? (blocState.inspection.approvalBlockersByStageId[stage.id.toString()] ?? [])
+                          : <String>[];
+                      return Tooltip(
+                        message: stageBlockers.isNotEmpty
+                            ? stageBlockers.join('\n')
+                            : '',
+                        child: FilledButton.icon(
+                          onPressed: stageBlockers.isNotEmpty
+                              ? null
+                              : () => _showStageApproveDialog(context, stage),
+                          icon: Icon(
+                            stageBlockers.isNotEmpty
+                                ? Icons.lock_outline
+                                : Icons.verified_outlined,
+                            size: 16,
+                          ),
+                          label: const Text('Approve Stage'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: stageBlockers.isNotEmpty
+                                ? Colors.grey.shade400
+                                : Colors.green.shade700,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                            textStyle: const TextStyle(fontSize: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                          ),
+                        ),
+                      );
+                    }),
                   ],
                 ],
               ),

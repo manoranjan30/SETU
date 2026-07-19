@@ -37,6 +37,8 @@ export interface PourClearanceSignoffTemplateEntry {
   isActive: boolean;
 }
 
+export type PrePourClearanceApprovalRequirement = 'SUBMITTED' | 'APPROVED';
+
 @Entity('quality_activity')
 export class QualityActivity {
   @PrimaryGeneratedColumn()
@@ -102,6 +104,12 @@ export class QualityActivity {
 
   @Column({ type: 'int', nullable: true })
   pourClearanceTriggerStageTemplateId: number | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'SUBMITTED' })
+  prePourClearanceApprovalRequirement: PrePourClearanceApprovalRequirement;
+
+  @Column({ type: 'int', nullable: true })
+  pourCardTriggerStageTemplateId: number | null;
 
   @Column({ type: 'jsonb', default: () => "'[]'" })
   pourClearanceSignoffTemplate: PourClearanceSignoffTemplateEntry[];

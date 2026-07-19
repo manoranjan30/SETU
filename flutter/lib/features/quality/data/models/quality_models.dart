@@ -516,6 +516,15 @@ class QualityInspection extends Equatable {
   final String? prePourClearanceStatus;   // same enum values
   final bool prePourClearanceApproved;
 
+  // Gate fields from cardSummary — control visibility and enable/disable of card buttons
+  final bool pourCardActive;
+  final String? pourCardActivationMode;         // IMMEDIATE | AFTER_STAGE
+  final bool prePourClearanceActive;
+  final List<String> finalApprovalBlockers;
+  final Map<String, List<String>> approvalBlockersByStageId;
+  final String? pourCardTriggerStageName;
+  final String? prePourClearanceTriggerStageName;
+
   // GO series fields (concrete pour tracking)
   final int? goNo;
   final String? goLabel;
@@ -573,6 +582,13 @@ class QualityInspection extends Equatable {
     this.pourCardApproved = false,
     this.prePourClearanceStatus,
     this.prePourClearanceApproved = false,
+    this.pourCardActive = false,
+    this.pourCardActivationMode,
+    this.prePourClearanceActive = false,
+    this.finalApprovalBlockers = const [],
+    this.approvalBlockersByStageId = const {},
+    this.pourCardTriggerStageName,
+    this.prePourClearanceTriggerStageName,
     this.goNo,
     this.goLabel,
     this.goDetails,
@@ -685,6 +701,14 @@ class QualityInspection extends Equatable {
       pourCardApproved: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardApproved'] as bool? ?? false,
       prePourClearanceStatus: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceStatus'] as String?,
       prePourClearanceApproved: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceApproved'] as bool? ?? false,
+      pourCardActive: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardActive'] as bool? ?? false,
+      pourCardActivationMode: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardActivationMode'] as String?,
+      prePourClearanceActive: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceActive'] as bool? ?? false,
+      finalApprovalBlockers: ((json['cardSummary'] as Map<String, dynamic>?)?['finalApprovalBlockers'] as List<dynamic>?)
+              ?.whereType<String>().toList() ?? const [],
+      approvalBlockersByStageId: _parseBlockersByStageId((json['cardSummary'] as Map<String, dynamic>?)?['approvalBlockersByStageId']),
+      pourCardTriggerStageName: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardTriggerStageName'] as String?,
+      prePourClearanceTriggerStageName: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceTriggerStageName'] as String?,
       goNo: json['goNo'] as int?,
       goLabel: json['goLabel'] as String?,
       goDetails: json['goDetails'] as String?,
@@ -798,7 +822,21 @@ class QualityInspection extends Equatable {
         drawingNo,
         elementName,
         relatedChecklistInspectionIds,
+        pourCardActive,
+        prePourClearanceActive,
+        finalApprovalBlockers,
       ];
+
+  static Map<String, List<String>> _parseBlockersByStageId(dynamic raw) {
+    if (raw is! Map<dynamic, dynamic>) return const {};
+    return {
+      for (final entry in raw.entries)
+        entry.key.toString(): (entry.value as List<dynamic>?)
+                ?.whereType<String>()
+                .toList() ??
+            [],
+    };
+  }
 }
 
 /// A checklist stage within an inspection.
@@ -817,6 +855,10 @@ class InspectionStage extends Equatable {
   /// A stage cannot be approved while this is > 0.
   final int openObservationCount;
 
+  /// Display order from stageTemplate.sequence / stageTemplate.order.
+  /// Used to sort dots and stage sections in the correct checklist order.
+  final int? sequence;
+
   const InspectionStage({
     required this.id,
     this.stageName,
@@ -824,6 +866,7 @@ class InspectionStage extends Equatable {
     this.items = const [],
     this.stageApproval,
     this.openObservationCount = 0,
+    this.sequence,
   });
 
   factory InspectionStage.fromJson(Map<String, dynamic> json) {
@@ -834,6 +877,9 @@ class InspectionStage extends Equatable {
       id: json['id'] as int,
       stageName: template?['name'] as String? ?? 'General Checks',
       status: json['status'] as String? ?? 'PENDING',
+      sequence: json['sequence'] as int? ??
+          template?['sequence'] as int? ??
+          template?['order'] as int?,
       items: (json['items'] as List<dynamic>?)
               ?.map((e) => ChecklistItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -871,12 +917,13 @@ class InspectionStage extends Equatable {
       items: newItems,
       stageApproval: stageApproval,
       openObservationCount: openObservationCount,
+      sequence: sequence,
     );
   }
 
   @override
   List<Object?> get props =>
-      [id, stageName, status, items, stageApproval, openObservationCount];
+      [id, stageName, status, items, stageApproval, openObservationCount, sequence];
 }
 
 /// A single checklist item within an [InspectionStage].
