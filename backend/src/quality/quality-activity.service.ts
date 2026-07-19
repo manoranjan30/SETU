@@ -10,6 +10,7 @@ import {
   QualityActivity,
   QualityActivityStatus,
   QualityApplicabilityLevel,
+  PrePourClearanceApprovalRequirement,
   PourClearanceSignoffTemplateEntry,
 } from './entities/quality-activity.entity';
 import { QualitySequenceEdge } from './entities/quality-sequence-edge.entity';
@@ -64,6 +65,8 @@ export interface CreateActivityDto {
   requiresPourCard?: boolean;
   requiresPourClearanceCard?: boolean;
   pourClearanceTriggerStageTemplateId?: number | null;
+  prePourClearanceApprovalRequirement?: PrePourClearanceApprovalRequirement;
+  pourCardTriggerStageTemplateId?: number | null;
   pourClearanceSignoffTemplate?: Array<{
     id?: string;
     department?: string;
@@ -256,6 +259,12 @@ export class QualityActivityService {
       ...dto,
       pourClearanceTriggerStageTemplateId:
         dto.pourClearanceTriggerStageTemplateId ?? null,
+      prePourClearanceApprovalRequirement:
+        this.normalizePrePourClearanceApprovalRequirement(
+          dto.prePourClearanceApprovalRequirement,
+        ),
+      pourCardTriggerStageTemplateId:
+        dto.pourCardTriggerStageTemplateId ?? null,
       pourClearanceSignoffTemplate: this.normalizePourClearanceSignoffTemplate(
         dto.pourClearanceSignoffTemplate,
       ),
@@ -283,6 +292,16 @@ export class QualityActivityService {
     if ('pourClearanceTriggerStageTemplateId' in dto) {
       activity.pourClearanceTriggerStageTemplateId =
         dto.pourClearanceTriggerStageTemplateId ?? null;
+    }
+    if ('prePourClearanceApprovalRequirement' in dto) {
+      activity.prePourClearanceApprovalRequirement =
+        this.normalizePrePourClearanceApprovalRequirement(
+          dto.prePourClearanceApprovalRequirement,
+        );
+    }
+    if ('pourCardTriggerStageTemplateId' in dto) {
+      activity.pourCardTriggerStageTemplateId =
+        dto.pourCardTriggerStageTemplateId ?? null;
     }
     if ('pourClearanceSignoffTemplate' in dto) {
       activity.pourClearanceSignoffTemplate =
@@ -985,6 +1004,16 @@ export class QualityActivityService {
           ) ??
           act.pourClearanceTriggerStageTemplateId ??
           undefined,
+        prePourClearanceApprovalRequirement:
+          this.normalizePrePourClearanceApprovalRequirement(
+            act.prePourClearanceApprovalRequirement,
+          ),
+        pourCardTriggerStageTemplateId:
+          checklistMap.stageIdMap.get(
+            Number(act.pourCardTriggerStageTemplateId),
+          ) ??
+          act.pourCardTriggerStageTemplateId ??
+          undefined,
         pourClearanceSignoffTemplate: act.pourClearanceSignoffTemplate || [],
         floorVisibility: act.floorVisibility,
         position: act.position,
@@ -1113,7 +1142,10 @@ export class QualityActivityService {
     }
 
     const triggerStageIds = activities
-      .map((activity) => Number(activity.pourClearanceTriggerStageTemplateId))
+      .flatMap((activity) => [
+        Number(activity.pourClearanceTriggerStageTemplateId),
+        Number(activity.pourCardTriggerStageTemplateId),
+      ])
       .filter((id) => Number.isFinite(id) && id > 0);
     const stageRepo = this.dataSource.getRepository(QualityStageTemplate);
     if (triggerStageIds.length) {
@@ -1210,6 +1242,14 @@ export class QualityActivityService {
     }
 
     return { templateIdMap, stageIdMap };
+  }
+
+  private normalizePrePourClearanceApprovalRequirement(
+    value?: string | null,
+  ): PrePourClearanceApprovalRequirement {
+    return String(value || '').toUpperCase() === 'APPROVED'
+      ? 'APPROVED'
+      : 'SUBMITTED';
   }
 
   private async findTargetChecklistTemplate(

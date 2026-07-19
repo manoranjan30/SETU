@@ -1535,23 +1535,11 @@ export class QualityInspectionService {
 
   // ─── Stage-wise Approval Pipeline ─────────────────────────────────────────
 
-  private async assertPourCardApprovedBeforeFurtherStageApproval(
+  private async assertRequiredCardsBeforeStageApproval(
     stage: QualityInspectionStage,
   ): Promise<void> {
     const activity = (stage.inspection as any)?.activity;
-    const triggerStageTemplateId = Number(
-      activity?.pourClearanceTriggerStageTemplateId,
-    );
-    const hasPourClearanceGate = Boolean(
-      triggerStageTemplateId &&
-      (activity?.requiresPourCard || activity?.requiresPourClearanceCard),
-    );
-
-    if (!hasPourClearanceGate) {
-      return;
-    }
-
-    if (Number(stage.stageTemplateId) === triggerStageTemplateId) {
+    if (!activity?.requiresPourCard && !activity?.requiresPourClearanceCard) {
       return;
     }
 
@@ -1559,34 +1547,267 @@ export class QualityInspectionService {
       where: { inspectionId: stage.inspectionId },
       relations: ['stageTemplate'],
     });
-    const triggerStage = stages.find(
-      (inspectionStage) =>
-        Number(inspectionStage.stageTemplateId) === triggerStageTemplateId,
-    );
-    const currentSequence = Number(stage.stageTemplate?.sequence);
-    const triggerSequence = Number(triggerStage?.stageTemplate?.sequence);
-    const isFurtherStage =
-      Number.isFinite(currentSequence) && Number.isFinite(triggerSequence)
-        ? currentSequence > triggerSequence
-        : Number(stage.stageTemplateId) !== triggerStageTemplateId;
-
-    if (!isFurtherStage) {
-      return;
-    }
-
-    const pourCard = await this.pourCardRepo.findOne({
-      where: { inspectionId: stage.inspectionId },
-    });
-    const pourCardApproved = Boolean(
-      pourCard &&
-      [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-        pourCard.status,
-      ),
+    const [pourCard, prePourClearance] = await Promise.all([
+      this.pourCardRepo.findOne({ where: { inspectionId: stage.inspectionId } }),
+      this.prePourClearanceRepo.findOne({
+        where: { inspectionId: stage.inspectionId },
+      }),
+    ]);
+    const gateSummary = this.buildCardGateSummary(
+      activity,
+      stages,
+      pourCard,
+      prePourClearance,
+      stage,
     );
 
-    if (!pourCardApproved) {
-      throw new BadRequestException('Pour card is not yet approved.');
+    if (gateSummary.stageApprovalBlockers.length > 0) {
+      throw new BadRequestException(
+        gateSummary.stageApprovalBlockers.join(' '),
+      );
     }
+  }
+
+  private isCardSubmitted(card?: { status?: QualityCardStatus | string } | null) {
+    return Boolean(
+      card &&
+        [
+          QualityCardStatus.SUBMITTED,
+          QualityCardStatus.APPROVED,
+          QualityCardStatus.LOCKED,
+        ].includes(card.status as QualityCardStatus),
+    );
+  }
+
+  private isCardApproved(card?: { status?: QualityCardStatus | string } | null) {
+    return Boolean(
+      card &&
+        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+          card.status as QualityCardStatus,
+        ),
+    );
+  }
+
+  private getPrePourClearanceApprovalRequirement(activity: any) {
+    return String(
+      activity?.prePourClearanceApprovalRequirement || 'SUBMITTED',
+    ).toUpperCase() === 'APPROVED'
+      ? 'APPROVED'
+      : 'SUBMITTED';
+  }
+
+  private isPrePourClearanceGateSatisfied(
+    requirement: 'SUBMITTED' | 'APPROVED',
+    submitted: boolean,
+    approved: boolean,
+  ) {
+    return requirement === 'APPROVED' ? approved : submitted;
+  }
+
+  private getStageSequence(stage: any, fallback: number) {
+    const sequence = Number(stage?.stageTemplate?.sequence);
+    return Number.isFinite(sequence) ? sequence : fallback;
+  }
+
+  private getTriggerStageMeta(stages: any[], triggerStageTemplateId?: number | null) {
+    const normalizedTriggerId = Number(triggerStageTemplateId);
+    if (!Number.isFinite(normalizedTriggerId) || normalizedTriggerId <= 0) {
+      return {
+        stage: null as any,
+        sequence: null as number | null,
+        approved: false,
+        name: null as string | null,
+      };
+    }
+
+    const sortedStages = [...(stages || [])].sort(
+      (a, b) => this.getStageSequence(a, 0) - this.getStageSequence(b, 0),
+    );
+    const index = sortedStages.findIndex(
+      (stage) => Number(stage.stageTemplateId) === normalizedTriggerId,
+    );
+    const stage = index >= 0 ? sortedStages[index] : null;
+    const approved = Boolean(
+      stage?.stageApproval?.fullyApproved ||
+        stage?.status === StageStatus.APPROVED ||
+        stage?.isLocked,
+    );
+
+    return {
+      stage,
+      sequence: stage ? this.getStageSequence(stage, index) : null,
+      approved,
+      name: stage?.stageTemplate?.name || null,
+    };
+  }
+
+  private isStageAfterTrigger(
+    stages: any[],
+    currentStage: any,
+    triggerSequence: number | null,
+    activateImmediately: boolean,
+  ) {
+    const sortedStages = [...(stages || [])].sort(
+      (a, b) => this.getStageSequence(a, 0) - this.getStageSequence(b, 0),
+    );
+    const currentIndex = sortedStages.findIndex(
+      (stage) => Number(stage.id) === Number(currentStage?.id),
+    );
+    const currentSequence = this.getStageSequence(
+      currentStage,
+      currentIndex >= 0 ? currentIndex : 0,
+    );
+    return activateImmediately
+      ? true
+      : triggerSequence != null && currentSequence > triggerSequence;
+  }
+
+  private isLastChecklistStage(stages: any[], currentStage: any) {
+    const sortedStages = [...(stages || [])].sort(
+      (a, b) => this.getStageSequence(a, 0) - this.getStageSequence(b, 0),
+    );
+    const lastStage = sortedStages[sortedStages.length - 1];
+    return Boolean(lastStage && Number(lastStage.id) === Number(currentStage?.id));
+  }
+
+  private buildCardGateSummary(
+    activity: any,
+    stages: any[],
+    pourCard: QualityPourCard | null,
+    prePourClearance: QualityPrePourClearanceCard | null,
+    currentStage?: any | null,
+  ) {
+    const requiresPourCard = Boolean(activity?.requiresPourCard);
+    const requiresPrePourClearance = Boolean(
+      activity?.requiresPourClearanceCard,
+    );
+    const pourCardTrigger = this.getTriggerStageMeta(
+      stages,
+      activity?.pourCardTriggerStageTemplateId,
+    );
+    const clearanceTrigger = this.getTriggerStageMeta(
+      stages,
+      activity?.pourClearanceTriggerStageTemplateId,
+    );
+    const pourCardActivatesImmediately =
+      requiresPourCard && !activity?.pourCardTriggerStageTemplateId;
+    const pourCardActive =
+      requiresPourCard &&
+      (pourCardActivatesImmediately || pourCardTrigger.approved);
+    const prePourClearanceActive =
+      requiresPrePourClearance && clearanceTrigger.approved;
+    const pourCardSubmitted = this.isCardSubmitted(pourCard);
+    const pourCardApproved = this.isCardApproved(pourCard);
+    const prePourClearanceSubmitted =
+      this.isCardSubmitted(prePourClearance);
+    const prePourClearanceApproved = this.isCardApproved(prePourClearance);
+    const prePourClearanceApprovalRequirement =
+      this.getPrePourClearanceApprovalRequirement(activity);
+    const prePourClearanceGateSatisfied =
+      this.isPrePourClearanceGateSatisfied(
+        prePourClearanceApprovalRequirement,
+        prePourClearanceSubmitted,
+        prePourClearanceApproved,
+      );
+
+    const stageApprovalBlockers: string[] = [];
+    const isLastStage = currentStage
+      ? this.isLastChecklistStage(stages, currentStage)
+      : false;
+
+    if (
+      currentStage &&
+      requiresPrePourClearance &&
+      prePourClearanceActive &&
+      this.isStageAfterTrigger(
+        stages,
+        currentStage,
+        clearanceTrigger.sequence,
+        false,
+      ) &&
+      !prePourClearanceGateSatisfied
+    ) {
+      stageApprovalBlockers.push(
+        prePourClearanceApprovalRequirement === 'APPROVED'
+          ? 'Pre-pour clearance card approval is required before approving this stage.'
+          : 'Pre-pour clearance card submission is required before approving this stage.',
+      );
+    }
+
+    if (
+      currentStage &&
+      requiresPourCard &&
+      pourCardActive &&
+      this.isStageAfterTrigger(
+        stages,
+        currentStage,
+        pourCardTrigger.sequence,
+        pourCardActivatesImmediately,
+      ) &&
+      !pourCardSubmitted
+    ) {
+      stageApprovalBlockers.push(
+        'Pour card submission is required before approving this stage.',
+      );
+    }
+
+    if (
+      currentStage &&
+      isLastStage &&
+      requiresPourCard &&
+      !pourCardApproved
+    ) {
+      stageApprovalBlockers.push(
+        'Pour card approval is required before final checklist stage approval.',
+      );
+    }
+
+    const finalApprovalBlockers: string[] = [];
+    if (requiresPourCard && !pourCardApproved) {
+      finalApprovalBlockers.push(
+        'Pour card approval is required before final checklist approval.',
+      );
+    }
+    if (
+      requiresPrePourClearance &&
+      prePourClearanceActive &&
+      !prePourClearanceGateSatisfied
+    ) {
+      finalApprovalBlockers.push(
+        prePourClearanceApprovalRequirement === 'APPROVED'
+          ? 'Pre-pour clearance card approval is required before final checklist approval.'
+          : 'Pre-pour clearance card submission is required before final checklist approval.',
+      );
+    }
+
+    return {
+      requiresPourCard,
+      requiresPrePourClearance,
+      pourCardStatus: pourCard?.status || null,
+      pourCardSubmitted,
+      pourCardApproved,
+      pourCardTriggerStageTemplateId:
+        activity?.pourCardTriggerStageTemplateId ?? null,
+      pourCardTriggerStageName: pourCardTrigger.name,
+      pourCardTriggerApproved:
+        pourCardActivatesImmediately || pourCardTrigger.approved,
+      pourCardActive,
+      pourCardActivationMode: pourCardActivatesImmediately
+        ? 'IMMEDIATE'
+        : 'AFTER_STAGE',
+      prePourClearanceStatus: prePourClearance?.status || null,
+      prePourClearanceSubmitted,
+      prePourClearanceApproved,
+      prePourClearanceApprovalRequirement,
+      prePourClearanceGateSatisfied,
+      prePourClearanceTriggerStageTemplateId:
+        activity?.pourClearanceTriggerStageTemplateId ?? null,
+      prePourClearanceTriggerStageName: clearanceTrigger.name,
+      prePourClearanceTriggerApproved: clearanceTrigger.approved,
+      prePourClearanceActive,
+      stageApprovalBlockers,
+      finalApprovalBlockers,
+    };
   }
 
   async approveStage(
@@ -1634,7 +1855,7 @@ export class QualityInspectionService {
       'Close all observations linked to this stage before approving it.',
     );
 
-    await this.assertPourCardApprovedBeforeFurtherStageApproval(stage);
+    await this.assertRequiredCardsBeforeStageApproval(stage);
 
     const run = await this.inspectionWorkflowService.getOrStartWorkflowState(
       inspectionId,
@@ -2037,7 +2258,12 @@ export class QualityInspectionService {
   ) {
     const inspection = await this.inspectionRepo.findOne({
       where: { id: inspectionId },
-      relations: ['stages', 'stages.stageTemplate', 'stages.signatures'],
+      relations: [
+        'activity',
+        'stages',
+        'stages.stageTemplate',
+        'stages.signatures',
+      ],
     });
     if (!inspection) throw new NotFoundException('Inspection not found');
 
@@ -2085,6 +2311,23 @@ export class QualityInspectionService {
       inspectionId,
       'Close all observations linked to this RFI before giving final approval.',
     );
+
+    const [pourCard, prePourClearance] = await Promise.all([
+      this.pourCardRepo.findOne({ where: { inspectionId } }),
+      this.prePourClearanceRepo.findOne({ where: { inspectionId } }),
+    ]);
+    const cardGateSummary = this.buildCardGateSummary(
+      inspection.activity,
+      inspection.stages || [],
+      pourCard,
+      prePourClearance,
+      null,
+    );
+    if (cardGateSummary.finalApprovalBlockers.length > 0) {
+      throw new BadRequestException(
+        cardGateSummary.finalApprovalBlockers.join(' '),
+      );
+    }
 
     const signer = await this.getApproverSnapshot(inspection.projectId, userId);
     const approvalTimestamp = await this.resolveRfiApprovalTimestamp(
@@ -3014,6 +3257,9 @@ export class QualityInspectionService {
       approvedLevelCount: levels.filter((level) => level.approved).length,
       requiredLevelCount: levels.length,
       fullyApproved,
+      progressLabel: `${levels.filter((level) => level.approved).length} of ${
+        levels.length
+      }`,
       pendingDisplay:
         pendingLevels.length > 0
           ? pendingLevels
@@ -3100,7 +3346,9 @@ export class QualityInspectionService {
 
     const stageRecords = await this.stageRepo.find({
       where: { inspectionId: In(inspectionIds) } as any,
-      relations: includeSignatureData ? ['signatures'] : [],
+      relations: includeSignatureData
+        ? ['stageTemplate', 'signatures']
+        : ['stageTemplate'],
     });
     if (!includeSignatureData) {
       const stageIds = stageRecords
@@ -3338,45 +3586,51 @@ export class QualityInspectionService {
         inspection.stages ||
         stageMap.get(inspection.id) ||
         []
-      ).map((stage: any) => {
-        const stageApproval = this.buildStageApprovalDetails(stage, run);
-        return {
-          ...stage,
-          stageApproval,
-        };
-      });
+      )
+        .sort(
+          (a: any, b: any) =>
+            this.getStageSequence(a, 0) - this.getStageSequence(b, 0),
+        )
+        .map((stage: any) => {
+          const stageApproval = this.buildStageApprovalDetails(stage, run);
+          const sequence = this.getStageSequence(stage, 0);
+          return {
+            ...stage,
+            sequence,
+            stageTemplate: stage.stageTemplate
+              ? {
+                  ...stage.stageTemplate,
+                  sequence,
+                }
+              : stage.stageTemplate,
+            stageApproval,
+          };
+        });
       const approvedStages =
         stages.filter((stage: any) => stage.stageApproval?.fullyApproved)
           .length || 0;
       const totalStages = stages.length || 0;
-      const triggerStageTemplateId =
-        (inspection as any).activity?.pourClearanceTriggerStageTemplateId ||
-        null;
-      const triggerStage = triggerStageTemplateId
-        ? stages.find(
-            (stage: any) =>
-              Number(stage.stageTemplateId) === Number(triggerStageTemplateId),
-          )
-        : null;
-      const pourClearanceTriggerApproved = triggerStageTemplateId
-        ? Boolean(triggerStage?.stageApproval?.fullyApproved)
-        : totalStages > 0
-          ? approvedStages === totalStages
-          : false;
       const pourCard = pourCardByInspectionId.get(inspection.id) || null;
       const prePourClearance =
         prePourClearanceByInspectionId.get(inspection.id) || null;
-      const prePourClearanceApproved = Boolean(
-        prePourClearance &&
-        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-          prePourClearance.status,
-        ),
+      const cardGateSummary = this.buildCardGateSummary(
+        (inspection as any).activity,
+        stages,
+        pourCard,
+        prePourClearance,
+        null,
       );
-      const pourCardApproved = Boolean(
-        pourCard &&
-        [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-          pourCard.status,
-        ),
+      const approvalBlockersByStageId = Object.fromEntries(
+        stages.map((stage: any) => [
+          stage.id,
+          this.buildCardGateSummary(
+            (inspection as any).activity,
+            stages,
+            pourCard,
+            prePourClearance,
+            stage,
+          ).stageApprovalBlockers,
+        ]),
       );
 
       let pendingApprovalDisplay: string | null = null;
@@ -3572,16 +3826,22 @@ export class QualityInspectionService {
             stagePendingContext?.level?.stepOrder ||
             pendingStep?.stepOrder ||
             null,
-          pourClearanceTriggerStageTemplateId: triggerStageTemplateId,
+          pourClearanceTriggerStageTemplateId:
+            cardGateSummary.prePourClearanceTriggerStageTemplateId,
           pourClearanceTriggerStageName:
-            triggerStage?.stageTemplate?.name || null,
-          pourClearanceTriggerApproved,
+            cardGateSummary.prePourClearanceTriggerStageName,
+          pourClearanceTriggerApproved:
+            cardGateSummary.prePourClearanceTriggerApproved,
+          pourCardTriggerStageTemplateId:
+            cardGateSummary.pourCardTriggerStageTemplateId,
+          pourCardTriggerStageName:
+            cardGateSummary.pourCardTriggerStageName,
+          pourCardTriggerApproved:
+            cardGateSummary.pourCardTriggerApproved,
         },
         cardSummary: {
-          pourCardStatus: pourCard?.status || null,
-          pourCardApproved,
-          prePourClearanceStatus: prePourClearance?.status || null,
-          prePourClearanceApproved,
+          ...cardGateSummary,
+          approvalBlockersByStageId,
         },
       };
     });

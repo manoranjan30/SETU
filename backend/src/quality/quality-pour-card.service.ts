@@ -73,6 +73,7 @@ type ClearanceSignoffRow = NonNullable<
 type ClearanceInspectionContext = QualityInspection & {
   activity?: {
     pourClearanceTriggerStageTemplateId?: number | null;
+    prePourClearanceApprovalRequirement?: string | null;
     pourClearanceSignoffTemplate?: PourClearanceSignoffTemplateEntry[];
     activityName?: string | null;
   } | null;
@@ -2156,14 +2157,28 @@ export class QualityPourCardService {
         return;
       }
       const clearance = await this.clearanceRepo.findOne({ where: { inspectionId } });
+      const requiresApproval =
+        String(
+          inspection.activity?.prePourClearanceApprovalRequirement ||
+            'SUBMITTED',
+        ).toUpperCase() === 'APPROVED';
+      const allowedStatuses = requiresApproval
+        ? [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED]
+        : [
+            QualityCardStatus.SUBMITTED,
+            QualityCardStatus.APPROVED,
+            QualityCardStatus.LOCKED,
+          ];
       if (
         !clearance ||
-        ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+        !allowedStatuses.includes(
           clearance.status,
         )
       ) {
         throw new BadRequestException(
-          'Required pre-pour clearance card is not yet approved for this inspection.',
+          requiresApproval
+            ? 'Required pre-pour clearance card is not yet approved for this inspection.'
+            : 'Required pre-pour clearance card is not yet submitted for this inspection.',
         );
       }
     }

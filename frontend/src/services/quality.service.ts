@@ -336,6 +336,8 @@ export const qualityService = {
       requiresPourCard?: boolean;
       requiresPourClearanceCard?: boolean;
       pourClearanceTriggerStageTemplateId?: number | null;
+      prePourClearanceApprovalRequirement?: 'SUBMITTED' | 'APPROVED';
+      pourCardTriggerStageTemplateId?: number | null;
       pourClearanceSignoffTemplate?: Array<{
         id?: string;
         department?: string;

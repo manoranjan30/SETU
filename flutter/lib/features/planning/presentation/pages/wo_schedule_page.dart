@@ -298,7 +298,7 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
     });
   }
 
-  Future<void> _linkItem(_WoItem item) async {
+  Future<void> _linkItem(_WoItem item, {String contextPath = ''}) async {
     if (_leavesInOrder.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No schedule activities available to link to')));
@@ -318,6 +318,8 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
         suggestedNext: _suggestedNext,
         initialExpanded: _getAncestorIds(_lastLinked),
         projectId: widget.project.id,
+        woItemLabel: item.description,
+        woItemContextPath: contextPath,
       ),
     );
     if (!mounted) return;
@@ -478,14 +480,15 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
             ]),
           ),
         ),
-        if (expanded) ...v.workOrders.map((wo) => _buildWoNode(wo, v.id)),
+        if (expanded) ...v.workOrders.map((wo) => _buildWoNode(wo, v.name)),
       ]),
     );
   }
 
-  Widget _buildWoNode(_WoNode wo, int vendorId) {
+  Widget _buildWoNode(_WoNode wo, String vendorName) {
     final key = 'wo${wo.id}';
     final expanded = _expanded.contains(key);
+    final woPrefix = '$vendorName › ${wo.number}';
     return Column(children: [
       InkWell(
         onTap: () => _toggleExpand(key),
@@ -502,13 +505,15 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
           ]),
         ),
       ),
-      if (expanded) ...wo.boqItems.map((b) => _buildBoqNode(b, wo.id)),
+      if (expanded) ...wo.boqItems.map((b) => _buildBoqNode(b, woPrefix)),
     ]);
   }
 
-  Widget _buildBoqNode(_BoqItemNode b, int woId) {
-    final key = 'b${b.id}_$woId';
+  Widget _buildBoqNode(_BoqItemNode b, String woPrefix) {
+    final key = 'b${b.id}_$woPrefix';
     final expanded = _expanded.contains(key);
+    final boqLabel = b.code.isEmpty ? b.description : '${b.code} · ${b.description}';
+    final boqPrefix = '$woPrefix › $boqLabel';
     final allItems = [...b.directWoItems, ...b.subItems.expand((s) => [if (s.woItem != null) s.woItem!, ...s.measurements])];
     // Non-leaf "master" items (isLeaf=false) are grouping nodes — not directly
     // linkable — so exclude them from the colour and count logic.
@@ -553,14 +558,15 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
         ),
       ),
       if (expanded) ...[
-        ...b.directWoItems.map(_buildWoItemRow),
-        ...b.subItems.map((s) => _buildSubItemNode(s, b.id)),
+        ...b.directWoItems.map((item) => _buildWoItemRow(item, contextPath: boqPrefix)),
+        ...b.subItems.map((s) => _buildSubItemNode(s, boqPrefix)),
       ],
     ]);
   }
 
-  Widget _buildSubItemNode(_SubItemNode s, int boqId) {
-    final key = 'sub${s.id}_$boqId';
+  Widget _buildSubItemNode(_SubItemNode s, String boqPrefix) {
+    final key = 'sub${s.id}_$boqPrefix';
+    final subPrefix = '$boqPrefix › ${s.description}';
     final expanded = _expanded.contains(key);
     // Collect all WO items under this sub-item to derive linking status
     final subItems = [if (s.woItem != null) s.woItem!, ...s.measurements];
@@ -591,13 +597,13 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
         ),
       ),
       if (expanded) ...[
-        if (s.woItem != null) _buildWoItemRow(s.woItem!),
-        ...s.measurements.map(_buildWoItemRow),
+        if (s.woItem != null) _buildWoItemRow(s.woItem!, contextPath: subPrefix),
+        ...s.measurements.map((item) => _buildWoItemRow(item, contextPath: subPrefix)),
       ],
     ]);
   }
 
-  Widget _buildWoItemRow(_WoItem item) {
+  Widget _buildWoItemRow(_WoItem item, {String contextPath = ''}) {
     final isMapped = item.mappingStatus == 'MAPPED';
     final isLinking = _linking[item.workOrderItemId] == true;
     // Row tint reflects the mapping state of this specific item
@@ -623,7 +629,7 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
                 icon: Icon(isMapped ? Icons.edit_outlined : Icons.add_link,
                     size: 18, color: isMapped ? Colors.blue.shade600 : Colors.orange.shade700),
                 tooltip: isMapped ? 'Change / unlink' : 'Link to activity',
-                onPressed: () => _linkItem(item),
+                onPressed: () => _linkItem(item, contextPath: contextPath),
               )
             : null,
       ),
@@ -702,6 +708,13 @@ class _WbsTreePickerSheet extends StatefulWidget {
   final List<int> initialExpanded; // ancestor IDs to auto-expand on open
   final int projectId; // used to persist hidden-section state per device
 
+  /// The WO item description being linked — shown frozen at top of picker.
+  final String woItemLabel;
+
+  /// Full tree path of the WO item: "Vendor › WO Number › BOQ [› Sub-item]".
+  /// Shown below woItemLabel so the user knows exactly what they're linking.
+  final String woItemContextPath;
+
   const _WbsTreePickerSheet({
     required this.roots,
     required this.leavesInOrder,
@@ -711,6 +724,8 @@ class _WbsTreePickerSheet extends StatefulWidget {
     this.suggestedNext,
     this.initialExpanded = const [],
     required this.projectId,
+    this.woItemLabel = '',
+    this.woItemContextPath = '',
   });
 
   @override
@@ -930,6 +945,57 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
               ),
           ]),
         ),
+        // Frozen WO item context — stays visible while user scrolls the schedule tree
+        if (widget.woItemLabel.isNotEmpty)
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade50,
+              border: Border(bottom: BorderSide(color: Colors.indigo.shade100)),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.push_pin_outlined, size: 13, color: Colors.indigo.shade600),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Linking:',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: .06,
+                          color: Colors.indigo.shade400,
+                        ),
+                      ),
+                      Text(
+                        widget.woItemLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.indigo.shade900,
+                        ),
+                      ),
+                      if (widget.woItemContextPath.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.woItemContextPath,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.indigo.shade600,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         // Currently linked row + Unlink button
         if (isMapped)
           Padding(

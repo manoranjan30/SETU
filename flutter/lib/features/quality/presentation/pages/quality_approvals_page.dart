@@ -736,9 +736,11 @@ class _ApprovalLevelsRow extends StatelessWidget {
   // ── New stage-based system: per-stage dot clusters ────────────────────────
 
   Widget _fromStages(BuildContext context, List<InspectionStage> stages) {
+    final sorted = List<InspectionStage>.from(stages)
+      ..sort((a, b) => (a.sequence ?? 0).compareTo(b.sequence ?? 0));
     final clusters = <Widget>[];
-    for (int si = 0; si < stages.length; si++) {
-      final stage = stages[si];
+    for (int si = 0; si < sorted.length; si++) {
+      final stage = sorted[si];
       final approval = stage.stageApproval!;
       final total = approval.requiredLevelCount;
       final approvedCount = approval.approvedLevelCount;
