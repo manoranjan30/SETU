@@ -16,12 +16,12 @@ services:
       DATABASE_PASSWORD: password
       DATABASE_NAME: setu_db
       JWT_SECRET: supersecretkey
-      PDF_TOOL_URL: http://pdf-tool:8002
       FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
       RUN_DB_MIGRATIONS: "true"
       DB_MIGRATION_SCRIPT: migration:run:dist
       UPLOAD_DIR: /app/backend/uploads
       APK_UPLOAD_MAX_MB: 500
+      HTTP_REQUEST_TIMEOUT_MS: 120000
     volumes:
       - ./backend/uploads:/app/backend/uploads
     depends_on:
@@ -47,17 +47,6 @@ services:
       - VITE_API_URL=http://localhost:3000
     depends_on:
       - backend
-
-  pdf-tool:
-    build:
-      context: ./tools/pdf_processor
-      dockerfile: Dockerfile
-    container_name: setu_pdf_tool_dev
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./tools/pdf_processor:/app
-    command: uvicorn app:app --host 0.0.0.0 --port 8001 --reload
 
   # disable original app
   app:

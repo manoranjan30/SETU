@@ -1,0 +1,159 @@
+{
+    "metrics": {
+        "http_req_sending": {
+            "med": 0.526,
+            "max": 13.414,
+            "p(90)": 1.7515699999999987,
+            "p(95)": 2.9326449999999884,
+            "avg": 0.8345513333333331,
+            "min": 0
+        },
+        "http_req_waiting": {
+            "med": 1182.914,
+            "max": 26864.7669,
+            "p(90)": 22151.660979999997,
+            "p(95)": 24929.491654999998,
+            "avg": 5105.105273333332,
+            "min": 34.0418
+        },
+        "vus": {
+            "value": 4,
+            "min": 4,
+            "max": 10
+        },
+        "vus_max": {
+            "min": 10,
+            "max": 10,
+            "value": 10
+        },
+        "checks": {
+            "fails": 0,
+            "passes": 150,
+            "value": 1
+        },
+        "http_reqs": {
+            "count": 150,
+            "rate": 1.6663957070216033
+        },
+        "iterations": {
+            "rate": 0.28884192255041125,
+            "count": 26
+        },
+        "http_req_blocked": {
+            "p(90)": 0,
+            "p(95)": 476.471355,
+            "avg": 31.89120666666667,
+            "min": 0,
+            "med": 0,
+            "max": 483.4066
+        },
+        "http_req_tls_handshaking": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "http_req_receiving": {
+            "avg": 0.6687086666666664,
+            "min": 0,
+            "med": 0.227,
+            "max": 24.1284,
+            "p(90)": 0.99165,
+            "p(95)": 1.5852149999999998
+        },
+        "data_sent": {
+            "count": 1531920,
+            "rate": 17018.56607667023
+        },
+        "iteration_duration": {
+            "max": 35426.9178,
+            "p(90)": 32756.9322,
+            "p(95)": 34345.0015,
+            "avg": 29267.89771923078,
+            "min": 24316.8924,
+            "med": 28465.706
+        },
+        "http_req_failed": {
+            "fails": 150,
+            "passes": 0,
+            "value": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(95)": 24931.41721,
+            "avg": 5106.608533333336,
+            "min": 34.0418,
+            "med": 1184.4985000000001,
+            "max": 26865.2813,
+            "p(90)": 22151.910350000002
+        },
+        "http_req_connecting": {
+            "min": 0,
+            "med": 0,
+            "max": 15.9781,
+            "p(90)": 0,
+            "p(95)": 6.762429999999991,
+            "avg": 0.6660980000000001
+        },
+        "data_received": {
+            "count": 1170510,
+            "rate": 13003.552260172379
+        },
+        "http_req_duration": {
+            "avg": 5106.608533333336,
+            "min": 34.0418,
+            "med": 1184.4985000000001,
+            "max": 26865.2813,
+            "p(90)": 22151.910350000002,
+            "p(95)": 24931.41721,
+            "thresholds": {
+                "p(95)<1800": true,
+                "p(99)<3000": true
+            }
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "login status is 2xx": {
+                    "name": "login status is 2xx",
+                    "path": "::login status is 2xx",
+                    "id": "fc4ad0a473289fccc786b840f605bf12",
+                    "passes": 30,
+                    "fails": 0
+                },
+                "eps tree status is 2xx": {
+                    "name": "eps tree status is 2xx",
+                    "path": "::eps tree status is 2xx",
+                    "id": "f95b6c1a7a54d06a96860bdb6e79e79f",
+                    "passes": 30,
+                    "fails": 0
+                },
+                "execution vendors status is 2xx": {
+                    "passes": 30,
+                    "fails": 0,
+                    "name": "execution vendors status is 2xx",
+                    "path": "::execution vendors status is 2xx",
+                    "id": "5c684f11fb954c3c974eeada3612e6c0"
+                },
+                "execution has-micro status is 2xx": {
+                    "name": "execution has-micro status is 2xx",
+                    "path": "::execution has-micro status is 2xx",
+                    "id": "71c6ae4905a1b294b0e718554318ada5",
+                    "passes": 30,
+                    "fails": 0
+                },
+                "execution breakdown status is 2xx": {
+                    "name": "execution breakdown status is 2xx",
+                    "path": "::execution breakdown status is 2xx",
+                    "id": "f8438b1f1cac1ba92f0ebdb9833b30c9",
+                    "passes": 30,
+                    "fails": 0
+                }
+            }
+    }
+}

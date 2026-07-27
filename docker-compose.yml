@@ -28,23 +28,14 @@ services:
       DATABASE_PASSWORD: password
       DATABASE_NAME: setu_db
       JWT_SECRET: supersecretkey
-      PDF_TOOL_URL: http://pdf-tool:8002
       FIREBASE_SERVICE_ACCOUNT_PATH: firebase-service-account.json
       RUN_DB_MIGRATIONS: "true"
       DB_MIGRATION_SCRIPT: migration:run:dist
       UPLOAD_DIR: /usr/src/app/uploads
       APK_UPLOAD_MAX_MB: 500
+      HTTP_REQUEST_TIMEOUT_MS: 120000
     volumes:
       - ./backend/uploads:/usr/src/app/uploads
-
-  pdf-tool:
-    build:
-      context: ./tools/pdf_processor
-      dockerfile: Dockerfile
-    container_name: setu_pdf_tool
-    ports:
-      - "8001:8001"
-    restart: always
 
 volumes:
   postgres_data:

@@ -8,6 +8,13 @@ import 'package:setu_mobile/core/update/android_apk_downloader.dart';
 import 'package:setu_mobile/core/update/app_update_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 
+/// True while an APK download initiated by [downloadAndInstallUpdate] is
+/// still running. Prevents the resume-triggered update check from re-showing
+/// the "Update Available" dialog while a download is already in flight.
+/// Cleared on completion — success clears it after the installer opens;
+/// failure clears it so the user can retry on the next app resume.
+bool _downloadInProgress = false;
+
 /// Checks the backend for an update and shows the appropriate UI.
 ///
 /// Used both for the automatic check on app launch/resume ([silent] = true
@@ -16,6 +23,11 @@ import 'package:setu_mobile/injection_container.dart';
 /// a brief spinner and a "you're up to date" SnackBar when there's nothing
 /// new, so a manual tap always gives the user feedback).
 Future<void> checkForUpdateAndPrompt(BuildContext context, {bool silent = true}) async {
+  // A download is already running — skip the check entirely. The user tapped
+  // "Update Now", the download started, then minimized the app (which is
+  // encouraged by the progress dialog). Showing the dialog again on resume
+  // would start a second parallel download, which is wrong.
+  if (_downloadInProgress) return;
   if (!silent) {
     showDialog(
       context: context,
@@ -111,6 +123,7 @@ Future<void> downloadAndInstallUpdate(
   String apkUrl,
   String? versionLabel,
 ) async {
+  _downloadInProgress = true;
   final progress = ValueNotifier<double?>(0);
   showDialog(
     context: context,
@@ -183,6 +196,10 @@ Future<void> downloadAndInstallUpdate(
     poller?.cancel();
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
     if (context.mounted) _showUpdateFallback(context, apkUrl, 'Download failed: $e');
+  } finally {
+    // Always clear the guard — on success the installer has launched; on
+    // failure the user should be able to retry on next app resume.
+    _downloadInProgress = false;
   }
 }
 
