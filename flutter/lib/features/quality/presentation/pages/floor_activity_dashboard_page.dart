@@ -503,6 +503,11 @@ class _ActivityRowTile extends StatelessWidget {
     final color = status.color;
     final hasObs = row.observations.isNotEmpty &&
         row.observations.any((o) => o.status == ObservationStatus.pending);
+    final isMultiGo = row.allInspections.length > 1;
+    final sortedGos = isMultiGo
+        ? (List<QualityInspection>.from(row.allInspections)
+          ..sort((a, b) => a.partNo.compareTo(b.partNo)))
+        : const <QualityInspection>[];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -519,7 +524,7 @@ class _ActivityRowTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: insp != null ? () => onTapInspection(insp) : null,
+        onTap: insp != null && !isMultiGo ? () => onTapInspection(insp) : null,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -559,14 +564,20 @@ class _ActivityRowTile extends StatelessWidget {
                         ActivityStatusBadge(status: status),
                       ],
                     ),
-                    if (insp != null) ...[
+                    // Single-GO: show RFI info inline
+                    if (insp != null && !isMultiGo) ...[
                       const SizedBox(height: 4),
                       _InspectionInfo(insp: insp),
                     ],
-                    // Multi-go indicator
-                    if (insp != null && insp.isMultiPart) ...[
-                      const SizedBox(height: 4),
-                      _MultiGoChip(insp: insp, allInspections: row.allInspections),
+                    // Multi-GO: show each GO as its own tappable sub-row
+                    if (isMultiGo) ...[
+                      const SizedBox(height: 6),
+                      const Divider(height: 1, thickness: 0.5, color: Color(0xFFE5E7EB)),
+                      const SizedBox(height: 2),
+                      ...sortedGos.map((go) => _GoSubRow(
+                            go: go,
+                            onTap: () => onTapInspection(go),
+                          )),
                     ],
                     // Open observation warning
                     if (hasObs) ...[
@@ -590,7 +601,7 @@ class _ActivityRowTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (insp != null)
+              if (insp != null && !isMultiGo)
                 const Padding(
                   padding: EdgeInsets.only(left: 4, top: 4),
                   child: Icon(Icons.chevron_right_rounded,
@@ -633,31 +644,72 @@ class _InspectionInfo extends StatelessWidget {
   }
 }
 
-class _MultiGoChip extends StatelessWidget {
-  final QualityInspection insp;
-  final List<QualityInspection> allInspections;
-  const _MultiGoChip(
-      {required this.insp, required this.allInspections});
+/// Maps a per-GO [InspectionStatus] to a display status for the badge.
+ActivityDisplayStatus _goDisplayStatus(QualityInspection go) {
+  switch (go.status) {
+    case InspectionStatus.approved:
+      return ActivityDisplayStatus.approved;
+    case InspectionStatus.provisionallyApproved:
+      return ActivityDisplayStatus.provisionallyApproved;
+    case InspectionStatus.rejected:
+      return ActivityDisplayStatus.rejected;
+    case InspectionStatus.reversed:
+    case InspectionStatus.pending:
+    case InspectionStatus.partiallyApproved:
+    case InspectionStatus.canceled:
+      return ActivityDisplayStatus.pending;
+  }
+}
+
+/// Slim tappable row for a single GO inside a multi-GO activity tile.
+class _GoSubRow extends StatelessWidget {
+  final QualityInspection go;
+  final VoidCallback onTap;
+  const _GoSubRow({required this.go, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final raised = allInspections.length;
-    final total = insp.totalParts;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF2196F3).withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        'Multi-Go: $raised/$total raised',
-        style: const TextStyle(
-            fontSize: 10,
-            color: Color(0xFF2196F3),
-            fontWeight: FontWeight.w600),
+    final ds = _goDisplayStatus(go);
+    final dateStr = go.requestDateTime != null ? _fmtDate(go.requestDateTime!) : '';
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    go.partDisplay,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF374151)),
+                  ),
+                  Text(
+                    'RFI #${go.id}${dateStr.isNotEmpty ? ' · $dateStr' : ''}',
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF)),
+                  ),
+                ],
+              ),
+            ),
+            ActivityStatusBadge(status: ds, compact: true),
+            const SizedBox(width: 2),
+            const Icon(Icons.chevron_right_rounded, size: 14, color: Color(0xFFD1D5DB)),
+          ],
+        ),
       ),
     );
+  }
+
+  String _fmtDate(DateTime d) {
+    final diff = DateTime.now().difference(d);
+    if (diff.inDays == 0) return 'Today';
+    if (diff.inDays == 1) return '1d ago';
+    if (diff.inDays < 30) return '${diff.inDays}d ago';
+    return '${d.day}/${d.month}/${d.year}';
   }
 }
 

@@ -9,20 +9,16 @@ import {
   ChevronRight,
   Save,
   X,
-  Play,
   Settings,
-  Loader2,
   Wand2,
 } from "lucide-react";
 import ZoneOverlay from "./ZoneOverlay";
 import PropertiesPanel from "./PropertiesPanel";
-import TestPanel from "./TestPanel";
 import type {
   PdfTemplate,
   TemplateZone,
   TemplateConfig,
   ZoneBounds,
-  TemplateField,
 } from "../../types/template.types";
 import "react-pdf/dist/esm/Page/AnnotationLayer.css";
 import "react-pdf/dist/esm/Page/TextLayer.css";
@@ -30,23 +26,10 @@ import "react-pdf/dist/esm/Page/TextLayer.css";
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-const PDF_TOOL_URL =
-  import.meta.env.VITE_PDF_TOOL_URL || "http://localhost:8002";
-
 interface TemplateEditorProps {
   template: PdfTemplate | null;
   onSave: (template: Partial<PdfTemplate>) => Promise<void>;
   onCancel: () => void;
-}
-
-type RightPanelMode = "properties" | "test";
-
-interface DetectedField {
-  label: string;
-  value: string;
-  key: string;
-  type: string;
-  confidence: number;
 }
 
 const TemplateEditor = ({
@@ -78,8 +61,6 @@ const TemplateEditor = ({
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [rightPanel, setRightPanel] = useState<RightPanelMode>("properties");
-  const [autoDetecting, setAutoDetecting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,79 +88,11 @@ const TemplateEditor = ({
     setPageSize({ width, height });
   };
 
-  // Auto-detect fields when zone is drawn
   const handleZoneDrawn = useCallback(
-    async (zone: TemplateZone, bounds: ZoneBounds) => {
-      if (!pdfFile) return;
-
-      setAutoDetecting(true);
-
-      try {
-        const formData = new FormData();
-        formData.append("file", pdfFile);
-        formData.append(
-          "zone_data",
-          JSON.stringify({
-            bounds,
-            pageNumber: currentPage,
-          }),
-        );
-
-        const response = await fetch(`${PDF_TOOL_URL}/extract/zone-text`, {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          console.error("Auto-detection failed:", response.status);
-          return;
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-          // Determine zone type based on detection
-          let detectedType = zone.type;
-          if (data.isTable) {
-            detectedType = "table";
-          } else if (data.detectedFields && data.detectedFields.length > 0) {
-            detectedType = "label_value";
-          } else if (data.lineCount > 3) {
-            detectedType = "multiline";
-          }
-
-          // Convert detected fields to template fields
-          const fields: TemplateField[] = (data.detectedFields || []).map(
-            (f: DetectedField) => ({
-              key: f.key,
-              label: f.label,
-              type: f.type || "text",
-              required: false,
-            }),
-          );
-
-          // Update the zone with detected info
-          setZones((prev) =>
-            prev.map((z) =>
-              z.id === zone.id
-                ? {
-                    ...z,
-                    type: detectedType as any,
-                    fields,
-                    // Add raw text as a hint
-                    _detectedText: data.rawText,
-                  }
-                : z,
-            ),
-          );
-        }
-      } catch (err) {
-        console.error("Auto-detection error:", err);
-      } finally {
-        setAutoDetecting(false);
-      }
+    (_zone: TemplateZone, _bounds: ZoneBounds) => {
+      // The external PDF extractor has been removed. Zones are configured manually.
     },
-    [pdfFile, currentPage],
+    [],
   );
 
   const handleZoneUpdate = (updatedZone: TemplateZone) => {
@@ -269,38 +182,9 @@ const TemplateEditor = ({
           />
         </div>
         <div className="flex items-center gap-2">
-          {/* Auto-detecting indicator */}
-          {autoDetecting && (
-            <div className="flex items-center gap-2 text-warning text-sm">
-              <Loader2 size={14} className="animate-spin" />
-              Detecting...
-            </div>
-          )}
-
-          {/* Panel Toggle */}
-          <div className="flex bg-surface-raised rounded-lg p-0.5">
-            <button
-              onClick={() => setRightPanel("properties")}
-              className={`px-3 py-1.5 text-sm rounded-md flex items-center gap-1 transition-colors ${
-                rightPanel === "properties"
-                  ? "bg-surface-card shadow text-gray-800"
-                  : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              <Settings size={14} />
-              Properties
-            </button>
-            <button
-              onClick={() => setRightPanel("test")}
-              className={`px-3 py-1.5 text-sm rounded-md flex items-center gap-1 transition-colors ${
-                rightPanel === "test"
-                  ? "bg-surface-card shadow text-gray-800"
-                  : "text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              <Play size={14} />
-              Test
-            </button>
+          <div className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-md bg-surface-card shadow text-gray-800">
+            <Settings size={14} />
+            Properties
           </div>
           <div className="h-6 w-px bg-gray-200" />
           <button
@@ -470,19 +354,11 @@ const TemplateEditor = ({
 
         {/* Right Panel (Properties or Test) */}
         <div className="w-80 flex-shrink-0">
-          {rightPanel === "properties" ? (
-            <PropertiesPanel
-              zone={selectedZone}
-              onZoneUpdate={handleZoneUpdate}
-              onZoneDelete={handleZoneDelete}
-            />
-          ) : (
-            <TestPanel
-              zones={zones}
-              pdfFile={pdfFile}
-              onClose={() => setRightPanel("properties")}
-            />
-          )}
+          <PropertiesPanel
+            zone={selectedZone}
+            onZoneUpdate={handleZoneUpdate}
+            onZoneDelete={handleZoneDelete}
+          />
         </div>
       </div>
     </div>

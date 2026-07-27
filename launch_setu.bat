@@ -74,7 +74,6 @@ echo.
 echo Starting Application...
 echo Frontend: http://localhost:5173
 echo Backend:  http://localhost:3000
-echo PDF Tool: http://localhost:8002
 echo.
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 

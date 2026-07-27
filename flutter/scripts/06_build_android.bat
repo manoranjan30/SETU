@@ -37,7 +37,25 @@ if errorlevel 1 (
 )
 
 echo.
-echo [Step 4] Building Android APK (Release)...
+echo [Step 4] Bumping build number in pubspec.yaml...
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$f = Resolve-Path '..\pubspec.yaml';" ^
+  "$c = [IO.File]::ReadAllText($f);" ^
+  "if ($c -match 'version:\s*(\d+\.\d+\.\d+)\+(\d+)') {" ^
+    "$ver = $Matches[1]; $build = [int]$Matches[2] + 1;" ^
+    "$c = $c -replace 'version:\s*\d+\.\d+\.\d+\+\d+', \"version: $ver+$build\";" ^
+    "[IO.File]::WriteAllText($f, $c);" ^
+    "Write-Host \"  pubspec.yaml updated: version $ver+$build\" -ForegroundColor Green" ^
+  "} else {" ^
+    "Write-Warning 'Could not find version line in pubspec.yaml — build number NOT incremented'" ^
+  "}"
+if errorlevel 1 (
+    echo WARNING: Build number bump failed, continuing with existing version...
+)
+
+echo.
+echo [Step 5] Building Android APK (Release)...
 echo This may take a few minutes...
 echo.
 call "%FLUTTER_PATH%\flutter.bat" build apk --release
@@ -48,6 +66,7 @@ if errorlevel 1 (
     echo   BUILD FAILED
     echo ============================================
     echo Check the errors above.
+    echo Note: pubspec.yaml build number was already incremented.
 ) else (
     echo.
     echo ============================================

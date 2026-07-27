@@ -1,0 +1,725 @@
+
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: C:\Users\omano\OneDrive - Puravankara Limited\Manoranjan\Antigravity Experiment\000 Project PM\SETU\load-tests\k6\scenarios\mixed-read.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 300 max VUs, 6m30s max duration (incl. graceful stop):
+              * default: Up to 300 looping VUs for 6m0s over 4 stages (gracefulRampDown: 30s, gracefulStop: 30s)
+
+
+running (0m00.7s), 001/300 VUs, 0 complete and 0 interrupted iterations
+default   [   0% ] 001/300 VUs  0m00.7s/6m00.0s
+
+running (0m01.7s), 002/300 VUs, 0 complete and 0 interrupted iterations
+default   [   0% ] 002/300 VUs  0m01.7s/6m00.0s
+
+running (0m02.7s), 003/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 003/300 VUs  0m02.7s/6m00.0s
+
+running (0m03.7s), 004/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 004/300 VUs  0m03.7s/6m00.0s
+
+running (0m04.7s), 004/300 VUs, 0 complete and 0 interrupted iterations
+default   [   1% ] 004/300 VUs  0m04.7s/6m00.0s
+
+running (0m05.7s), 005/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 005/300 VUs  0m05.7s/6m00.0s
+
+running (0m06.7s), 006/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 006/300 VUs  0m06.7s/6m00.0s
+
+running (0m07.7s), 007/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 007/300 VUs  0m07.7s/6m00.0s
+
+running (0m08.7s), 008/300 VUs, 0 complete and 0 interrupted iterations
+default   [   2% ] 008/300 VUs  0m08.7s/6m00.0s
+
+running (0m09.7s), 008/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 008/300 VUs  0m09.7s/6m00.0s
+
+running (0m10.7s), 009/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 009/300 VUs  0m10.7s/6m00.0s
+
+running (0m11.7s), 010/300 VUs, 0 complete and 0 interrupted iterations
+default   [   3% ] 010/300 VUs  0m11.7s/6m00.0s
+
+running (0m12.7s), 011/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 011/300 VUs  0m12.7s/6m00.0s
+
+running (0m13.7s), 012/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 012/300 VUs  0m13.7s/6m00.0s
+
+running (0m14.7s), 013/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 013/300 VUs  0m14.7s/6m00.0s
+
+running (0m15.7s), 013/300 VUs, 0 complete and 0 interrupted iterations
+default   [   4% ] 013/300 VUs  0m15.7s/6m00.0s
+
+running (0m16.7s), 014/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 014/300 VUs  0m16.7s/6m00.0s
+
+running (0m17.7s), 015/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 015/300 VUs  0m17.7s/6m00.0s
+
+running (0m18.7s), 016/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 016/300 VUs  0m18.7s/6m00.0s
+
+running (0m19.7s), 017/300 VUs, 0 complete and 0 interrupted iterations
+default   [   5% ] 017/300 VUs  0m19.7s/6m00.0s
+
+running (0m20.7s), 017/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 017/300 VUs  0m20.7s/6m00.0s
+
+running (0m21.7s), 018/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 018/300 VUs  0m21.7s/6m00.0s
+
+running (0m22.7s), 019/300 VUs, 0 complete and 0 interrupted iterations
+default   [   6% ] 019/300 VUs  0m22.7s/6m00.0s
+
+running (0m23.7s), 020/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 020/300 VUs  0m23.7s/6m00.0s
+
+running (0m24.7s), 021/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 021/300 VUs  0m24.7s/6m00.0s
+
+running (0m25.7s), 022/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 022/300 VUs  0m25.7s/6m00.0s
+
+running (0m26.7s), 022/300 VUs, 0 complete and 0 interrupted iterations
+default   [   7% ] 022/300 VUs  0m26.7s/6m00.0s
+
+running (0m27.7s), 023/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 023/300 VUs  0m27.7s/6m00.0s
+
+running (0m28.7s), 024/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 024/300 VUs  0m28.7s/6m00.0s
+
+running (0m29.7s), 025/300 VUs, 0 complete and 0 interrupted iterations
+default   [   8% ] 025/300 VUs  0m29.7s/6m00.0s
+
+running (0m30.7s), 026/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 026/300 VUs  0m30.7s/6m00.0s
+
+running (0m31.7s), 026/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 026/300 VUs  0m31.7s/6m00.0s
+
+running (0m32.7s), 027/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 027/300 VUs  0m32.7s/6m00.0s
+
+running (0m33.7s), 028/300 VUs, 0 complete and 0 interrupted iterations
+default   [   9% ] 028/300 VUs  0m33.7s/6m00.0s
+
+running (0m34.7s), 029/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 029/300 VUs  0m34.7s/6m00.0s
+
+running (0m35.7s), 030/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 030/300 VUs  0m35.7s/6m00.0s
+
+running (0m36.7s), 031/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 031/300 VUs  0m36.7s/6m00.0s
+
+running (0m37.7s), 031/300 VUs, 0 complete and 0 interrupted iterations
+default   [  10% ] 031/300 VUs  0m37.7s/6m00.0s
+
+running (0m38.7s), 032/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 032/300 VUs  0m38.7s/6m00.0s
+
+running (0m39.7s), 033/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 033/300 VUs  0m39.7s/6m00.0s
+
+running (0m40.7s), 034/300 VUs, 0 complete and 0 interrupted iterations
+default   [  11% ] 034/300 VUs  0m40.7s/6m00.0s
+
+running (0m41.7s), 035/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 035/300 VUs  0m41.7s/6m00.0s
+
+running (0m42.7s), 035/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 035/300 VUs  0m42.7s/6m00.0s
+
+running (0m43.7s), 036/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 036/300 VUs  0m43.7s/6m00.0s
+
+running (0m44.7s), 037/300 VUs, 0 complete and 0 interrupted iterations
+default   [  12% ] 037/300 VUs  0m44.7s/6m00.0s
+
+running (0m45.7s), 038/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 038/300 VUs  0m45.7s/6m00.0s
+
+running (0m46.7s), 039/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 039/300 VUs  0m46.7s/6m00.0s
+
+running (0m47.7s), 039/300 VUs, 0 complete and 0 interrupted iterations
+default   [  13% ] 039/300 VUs  0m47.7s/6m00.0s
+
+running (0m48.7s), 040/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 040/300 VUs  0m48.7s/6m00.0s
+
+running (0m49.7s), 041/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 041/300 VUs  0m49.7s/6m00.0s
+
+running (0m50.7s), 042/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 042/300 VUs  0m50.7s/6m00.0s
+
+running (0m51.7s), 043/300 VUs, 0 complete and 0 interrupted iterations
+default   [  14% ] 043/300 VUs  0m51.7s/6m00.0s
+
+running (0m52.7s), 044/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 044/300 VUs  0m52.7s/6m00.0s
+
+running (0m53.7s), 044/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 044/300 VUs  0m53.7s/6m00.0s
+
+running (0m54.7s), 045/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 045/300 VUs  0m54.7s/6m00.0s
+
+running (0m55.7s), 046/300 VUs, 0 complete and 0 interrupted iterations
+default   [  15% ] 046/300 VUs  0m55.7s/6m00.0s
+
+running (0m56.7s), 047/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 047/300 VUs  0m56.7s/6m00.0s
+
+running (0m57.7s), 048/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 048/300 VUs  0m57.7s/6m00.0s
+
+running (0m58.7s), 048/300 VUs, 0 complete and 0 interrupted iterations
+default   [  16% ] 048/300 VUs  0m58.7s/6m00.0s
+
+running (0m59.7s), 049/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 049/300 VUs  0m59.7s/6m00.0s
+
+running (1m00.7s), 050/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 050/300 VUs  1m00.7s/6m00.0s
+
+running (1m01.7s), 051/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 051/300 VUs  1m01.7s/6m00.0s
+
+running (1m02.7s), 052/300 VUs, 0 complete and 0 interrupted iterations
+default   [  17% ] 052/300 VUs  1m02.7s/6m00.0s
+
+running (1m03.7s), 053/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 053/300 VUs  1m03.7s/6m00.0s
+
+running (1m04.7s), 053/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 053/300 VUs  1m04.7s/6m00.0s
+
+running (1m05.7s), 054/300 VUs, 0 complete and 0 interrupted iterations
+default   [  18% ] 054/300 VUs  1m05.7s/6m00.0s
+
+running (1m06.7s), 055/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 055/300 VUs  1m06.7s/6m00.0s
+
+running (1m07.7s), 056/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 056/300 VUs  1m07.7s/6m00.0s
+
+running (1m08.7s), 057/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 057/300 VUs  1m08.7s/6m00.0s
+
+running (1m09.7s), 058/300 VUs, 0 complete and 0 interrupted iterations
+default   [  19% ] 058/300 VUs  1m09.7s/6m00.0s
+
+running (1m10.7s), 058/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 058/300 VUs  1m10.7s/6m00.0s
+
+running (1m11.7s), 059/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 059/300 VUs  1m11.7s/6m00.0s
+
+running (1m12.7s), 060/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 060/300 VUs  1m12.7s/6m00.0s
+
+running (1m13.7s), 061/300 VUs, 0 complete and 0 interrupted iterations
+default   [  20% ] 061/300 VUs  1m13.7s/6m00.0s
+
+running (1m14.7s), 062/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 062/300 VUs  1m14.7s/6m00.0s
+
+running (1m15.7s), 063/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 063/300 VUs  1m15.7s/6m00.0s
+
+running (1m16.7s), 063/300 VUs, 0 complete and 0 interrupted iterations
+default   [  21% ] 063/300 VUs  1m16.7s/6m00.0s
+
+running (1m17.7s), 064/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 064/300 VUs  1m17.7s/6m00.0s
+
+running (1m18.7s), 065/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 065/300 VUs  1m18.7s/6m00.0s
+
+running (1m19.7s), 066/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 066/300 VUs  1m19.7s/6m00.0s
+
+running (1m20.7s), 067/300 VUs, 0 complete and 0 interrupted iterations
+default   [  22% ] 067/300 VUs  1m20.7s/6m00.0s
+
+running (1m21.7s), 068/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 068/300 VUs  1m21.7s/6m00.0s
+
+running (1m22.7s), 068/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 068/300 VUs  1m22.7s/6m00.0s
+
+running (1m23.7s), 069/300 VUs, 0 complete and 0 interrupted iterations
+default   [  23% ] 069/300 VUs  1m23.7s/6m00.0s
+
+running (1m24.7s), 070/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 070/300 VUs  1m24.7s/6m00.0s
+
+running (1m25.7s), 071/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 071/300 VUs  1m25.7s/6m00.0s
+
+running (1m26.7s), 072/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 072/300 VUs  1m26.7s/6m00.0s
+
+running (1m27.7s), 073/300 VUs, 0 complete and 0 interrupted iterations
+default   [  24% ] 073/300 VUs  1m27.7s/6m00.0s
+
+running (1m28.7s), 073/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 073/300 VUs  1m28.7s/6m00.0s
+
+running (1m29.7s), 074/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 074/300 VUs  1m29.7s/6m00.0s
+
+running (1m30.7s), 075/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 075/300 VUs  1m30.7s/6m00.0s
+
+running (1m31.8s), 076/300 VUs, 0 complete and 0 interrupted iterations
+default   [  25% ] 076/300 VUs  1m31.8s/6m00.0s
+
+running (1m32.7s), 077/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 077/300 VUs  1m32.7s/6m00.0s
+
+running (1m33.7s), 078/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 078/300 VUs  1m33.7s/6m00.0s
+
+running (1m34.7s), 078/300 VUs, 0 complete and 0 interrupted iterations
+default   [  26% ] 078/300 VUs  1m34.7s/6m00.0s
+
+running (1m35.7s), 079/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 079/300 VUs  1m35.7s/6m00.0s
+
+running (1m36.7s), 080/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 080/300 VUs  1m36.7s/6m00.0s
+
+running (1m37.7s), 081/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 081/300 VUs  1m37.7s/6m00.0s
+
+running (1m38.7s), 082/300 VUs, 0 complete and 0 interrupted iterations
+default   [  27% ] 082/300 VUs  1m38.7s/6m00.0s
+
+running (1m39.7s), 083/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 083/300 VUs  1m39.7s/6m00.0s
+
+running (1m40.7s), 083/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 083/300 VUs  1m40.7s/6m00.0s
+
+running (1m41.7s), 084/300 VUs, 0 complete and 0 interrupted iterations
+default   [  28% ] 084/300 VUs  1m41.7s/6m00.0s
+
+running (1m42.7s), 085/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 085/300 VUs  1m42.7s/6m00.0s
+
+running (1m43.7s), 086/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 086/300 VUs  1m43.7s/6m00.0s
+
+running (1m44.7s), 087/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 087/300 VUs  1m44.7s/6m00.0s
+
+running (1m45.7s), 088/300 VUs, 0 complete and 0 interrupted iterations
+default   [  29% ] 088/300 VUs  1m45.7s/6m00.0s
+
+running (1m46.7s), 088/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 088/300 VUs  1m46.7s/6m00.0s
+
+running (1m47.7s), 089/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 089/300 VUs  1m47.7s/6m00.0s
+
+running (1m48.7s), 090/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 090/300 VUs  1m48.7s/6m00.0s
+
+running (1m49.8s), 091/300 VUs, 0 complete and 0 interrupted iterations
+default   [  30% ] 091/300 VUs  1m49.8s/6m00.0s
+
+running (1m50.7s), 092/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 092/300 VUs  1m50.7s/6m00.0s
+
+running (1m51.7s), 093/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 093/300 VUs  1m51.7s/6m00.0s
+
+running (1m52.7s), 093/300 VUs, 0 complete and 0 interrupted iterations
+default   [  31% ] 093/300 VUs  1m52.7s/6m00.0s
+
+running (1m53.7s), 094/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 094/300 VUs  1m53.7s/6m00.0s
+
+running (1m54.7s), 095/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 095/300 VUs  1m54.7s/6m00.0s
+
+running (1m55.7s), 096/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 096/300 VUs  1m55.7s/6m00.0s
+
+running (1m56.7s), 097/300 VUs, 0 complete and 0 interrupted iterations
+default   [  32% ] 097/300 VUs  1m56.7s/6m00.0s
+
+running (1m57.7s), 098/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 098/300 VUs  1m57.7s/6m00.0s
+
+running (1m58.7s), 098/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 098/300 VUs  1m58.7s/6m00.0s
+
+running (1m59.7s), 099/300 VUs, 0 complete and 0 interrupted iterations
+default   [  33% ] 099/300 VUs  1m59.7s/6m00.0s
+
+running (2m00.7s), 100/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 100/300 VUs  2m00.7s/6m00.0s
+
+running (2m01.7s), 101/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 101/300 VUs  2m01.7s/6m00.0s
+
+running (2m02.7s), 102/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 102/300 VUs  2m02.7s/6m00.0s
+
+running (2m03.7s), 103/300 VUs, 0 complete and 0 interrupted iterations
+default   [  34% ] 103/300 VUs  2m03.7s/6m00.0s
+
+running (2m04.7s), 103/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 103/300 VUs  2m04.7s/6m00.0s
+
+running (2m05.7s), 104/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 104/300 VUs  2m05.7s/6m00.0s
+
+running (2m06.8s), 105/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 105/300 VUs  2m06.8s/6m00.0s
+
+running (2m07.8s), 106/300 VUs, 0 complete and 0 interrupted iterations
+default   [  35% ] 106/300 VUs  2m07.8s/6m00.0s
+
+running (2m08.7s), 107/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 107/300 VUs  2m08.7s/6m00.0s
+
+running (2m09.8s), 108/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 108/300 VUs  2m09.8s/6m00.0s
+
+running (2m10.8s), 108/300 VUs, 0 complete and 0 interrupted iterations
+default   [  36% ] 108/300 VUs  2m10.8s/6m00.0s
+
+running (2m11.7s), 109/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 109/300 VUs  2m11.7s/6m00.0s
+
+running (2m12.7s), 110/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 110/300 VUs  2m12.7s/6m00.0s
+
+running (2m13.7s), 111/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 111/300 VUs  2m13.7s/6m00.0s
+
+running (2m14.7s), 112/300 VUs, 0 complete and 0 interrupted iterations
+default   [  37% ] 112/300 VUs  2m14.7s/6m00.0s
+
+running (2m15.7s), 113/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 113/300 VUs  2m15.7s/6m00.0s
+
+running (2m16.8s), 113/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 113/300 VUs  2m16.8s/6m00.0s
+
+running (2m17.7s), 114/300 VUs, 0 complete and 0 interrupted iterations
+default   [  38% ] 114/300 VUs  2m17.7s/6m00.0s
+
+running (2m18.7s), 115/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 115/300 VUs  2m18.7s/6m00.0s
+
+running (2m19.7s), 116/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 116/300 VUs  2m19.7s/6m00.0s
+
+running (2m20.7s), 117/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 117/300 VUs  2m20.7s/6m00.0s
+
+running (2m21.7s), 118/300 VUs, 0 complete and 0 interrupted iterations
+default   [  39% ] 118/300 VUs  2m21.7s/6m00.0s
+
+running (2m22.7s), 118/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 118/300 VUs  2m22.7s/6m00.0s
+
+running (2m23.7s), 119/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 119/300 VUs  2m23.7s/6m00.0s
+
+running (2m24.7s), 120/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 120/300 VUs  2m24.7s/6m00.0s
+
+running (2m25.7s), 121/300 VUs, 0 complete and 0 interrupted iterations
+default   [  40% ] 121/300 VUs  2m25.7s/6m00.0s
+
+running (2m26.7s), 122/300 VUs, 0 complete and 0 interrupted iterations
+default   [  41% ] 122/300 VUs  2m26.7s/6m00.0s
+
+running (2m27.8s), 123/300 VUs, 0 complete and 0 interrupted iterations
+default   [  41% ] 123/300 VUs  2m27.8s/6m00.0s
+
+running (2m28.7s), 123/300 VUs, 0 complete and 0 interrupted iterations
+default   [  41% ] 123/300 VUs  2m28.7s/6m00.0s
+
+running (2m29.7s), 124/300 VUs, 0 complete and 0 interrupted iterations
+default   [  42% ] 124/300 VUs  2m29.7s/6m00.0s
+
+running (2m30.7s), 125/300 VUs, 1 complete and 0 interrupted iterations
+default   [  42% ] 125/300 VUs  2m30.7s/6m00.0s
+
+running (2m31.7s), 126/300 VUs, 2 complete and 0 interrupted iterations
+default   [  42% ] 126/300 VUs  2m31.7s/6m00.0s
+
+running (2m32.7s), 127/300 VUs, 3 complete and 0 interrupted iterations
+default   [  42% ] 127/300 VUs  2m32.7s/6m00.0s
+
+running (2m33.7s), 128/300 VUs, 4 complete and 0 interrupted iterations
+default   [  43% ] 128/300 VUs  2m33.7s/6m00.0s
+
+running (2m34.7s), 128/300 VUs, 4 complete and 0 interrupted iterations
+default   [  43% ] 128/300 VUs  2m34.7s/6m00.0s
+
+running (2m35.7s), 129/300 VUs, 5 complete and 0 interrupted iterations
+default   [  43% ] 129/300 VUs  2m35.7s/6m00.0s
+
+running (2m36.7s), 130/300 VUs, 6 complete and 0 interrupted iterations
+default   [  44% ] 130/300 VUs  2m36.7s/6m00.0s
+
+running (2m37.7s), 131/300 VUs, 7 complete and 0 interrupted iterations
+default   [  44% ] 131/300 VUs  2m37.7s/6m00.0s
+
+running (2m38.7s), 132/300 VUs, 8 complete and 0 interrupted iterations
+default   [  44% ] 132/300 VUs  2m38.7s/6m00.0s
+
+running (2m39.7s), 133/300 VUs, 9 complete and 0 interrupted iterations
+default   [  44% ] 133/300 VUs  2m39.7s/6m00.0s
+
+running (2m40.7s), 133/300 VUs, 9 complete and 0 interrupted iterations
+default   [  45% ] 133/300 VUs  2m40.7s/6m00.0s
+
+running (2m41.7s), 134/300 VUs, 10 complete and 0 interrupted iterations
+default   [  45% ] 134/300 VUs  2m41.7s/6m00.0s
+
+running (2m42.7s), 135/300 VUs, 11 complete and 0 interrupted iterations
+default   [  45% ] 135/300 VUs  2m42.7s/6m00.0s
+
+running (2m43.7s), 136/300 VUs, 12 complete and 0 interrupted iterations
+default   [  45% ] 136/300 VUs  2m43.7s/6m00.0s
+
+running (2m44.7s), 137/300 VUs, 13 complete and 0 interrupted iterations
+default   [  46% ] 137/300 VUs  2m44.7s/6m00.0s
+
+running (2m45.7s), 138/300 VUs, 14 complete and 0 interrupted iterations
+default   [  46% ] 138/300 VUs  2m45.7s/6m00.0s
+
+running (2m46.7s), 138/300 VUs, 14 complete and 0 interrupted iterations
+default   [  46% ] 138/300 VUs  2m46.7s/6m00.0s
+
+running (2m47.7s), 139/300 VUs, 15 complete and 0 interrupted iterations
+default   [  47% ] 139/300 VUs  2m47.7s/6m00.0s
+
+running (2m48.7s), 140/300 VUs, 16 complete and 0 interrupted iterations
+default   [  47% ] 140/300 VUs  2m48.7s/6m00.0s
+
+running (2m49.7s), 141/300 VUs, 17 complete and 0 interrupted iterations
+default   [  47% ] 141/300 VUs  2m49.7s/6m00.0s
+
+running (2m50.7s), 142/300 VUs, 18 complete and 0 interrupted iterations
+default   [  47% ] 142/300 VUs  2m50.7s/6m00.0s
+
+running (2m51.7s), 143/300 VUs, 19 complete and 0 interrupted iterations
+default   [  48% ] 143/300 VUs  2m51.7s/6m00.0s
+
+running (2m52.7s), 143/300 VUs, 19 complete and 0 interrupted iterations
+default   [  48% ] 143/300 VUs  2m52.7s/6m00.0s
+
+running (2m53.7s), 144/300 VUs, 20 complete and 0 interrupted iterations
+default   [  48% ] 144/300 VUs  2m53.7s/6m00.0s
+
+running (2m54.8s), 145/300 VUs, 21 complete and 0 interrupted iterations
+default   [  49% ] 145/300 VUs  2m54.8s/6m00.0s
+
+running (2m55.8s), 146/300 VUs, 22 complete and 0 interrupted iterations
+default   [  49% ] 146/300 VUs  2m55.8s/6m00.0s
+
+running (2m56.7s), 147/300 VUs, 23 complete and 0 interrupted iterations
+default   [  49% ] 147/300 VUs  2m56.7s/6m00.0s
+
+running (2m57.7s), 148/300 VUs, 24 complete and 0 interrupted iterations
+default   [  49% ] 148/300 VUs  2m57.7s/6m00.0s
+
+running (2m58.7s), 148/300 VUs, 24 complete and 0 interrupted iterations
+default   [  50% ] 148/300 VUs  2m58.7s/6m00.0s
+
+running (2m59.7s), 149/300 VUs, 25 complete and 0 interrupted iterations
+default   [  50% ] 149/300 VUs  2m59.7s/6m00.0s
+
+running (3m00.8s), 150/300 VUs, 26 complete and 0 interrupted iterations
+default   [  50% ] 150/300 VUs  3m00.8s/6m00.0s
+
+running (3m01.7s), 152/300 VUs, 27 complete and 0 interrupted iterations
+default   [  50% ] 152/300 VUs  3m01.7s/6m00.0s
+
+running (3m02.7s), 153/300 VUs, 28 complete and 0 interrupted iterations
+default   [  51% ] 153/300 VUs  3m02.7s/6m00.0s
+
+running (3m03.7s), 154/300 VUs, 29 complete and 0 interrupted iterations
+default   [  51% ] 154/300 VUs  3m03.7s/6m00.0s
+
+running (3m04.7s), 155/300 VUs, 29 complete and 0 interrupted iterations
+default   [  51% ] 155/300 VUs  3m04.7s/6m00.0s
+
+running (3m05.7s), 157/300 VUs, 30 complete and 0 interrupted iterations
+default   [  52% ] 157/300 VUs  3m05.7s/6m00.0s
+
+running (3m06.7s), 158/300 VUs, 31 complete and 0 interrupted iterations
+default   [  52% ] 158/300 VUs  3m06.7s/6m00.0s
+
+running (3m07.7s), 159/300 VUs, 32 complete and 0 interrupted iterations
+default   [  52% ] 159/300 VUs  3m07.7s/6m00.0s
+
+running (3m08.7s), 160/300 VUs, 33 complete and 0 interrupted iterations
+default   [  52% ] 160/300 VUs  3m08.7s/6m00.0s
+
+running (3m09.7s), 162/300 VUs, 34 complete and 0 interrupted iterations
+default   [  53% ] 162/300 VUs  3m09.7s/6m00.0s
+
+running (3m10.7s), 163/300 VUs, 34 complete and 0 interrupted iterations
+default   [  53% ] 163/300 VUs  3m10.7s/6m00.0s
+
+running (3m11.7s), 164/300 VUs, 35 complete and 0 interrupted iterations
+default   [  53% ] 164/300 VUs  3m11.7s/6m00.0s
+
+running (3m12.7s), 165/300 VUs, 36 complete and 0 interrupted iterations
+default   [  54% ] 165/300 VUs  3m12.7s/6m00.0s
+
+running (3m13.7s), 167/300 VUs, 37 complete and 0 interrupted iterations
+default   [  54% ] 167/300 VUs  3m13.7s/6m00.0s
+time="2026-07-26T23:45:02+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-07-26T23:45:05+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-07-26T23:45:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-07-26T23:45:23+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-07-26T23:45:50+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-07-26T23:46:06+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/breakdown/1967/410\": request timeout"
+time="2026-07-26T23:46:06+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:11+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:11+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:12+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:12+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:14+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:14+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:14+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-07-26T23:46:15+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:15+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:15+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-07-26T23:46:16+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:16+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:17+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:17+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:17+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:17+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:17+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:18+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:18+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:18+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:19+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:19+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:19+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-07-26T23:46:20+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:20+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:20+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:20+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:21+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-07-26T23:46:21+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:21+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:21+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:21+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:22+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:22+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:23+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:23+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:24+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:24+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:24+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:24+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:25+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/company/1\": request timeout"
+time="2026-07-26T23:46:26+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:26+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:27+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:27+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:27+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-07-26T23:46:28+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:28+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:28+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:28+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:29+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:29+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:29+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:30+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:30+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:30+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:30+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:32+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:32+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:32+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:33+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:33+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:33+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/vendors/1967\": request timeout"
+time="2026-07-26T23:46:34+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:34+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:34+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:35+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:35+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:35+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:35+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/project/2\": request timeout"
+time="2026-07-26T23:46:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:36+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/ehs-metrics\": request timeout"
+time="2026-07-26T23:46:36+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:36+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:37+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:38+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:38+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:39+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:39+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:40+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:40+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:41+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:41+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:41+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:42+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:42+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:43+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:44+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:44+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:44+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:44+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:44+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:45+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:45+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:45+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:46+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/execution/2/approvals/pending\": request timeout"
+time="2026-07-26T23:46:46+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:46+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:47+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:47+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:48+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:48+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:50+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:50+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:50+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/planning/2/stats\": request timeout"
+time="2026-07-26T23:46:50+05:30" level=warning msg="Request Failed" error="request timeout"
+time="2026-07-26T23:46:51+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/quality-metrics\": request timeout"
+time="2026-07-26T23:46:51+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:51+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:52+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/executive/enterprise\": request timeout"
+time="2026-07-26T23:46:52+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:52+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:52+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/alerts\": request timeout"
+time="2026-07-26T23:46:53+05:30" level=warning msg="Request Failed" error="Get \"http://localhost:3000/api/dashboard/summary\": request timeout"
+time="2026-07-26T23:46:53+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:53+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace
+time="2026-07-26T23:46:54+05:30" level=warning msg="Request Failed" error="Post \"http://localhost:3000/api/auth/login\": request timeout"
+time="2026-07-26T23:46:54+05:30" level=error msg="Error: Login succeeded but no token found for user admin\n\tat login (file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/lib/auth.js:31:10(77))\n\tat file:///C:/Users/omano/OneDrive%20-%20Puravankara%20Limited/Manoranjan/Antigravity%20Experiment/000%20Project%20PM/SETU/load-tests/k6/scenarios/mixed-read.js:32:24(15)\n" executor=ramping-vus scenario=default source=stacktrace

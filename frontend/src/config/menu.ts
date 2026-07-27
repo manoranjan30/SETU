@@ -4,7 +4,6 @@ import {
   Settings,
   Database,
   ClipboardList,
-  ExternalLink,
   Brain,
   Smartphone,
 } from "lucide-react";
@@ -121,18 +120,6 @@ export const MENU_CONFIG: MenuItem[] = [
         label: "AI Settings",
         path: "/dashboard/ai-insights/admin",
         permission: PermissionCode.AI_INSIGHTS_ADMIN,
-      },
-    ],
-  },
-  {
-    label: "External Tools",
-    path: "/tools", // Dummy path
-    icon: ExternalLink,
-    children: [
-      {
-        label: "PDF Table Extractor",
-        path: "http://localhost:8001",
-        external: true,
       },
     ],
   },

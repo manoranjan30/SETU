@@ -2335,6 +2335,12 @@ class _ActionBar extends StatelessWidget {
     // Whether all stages have been fully approved via release strategy
     final allStagesApproved = state.stages.isNotEmpty &&
         state.stages.every((s) => s.isFullyApproved);
+    // Reverse only makes sense when approval has actually been given
+    final canShowReverse = ps.canReverseInspection &&
+        (state.inspection.status == InspectionStatus.approved ||
+         state.inspection.status == InspectionStatus.provisionallyApproved ||
+         state.inspection.status == InspectionStatus.partiallyApproved ||
+         state.stages.any((s) => s.isFullyApproved));
 
     // Permission check: only the assigned approver can advance/reject the step
     final authState = context.read<AuthBloc>().state;
@@ -2434,36 +2440,42 @@ class _ActionBar extends StatelessWidget {
                   onPressed: () => useWorkflow
                       ? _showWorkflowRejectDialog(context)
                       : _showRejectDialog(context),
-                  icon: const Icon(Icons.cancel_outlined, size: 16),
+                  icon: const Icon(Icons.cancel_outlined, size: 13),
                   label: const Text('Reject'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red.shade700,
                     side: BorderSide(color: Colors.red.shade400),
-                    textStyle: const TextStyle(fontSize: 12),
+                    textStyle: const TextStyle(fontSize: 11),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
               // Delegate button — only shown in workflow mode with delegate permission
               if (useWorkflow && isAssignedApprover && ps.canDelegateInspection)
                 OutlinedButton.icon(
                   onPressed: () => _showDelegateDialog(context, state.inspection.projectId),
-                  icon: const Icon(Icons.person_outline, size: 16),
+                  icon: const Icon(Icons.person_outline, size: 13),
                   label: const Text('Delegate'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.indigo.shade700,
                     side: BorderSide(color: Colors.indigo.shade300),
-                    textStyle: const TextStyle(fontSize: 12),
+                    textStyle: const TextStyle(fontSize: 11),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
-              // Reverse approval — requires QUALITY.INSPECTION.REVERSE permission
-              if (ps.canReverseInspection)
+              // Reverse approval — requires permission AND that approval has been given
+              if (canShowReverse)
                 OutlinedButton.icon(
                   onPressed: () => _showReverseDialog(context),
-                  icon: const Icon(Icons.undo_rounded, size: 16),
+                  icon: const Icon(Icons.undo_rounded, size: 13),
                   label: const Text('Reverse'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.deepOrange.shade700,
                     side: BorderSide(color: Colors.deepOrange.shade300),
-                    textStyle: const TextStyle(fontSize: 12),
+                    textStyle: const TextStyle(fontSize: 11),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
               // Overall workflow Approve button removed — per-stage "Approve Stage"

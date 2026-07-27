@@ -35,10 +35,35 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
   // Persists within the session
   static _WbsNode? _lastLinked;
 
+  // Hidden WBS tree sections — persisted per device/project via SharedPreferences.
+  Set<int> _hiddenWbsNodes = {};
+  static const _hiddenPrefKeyPrefix = 'wbs_hidden_';
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadHiddenNodes();
+  }
+
+  Future<void> _loadHiddenNodes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList('$_hiddenPrefKeyPrefix${widget.project.id}');
+    if (stored != null && mounted) {
+      setState(() {
+        _hiddenWbsNodes = stored
+            .map((s) => int.tryParse(s) ?? -1)
+            .where((id) => id >= 0)
+            .toSet();
+      });
+    }
+  }
+
+  Future<void> _saveHiddenNodes() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        '$_hiddenPrefKeyPrefix${widget.project.id}',
+        _hiddenWbsNodes.map((id) => '$id').toList());
   }
 
   Future<void> _load({bool force = false}) async {
@@ -320,6 +345,15 @@ class _WoSchedulePageState extends State<WoSchedulePage> {
         projectId: widget.project.id,
         woItemLabel: item.description,
         woItemContextPath: contextPath,
+        initialHiddenNodes: Set.of(_hiddenWbsNodes),
+        onHideNode: (id) {
+          setState(() => _hiddenWbsNodes.add(id));
+          _saveHiddenNodes();
+        },
+        onShowAll: () {
+          setState(() => _hiddenWbsNodes.clear());
+          _saveHiddenNodes();
+        },
       ),
     );
     if (!mounted) return;
@@ -715,6 +749,16 @@ class _WbsTreePickerSheet extends StatefulWidget {
   /// Shown below woItemLabel so the user knows exactly what they're linking.
   final String woItemContextPath;
 
+  /// Hidden node IDs pre-loaded by the parent — passed synchronously so there
+  /// is no async gap on the first build.
+  final Set<int> initialHiddenNodes;
+
+  /// Called when the user hides a node; parent persists and updates its state.
+  final void Function(int nodeId) onHideNode;
+
+  /// Called when the user taps "show all"; parent persists and clears its state.
+  final VoidCallback onShowAll;
+
   const _WbsTreePickerSheet({
     required this.roots,
     required this.leavesInOrder,
@@ -726,6 +770,9 @@ class _WbsTreePickerSheet extends StatefulWidget {
     required this.projectId,
     this.woItemLabel = '',
     this.woItemContextPath = '',
+    this.initialHiddenNodes = const {},
+    required this.onHideNode,
+    required this.onShowAll,
   });
 
   @override
@@ -736,16 +783,16 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
   final _searchCtrl = TextEditingController();
   String _query = '';
   final Set<int> _expanded = {};
-  // Nodes hidden by the user — persisted to SharedPreferences so the
-  // preference survives across picker opens until the user taps "show all".
-  Set<int> _hiddenNodes = {};
+  // Hidden nodes initialised synchronously from parent's pre-loaded state.
+  // Mutations are reflected back to the parent via onHideNode / onShowAll
+  // callbacks so they persist across picker re-opens.
+  late Set<int> _hiddenNodes;
   bool _allCollapsed = false;
-
-  String get _prefKey => 'wbs_hidden_${widget.projectId}';
 
   @override
   void initState() {
     super.initState();
+    _hiddenNodes = Set.of(widget.initialHiddenNodes);
     if (widget.initialExpanded.isNotEmpty) {
       // Expand only the path leading to the last linked activity
       _expanded.addAll(widget.initialExpanded);
@@ -755,26 +802,6 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
         _expanded.add(root.id);
       }
     }
-    _loadHiddenNodes();
-  }
-
-  Future<void> _loadHiddenNodes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(_prefKey);
-    if (stored != null && mounted) {
-      setState(() {
-        _hiddenNodes = stored
-            .map((s) => int.tryParse(s) ?? -1)
-            .where((id) => id >= 0)
-            .toSet();
-      });
-    }
-  }
-
-  Future<void> _saveHiddenNodes() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-        _prefKey, _hiddenNodes.map((id) => '$id').toList());
   }
 
   @override
@@ -863,7 +890,7 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
               GestureDetector(
                 onTap: () {
                   setState(() => _hiddenNodes.add(node.id));
-                  _saveHiddenNodes();
+                  widget.onHideNode(node.id);
                 },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1024,7 +1051,7 @@ class _WbsTreePickerSheetState extends State<_WbsTreePickerSheet> {
           InkWell(
             onTap: () {
               setState(() => _hiddenNodes.clear());
-              _saveHiddenNodes();
+              widget.onShowAll();
             },
             child: Container(
               width: double.infinity,
