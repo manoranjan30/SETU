@@ -1,0 +1,4 @@
+time="2026-07-27T23:35:56+05:30" level=warning msg="Request Failed" error="request timeout"
+time="2026-07-27T23:35:57+05:30" level=warning msg="Request Failed" error="request timeout"
+time="2026-07-27T23:36:05+05:30" level=warning msg="Request Failed" error="request timeout"
+time="2026-07-27T23:36:31+05:30" level=error msg="test run was aborted because k6 received a 'terminated' signal"

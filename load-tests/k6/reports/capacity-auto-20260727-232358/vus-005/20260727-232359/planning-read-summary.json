@@ -1,0 +1,189 @@
+{
+    "metrics": {
+        "http_req_tls_handshaking": {
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(95)": 38449.238680000024,
+            "avg": 9935.631566666667,
+            "min": 57.2554,
+            "med": 3084.1059,
+            "max": 56131.4075,
+            "p(90)": 27788.749120000008
+        },
+        "http_req_sending": {
+            "p(90)": 0.66973,
+            "p(95)": 0.720405,
+            "avg": 0.36783095238095237,
+            "min": 0,
+            "med": 0.29825,
+            "max": 3.0844
+        },
+        "vus": {
+            "min": 5,
+            "max": 5,
+            "value": 5
+        },
+        "data_sent": {
+            "count": 479763,
+            "rate": 3813.503697806045
+        },
+        "http_req_waiting": {
+            "avg": 337.6536333333334,
+            "min": 15.7762,
+            "med": 158.86649999999997,
+            "max": 987.6502,
+            "p(90)": 847.67399,
+            "p(95)": 907.30795
+        },
+        "http_reqs": {
+            "count": 42,
+            "rate": 0.3338464102230766
+        },
+        "vus_max": {
+            "value": 5,
+            "min": 5,
+            "max": 5
+        },
+        "http_req_duration": {
+            "avg": 13512.717830952382,
+            "min": 57.2554,
+            "med": 4094.0558,
+            "max": 60018.6513,
+            "p(90)": 52832.924919999976,
+            "p(95)": 59813.80053999998,
+            "thresholds": {
+                "p(95)<2500": true,
+                "p(99)<4500": true
+            }
+        },
+        "http_req_connecting": {
+            "avg": 2.4049547619047615,
+            "min": 0,
+            "med": 0,
+            "max": 31.7864,
+            "p(90)": 10.516259999999999,
+            "p(95)": 11.120389999999999
+        },
+        "http_req_receiving": {
+            "p(90)": 52022.12330999997,
+            "p(95)": 59004.69892499999,
+            "avg": 13174.696366666663,
+            "min": 0,
+            "med": 4003.9719999999998,
+            "max": 59330.1475
+        },
+        "checks": {
+            "passes": 39,
+            "fails": 3,
+            "value": 0.9285714285714286
+        },
+        "data_received": {
+            "count": 123314637,
+            "rate": 980194.0212002804
+        },
+        "http_req_failed": {
+            "passes": 3,
+            "fails": 39,
+            "value": 0.07142857142857142
+        },
+        "http_req_blocked": {
+            "min": 0,
+            "med": 0,
+            "max": 31.7864,
+            "p(90)": 10.572299999999998,
+            "p(95)": 11.120389999999999,
+            "avg": 2.418297619047619
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "login status is 2xx": {
+                    "name": "login status is 2xx",
+                    "path": "::login status is 2xx",
+                    "id": "fc4ad0a473289fccc786b840f605bf12",
+                    "passes": 5,
+                    "fails": 0
+                },
+                "wbs tree status is 2xx": {
+                    "name": "wbs tree status is 2xx",
+                    "path": "::wbs tree status is 2xx",
+                    "id": "62abb444ceb641cb9947f41969f1918a",
+                    "passes": 5,
+                    "fails": 0
+                },
+                "wbs activities status is 2xx": {
+                    "passes": 5,
+                    "fails": 0,
+                    "name": "wbs activities status is 2xx",
+                    "path": "::wbs activities status is 2xx",
+                    "id": "0a7bc16dd85708d8dc6f1919653d3836"
+                },
+                "project schedule status is 2xx": {
+                    "name": "project schedule status is 2xx",
+                    "path": "::project schedule status is 2xx",
+                    "id": "2fd3f8f87709d6e82fec3d43f8220006",
+                    "passes": 2,
+                    "fails": 3
+                },
+                "planning stats status is 2xx": {
+                    "name": "planning stats status is 2xx",
+                    "path": "::planning stats status is 2xx",
+                    "id": "c1550f5baccaf2018e25736d646b901a",
+                    "passes": 5,
+                    "fails": 0
+                },
+                "planning matrix status is 2xx": {
+                    "passes": 5,
+                    "fails": 0,
+                    "name": "planning matrix status is 2xx",
+                    "path": "::planning matrix status is 2xx",
+                    "id": "5b6df99d9ed721af50f885db9cb0012e"
+                },
+                "planning unlinked status is 2xx": {
+                    "passes": 4,
+                    "fails": 0,
+                    "name": "planning unlinked status is 2xx",
+                    "path": "::planning unlinked status is 2xx",
+                    "id": "b25e0fcc373d2348c2db40fd1dd7594d"
+                },
+                "planning boq mapper status is 2xx": {
+                    "name": "planning boq mapper status is 2xx",
+                    "path": "::planning boq mapper status is 2xx",
+                    "id": "327defb4ad577a9ae00792e884ba4441",
+                    "passes": 2,
+                    "fails": 0
+                },
+                "planning gap analysis status is 2xx": {
+                    "name": "planning gap analysis status is 2xx",
+                    "path": "::planning gap analysis status is 2xx",
+                    "id": "dffe5ed8bc6d08013bee7e4e0483dfa1",
+                    "passes": 2,
+                    "fails": 0
+                },
+                "planning execution ready status is 2xx": {
+                    "passes": 2,
+                    "fails": 0,
+                    "name": "planning execution ready status is 2xx",
+                    "path": "::planning execution ready status is 2xx",
+                    "id": "850da0f3153fb06bc2da7fcc57be3b7d"
+                },
+                "planning distribution matrix status is 2xx": {
+                    "passes": 2,
+                    "fails": 0,
+                    "name": "planning distribution matrix status is 2xx",
+                    "path": "::planning distribution matrix status is 2xx",
+                    "id": "61d042f3a3015485b308c2826ef3bfb1"
+                }
+            }
+    }
+}

@@ -288,6 +288,29 @@ export class QualityPourCardService {
     }
   }
 
+  private async resolveApproverDisplayName(
+    projectId: number,
+    userId?: number | null,
+  ) {
+    if (!userId) return null;
+    const signer = await this.approvalRuntimeService.getSignerSnapshot(
+      projectId,
+      userId,
+    );
+    return signer.displayName || `User #${userId}`;
+  }
+
+  private async resolvePourCardApprovedByName(card: QualityPourCard) {
+    return (
+      card.approvedByName?.trim() ||
+      (await this.resolveApproverDisplayName(
+        card.projectId,
+        card.approvedByUserId,
+      )) ||
+      null
+    );
+  }
+
   private async getNextCubeSerial(projectId: number) {
     const [cubeRows, pourCards] = await Promise.all([
       this.cubeRegisterRepo.find({
@@ -1405,6 +1428,9 @@ export class QualityPourCardService {
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;
+    card.approvedByName =
+      (await this.resolveApproverDisplayName(card.projectId, userId)) ||
+      card.approvedByName;
     card.approvalRemarks = remarks?.trim() || null;
     card.rejectedAt = null;
     card.rejectedByUserId = null;
@@ -1440,6 +1466,7 @@ export class QualityPourCardService {
     const card = await this.getPourCard(inspectionId);
     const inspection = await this.getInspectionOrThrow(inspectionId);
     const goLabel = this.resolveGoLabel(inspection);
+    const approvedByName = await this.resolvePourCardApprovedByName(card);
 
     return this.buildPdfBuffer((doc) => {
       doc.fontSize(16).font('Helvetica-Bold').text('CONCRETE POUR CARD', {
@@ -1458,7 +1485,7 @@ export class QualityPourCardService {
         ['Project', card.projectNameSnapshot, 'Element', card.elementName || inspection.elementName],
         ['GO', goLabel, 'RFI Number', inspection.id],
         ['Client', card.clientName, 'Consultant', card.consultantName],
-        ['Contractor', card.contractorName, 'Approved By', card.approvedByName],
+        ['Contractor', card.contractorName, 'Approved By', approvedByName],
         ['Location', card.locationText, 'EPS Node', inspection.epsNode?.name],
       ]);
       if (inspection.goDetails) {
