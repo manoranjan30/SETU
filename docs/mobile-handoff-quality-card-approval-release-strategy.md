@@ -121,6 +121,59 @@ Backend now sets approval identity from authenticated `userId`:
 
 PDF generation also resolves the approver name from `approvedByUserId` for existing approved cards.
 
+The concrete pour card PDF now also shows an approval/signature block at the bottom. It uses the approving user's saved profile signature when available:
+
+- `users.signatureData`
+- fallback: `users.signatureImageUrl`
+
+If no saved signature exists, the PDF still shows approver name, approval date, and card status. Mobile should encourage approvers to save a profile signature before approval so the generated PDF contains the visual signature.
+
+## Concrete Pour Card Detail Capture
+
+The mobile pour card screen must capture every field needed by the standard `F/QA/16 Concrete Pourcard` format.
+
+Card-level fields:
+
+- `projectNameSnapshot`
+- `clientName`
+- `consultantName`
+- `contractorName`
+- `elementName`
+- `locationText`
+- `formatNo`
+- `revisionNo`
+- `remarks`
+
+Entry-level fields inside `entries[]`:
+
+- `slNo`
+- `pourDate`
+- `supplierName`
+- `truckNo`
+- `deliveryChallanNo`
+- `mixIdOrGrade`
+- `quantityM3`
+- `cumulativeQtyM3`
+- `batchStartTime`
+- `arrivalTimeAtSite`
+- `finishingTime`
+- `timeTakenMinutes`
+- `slumpMm`
+- `concreteTemperature`
+- `noOfCubesTaken`
+- `contractorRepresentative`
+- `clientRepresentative`
+- `remarks`
+
+Compatibility note: older web/mobile builds may have used `supplierRepresentative` as the visible supplier value. The backend PDF now prefers `supplierName` for the standard `Name of the Supplier` column and falls back to `supplierRepresentative` only for older saved cards.
+
+Recommended mobile UX:
+
+- Show `supplierName` as `Supplier Name`.
+- Keep `supplierRepresentative` only if the mobile team wants to capture the supplier person's name separately; it is not a primary column in the standard PDF.
+- Keep `approvedByName` read-only.
+- On approve, show a reminder if the user has no saved profile signature, because the PDF signature image comes from the approver profile.
+
 ## Error Handling
 
 The backend may return these important errors:
@@ -143,4 +196,3 @@ Recommended mobile copy:
 4. QA/QC user with explicit permission and release strategy assignment can approve.
 5. PDF shows real approver, not vendor-entered text.
 6. `approvedByName` is displayed read-only.
-

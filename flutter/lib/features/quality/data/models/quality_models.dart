@@ -1719,7 +1719,9 @@ enum QualityCardStatus {
 }
 
 class PourCardEntry extends Equatable {
+  final int? slNo;
   final String? pourDate;
+  final String? supplierName;
   final String? truckNo;
   final String? deliveryChallanNo;
   final String? mixIdOrGrade;
@@ -1739,7 +1741,9 @@ class PourCardEntry extends Equatable {
   final String? remarks;
 
   const PourCardEntry({
+    this.slNo,
     this.pourDate,
+    this.supplierName,
     this.truckNo,
     this.deliveryChallanNo,
     this.mixIdOrGrade,
@@ -1763,7 +1767,9 @@ class PourCardEntry extends Equatable {
     double? d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
     int? i(dynamic v) => v == null ? null : (v is int ? v : int.tryParse(v.toString()));
     return PourCardEntry(
+      slNo: i(j['slNo']),
       pourDate: j['pourDate'] as String?,
+      supplierName: j['supplierName'] as String?,
       truckNo: j['truckNo'] as String?,
       deliveryChallanNo: j['deliveryChallanNo'] as String?,
       mixIdOrGrade: j['mixIdOrGrade'] as String?,
@@ -1788,7 +1794,9 @@ class PourCardEntry extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
+    if (slNo != null) 'slNo': slNo,
     'pourDate': pourDate,
+    'supplierName': supplierName,
     'truckNo': truckNo,
     'deliveryChallanNo': deliveryChallanNo,
     'mixIdOrGrade': mixIdOrGrade,
@@ -1808,34 +1816,67 @@ class PourCardEntry extends Equatable {
     'remarks': remarks,
   };
 
+  /// `null` clears a field back to empty (unlike the usual `??` copyWith
+  /// pattern) — the pour entry detail form needs to be able to blank out a
+  /// value the user deletes, not just overwrite it with another value. Pass
+  /// no argument at all to leave a field untouched.
   PourCardEntry copyWith({
-    String? pourDate, String? truckNo, String? deliveryChallanNo,
-    String? mixIdOrGrade, double? quantityM3, double? slumpMm,
-    double? concreteTemperature,
-    int? noOfCubesTaken, String? remarks,
+    int? slNo,
+    Object? pourDate = _unset,
+    Object? supplierName = _unset,
+    Object? truckNo = _unset,
+    Object? deliveryChallanNo = _unset,
+    Object? mixIdOrGrade = _unset,
+    Object? quantityM3 = _unset,
+    Object? cumulativeQtyM3 = _unset,
+    Object? arrivalTimeAtSite = _unset,
+    Object? batchStartTime = _unset,
+    Object? finishingTime = _unset,
+    Object? timeTakenMinutes = _unset,
+    Object? slumpMm = _unset,
+    Object? concreteTemperature = _unset,
+    Object? noOfCubesTaken = _unset,
+    List<String>? cubeIds,
+    Object? supplierRepresentative = _unset,
+    Object? contractorRepresentative = _unset,
+    Object? clientRepresentative = _unset,
+    Object? remarks = _unset,
   }) => PourCardEntry(
-    pourDate: pourDate ?? this.pourDate,
-    truckNo: truckNo ?? this.truckNo,
-    deliveryChallanNo: deliveryChallanNo ?? this.deliveryChallanNo,
-    mixIdOrGrade: mixIdOrGrade ?? this.mixIdOrGrade,
-    quantityM3: quantityM3 ?? this.quantityM3,
-    cumulativeQtyM3: cumulativeQtyM3,
-    arrivalTimeAtSite: arrivalTimeAtSite,
-    batchStartTime: batchStartTime,
-    finishingTime: finishingTime,
-    timeTakenMinutes: timeTakenMinutes,
-    slumpMm: slumpMm ?? this.slumpMm,
-    concreteTemperature: concreteTemperature ?? this.concreteTemperature,
-    noOfCubesTaken: noOfCubesTaken ?? this.noOfCubesTaken,
-    supplierRepresentative: supplierRepresentative,
-    contractorRepresentative: contractorRepresentative,
-    clientRepresentative: clientRepresentative,
-    remarks: remarks ?? this.remarks,
+    slNo: slNo ?? this.slNo,
+    pourDate: identical(pourDate, _unset) ? this.pourDate : pourDate as String?,
+    supplierName: identical(supplierName, _unset) ? this.supplierName : supplierName as String?,
+    truckNo: identical(truckNo, _unset) ? this.truckNo : truckNo as String?,
+    deliveryChallanNo: identical(deliveryChallanNo, _unset) ? this.deliveryChallanNo : deliveryChallanNo as String?,
+    mixIdOrGrade: identical(mixIdOrGrade, _unset) ? this.mixIdOrGrade : mixIdOrGrade as String?,
+    quantityM3: identical(quantityM3, _unset) ? this.quantityM3 : quantityM3 as double?,
+    cumulativeQtyM3: identical(cumulativeQtyM3, _unset) ? this.cumulativeQtyM3 : cumulativeQtyM3 as double?,
+    arrivalTimeAtSite: identical(arrivalTimeAtSite, _unset) ? this.arrivalTimeAtSite : arrivalTimeAtSite as String?,
+    batchStartTime: identical(batchStartTime, _unset) ? this.batchStartTime : batchStartTime as String?,
+    finishingTime: identical(finishingTime, _unset) ? this.finishingTime : finishingTime as String?,
+    timeTakenMinutes: identical(timeTakenMinutes, _unset) ? this.timeTakenMinutes : timeTakenMinutes as int?,
+    slumpMm: identical(slumpMm, _unset) ? this.slumpMm : slumpMm as double?,
+    concreteTemperature: identical(concreteTemperature, _unset) ? this.concreteTemperature : concreteTemperature as double?,
+    noOfCubesTaken: identical(noOfCubesTaken, _unset) ? this.noOfCubesTaken : noOfCubesTaken as int?,
+    cubeIds: cubeIds ?? this.cubeIds,
+    supplierRepresentative: identical(supplierRepresentative, _unset) ? this.supplierRepresentative : supplierRepresentative as String?,
+    contractorRepresentative: identical(contractorRepresentative, _unset) ? this.contractorRepresentative : contractorRepresentative as String?,
+    clientRepresentative: identical(clientRepresentative, _unset) ? this.clientRepresentative : clientRepresentative as String?,
+    remarks: identical(remarks, _unset) ? this.remarks : remarks as String?,
   );
 
   @override
-  List<Object?> get props => [pourDate, truckNo, mixIdOrGrade, quantityM3];
+  List<Object?> get props => [
+    slNo, pourDate, supplierName, truckNo, deliveryChallanNo, mixIdOrGrade,
+    quantityM3, cumulativeQtyM3, arrivalTimeAtSite, batchStartTime,
+    finishingTime, timeTakenMinutes, slumpMm, concreteTemperature,
+    noOfCubesTaken, cubeIds, supplierRepresentative,
+    contractorRepresentative, clientRepresentative, remarks,
+  ];
 }
+
+/// Sentinel used by [PourCardEntry.copyWith] to distinguish "argument not
+/// passed, keep existing value" from "argument passed as null, clear it".
+const Object _unset = Object();
 
 class QualityPourCard extends Equatable {
   final int id;

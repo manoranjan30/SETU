@@ -1194,6 +1194,7 @@ export default function QualityApprovalsPage() {
       truckNo: lastFive("truckNo"),
       deliveryChallanNo: lastFive("deliveryChallanNo"),
       mixIdOrGrade: lastFive("mixIdOrGrade"),
+      supplierName: lastFive("supplierName"),
       supplierRepresentative: lastFive("supplierRepresentative"),
       contractorRepresentative: lastFive("contractorRepresentative"),
       clientRepresentative: lastFive("clientRepresentative"),
@@ -5557,6 +5558,22 @@ export default function QualityApprovalsPage() {
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
+                                          list="pour-history-supplierName"
+                                          value={entry.supplierName || ""}
+                                          onChange={(e) =>
+                                            setPourCard((prev: any) => ({
+                                              ...prev,
+                                              entries: (prev.entries || []).map((row: any, rowIdx: number) =>
+                                                rowIdx === idx
+                                                  ? { ...row, supplierName: e.target.value }
+                                                  : row,
+                                              ),
+                                            }))
+                                          }
+                                          placeholder="Supplier name"
+                                          className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
+                                        />
+                                        <input
                                           list="pour-history-supplierRepresentative"
                                           value={entry.supplierRepresentative || ""}
                                           onChange={(e) =>
@@ -5569,7 +5586,7 @@ export default function QualityApprovalsPage() {
                                               ),
                                             }))
                                           }
-                                          placeholder="Supplier"
+                                          placeholder="Supplier representative"
                                           className="rounded-lg border border-border-default bg-surface-card px-2.5 py-2 text-sm"
                                         />
                                         <input
@@ -5658,6 +5675,7 @@ export default function QualityApprovalsPage() {
                                             slumpMm: null,
                                             concreteTemperature: null,
                                             noOfCubesTaken: null,
+                                            supplierName: "",
                                             supplierRepresentative: "",
                                             contractorRepresentative: "",
                                             clientRepresentative: "",

@@ -76,6 +76,7 @@ export class QualityPourCard {
   entries: Array<{
     slNo?: number | null;
     pourDate?: string | null;
+    supplierName?: string | null;
     truckNo?: string | null;
     deliveryChallanNo?: string | null;
     mixIdOrGrade?: string | null;
