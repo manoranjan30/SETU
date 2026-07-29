@@ -9,8 +9,9 @@ import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'stream';
 import { createHash, randomBytes } from 'crypto';
+import { existsSync, readFileSync } from 'fs';
 import { readFile, unlink } from 'fs/promises';
-import { resolve, sep } from 'path';
+import { join, resolve, sep } from 'path';
 import { QualityInspection } from './entities/quality-inspection.entity';
 import {
   QualityCardStatus,
@@ -29,6 +30,7 @@ import {
 } from './entities/quality-signature-qr-session.entity';
 import { PourClearanceSignoffTemplateEntry } from './entities/quality-activity.entity';
 import { EpsNode, EpsNodeType } from '../eps/eps.entity';
+import { ProjectProfile } from '../eps/project-profile.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 import { SystemSettingsService } from '../common/system-settings.service';
 import { User } from '../users/user.entity';
@@ -75,6 +77,7 @@ type ClearanceAttachmentDocument =
 type ClearanceSignoffRow = NonNullable<
   QualityPrePourClearanceCard['signoffs']
 >[number];
+type PourCardEntry = QualityPourCard['entries'][number];
 
 type ClearanceInspectionContext = QualityInspection & {
   activity?: {
@@ -118,6 +121,8 @@ export class QualityPourCardService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(EpsNode)
     private readonly epsRepo: Repository<EpsNode>,
+    @InjectRepository(ProjectProfile)
+    private readonly projectProfileRepo: Repository<ProjectProfile>,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
     private readonly systemSettingsService: SystemSettingsService,
     private readonly releaseStrategyService: ReleaseStrategyService,
@@ -416,9 +421,10 @@ export class QualityPourCardService {
 
   private buildPdfBuffer(
     writer: (doc: PDFKit.PDFDocument) => void,
+    options?: PDFKit.PDFDocumentOptions,
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      const doc = new PDFDocument({ margin: 40, size: 'A4', ...options });
       const buffers: Buffer[] = [];
       const stream = new PassThrough();
 
@@ -439,6 +445,38 @@ export class QualityPourCardService {
     return String(value);
   }
 
+  private formatPdfCellValue(value: unknown, maxTokenLength = 18): string {
+    return this.formatPdfValue(value)
+      .split(/\s+/)
+      .map((token) => {
+        if (token.length <= maxTokenLength) {
+          return token;
+        }
+        return token.match(new RegExp(`.{1,${maxTokenLength}}`, 'g'))?.join(' ') || token;
+      })
+      .join(' ');
+  }
+
+  /// Resolves an `/uploads/...`-relative URL to an absolute path, constrained
+  /// to stay inside the uploads root. `url` may originate from user-editable
+  /// fields (e.g. a profile's `signatureImageUrl`), so a `..`-segment payload
+  /// must not be able to walk the resolved path outside `uploads/` — the
+  /// result is embedded as an image in server-generated PDFs, which would
+  /// otherwise let it read and leak arbitrary files off the server's disk.
+  private resolveUploadPath(url?: string | null): string | null {
+    if (!url) return null;
+    if (!url.startsWith('/uploads/') && !url.startsWith('uploads/')) {
+      return null;
+    }
+    const uploadsRoot = resolve(process.cwd(), 'uploads');
+    const relative = url.replace(/^\/?uploads\//, '');
+    const candidate = resolve(uploadsRoot, relative);
+    if (candidate !== uploadsRoot && !candidate.startsWith(uploadsRoot + sep)) {
+      return null;
+    }
+    return candidate;
+  }
+
   private writePdfSectionTitle(doc: PDFKit.PDFDocument, title: string) {
     doc.moveDown(0.8);
     doc.font('Helvetica-Bold').fontSize(11).text(title);
@@ -455,7 +493,7 @@ export class QualityPourCardService {
       .font('Helvetica-Bold')
       .fontSize(9.5)
       .text(`${label}: `, { continued: true, ...options });
-    doc.font('Helvetica').text(this.formatPdfValue(value), options);
+    doc.font('Helvetica').text(this.formatPdfCellValue(value, 34), options);
   }
 
   private drawPdfCheckbox(
@@ -490,33 +528,61 @@ export class QualityPourCardService {
     columnWidths: number[],
   ) {
     const left = doc.page.margins.left;
-    const rowHeight = 24;
+    const headerHeight = 24;
+    const minRowHeight = 24;
+    const cellPaddingX = 4;
+    const cellPaddingY = 6;
     const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
-    const ensureSpace = (currentY: number) => {
-      if (currentY + rowHeight > doc.page.height - doc.page.margins.bottom) {
+    const bottom = doc.page.height - doc.page.margins.bottom;
+    const ensureSpace = (currentY: number, height: number) => {
+      if (currentY + height > bottom) {
         doc.addPage();
         return doc.y;
       }
       return currentY;
     };
 
-    let y = ensureSpace(doc.y);
-    doc.rect(left, y, totalWidth, rowHeight).fillAndStroke('#e5e7eb', '#111827');
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(8);
-    let x = left;
-    headers.forEach((header, index) => {
-      doc.text(header, x + 4, y + 7, {
-        width: columnWidths[index] - 8,
-        align: 'center',
+    const drawHeader = (currentY: number) => {
+      const headerY = ensureSpace(currentY, headerHeight);
+      doc.rect(left, headerY, totalWidth, headerHeight).fillAndStroke('#e5e7eb', '#111827');
+      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(7.5);
+      let x = left;
+      headers.forEach((header, index) => {
+        doc.text(this.formatPdfCellValue(header, 14), x + cellPaddingX, headerY + 7, {
+          width: columnWidths[index] - cellPaddingX * 2,
+          align: 'center',
+        });
+        x += columnWidths[index];
       });
-      x += columnWidths[index];
-    });
-    y += rowHeight;
-    doc.fillColor('black').font('Helvetica').fontSize(8);
+      doc.fillColor('black').font('Helvetica').fontSize(7.5);
+      return headerY + headerHeight;
+    };
+
+    let y = drawHeader(doc.y);
 
     rows.forEach((row) => {
-      y = ensureSpace(y);
-      x = left;
+      doc.font('Helvetica').fontSize(7.5);
+      const rowHeight = Math.max(
+        minRowHeight,
+        ...row.map((cell, index) => {
+          if (cell === '__PDF_CHECKED__' || cell === '__PDF_UNCHECKED__') {
+            return minRowHeight;
+          }
+          return (
+            doc.heightOfString(this.formatPdfCellValue(cell), {
+              width: columnWidths[index] - cellPaddingX * 2,
+            }) +
+            cellPaddingY * 2
+          );
+        }),
+      );
+
+      y = ensureSpace(y, rowHeight);
+      if (y === doc.y && y <= doc.page.margins.top + 1) {
+        y = drawHeader(y);
+      }
+
+      let x = left;
       doc.rect(left, y, totalWidth, rowHeight).stroke('#9ca3af');
       row.forEach((cell, index) => {
         doc
@@ -532,8 +598,8 @@ export class QualityPourCardService {
             cell === '__PDF_CHECKED__',
           );
         } else {
-          doc.text(this.formatPdfValue(cell), x + 4, y + 6, {
-            width: columnWidths[index] - 8,
+          doc.text(this.formatPdfCellValue(cell), x + cellPaddingX, y + cellPaddingY, {
+            width: columnWidths[index] - cellPaddingX * 2,
             align: index === 0 ? 'center' : 'left',
           });
         }
@@ -1529,76 +1595,464 @@ export class QualityPourCardService {
     return this.pourCardRepo.save(card);
   }
 
+  private writeStandardPourCardCell(
+    doc: PDFKit.PDFDocument,
+    text: unknown,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    options: {
+      bold?: boolean;
+      align?: 'left' | 'center' | 'right';
+      fontSize?: number;
+      fill?: string;
+      stroke?: string;
+      color?: string;
+      rotate?: boolean;
+      maxTokenLength?: number;
+    } = {},
+  ) {
+    const stroke = options.stroke || '#111111';
+    const padding = 2.5;
+    const fontSize = options.fontSize || 6.4;
+    const value =
+      text === '' ? '' : this.formatPdfCellValue(text, options.maxTokenLength || 14);
+
+    doc.save();
+    if (options.fill) {
+      doc.rect(x, y, width, height).fillAndStroke(options.fill, stroke);
+    } else {
+      doc.rect(x, y, width, height).stroke(stroke);
+    }
+
+    doc
+      .fillColor(options.color || '#111111')
+      .font(options.bold ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(fontSize);
+
+    const textWidth = Math.max(1, width - padding * 2);
+    const textHeight = doc.heightOfString(value, { width: textWidth });
+    const textY = y + Math.max(padding, (height - textHeight) / 2);
+
+    doc.text(value, x + padding, textY, {
+      width: textWidth,
+      height: Math.max(1, height - padding * 2),
+      align: options.align || 'left',
+      ellipsis: true,
+    });
+    doc.restore();
+  }
+
+  private writeStandardPourCardHeader(
+    doc: PDFKit.PDFDocument,
+    card: QualityPourCard,
+    inspection: QualityInspection,
+    logoPath?: string | null,
+  ) {
+    const x = 31;
+    const y = 65;
+    const totalWidth = 730;
+    const logoWidth = 96;
+    const rightWidth = 128;
+    const titleWidth = totalWidth - logoWidth;
+    const rowHeight = 19;
+    const titleHeight = 18;
+    const projectLabelWidth = 96;
+    const formatLabelWidth = 88;
+
+    this.writeStandardPourCardCell(doc, '', x, y, logoWidth, titleHeight * 2);
+    if (logoPath && existsSync(logoPath)) {
+      try {
+        doc.image(readFileSync(logoPath), x + 6, y + 5, {
+          fit: [logoWidth - 12, titleHeight * 2 - 10],
+          align: 'center',
+          valign: 'center',
+        });
+      } catch {}
+    }
+    this.writeStandardPourCardCell(
+      doc,
+      'PURAVANKARA LIMITED/PROVIDENT HOUSING LIMITED',
+      x + logoWidth,
+      y,
+      titleWidth,
+      titleHeight,
+      { bold: true, align: 'center', fontSize: 7.6, maxTokenLength: 32 },
+    );
+    this.writeStandardPourCardCell(
+      doc,
+      'CONCRETE POURCARD',
+      x + logoWidth,
+      y + titleHeight,
+      titleWidth,
+      titleHeight,
+      { bold: true, align: 'center', fontSize: 8.2 },
+    );
+
+    const detailsY = y + titleHeight * 2;
+    const leftValueWidth = totalWidth - rightWidth - projectLabelWidth;
+    const formatX = x + totalWidth - rightWidth;
+    const detailRows: Array<[string, unknown]> = [
+      ['Name of Project:', card.projectNameSnapshot],
+      ['Client :', card.clientName],
+      ['Consultant :', card.consultantName],
+      ['Contractor :', card.contractorName],
+    ];
+
+    detailRows.forEach(([label, value], index) => {
+      const currentY = detailsY + index * rowHeight;
+      this.writeStandardPourCardCell(doc, label, x, currentY, projectLabelWidth, rowHeight, {
+        bold: true,
+        fontSize: 6.6,
+      });
+      this.writeStandardPourCardCell(
+        doc,
+        value,
+        x + projectLabelWidth,
+        currentY,
+        leftValueWidth,
+        rowHeight,
+        { fontSize: 6.6, maxTokenLength: 28 },
+      );
+    });
+
+    this.writeStandardPourCardCell(
+      doc,
+      'FORMAT NO',
+      formatX,
+      detailsY,
+      formatLabelWidth,
+      rowHeight * 2,
+      { bold: true, fontSize: 6.6 },
+    );
+    this.writeStandardPourCardCell(
+      doc,
+      card.formatNo || 'F/QA/16',
+      formatX + formatLabelWidth,
+      detailsY,
+      rightWidth - formatLabelWidth,
+      rowHeight * 2,
+      { bold: true, fontSize: 6.6 },
+    );
+    this.writeStandardPourCardCell(
+      doc,
+      'Rev. No.',
+      formatX,
+      detailsY + rowHeight * 2,
+      formatLabelWidth,
+      rowHeight * 2,
+      { bold: true, fontSize: 6.6 },
+    );
+    this.writeStandardPourCardCell(
+      doc,
+      card.revisionNo || '1',
+      formatX + formatLabelWidth,
+      detailsY + rowHeight * 2,
+      rightWidth - formatLabelWidth,
+      rowHeight * 2,
+      { bold: true, fontSize: 6.6 },
+    );
+
+    return detailsY + rowHeight * 4;
+  }
+
+  private writeStandardPourCardTable(
+    doc: PDFKit.PDFDocument,
+    card: QualityPourCard,
+    inspection: QualityInspection,
+    entries: PourCardEntry[],
+    approvedByName: string | null,
+    startY: number,
+  ) {
+    const x = 31;
+    const headerHeight = 47;
+    const approvedGroupHeight = 19;
+    const bodyRowHeight = 31;
+    const widths = [
+      24, 31, 39, 26, 44, 32, 33, 34, 36, 39, 41, 35, 38, 42, 29, 46, 32, 46,
+      42, 41,
+    ];
+    const headers = [
+      'Sl No.',
+      'Date',
+      'Name of the Supplier',
+      'Truck No.',
+      'Delivery Chalan No.',
+      'Element',
+      'Location',
+      'Mix ID /Grade',
+      'Quantity (m3)',
+      'Cumulative Qty (m3)',
+      'Batch start Time (A)',
+      'Arrival Time at Site',
+      'Finishing Time(B)',
+      'Time taken (B-A)',
+      'Slump (mm)',
+      'Concrete Temperature',
+      'No. of Cubes Taken',
+      'Contractor',
+      'Client',
+      'Remarks',
+    ];
+    const approvedByStartIndex = 17;
+    const bodyStartY = startY + headerHeight;
+    const rowCount = Math.max(8, entries.length);
+
+    let currentX = x;
+    headers.forEach((header, index) => {
+      if (index === approvedByStartIndex) {
+        const approvedWidth = widths[approvedByStartIndex] + widths[approvedByStartIndex + 1];
+        this.writeStandardPourCardCell(
+          doc,
+          'Approved by',
+          currentX,
+          startY,
+          approvedWidth,
+          approvedGroupHeight,
+          { bold: true, align: 'center', fontSize: 6.6 },
+        );
+        this.writeStandardPourCardCell(
+          doc,
+          headers[approvedByStartIndex],
+          currentX,
+          startY + approvedGroupHeight,
+          widths[approvedByStartIndex],
+          headerHeight - approvedGroupHeight,
+          { bold: true, align: 'center', fontSize: 6.4 },
+        );
+        currentX += widths[approvedByStartIndex];
+        return;
+      }
+      if (index === approvedByStartIndex + 1) {
+        this.writeStandardPourCardCell(
+          doc,
+          headers[approvedByStartIndex + 1],
+          currentX,
+          startY + approvedGroupHeight,
+          widths[approvedByStartIndex + 1],
+          headerHeight - approvedGroupHeight,
+          { bold: true, align: 'center', fontSize: 6.4 },
+        );
+      } else {
+        this.writeStandardPourCardCell(
+          doc,
+          header,
+          currentX,
+          startY,
+          widths[index],
+          headerHeight,
+          { bold: true, align: 'center', fontSize: 6.2 },
+        );
+      }
+      currentX += widths[index];
+    });
+
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const entry = entries[rowIndex];
+      const row = entry
+        ? [
+            entry.slNo || rowIndex + 1,
+            entry.pourDate,
+            entry.supplierName || entry.supplierRepresentative,
+            entry.truckNo,
+            entry.deliveryChallanNo,
+            card.elementName || inspection.elementName,
+            card.locationText,
+            entry.mixIdOrGrade,
+            entry.quantityM3,
+            entry.cumulativeQtyM3,
+            entry.batchStartTime,
+            entry.arrivalTimeAtSite,
+            entry.finishingTime,
+            entry.timeTakenMinutes,
+            entry.slumpMm,
+            entry.concreteTemperature,
+            entry.noOfCubesTaken,
+            entry.contractorRepresentative,
+            entry.clientRepresentative || approvedByName,
+            entry.remarks,
+          ]
+        : new Array(headers.length).fill('');
+
+      currentX = x;
+      row.forEach((value, index) => {
+        this.writeStandardPourCardCell(
+          doc,
+          value,
+          currentX,
+          bodyStartY + rowIndex * bodyRowHeight,
+          widths[index],
+          bodyRowHeight,
+          { align: index === 0 ? 'center' : 'left', fontSize: 5.8 },
+        );
+        currentX += widths[index];
+      });
+    }
+  }
+
+  private resolvePdfImageSource(value?: string | null): string | Buffer | null {
+    if (!value?.trim()) return null;
+    const source = value.trim();
+    if (source.startsWith('data:image')) return source;
+    const uploadPath = this.resolveUploadPath(source);
+    if (uploadPath && existsSync(uploadPath)) {
+      try {
+        return readFileSync(uploadPath);
+      } catch {
+        return null;
+      }
+    }
+    if (source.length > 100) {
+      return `data:image/png;base64,${source}`;
+    }
+    return null;
+  }
+
+  private writeStandardPourCardApprovalBlock(
+    doc: PDFKit.PDFDocument,
+    card: QualityPourCard,
+    approvedByName: string | null,
+    approver?: User | null,
+  ) {
+    const x = 31;
+    const y = 490;
+    const width = 730;
+    const height = 70;
+    const signatureWidth = 180;
+    const approvalDate = card.approvedAt
+      ? new Date(card.approvedAt).toISOString().slice(0, 10)
+      : '';
+    const signerName =
+      approvedByName || approver?.displayName || approver?.username || '';
+    const signatureSource = this.resolvePdfImageSource(
+      approver?.signatureData || approver?.signatureImageUrl,
+    );
+
+    doc.rect(x, y, width, height).stroke('#111111');
+    this.writeStandardPourCardCell(doc, 'Approver Signature', x, y, signatureWidth, 20, {
+      bold: true,
+      align: 'center',
+      fontSize: 7,
+    });
+    this.writeStandardPourCardCell(
+      doc,
+      'Approval Details',
+      x + signatureWidth,
+      y,
+      width - signatureWidth,
+      20,
+      { bold: true, align: 'center', fontSize: 7 },
+    );
+
+    doc.rect(x, y + 20, signatureWidth, height - 20).stroke('#111111');
+    if (signatureSource) {
+      try {
+        doc.image(signatureSource, x + 18, y + 25, {
+          fit: [signatureWidth - 36, height - 32],
+          align: 'center',
+          valign: 'center',
+        });
+      } catch {}
+    }
+
+    const detailX = x + signatureWidth;
+    const detailWidth = width - signatureWidth;
+    this.writeStandardPourCardCell(doc, 'Approved By', detailX, y + 20, 80, 25, {
+      bold: true,
+      fontSize: 6.8,
+    });
+    this.writeStandardPourCardCell(
+      doc,
+      signerName,
+      detailX + 80,
+      y + 20,
+      detailWidth - 80,
+      25,
+      { fontSize: 6.8, maxTokenLength: 30 },
+    );
+    this.writeStandardPourCardCell(doc, 'Approved Date', detailX, y + 45, 80, 25, {
+      bold: true,
+      fontSize: 6.8,
+    });
+    this.writeStandardPourCardCell(
+      doc,
+      approvalDate,
+      detailX + 80,
+      y + 45,
+      130,
+      25,
+      { fontSize: 6.8 },
+    );
+    this.writeStandardPourCardCell(
+      doc,
+      'Status',
+      detailX + 210,
+      y + 45,
+      60,
+      25,
+      { bold: true, fontSize: 6.8 },
+    );
+    this.writeStandardPourCardCell(
+      doc,
+      card.status,
+      detailX + 270,
+      y + 45,
+      detailWidth - 270,
+      25,
+      { fontSize: 6.8 },
+    );
+  }
+
   async generatePourCardPdf(inspectionId: number): Promise<Buffer> {
     const card = await this.getPourCard(inspectionId);
     const inspection = await this.getInspectionOrThrow(inspectionId);
-    const goLabel = this.resolveGoLabel(inspection);
     const approvedByName = await this.resolvePourCardApprovedByName(card);
+    const approver = card.approvedByUserId
+      ? await this.userRepo.findOne({ where: { id: card.approvedByUserId } })
+      : null;
+    const projectProfile = await this.projectProfileRepo.findOne({
+      where: { epsNode: { id: card.projectId } },
+    });
+    const logoPath =
+      this.resolveUploadPath(projectProfile?.companyLogoUrl) ||
+      this.resolveUploadPath(projectProfile?.projectLogoUrl);
 
     return this.buildPdfBuffer((doc) => {
-      doc.fontSize(16).font('Helvetica-Bold').text('CONCRETE POUR CARD', {
-        align: 'center',
-      });
-      doc.moveDown(0.5);
-      doc
-        .fontSize(10)
-        .font('Helvetica')
-        .text(`Format No: ${card.formatNo || 'F/QA/16'}`);
-      doc.text(`Revision: ${card.revisionNo || '01'}`);
-      this.writePdfSectionTitle(doc, 'Inspection Details');
-      this.writePdfTwoColumnFields(doc, [
-        ['Inspection ID', inspection.id, 'Status', card.status],
-        ['Requested On', inspection.requestDate, 'Activity', inspection.activity?.activityName],
-        ['Project', card.projectNameSnapshot, 'Element', card.elementName || inspection.elementName],
-        ['GO', goLabel, 'RFI Number', inspection.id],
-        ['Client', card.clientName, 'Consultant', card.consultantName],
-        ['Contractor', card.contractorName, 'Approved By', approvedByName],
-        ['Location', card.locationText, 'EPS Node', inspection.epsNode?.name],
-      ]);
-      if (inspection.goDetails) {
-        this.writePdfField(doc, 'GO Details / Description', inspection.goDetails, {
-          width: 515,
-        });
-      }
+      const entries = card.entries || [];
+      const rowsPerPage = 8;
+      const pages = Math.max(1, Math.ceil(entries.length / rowsPerPage));
 
-      this.writePdfSectionTitle(doc, 'Pour Entries');
-
-      if (!card.entries?.length) {
-        doc.font('Helvetica').text('No pour entries recorded.');
-      } else {
-        card.entries.forEach((entry, index) => {
-          doc
-            .roundedRect(doc.page.margins.left, doc.y, 515, 16)
-            .fillAndStroke('#f3f4f6', '#d1d5db');
-          doc
-            .fillColor('#111827')
-            .font('Helvetica-Bold')
-            .fontSize(10)
-            .text(`Entry ${index + 1}`, doc.page.margins.left + 8, doc.y - 12);
-          doc.fillColor('black');
-          doc.moveDown(0.4);
-          this.writePdfTwoColumnFields(doc, [
-            ['Pour Date', entry.pourDate, 'Truck No', entry.truckNo],
-            ['Delivery Challan No', entry.deliveryChallanNo, 'Mix / Grade', entry.mixIdOrGrade],
-            ['Quantity (m3)', entry.quantityM3, 'Cumulative Qty (m3)', entry.cumulativeQtyM3],
-            ['Arrival Time At Site', entry.arrivalTimeAtSite, 'Batch Start Time', entry.batchStartTime],
-            ['Finishing Time', entry.finishingTime, 'Time Taken (mins)', entry.timeTakenMinutes],
-            ['Slump (mm)', entry.slumpMm, 'Concrete Temperature', entry.concreteTemperature],
-            ['No. Of Cubes Taken', entry.noOfCubesTaken, 'Supplier Representative', entry.supplierRepresentative],
-            ['Contractor Representative', entry.contractorRepresentative, 'Client Representative', entry.clientRepresentative],
-          ]);
-          this.writePdfField(doc, 'Entry Remarks', entry.remarks, {
-            width: 515,
-          });
-          doc.moveDown(0.35);
-        });
+      for (let pageIndex = 0; pageIndex < pages; pageIndex += 1) {
+        if (pageIndex > 0) {
+          doc.addPage();
+        }
+        const pageEntries = entries.slice(
+          pageIndex * rowsPerPage,
+          (pageIndex + 1) * rowsPerPage,
+        );
+        const tableY = this.writeStandardPourCardHeader(
+          doc,
+          card,
+          inspection,
+          logoPath,
+        );
+        this.writeStandardPourCardTable(
+          doc,
+          card,
+          inspection,
+          pageEntries,
+          approvedByName,
+          tableY,
+        );
+        this.writeStandardPourCardApprovalBlock(
+          doc,
+          card,
+          approvedByName,
+          approver,
+        );
       }
-
-      if (card.remarks) {
-        this.writePdfSectionTitle(doc, 'General Remarks');
-        doc.font('Helvetica').fontSize(10).text(card.remarks);
-      }
-    });
+    }, { margin: 0, size: [792, 612] });
   }
 
   async getPrePourClearanceCard(inspectionId: number) {

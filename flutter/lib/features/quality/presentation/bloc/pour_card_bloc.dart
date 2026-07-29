@@ -38,6 +38,18 @@ class UpdatePourEntry extends PourCardEvent {
   List<Object?> get props => [index, entry];
 }
 
+/// Commits one entry's edits and immediately persists the whole card as a
+/// draft — the entry detail screen's "Save" action dispatches this so a
+/// per-entry save always doubles as an autosave, instead of relying on the
+/// UI to fire two separate events in the right order.
+class SavePourEntry extends PourCardEvent {
+  final int index;
+  final PourCardEntry entry;
+  const SavePourEntry(this.index, this.entry);
+  @override
+  List<Object?> get props => [index, entry];
+}
+
 class UpdatePourCardHeader extends PourCardEvent {
   final String? elementName;
   final String? locationText;
@@ -136,6 +148,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     on<AddPourEntry>(_onAddEntry);
     on<RemovePourEntry>(_onRemoveEntry);
     on<UpdatePourEntry>(_onUpdateEntry);
+    on<SavePourEntry>(_onSaveEntry);
     on<UpdatePourCardHeader>(_onUpdateHeader);
     on<SavePourCard>(_onSave);
     on<SubmitPourCard>(_onSubmit);
@@ -160,7 +173,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     if (_currentCard == null) return;
     final entries = List<PourCardEntry>.from(_currentCard!.entries)
       ..add(const PourCardEntry());
-    _currentCard = _currentCard!.copyWith(entries: entries);
+    _currentCard = _currentCard!.copyWith(entries: _withRunningTotals(entries));
     emit(PourCardLoaded(_currentCard!));
   }
 
@@ -170,7 +183,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     if (event.index >= 0 && event.index < entries.length) {
       entries.removeAt(event.index);
     }
-    _currentCard = _currentCard!.copyWith(entries: entries);
+    _currentCard = _currentCard!.copyWith(entries: _withRunningTotals(entries));
     emit(PourCardLoaded(_currentCard!));
   }
 
@@ -180,8 +193,49 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     if (event.index >= 0 && event.index < entries.length) {
       entries[event.index] = event.entry;
     }
-    _currentCard = _currentCard!.copyWith(entries: entries);
+    _currentCard = _currentCard!.copyWith(entries: _withRunningTotals(entries));
     emit(PourCardLoaded(_currentCard!));
+  }
+
+  /// Commits [event.entry] into the entry list, recomputes the running
+  /// cumulative-quantity column, and immediately persists the card as a
+  /// draft — one entry save always doubles as an autosave of the whole card.
+  Future<void> _onSaveEntry(SavePourEntry event, Emitter<PourCardState> emit) async {
+    if (_currentCard == null) return;
+    final entries = List<PourCardEntry>.from(_currentCard!.entries);
+    if (event.index >= 0 && event.index < entries.length) {
+      entries[event.index] = event.entry;
+    }
+    _currentCard = _currentCard!.copyWith(entries: _withRunningTotals(entries));
+
+    emit(PourCardSaving(_currentCard!));
+    try {
+      final data = await _api.savePourCard(
+        _currentCard!.inspectionId,
+        _currentCard!.toSaveJson(),
+      );
+      _currentCard = QualityPourCard.fromJson(data);
+      emit(PourCardActionSuccess(
+        message: 'Entry saved',
+        card: _currentCard!,
+      ));
+    } catch (e) {
+      emit(PourCardError(_friendlyError(e)));
+    }
+  }
+
+  /// Recomputes each entry's [PourCardEntry.cumulativeQtyM3] as a running
+  /// sum of [PourCardEntry.quantityM3] in list order, so the "Cumulative
+  /// Qty" PDF column is always correct without asking the user to add it up
+  /// by hand.
+  List<PourCardEntry> _withRunningTotals(List<PourCardEntry> entries) {
+    final result = <PourCardEntry>[];
+    double running = 0;
+    for (final e in entries) {
+      running += e.quantityM3 ?? 0;
+      result.add(e.copyWith(cumulativeQtyM3: running));
+    }
+    return result;
   }
 
   void _onUpdateHeader(UpdatePourCardHeader event, Emitter<PourCardState> emit) {

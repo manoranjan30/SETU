@@ -8,7 +8,7 @@ import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/pour_card_bloc.dart';
-import 'package:setu_mobile/shared/utils/date_picker_util.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/pour_card_entry_detail_page.dart';
 
 class PourCardPage extends StatelessWidget {
   final int inspectionId;
@@ -316,37 +316,53 @@ class _PourCardBodyState extends State<_PourCardBody> {
               ),
               const SizedBox(height: 16),
 
-              // Concrete pour entries table
+              // Concrete pour entries — slim summary lines, tap to open the
+              // full entry form. Total quantity up front so QC/site staff
+              // don't have to add up every row by hand.
               _SectionCard(
                 title: 'Concrete Pour Entries',
                 trailing: isEditable
                     ? TextButton.icon(
-                        onPressed: () => context.read<PourCardBloc>().add(const AddPourEntry()),
+                        onPressed: () => _addEntry(context),
                         icon: const Icon(Icons.add, size: 16),
                         label: const Text('Add Row'),
                       )
                     : null,
-                child: card.entries.isEmpty
-                    ? const Padding(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (card.entries.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          const Text('Total Quantity',
+                              style: TextStyle(fontSize: 12, color: Colors.black54)),
+                          const Spacer(),
+                          Text(
+                            '${_totalQuantity(card.entries).toStringAsFixed(2)} m³',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (card.entries.isEmpty)
+                      const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
                         child: Center(child: Text('No entries yet. Tap "Add Row" to begin.', style: TextStyle(color: Colors.grey))),
                       )
-                    : Column(
-                        children: [
-                          for (int i = 0; i < card.entries.length; i++)
-                            _PourEntryRow(
-                              index: i,
-                              entry: card.entries[i],
-                              isEditable: isEditable,
-                              concreteGrades: widget.concreteGrades,
-                              onDelete: isEditable
-                                  ? () => context.read<PourCardBloc>().add(RemovePourEntry(i))
-                                  : null,
-                              onUpdate: (entry) =>
-                                  context.read<PourCardBloc>().add(UpdatePourEntry(i, entry)),
-                            ),
-                        ],
-                      ),
+                    else
+                      for (int i = 0; i < card.entries.length; i++)
+                        _PourEntrySummaryTile(
+                          index: i,
+                          entry: card.entries[i],
+                          isEditable: isEditable,
+                          onTap: () => _openEntry(context, index: i, entry: card.entries[i]),
+                          onDelete: isEditable
+                              ? () => context.read<PourCardBloc>().add(RemovePourEntry(i))
+                              : null,
+                        ),
+                  ],
+                ),
               ),
 
               // Approval info (if approved/rejected)
@@ -394,6 +410,49 @@ class _PourCardBodyState extends State<_PourCardBody> {
       elementName: _elementCtrl.text,
       locationText: _locationCtrl.text,
       remarks: _remarksCtrl.text,
+    ));
+  }
+
+  double _totalQuantity(List<PourCardEntry> entries) =>
+      entries.fold<double>(0, (sum, e) => sum + (e.quantityM3 ?? 0));
+
+  /// Adds a blank entry, then opens it directly for editing — the user is
+  /// dropped straight into filling it in rather than seeing a new empty row
+  /// appear in the list.
+  ///
+  /// Computes the new entry's index/value locally (matching what
+  /// `PourCardBloc._onAddEntry` appends) instead of reading `bloc.state`
+  /// right after `add()` — bloc events are processed asynchronously, so the
+  /// state wouldn't reliably reflect the new entry yet on the very next line.
+  Future<void> _addEntry(BuildContext context) async {
+    final newIndex = widget.card.entries.length;
+    context.read<PourCardBloc>().add(const AddPourEntry());
+    await _openEntry(context, index: newIndex, entry: const PourCardEntry(), isNew: true);
+  }
+
+  Future<void> _openEntry(
+    BuildContext context, {
+    required int index,
+    required PourCardEntry entry,
+    bool isNew = false,
+  }) async {
+    final ps = PermissionService.of(context);
+    final isEditable = widget.card.status.isEditable && ps.canUpdatePourCard;
+    final preceding = widget.card.entries
+        .take(index)
+        .fold<double>(0, (sum, e) => sum + (e.quantityM3 ?? 0));
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BlocProvider.value(
+        value: context.read<PourCardBloc>(),
+        child: PourEntryDetailPage(
+          index: index,
+          entry: entry,
+          isEditable: isEditable,
+          isNew: isNew,
+          concreteGrades: widget.concreteGrades,
+          precedingCumulativeQtyM3: preceding,
+        ),
+      ),
     ));
   }
 
@@ -620,286 +679,105 @@ class _EditableField extends StatelessWidget {
   }
 }
 
-class _PourEntryRow extends StatefulWidget {
+/// Slim, scannable summary line for one pour entry — truck number,
+/// quantity, grade, and a time — so the entries list stays readable without
+/// scrolling through a dozen fields per row. Tap opens
+/// [PourEntryDetailPage] for the full form; the trailing icon deletes the
+/// entry directly from the list.
+class _PourEntrySummaryTile extends StatelessWidget {
   final int index;
   final PourCardEntry entry;
   final bool isEditable;
-  final List<ConcreteGrade> concreteGrades;
+  final VoidCallback onTap;
   final VoidCallback? onDelete;
-  final ValueChanged<PourCardEntry> onUpdate;
 
-  const _PourEntryRow({
+  const _PourEntrySummaryTile({
     required this.index,
     required this.entry,
     required this.isEditable,
-    this.concreteGrades = const [],
+    required this.onTap,
     this.onDelete,
-    required this.onUpdate,
   });
 
   @override
-  State<_PourEntryRow> createState() => _PourEntryRowState();
-}
-
-class _PourEntryRowState extends State<_PourEntryRow> {
-  late final TextEditingController _pourDateCtrl;
-  late final TextEditingController _truckNoCtrl;
-  late final TextEditingController _challanCtrl;
-  late final TextEditingController _gradeCtrl;
-  late final TextEditingController _qtyCtrl;
-  late final TextEditingController _slumpCtrl;
-  late final TextEditingController _tempCtrl;
-  late final TextEditingController _cubesCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    final e = widget.entry;
-    _pourDateCtrl = TextEditingController(text: e.pourDate ?? '');
-    _truckNoCtrl = TextEditingController(text: e.truckNo ?? '');
-    _challanCtrl = TextEditingController(text: e.deliveryChallanNo ?? '');
-    _gradeCtrl = TextEditingController(text: e.mixIdOrGrade ?? '');
-    _qtyCtrl = TextEditingController(text: e.quantityM3?.toString() ?? '');
-    _slumpCtrl = TextEditingController(text: e.slumpMm?.toString() ?? '');
-    _tempCtrl = TextEditingController(text: e.concreteTemperature?.toString() ?? '');
-    _cubesCtrl = TextEditingController(text: e.noOfCubesTaken?.toString() ?? '');
-  }
-
-  @override
-  void dispose() {
-    _pourDateCtrl.dispose();
-    _truckNoCtrl.dispose();
-    _challanCtrl.dispose();
-    _gradeCtrl.dispose();
-    _qtyCtrl.dispose();
-    _slumpCtrl.dispose();
-    _tempCtrl.dispose();
-    _cubesCtrl.dispose();
-    super.dispose();
-  }
-
-  void _push() {
-    widget.onUpdate(widget.entry.copyWith(
-      pourDate: _pourDateCtrl.text.isEmpty ? null : _pourDateCtrl.text,
-      truckNo: _truckNoCtrl.text.isEmpty ? null : _truckNoCtrl.text,
-      deliveryChallanNo: _challanCtrl.text.isEmpty ? null : _challanCtrl.text,
-      mixIdOrGrade: _gradeCtrl.text.isEmpty ? null : _gradeCtrl.text,
-      quantityM3: double.tryParse(_qtyCtrl.text),
-      slumpMm: double.tryParse(_slumpCtrl.text),
-      concreteTemperature: double.tryParse(_tempCtrl.text),
-      noOfCubesTaken: int.tryParse(_cubesCtrl.text),
-    ));
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('Entry ${widget.index + 1}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              if (widget.onDelete != null)
-                GestureDetector(
-                  onTap: widget.onDelete,
+    final time = entry.arrivalTimeAtSite ?? entry.batchStartTime;
+    final hasTruck = entry.truckNo?.isNotEmpty == true;
+    final isIncomplete = !hasTruck || entry.quantityM3 == null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              child: Text('${index + 1}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.local_shipping_outlined, size: 13, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        hasTruck ? entry.truckNo! : 'No truck no.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: hasTruck ? Colors.black87 : Colors.grey.shade400,
+                        ),
+                      ),
+                      if (isIncomplete) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Text('Incomplete',
+                              style: TextStyle(fontSize: 9, color: Colors.orange.shade800, fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (entry.quantityM3 != null) '${entry.quantityM3!.toStringAsFixed(2)} m³',
+                      if (entry.mixIdOrGrade?.isNotEmpty == true) entry.mixIdOrGrade!,
+                      if (time?.isNotEmpty == true) time!,
+                    ].join('  •  '),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            if (onDelete != null)
+              GestureDetector(
+                onTap: onDelete,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6),
                   child: Icon(Icons.delete_outline, size: 18, color: Colors.red.shade400),
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _RowField('Pour Date', _pourDateCtrl, widget.isEditable, _push,
-              hint: 'DD/MM/YYYY', isDate: true, dateFormat: 'dd/MM/yyyy'),
-          _RowField('Truck No.', _truckNoCtrl, widget.isEditable, _push),
-          _RowField('Delivery Challan No.', _challanCtrl, widget.isEditable, _push),
-          // Grade — dropdown when grades are available, text field otherwise
-          if (widget.concreteGrades.isNotEmpty)
-            _GradeDropdownField(
-              label: 'Mix ID / Grade',
-              currentValue: _gradeCtrl.text.isEmpty ? null : _gradeCtrl.text,
-              grades: widget.concreteGrades,
-              enabled: widget.isEditable,
-              onChanged: (v) {
-                _gradeCtrl.text = v ?? '';
-                _push();
-              },
-            )
-          else
-            _RowField('Mix ID / Grade', _gradeCtrl, widget.isEditable, _push),
-          _RowField('Quantity (m³)', _qtyCtrl, widget.isEditable, _push,
-              keyboardType: TextInputType.number),
-          _RowField('Slump (mm)', _slumpCtrl, widget.isEditable, _push,
-              keyboardType: TextInputType.number),
-          _RowField('Concrete Temp (°C)', _tempCtrl, widget.isEditable, _push,
-              keyboardType: TextInputType.number),
-          _RowField('No. of Cubes', _cubesCtrl, widget.isEditable, _push,
-              keyboardType: TextInputType.number),
-          // Cube IDs — shown after pour card is approved
-          if (widget.entry.cubeIds.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 140,
-                  child: Text('Cube IDs',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
-                ),
-                Expanded(
-                  child: Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: widget.entry.cubeIds
-                        .map((id) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.indigo.shade50,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: Colors.indigo.shade200),
-                              ),
-                              child: Text(id,
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.indigo.shade700)),
-                            ))
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
+              )
+            else
+              Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _RowField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final bool enabled;
-  final VoidCallback onChanged;
-  final TextInputType keyboardType;
-  final String? hint;
-  final bool isDate;
-  final String dateFormat;
-
-  const _RowField(
-    this.label,
-    this.controller,
-    this.enabled,
-    this.onChanged, {
-    this.keyboardType = TextInputType.text,
-    this.hint,
-    this.isDate = false,
-    this.dateFormat = 'yyyy-MM-dd',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
-          ),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: enabled,
-              keyboardType: keyboardType,
-              readOnly: isDate,
-              onTap: isDate && enabled
-                  ? () => pickDateInto(context, controller, format: dateFormat, onPicked: onChanged)
-                  : null,
-              onChanged: (_) => onChanged(),
-              style: const TextStyle(fontSize: 12),
-              decoration: InputDecoration(
-                hintText: hint,
-                border: const OutlineInputBorder(),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                isDense: true,
-                suffixIcon: isDate
-                    ? const Icon(Icons.calendar_today_outlined, size: 16)
-                    : null,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Dropdown field for selecting a concrete grade from the master list.
-/// Falls back gracefully: if [grades] is empty it will never be shown
-/// (the caller switches to _RowField instead).
-class _GradeDropdownField extends StatelessWidget {
-  final String label;
-  final String? currentValue;
-  final List<ConcreteGrade> grades;
-  final bool enabled;
-  final ValueChanged<String?> onChanged;
-
-  const _GradeDropdownField({
-    required this.label,
-    required this.currentValue,
-    required this.grades,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Ensure the current value is in the list; if not, treat as null so the
-    // dropdown doesn't crash with an out-of-range assertion.
-    final validValue =
-        grades.any((g) => g.grade == currentValue) ? currentValue : null;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
-          ),
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              initialValue: validValue,
-              isExpanded: true,
-              isDense: true,
-              hint: const Text('Select grade', style: TextStyle(fontSize: 12)),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                isDense: true,
-              ),
-              items: grades
-                  .map((g) => DropdownMenuItem(
-                        value: g.grade,
-                        child: Text(g.grade,
-                            style: const TextStyle(fontSize: 12)),
-                      ))
-                  .toList(),
-              onChanged: enabled ? onChanged : null,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
