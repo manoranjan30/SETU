@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/api/api_exceptions.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 
@@ -262,11 +263,21 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     }
   }
 
+  /// Prefers the backend's own error message (release-strategy rejections,
+  /// missing-field validation, wrong-state checks) over a generic string —
+  /// those messages are already written for end users. See
+  /// docs/mobile-handoff-quality-card-approval-release-strategy.md.
   String _friendlyError(Object e) {
+    if (e is UnauthorizedException) return 'Session expired. Please log in again.';
+    if (e is NotFoundException) return 'Pour card not found.';
+    if (e is NetworkException) return 'No connection. Check your network and try again.';
+    if (e is ForbiddenException) {
+      return e.message == 'Forbidden'
+          ? 'You are not assigned as an approver for this card.'
+          : e.message;
+    }
+    if (e is BadRequestException) return e.message;
     final msg = e.toString().toLowerCase();
-    if (msg.contains('401') || msg.contains('unauthorized')) return 'Session expired. Please log in again.';
-    if (msg.contains('403') || msg.contains('forbidden')) return 'You do not have permission to perform this action.';
-    if (msg.contains('404')) return 'Pour card not found.';
     if (msg.contains('connection') || msg.contains('socket')) return 'No connection. Check your network and try again.';
     return 'An error occurred. Please try again.';
   }

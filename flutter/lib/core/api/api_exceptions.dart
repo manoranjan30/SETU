@@ -17,7 +17,7 @@ class ApiException implements Exception {
   const factory ApiException.networkError(String message) = NetworkException;
   const factory ApiException.badRequest(String message) = BadRequestException;
   const factory ApiException.unauthorized([String message]) = UnauthorizedException;
-  const factory ApiException.forbidden() = ForbiddenException;
+  const factory ApiException.forbidden([String message = 'Forbidden']) = ForbiddenException;
   const factory ApiException.notFound() = NotFoundException;
   const factory ApiException.serverError() = ServerErrorException;
   const factory ApiException.httpError(int statusCode, String message) = HttpException;
@@ -38,7 +38,8 @@ class UnauthorizedException extends ApiException {
 }
 
 class ForbiddenException extends ApiException {
-  const ForbiddenException() : super(message: 'Forbidden', statusCode: 403);
+  const ForbiddenException([String message = 'Forbidden'])
+      : super(message: message, statusCode: 403);
 }
 
 class NotFoundException extends ApiException {

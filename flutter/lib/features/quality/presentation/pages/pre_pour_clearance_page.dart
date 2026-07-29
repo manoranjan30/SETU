@@ -312,10 +312,12 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
   Widget build(BuildContext context) {
     final card = widget.card;
     final ps = PermissionService.of(context);
-    final isEditable = card.status.isEditable && card.isActivated && ps.canRaiseRfi;
-    // Signing does not require raise-RFI permission — any authenticated user can sign.
-    final canSign = card.status.isEditable && card.isActivated;
-    final canApprove = ps.canApproveInspection;
+    final isEditable = card.status.isEditable && card.isActivated && ps.canUpdatePourClearance;
+    // Submit is independent of edit rights — a user may be allowed to
+    // submit a card without being allowed to change its field values.
+    final canSubmit = card.status.isEditable && card.isActivated && ps.canSubmitPourClearance;
+    final canSign = card.status.isEditable && card.isActivated && ps.canSignPourClearance;
+    final canApprove = ps.canApprovePourClearance;
     final theme = Theme.of(context);
 
     return Column(
@@ -419,7 +421,6 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                               signoff: card.signoffs[i],
                               isEditable: isEditable,
                               inspectionId: widget.inspectionId,
-                              // Signing is open to any authenticated user — no canRaiseRfi check
                               onSign: canSign
                                   ? () {
                                       final signoff = card.signoffs[i];
@@ -473,6 +474,7 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
         _ActionBar(
           card: card,
           isEditable: isEditable,
+          canSubmit: canSubmit,
           canApprove: canApprove,
           theme: theme,
           onSave: () => context.read<ClearanceCardBloc>().add(const SaveClearanceCard()),
@@ -1809,6 +1811,7 @@ class _SignoffQrDialogState extends State<_SignoffQrDialog> {
 class _ActionBar extends StatelessWidget {
   final QualityPrePourClearanceCard card;
   final bool isEditable;
+  final bool canSubmit;
   final bool canApprove;
   final ThemeData theme;
   final VoidCallback onSave;
@@ -1819,6 +1822,7 @@ class _ActionBar extends StatelessWidget {
   const _ActionBar({
     required this.card,
     required this.isEditable,
+    required this.canSubmit,
     required this.canApprove,
     required this.theme,
     required this.onSave,
@@ -1854,6 +1858,8 @@ class _ActionBar extends StatelessWidget {
               style: OutlinedButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
             ),
             const SizedBox(width: 8),
+          ],
+          if (canSubmit)
             Expanded(
               child: FilledButton.icon(
                 onPressed: onSubmit,
@@ -1862,7 +1868,6 @@ class _ActionBar extends StatelessWidget {
                 style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
               ),
             ),
-          ],
           if (card.status == QualityCardStatus.submitted && canApprove) ...[
             OutlinedButton.icon(
               onPressed: onReject,

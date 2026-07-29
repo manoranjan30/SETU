@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -31,7 +32,12 @@ import { EpsNode, EpsNodeType } from '../eps/eps.entity';
 import { ApprovalRuntimeService } from '../common/approval-runtime.service';
 import { SystemSettingsService } from '../common/system-settings.service';
 import { User } from '../users/user.entity';
+import { ReleaseStrategyService } from '../planning/release-strategy.service';
 import QRCode from 'qrcode';
+
+const QUALITY_CARD_APPROVAL_PROCESS = 'CARD_APPROVAL';
+const POUR_CARD_DOCUMENT_TYPE = 'CONCRETE_POUR_CARD';
+const PRE_POUR_CLEARANCE_DOCUMENT_TYPE = 'PRE_POUR_CLEARANCE';
 
 const DEFAULT_CLEARANCE_SIGNOFFS = [
   'Surveyor',
@@ -114,6 +120,7 @@ export class QualityPourCardService {
     private readonly epsRepo: Repository<EpsNode>,
     private readonly approvalRuntimeService: ApprovalRuntimeService,
     private readonly systemSettingsService: SystemSettingsService,
+    private readonly releaseStrategyService: ReleaseStrategyService,
   ) {}
 
   private async getInspectionOrThrow(inspectionId: number) {
@@ -271,19 +278,55 @@ export class QualityPourCardService {
       : QualityCubeTestAge.TWENTY_EIGHT_DAY;
   }
 
-  private async assertQaQcApprover(
-    projectId: number,
+  private async assertCardReleaseStrategyApprover(
+    card: Pick<
+      QualityPourCard | QualityPrePourClearanceCard,
+      | 'projectId'
+      | 'inspectionId'
+      | 'activityId'
+      | 'epsNodeId'
+      | 'createdByUserId'
+      | 'submittedByUserId'
+    >,
+    documentType: string,
     userId?: number,
     isAdmin = false,
   ) {
     if (!userId || isAdmin) return;
-    const actor = await this.approvalRuntimeService.getProjectActor(
-      projectId,
-      userId,
+    const resolved = await this.releaseStrategyService.resolveStrategy(
+      card.projectId,
+      {
+        projectId: card.projectId,
+        moduleCode: 'QUALITY',
+        processCode: QUALITY_CARD_APPROVAL_PROCESS,
+        documentType,
+        documentId: card.inspectionId,
+        initiatorUserId: card.submittedByUserId ?? card.createdByUserId ?? null,
+        epsNodeId: card.epsNodeId ?? null,
+        extraAttributes: {
+          inspectionId: card.inspectionId,
+          activityId: card.activityId,
+        },
+      },
     );
-    if (!actor) {
+
+    const steps = resolved?.matchedStrategy?.resolvedSteps || [];
+    if (!steps.length) {
       throw new BadRequestException(
-        'Only project QA/QC release strategy approvers can approve this card.',
+        `No active release strategy is configured for ${documentType}. Configure QUALITY / ${QUALITY_CARD_APPROVAL_PROCESS} / ${documentType} before approving this card.`,
+      );
+    }
+
+    const approvers = steps.flatMap((step) => step.approvers || []);
+    if (!approvers.length) {
+      throw new BadRequestException(
+        `The active release strategy for ${documentType} has no eligible approvers.`,
+      );
+    }
+
+    if (!approvers.some((approver) => approver.userId === userId)) {
+      throw new ForbiddenException(
+        `Only approvers configured in the ${documentType} release strategy can approve or reject this card.`,
       );
     }
   }
@@ -301,6 +344,17 @@ export class QualityPourCardService {
   }
 
   private async resolvePourCardApprovedByName(card: QualityPourCard) {
+    if (
+      [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+        card.status,
+      ) &&
+      card.approvedByUserId
+    ) {
+      return this.resolveApproverDisplayName(
+        card.projectId,
+        card.approvedByUserId,
+      );
+    }
     return (
       card.approvedByName?.trim() ||
       (await this.resolveApproverDisplayName(
@@ -1238,7 +1292,6 @@ export class QualityPourCardService {
       contractorName: payload.contractorName ?? existing.contractorName,
       formatNo: payload.formatNo ?? existing.formatNo,
       revisionNo: payload.revisionNo ?? existing.revisionNo,
-      approvedByName: payload.approvedByName ?? existing.approvedByName,
       entries: Array.isArray(payload.entries) ? payload.entries : existing.entries,
       remarks: payload.remarks ?? existing.remarks,
       status:
@@ -1317,6 +1370,7 @@ export class QualityPourCardService {
     card.submittedAt = new Date();
     card.approvedAt = null;
     card.approvedByUserId = null;
+    card.approvedByName = null;
     card.approvalRemarks = null;
     card.rejectedAt = null;
     card.rejectedByUserId = null;
@@ -1423,14 +1477,20 @@ export class QualityPourCardService {
         'Pour card must be submitted before it can be approved.',
       );
     }
-    await this.assertQaQcApprover(card.projectId, userId, isAdmin);
+    await this.assertCardReleaseStrategyApprover(
+      card,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
     this.validatePourCardForSubmission(card);
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;
-    card.approvedByName =
-      (await this.resolveApproverDisplayName(card.projectId, userId)) ||
-      card.approvedByName;
+    card.approvedByName = await this.resolveApproverDisplayName(
+      card.projectId,
+      userId,
+    );
     card.approvalRemarks = remarks?.trim() || null;
     card.rejectedAt = null;
     card.rejectedByUserId = null;
@@ -1445,6 +1505,7 @@ export class QualityPourCardService {
     inspectionId: number,
     userId?: number,
     remarks?: string,
+    isAdmin = false,
   ) {
     const card = await this.getPourCard(inspectionId);
     if (card.status === QualityCardStatus.LOCKED) {
@@ -1455,6 +1516,12 @@ export class QualityPourCardService {
         'Only submitted pour cards can be rejected.',
       );
     }
+    await this.assertCardReleaseStrategyApprover(
+      card,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
     card.status = QualityCardStatus.REJECTED;
     card.rejectedAt = new Date();
     card.rejectedByUserId = userId ?? null;
@@ -1822,7 +1889,12 @@ export class QualityPourCardService {
         'Pre-pour clearance must be submitted before it can be approved.',
       );
     }
-    await this.assertQaQcApprover(card.projectId, userId, isAdmin);
+    await this.assertCardReleaseStrategyApprover(
+      card,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;
@@ -1837,6 +1909,7 @@ export class QualityPourCardService {
     inspectionId: number,
     userId?: number,
     remarks?: string,
+    isAdmin = false,
   ) {
     const card = await this.getPrePourClearanceCard(inspectionId);
     if (card.status === QualityCardStatus.LOCKED) {
@@ -1849,6 +1922,12 @@ export class QualityPourCardService {
         'Only submitted pre-pour clearance cards can be rejected.',
       );
     }
+    await this.assertCardReleaseStrategyApprover(
+      card,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
     card.status = QualityCardStatus.REJECTED;
     card.rejectedAt = new Date();
     card.rejectedByUserId = userId ?? null;

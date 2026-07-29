@@ -133,6 +133,25 @@ class PermissionService {
   bool get canSaveCubeTest      => can('QUALITY.CUBE_TEST.SAVE');
   bool get canApproveCubeTest   => can('QUALITY.CUBE_TEST.APPROVE');
 
+  // ── Pour Card ─────────────────────────────────────────────────────────────
+  // Concrete pour cards have their own permission set, separate from the
+  // general RFI (QUALITY.INSPECTION.*) permissions — a user who can raise/
+  // approve RFIs is not automatically entitled to submit or approve pour
+  // cards unless the backend grants it (it does, via a backward-compat
+  // implication rule, but the mobile UI must still check the dedicated
+  // permission so CTAs stay accurate for roles configured independently).
+  bool get canReadPourCard      => can('QUALITY.POUR_CARD.READ');
+  bool get canUpdatePourCard    => can('QUALITY.POUR_CARD.UPDATE');
+  bool get canSubmitPourCard    => can('QUALITY.POUR_CARD.SUBMIT');
+  bool get canApprovePourCard   => can('QUALITY.POUR_CARD.APPROVE');
+
+  // ── Pre-Pour Clearance Card ───────────────────────────────────────────────
+  bool get canReadPourClearance    => can('QUALITY.POUR_CLEARANCE.READ');
+  bool get canUpdatePourClearance  => can('QUALITY.POUR_CLEARANCE.UPDATE');
+  bool get canSubmitPourClearance  => can('QUALITY.POUR_CLEARANCE.SUBMIT');
+  bool get canApprovePourClearance => can('QUALITY.POUR_CLEARANCE.APPROVE');
+  bool get canSignPourClearance    => can('QUALITY.POUR_CLEARANCE.SIGN');
+
   // ── NC Register ──────────────────────────────────────────────────────────
   // Non-Conformance Reports — auto-created when a Quality observation
   // (site or checklist) is raised with a CRITICAL rating, but also support

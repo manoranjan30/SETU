@@ -2773,7 +2773,6 @@ export default function InspectionRequestPage() {
                       {[
                         ["projectNameSnapshot", "Project name"],
                         ["contractorName", "Contractor"],
-                        ["approvedByName", "Approved by"],
                         ["elementName", "Element"],
                         ["locationText", "Location"],
                       ].map(([key, label]) => (
@@ -2790,6 +2789,12 @@ export default function InspectionRequestPage() {
                           className="rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
                         />
                       ))}
+                      <input
+                        value={pourCard.approvedByName || ""}
+                        readOnly
+                        placeholder="Approved by"
+                        className="rounded-lg border border-border-default bg-surface-muted px-3 py-2 text-sm text-text-muted"
+                      />
                     </div>
                   </div>
                   <div className="rounded-xl border bg-surface-card p-4">

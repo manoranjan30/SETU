@@ -2437,7 +2437,7 @@ class _ErrorInterceptor extends Interceptor {
             }
             return const ApiException.unauthorized();
           case 403:
-            return const ApiException.forbidden();
+            return ApiException.forbidden(message is String ? message : 'Forbidden');
           case 404:
             return const ApiException.notFound();
           case 500:
