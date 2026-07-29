@@ -155,6 +155,7 @@ export class QualityPourCardController {
       inspectionId,
       req.user?.userId || req.user?.id,
       body?.remarks,
+      this.isAdminRequest(req),
     );
   }
 
@@ -282,6 +283,7 @@ export class QualityPourCardController {
       inspectionId,
       req.user?.userId || req.user?.id,
       body?.remarks,
+      this.isAdminRequest(req),
     );
   }
 

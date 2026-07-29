@@ -5239,14 +5239,9 @@ export default function QualityApprovalsPage() {
                                   />
                                   <input
                                     value={pourCard.approvedByName || ""}
-                                    onChange={(e) =>
-                                      setPourCard((prev: any) => ({
-                                        ...prev,
-                                        approvedByName: e.target.value,
-                                      }))
-                                    }
+                                    readOnly
                                     placeholder="Approved by"
-                                    className="rounded-lg border border-border-default bg-surface-card px-3 py-2 text-sm"
+                                    className="rounded-lg border border-border-default bg-surface-muted px-3 py-2 text-sm text-text-muted"
                                   />
                                 </div>
                                 <div className="grid gap-3 md:grid-cols-2">

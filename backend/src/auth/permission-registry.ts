@@ -845,8 +845,6 @@ export function buildDependencyMap(
         'QUALITY.INSPECTION.STAGE_APPROVE',
         'QUALITY.INSPECTION.FINAL_APPROVE',
         'QUALITY.INSPECTION.DELEGATE',
-        'QUALITY.POUR_CARD.APPROVE',
-        'QUALITY.POUR_CLEARANCE.APPROVE',
       );
     }
 

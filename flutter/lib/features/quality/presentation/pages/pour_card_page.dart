@@ -261,8 +261,11 @@ class _PourCardBodyState extends State<_PourCardBody> {
   Widget build(BuildContext context) {
     final card = widget.card;
     final ps = PermissionService.of(context);
-    final isEditable = card.status.isEditable && ps.canRaiseRfi;
-    final canApprove = ps.canApproveInspection;
+    final isEditable = card.status.isEditable && ps.canUpdatePourCard;
+    // Submit is independent of edit rights — a user may be allowed to
+    // submit a card without being allowed to change its field values.
+    final canSubmit = card.status.isEditable && ps.canSubmitPourCard;
+    final canApprove = ps.canApprovePourCard;
     final theme = Theme.of(context);
 
     return Column(
@@ -374,6 +377,7 @@ class _PourCardBodyState extends State<_PourCardBody> {
         _ActionBar(
           card: card,
           isEditable: isEditable,
+          canSubmit: canSubmit,
           canApprove: canApprove,
           theme: theme,
           onSave: () => context.read<PourCardBloc>().add(const SavePourCard()),
@@ -904,6 +908,7 @@ class _GradeDropdownField extends StatelessWidget {
 class _ActionBar extends StatelessWidget {
   final QualityPourCard card;
   final bool isEditable;
+  final bool canSubmit;
   final bool canApprove;
   final ThemeData theme;
   final VoidCallback onSave;
@@ -914,6 +919,7 @@ class _ActionBar extends StatelessWidget {
   const _ActionBar({
     required this.card,
     required this.isEditable,
+    required this.canSubmit,
     required this.canApprove,
     required this.theme,
     required this.onSave,
@@ -952,6 +958,8 @@ class _ActionBar extends StatelessWidget {
               style: OutlinedButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
             ),
             const SizedBox(width: 8),
+          ],
+          if (canSubmit)
             Expanded(
               child: FilledButton.icon(
                 onPressed: onSubmit,
@@ -960,7 +968,6 @@ class _ActionBar extends StatelessWidget {
                 style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
               ),
             ),
-          ],
           if (card.status == QualityCardStatus.submitted && canApprove) ...[
             OutlinedButton.icon(
               onPressed: onReject,
