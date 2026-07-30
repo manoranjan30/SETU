@@ -690,6 +690,99 @@ class ApiEndpoints {
   /// DELETE /quality/snags/:id
   static String deleteSnag(int snagId) => '/quality/snags/$snagId';
 
+  // ==================== BATCH SLIP SCAN CONFIG ====================
+
+  /// GET /quality/batch-slip-config?projectId=:projectId
+  /// Resolved label-synonym dictionary (global + project-specific,
+  /// deduped) for the on-device batch-slip OCR parser. See
+  /// docs/mobile-handoff-batch-slip-scan-config.md.
+  static String batchSlipConfig(int projectId) =>
+      '/quality/batch-slip-config?projectId=$projectId';
+
+  // ==================== SNAG / DESNAG ENDPOINTS ====================
+  // Process-step/round/unit-workspace module at /snag/... — distinct from
+  // the legacy flat punch-list at /quality/:projectId/snags above (deleteSnag
+  // etc.), which this module does not replace. Verified directly against
+  // backend/src/snag/snag.controller.ts.
+
+  /// GET /snag/:projectId/config/process-steps
+  static String snagProcessSteps(int projectId) =>
+      '/snag/$projectId/config/process-steps';
+
+  /// GET /snag/:projectId/units
+  static String snagUnits(int projectId) => '/snag/$projectId/units';
+
+  /// POST /snag/:projectId/lists — body { qualityUnitId, epsNodeId? }
+  static String snagLists(int projectId) => '/snag/$projectId/lists';
+
+  /// GET /snag/:projectId/lists/:listId
+  static String snagListDetail(int projectId, int listId) =>
+      '/snag/$projectId/lists/$listId';
+
+  /// POST /snag/:projectId/lists/:listId/common-checklist
+  static String snagCommonChecklist(int projectId, int listId) =>
+      '/snag/$projectId/lists/$listId/common-checklist';
+
+  /// POST /snag/:projectId/lists/:listId/rounds/:roundNumber/items
+  static String snagItems(int projectId, int listId, int roundNumber) =>
+      '/snag/$projectId/lists/$listId/rounds/$roundNumber/items';
+
+  /// POST /snag/:projectId/lists/:listId/rounds/:roundNumber/items/bulk-rectify
+  static String snagBulkRectify(int projectId, int listId, int roundNumber) =>
+      '/snag/$projectId/lists/$listId/rounds/$roundNumber/items/bulk-rectify';
+
+  /// POST /snag/:projectId/lists/:listId/rounds/:roundNumber/items/bulk-close
+  static String snagBulkClose(int projectId, int listId, int roundNumber) =>
+      '/snag/$projectId/lists/$listId/rounds/$roundNumber/items/bulk-close';
+
+  /// POST /snag/:projectId/items/:itemId/rectify
+  static String snagItemRectify(int projectId, int itemId) =>
+      '/snag/$projectId/items/$itemId/rectify';
+
+  /// POST /snag/:projectId/items/:itemId/close
+  static String snagItemClose(int projectId, int itemId) =>
+      '/snag/$projectId/items/$itemId/close';
+
+  /// POST /snag/:projectId/items/:itemId/hold
+  static String snagItemHold(int projectId, int itemId) =>
+      '/snag/$projectId/items/$itemId/hold';
+
+  /// DELETE /snag/:projectId/items/:itemId
+  static String snagItemDelete(int projectId, int itemId) =>
+      '/snag/$projectId/items/$itemId';
+
+  /// POST /snag/:projectId/rounds/:roundId/submit-snag
+  static String snagSubmitSnagPhase(int projectId, int roundId) =>
+      '/snag/$projectId/rounds/$roundId/submit-snag';
+
+  /// POST /snag/:projectId/rounds/:roundId/submit-release
+  static String snagSubmitRelease(int projectId, int roundId) =>
+      '/snag/$projectId/rounds/$roundId/submit-release';
+
+  /// POST /snag/:projectId/approvals/:approvalId/advance — body { action, comments? }
+  static String snagAdvanceApproval(int projectId, int approvalId) =>
+      '/snag/$projectId/approvals/$approvalId/advance';
+
+  /// GET /snag/:projectId/analytics
+  static String snagAnalytics(int projectId) => '/snag/$projectId/analytics';
+
+  /// POST /snag/:projectId/lists/:listId/reset-ready — Checker reverts a
+  /// ready-for-snag unit (with zero raised points) back to unready.
+  static String snagResetReady(int projectId, int listId) =>
+      '/snag/$projectId/lists/$listId/reset-ready';
+
+  /// POST /snag/:projectId/items/:itemId/reject-rectification
+  static String snagRejectRectification(int projectId, int itemId) =>
+      '/snag/$projectId/items/$itemId/reject-rectification';
+
+  /// POST /snag/:projectId/rounds/:roundId/final-closure
+  static String snagFinalClosure(int projectId, int roundId) =>
+      '/snag/$projectId/rounds/$roundId/final-closure';
+
+  /// GET /snag/:projectId/lists/:listId/rounds/:roundNumber/status-report.pdf
+  static String snagStatusReportPdf(int projectId, int listId, int roundNumber) =>
+      '/snag/$projectId/lists/$listId/rounds/$roundNumber/status-report.pdf';
+
   // ==================== EHS INCIDENT ENDPOINTS ====================
 
   /// GET /ehs/:projectId/incidents

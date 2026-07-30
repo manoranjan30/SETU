@@ -99,6 +99,22 @@ export class SnagItem {
   @Column({ name: 'closure_remarks', type: 'text', nullable: true })
   closureRemarks: string | null;
 
+  @Column({ name: 'not_satisfactory_count', type: 'int', default: 0 })
+  notSatisfactoryCount: number;
+
+  @Column({ name: 'last_not_satisfactory_remarks', type: 'text', nullable: true })
+  lastNotSatisfactoryRemarks: string | null;
+
+  @Column({ name: 'last_not_satisfactory_at', type: 'timestamp', nullable: true })
+  lastNotSatisfactoryAt: Date | null;
+
+  @Column({ name: 'last_not_satisfactory_by_id', type: 'int', nullable: true })
+  lastNotSatisfactoryById: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'last_not_satisfactory_by_id' })
+  lastNotSatisfactoryBy: User | null;
+
   @Column({ name: 'raised_at', type: 'timestamp', nullable: true })
   raisedAt: Date | null;
 

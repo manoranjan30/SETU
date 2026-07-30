@@ -51,13 +51,15 @@ export class CreateSnagItemDto {
   @IsString()
   linkedChecklistItemId?: string;
 
+  @IsOptional()
   @IsArray()
-  beforePhotoUrls: string[];
+  beforePhotoUrls?: string[];
 }
 
 export class RectifySnagItemDto {
+  @IsOptional()
   @IsArray()
-  afterPhotoUrls: string[];
+  afterPhotoUrls?: string[];
 
   @IsOptional()
   @IsString()
@@ -72,6 +74,12 @@ export class CloseSnagItemDto {
   @IsOptional()
   @IsArray()
   closurePhotoUrls?: string[];
+}
+
+export class RejectSnagRectificationDto {
+  @IsOptional()
+  @IsString()
+  remarks?: string;
 }
 
 export class HoldSnagItemDto {
@@ -89,6 +97,16 @@ export class SubmitDesnagApprovalDto {
   @IsOptional()
   @IsString()
   comments?: string;
+}
+
+export class FinalClosureSnagRoundDto {
+  @IsOptional()
+  @IsString()
+  remarks?: string;
+
+  @IsOptional()
+  @IsString()
+  signatureData?: string;
 }
 
 export class SkipSnagRoundDto {
@@ -118,9 +136,9 @@ export class BulkRectifySnagItemsDto {
   @IsInt({ each: true })
   itemIds: number[];
 
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
-  afterPhotoUrls: string[];
+  afterPhotoUrls?: string[];
 
   @IsOptional()
   @IsString()
@@ -164,4 +182,84 @@ export class UpdateSnagCommonChecklistStatusDto {
   @IsString()
   @IsIn(SNAG_COMMON_CHECKLIST_STATUSES)
   status: SnagCommonChecklistStatus;
+}
+
+export class UpsertSnagProcessStepDto {
+  @IsString()
+  @MaxLength(120)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsInt()
+  workflowSerialNo: number;
+
+  @IsOptional()
+  isActive?: boolean;
+
+  @IsOptional()
+  raisePhotoRequired?: boolean;
+
+  @IsOptional()
+  rectificationPhotoRequired?: boolean;
+
+  @IsOptional()
+  desnagCompletionPhotoRequired?: boolean;
+}
+
+export class ReorderSnagProcessStepsDto {
+  @IsArray()
+  steps: Array<{ id: number; workflowSerialNo: number }>;
+}
+
+export class CreateSnagProcessActivityDto {
+  @IsInt()
+  processStepId: number;
+
+  @IsInt()
+  activityId: number;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class MoveSnagProcessActivityDto {
+  @IsInt()
+  processStepId: number;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class ReorderSnagProcessActivitiesDto {
+  @IsArray()
+  activities: Array<{ id: number; sortOrder: number }>;
+}
+
+export class UpsertSnagCommonPointDto {
+  @IsString()
+  @MaxLength(255)
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsString()
+  severity?: string;
+
+  @IsOptional()
+  requiresEvidence?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  isActive?: boolean;
 }

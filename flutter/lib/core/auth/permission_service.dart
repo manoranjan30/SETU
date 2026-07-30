@@ -161,6 +161,18 @@ class PermissionService {
   bool get canUpdateNcr   => can('QUALITY.NCR.UPDATE');
   bool get canDeleteNcr   => can('QUALITY.NCR.DELETE');
 
+  // ── Snag / Desnag (process-driven module) ────────────────────────────────
+  // Distinct from the older flat punch-list feature, which has no
+  // permission gate of its own today. Mobile never exposes config editors
+  // for SNAG_CONFIG — read-only, used only to decide whether to surface a
+  // debug/admin view later.
+  bool get canReadSnag     => can('QUALITY.SNAG.READ');
+  bool get canCreateSnag   => can('QUALITY.SNAG.CREATE');
+  bool get canUpdateSnag   => can('QUALITY.SNAG.UPDATE');
+  bool get canDeleteSnag   => can('QUALITY.SNAG.DELETE');
+  bool get canApproveSnag  => can('QUALITY.SNAG.APPROVE');
+  bool get canReadSnagConfig => can('QUALITY.SNAG_CONFIG.READ');
+
   // ── EHS ──────────────────────────────────────────────────────────────────
   // EHS (Environment, Health & Safety) permissions mirror the quality
   // observation lifecycle but for safety-related findings on site.

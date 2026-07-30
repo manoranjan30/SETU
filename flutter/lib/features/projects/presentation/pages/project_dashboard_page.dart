@@ -26,6 +26,7 @@ import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboar
 import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/snag_list_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/snag_desnag_dashboard_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/materials_testing_page.dart';
 import 'package:setu_mobile/features/ehs/presentation/pages/ehs_hub_page.dart';
 import 'package:setu_mobile/features/design/presentation/pages/design_register_page.dart';
@@ -734,6 +735,14 @@ class _ModuleGrid extends StatelessWidget {
           color: const Color(0xFFDB2777),
           onTap: () => _goSnagList(context),
         ),
+      // Snag / Desnag — process-step-driven unit snagging workflow
+      if (ps.canReadSnag)
+        _ModuleDef(
+          icon: Icons.checklist_rtl_rounded,
+          label: 'Snag /\nDesnag',
+          color: const Color(0xFF9D174D),
+          onTap: () => _goSnagDesnag(context),
+        ),
       // Labor register — daily headcount entry
       if (ps.hasAnyLaborAccess)
         _ModuleDef(
@@ -976,6 +985,18 @@ class _ModuleGrid extends StatelessWidget {
       context,
       FadeSlideRoute(
         child: SnagListPage(
+          projectId: project.id,
+          projectName: project.name,
+        ),
+      ),
+    );
+  }
+
+  void _goSnagDesnag(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(
+        child: SnagDesnagDashboardPage(
           projectId: project.id,
           projectName: project.name,
         ),

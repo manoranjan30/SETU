@@ -11,6 +11,9 @@ import {
   FileText,
   ArrowLeft,
   AlertCircle,
+  Building2,
+  FileScan,
+  Settings,
 } from "lucide-react";
 import api from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
@@ -24,6 +27,8 @@ import SnagManagementPage from "./SnagManagementPage";
 import QualityAudit from "./subviews/QualityAudit";
 import QualityDocuments from "./subviews/QualityDocuments";
 import QualityStructureManager from "./subviews/QualityStructureManager";
+import SnagDesnagConfigPage from "./subviews/SnagDesnagConfigPage";
+import BatchSlipScanConfigPage from "./subviews/BatchSlipScanConfigPage";
 import QualityRatingConfigTab from "./subviews/QualityRatingConfigTab";
 import QualityRatingDisplayTab from "./subviews/QualityRatingDisplayTab";
 import QualityApprovalDashboard from "./subviews/QualityApprovalDashboard";
@@ -40,6 +45,34 @@ const QualityProjectDashboard = () => {
   const [isLoadingProject, setIsLoadingProject] = useState(true);
   const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeConfigTab, setActiveConfigTab] = useState("floor-unit-structure");
+  const canViewStructure =
+    hasPermission(PermissionCode.QUALITY_STRUCTURE_READ) ||
+    hasPermission(PermissionCode.QUALITY_STRUCTURE_MANAGE);
+  const canViewSnagConfig =
+    hasPermission(PermissionCode.QUALITY_SNAG_CONFIG_READ) ||
+    hasPermission(PermissionCode.QUALITY_SNAG_CONFIG_MANAGE);
+  const canViewBatchSlipConfig =
+    hasPermission(PermissionCode.QUALITY_BATCH_SLIP_CONFIG_READ) ||
+    hasPermission(PermissionCode.QUALITY_BATCH_SLIP_CONFIG_MANAGE);
+
+  useEffect(() => {
+    if (activeConfigTab === "floor-unit-structure" && canViewStructure) return;
+    if (activeConfigTab === "snag-desnag" && canViewSnagConfig) return;
+    if (activeConfigTab === "batch-slip-scan" && canViewBatchSlipConfig) return;
+    if (canViewStructure) {
+      setActiveConfigTab("floor-unit-structure");
+    } else if (canViewSnagConfig) {
+      setActiveConfigTab("snag-desnag");
+    } else if (canViewBatchSlipConfig) {
+      setActiveConfigTab("batch-slip-scan");
+    }
+  }, [
+    activeConfigTab,
+    canViewBatchSlipConfig,
+    canViewSnagConfig,
+    canViewStructure,
+  ]);
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -148,12 +181,10 @@ const QualityProjectDashboard = () => {
       visible: hasPermission(PermissionCode.QUALITY_SNAG_READ),
     },
     {
-      id: "structure",
-      label: "Structure",
-      icon: LayoutDashboard,
-      visible:
-        hasPermission(PermissionCode.QUALITY_STRUCTURE_READ) ||
-        hasPermission(PermissionCode.QUALITY_STRUCTURE_MANAGE),
+      id: "configuration",
+      label: "Configuration",
+      icon: Settings,
+      visible: canViewStructure || canViewSnagConfig || canViewBatchSlipConfig,
     },
     {
       id: "audits",
@@ -206,8 +237,80 @@ const QualityProjectDashboard = () => {
         return <QualityChecklist projectId={numericProjectId} />;
       case "snags":
         return <SnagManagementPage />;
-      case "structure":
-        return <QualityStructureManager projectId={numericProjectId} />;
+      case "configuration":
+        return (
+          <div className="flex h-full flex-col bg-surface-base">
+            <div className="border-b border-border-default bg-surface-card px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-text-muted" />
+                <div>
+                  <h2 className="text-base font-semibold text-text-primary">
+                    Quality Configuration
+                  </h2>
+                  <p className="text-xs text-text-muted">
+                    Configure quality master data and project-specific setup.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveConfigTab("floor-unit-structure")}
+                  disabled={!canViewStructure}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    activeConfigTab === "floor-unit-structure"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border-default bg-surface-base text-text-secondary hover:bg-surface-raised"
+                  }`}
+                >
+                  <Building2 className="h-4 w-4" />
+                  Floor and Unit Structure
+                </button>
+                {canViewSnagConfig && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveConfigTab("snag-desnag")}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                      activeConfigTab === "snag-desnag"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border-default bg-surface-base text-text-secondary hover:bg-surface-raised"
+                    }`}
+                  >
+                    <Hammer className="h-4 w-4" />
+                    Snag / Desnag Process
+                  </button>
+                )}
+                {canViewBatchSlipConfig && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveConfigTab("batch-slip-scan")}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                      activeConfigTab === "batch-slip-scan"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border-default bg-surface-base text-text-secondary hover:bg-surface-raised"
+                    }`}
+                  >
+                    <FileScan className="h-4 w-4" />
+                    Batch Slip Scan Config
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {activeConfigTab === "floor-unit-structure" ? (
+                canViewStructure ? (
+                  <QualityStructureManager projectId={numericProjectId} />
+                ) : (
+                  <BatchSlipScanConfigPage projectId={numericProjectId} />
+                )
+              ) : activeConfigTab === "snag-desnag" ? (
+                <SnagDesnagConfigPage projectId={numericProjectId} />
+              ) : activeConfigTab === "batch-slip-scan" ? (
+                <BatchSlipScanConfigPage projectId={numericProjectId} />
+              ) : null}
+            </div>
+          </div>
+        );
       case "audits":
         return <QualityAudit projectId={numericProjectId} />;
       case "documents":
@@ -230,6 +333,7 @@ const QualityProjectDashboard = () => {
     "project-rating",
     "checklists",
     "snags",
+    "configuration",
     "audits",
     "documents",
   ]);
