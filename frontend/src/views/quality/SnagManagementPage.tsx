@@ -8,7 +8,6 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  BarChart3,
   Building2,
   Camera,
   CheckCircle2,
@@ -27,7 +26,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  TrendingUp,
   Trash2,
   Upload,
   X,
