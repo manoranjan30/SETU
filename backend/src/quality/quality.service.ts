@@ -26,6 +26,12 @@ import {
 } from './entities/quality-snag-photo.entity';
 import { QualityHistory } from './entities/quality-history.entity';
 import { QualityWorkflowService } from './quality-workflow.service';
+import { EpsNode } from '../eps/eps.entity';
+import {
+  BATCH_SLIP_FIELD_KEYS,
+  BatchSlipFieldKey,
+  QualityBatchSlipFieldSynonym,
+} from './entities/quality-batch-slip-field-synonym.entity';
 
 @Injectable()
 export class QualityService {
@@ -48,8 +54,186 @@ export class QualityService {
     private readonly documentRepo: Repository<QualityDocument>,
     @InjectRepository(QualitySnagPhoto)
     private readonly photoRepo: Repository<QualitySnagPhoto>,
+    @InjectRepository(EpsNode)
+    private readonly epsRepo: Repository<EpsNode>,
+    @InjectRepository(QualityBatchSlipFieldSynonym)
+    private readonly batchSlipSynonymRepo: Repository<QualityBatchSlipFieldSynonym>,
     private readonly workflowService: QualityWorkflowService,
   ) {}
+
+  private parseOptionalProjectId(projectId?: number | string | null) {
+    if (projectId === undefined || projectId === null || projectId === '') {
+      return null;
+    }
+    const parsed = Number(projectId);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new BadRequestException('projectId must be a valid project id.');
+    }
+    return parsed;
+  }
+
+  private validateBatchSlipFieldKey(fieldKey: string): BatchSlipFieldKey {
+    if (!BATCH_SLIP_FIELD_KEYS.includes(fieldKey as BatchSlipFieldKey)) {
+      throw new BadRequestException('Invalid batch slip field key.');
+    }
+    return fieldKey as BatchSlipFieldKey;
+  }
+
+  private normalizeBatchSlipLabel(label: unknown) {
+    const normalized = String(label ?? '').trim().replace(/\s+/g, ' ');
+    if (normalized.length < 2 || normalized.length > 60) {
+      throw new BadRequestException(
+        'Batch slip label must be between 2 and 60 characters.',
+      );
+    }
+    return normalized;
+  }
+
+  private async validateProjectExists(projectId: number | null) {
+    if (projectId === null) return;
+    const exists = await this.epsRepo.exist({ where: { id: projectId } });
+    if (!exists) {
+      throw new BadRequestException('projectId does not exist.');
+    }
+  }
+
+  private async assertBatchSlipSynonymUnique(
+    projectId: number | null,
+    fieldKey: BatchSlipFieldKey,
+    label: string,
+    excludeId?: number,
+  ) {
+    const query = this.batchSlipSynonymRepo
+      .createQueryBuilder('synonym')
+      .where('synonym.fieldKey = :fieldKey', { fieldKey })
+      .andWhere('LOWER(synonym.label) = LOWER(:label)', { label });
+
+    if (projectId === null) {
+      query.andWhere('synonym.projectId IS NULL');
+    } else {
+      query.andWhere('synonym.projectId = :projectId', { projectId });
+    }
+
+    if (excludeId) {
+      query.andWhere('synonym.id <> :excludeId', { excludeId });
+    }
+
+    const duplicate = await query.getOne();
+    if (duplicate) {
+      throw new BadRequestException(
+        'This label already exists for the selected field and scope.',
+      );
+    }
+  }
+
+  async getBatchSlipConfig(projectId?: number | string | null) {
+    const parsedProjectId = this.parseOptionalProjectId(projectId);
+    await this.validateProjectExists(parsedProjectId);
+
+    const query = this.batchSlipSynonymRepo
+      .createQueryBuilder('synonym')
+      .where('synonym.isActive = true');
+
+    if (parsedProjectId === null) {
+      query.andWhere('synonym.projectId IS NULL');
+    } else {
+      query.andWhere(
+        '(synonym.projectId IS NULL OR synonym.projectId = :projectId)',
+        { projectId: parsedProjectId },
+      );
+    }
+
+    const rows = await query
+      .orderBy('synonym.fieldKey', 'ASC')
+      .addOrderBy('synonym.projectId', 'ASC', 'NULLS FIRST')
+      .addOrderBy('synonym.label', 'ASC')
+      .getMany();
+
+    const grouped: Record<string, string[]> = {};
+    const seenByField = new Map<string, Set<string>>();
+    rows.forEach((row) => {
+      const seen = seenByField.get(row.fieldKey) ?? new Set<string>();
+      const label = row.label.trim();
+      const dedupeKey = label.toLowerCase();
+      if (seen.has(dedupeKey)) return;
+
+      grouped[row.fieldKey] = grouped[row.fieldKey] ?? [];
+      grouped[row.fieldKey].push(label);
+      seen.add(dedupeKey);
+      seenByField.set(row.fieldKey, seen);
+    });
+
+    return grouped;
+  }
+
+  async listBatchSlipSynonyms(projectId?: number | string | null) {
+    const parsedProjectId = this.parseOptionalProjectId(projectId);
+    await this.validateProjectExists(parsedProjectId);
+
+    const query = this.batchSlipSynonymRepo.createQueryBuilder('synonym');
+    if (parsedProjectId !== null) {
+      query.where(
+        '(synonym.projectId IS NULL OR synonym.projectId = :projectId)',
+        { projectId: parsedProjectId },
+      );
+    }
+
+    return query
+      .orderBy('synonym.fieldKey', 'ASC')
+      .addOrderBy('synonym.projectId', 'ASC', 'NULLS FIRST')
+      .addOrderBy('synonym.label', 'ASC')
+      .getMany();
+  }
+
+  async createBatchSlipSynonym(data: any, createdByUserId?: number | null) {
+    const projectId = this.parseOptionalProjectId(data?.projectId);
+    const fieldKey = this.validateBatchSlipFieldKey(String(data?.fieldKey ?? ''));
+    const label = this.normalizeBatchSlipLabel(data?.label);
+    await this.validateProjectExists(projectId);
+    await this.assertBatchSlipSynonymUnique(projectId, fieldKey, label);
+
+    const synonym = this.batchSlipSynonymRepo.create({
+      projectId,
+      fieldKey,
+      label,
+      isActive: data?.isActive === undefined ? true : Boolean(data.isActive),
+      createdByUserId: createdByUserId ?? null,
+    });
+    return this.batchSlipSynonymRepo.save(synonym);
+  }
+
+  async updateBatchSlipSynonym(id: number, data: any) {
+    const synonym = await this.batchSlipSynonymRepo.findOne({ where: { id } });
+    if (!synonym) {
+      throw new NotFoundException('Batch slip synonym not found.');
+    }
+
+    const nextLabel =
+      data?.label === undefined
+        ? synonym.label
+        : this.normalizeBatchSlipLabel(data.label);
+    await this.assertBatchSlipSynonymUnique(
+      synonym.projectId,
+      synonym.fieldKey,
+      nextLabel,
+      synonym.id,
+    );
+
+    synonym.label = nextLabel;
+    if (data?.isActive !== undefined) {
+      synonym.isActive = Boolean(data.isActive);
+    }
+
+    return this.batchSlipSynonymRepo.save(synonym);
+  }
+
+  async deleteBatchSlipSynonym(id: number) {
+    const result = await this.batchSlipSynonymRepo.delete(id);
+    if (!result.affected) {
+      throw new NotFoundException('Batch slip synonym not found.');
+    }
+    return { deleted: true };
+  }
 
   async getSummary(projectId: number) {
     // Summary data for the overview dashboard

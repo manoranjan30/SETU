@@ -1,11 +1,16 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:setu_mobile/core/media/batch_slip_ocr_service.dart';
+import 'package:setu_mobile/features/quality/data/batch_slip_config_service.dart';
 import 'package:setu_mobile/features/quality/data/batch_slip_parser.dart';
 import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/pour_card_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/batch_slip_review_page.dart';
+import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/shared/utils/date_picker_util.dart';
 
 /// Full-form editor for one [PourCardEntry], opened by tapping its summary
@@ -28,6 +33,11 @@ class PourEntryDetailPage extends StatefulWidget {
   /// see the rest of the card's state.
   final double precedingCumulativeQtyM3;
 
+  /// Used to fetch the project's configured batch-slip label synonyms.
+  /// Scanning still works fine with only the built-in labels if this is
+  /// null (matches [PourCardPage.projectId]'s own nullability).
+  final int? projectId;
+
   const PourEntryDetailPage({
     super.key,
     required this.index,
@@ -36,6 +46,7 @@ class PourEntryDetailPage extends StatefulWidget {
     required this.precedingCumulativeQtyM3,
     this.isNew = false,
     this.concreteGrades = const [],
+    this.projectId,
   });
 
   @override
@@ -119,10 +130,12 @@ class _PourEntryDetailPageState extends State<PourEntryDetailPage> {
   }
 
   /// Captures a photo of the batching-plant slip, runs on-device OCR, and
-  /// fills in whatever fields the regex parser can confidently pull out —
-  /// only ever into controllers that are currently *empty*, so a scan can
-  /// never clobber something the user already typed. Everything filled
-  /// stays a normal editable text field; nothing here is final until Save.
+  /// opens [BatchSlipReviewPage] so the user can check/correct the
+  /// extraction before anything is applied. Confirmed values are then
+  /// filled in — only ever into controllers that are currently *empty*, so
+  /// a scan can never clobber something the user already typed. Everything
+  /// filled stays a normal editable text field; nothing here is final
+  /// until Save.
   Future<void> _scanBatchSlip() async {
     final photo = await ImagePicker().pickImage(
       source: ImageSource.camera,
@@ -132,41 +145,56 @@ class _PourEntryDetailPageState extends State<PourEntryDetailPage> {
 
     setState(() => _scanning = true);
     try {
+      final configuredLabels = widget.projectId == null
+          ? const <String, List<String>>{}
+          : await sl<BatchSlipConfigService>().getConfig(widget.projectId!);
+      if (!mounted) return;
+
       final text = await _ocrService.recognizeText(photo.path);
-      final extraction = parseBatchSlipText(text);
+      final extraction = parseBatchSlipText(text, configuredLabels: configuredLabels);
       if (!mounted) return;
 
       if (extraction.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Couldn't read the slip clearly — please enter details manually."),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text("Couldn't read the slip clearly — please enter details manually."),
+          action: kDebugMode ? _viewOcrTextAction(text) : null,
         ));
         return;
       }
 
+      final reviewed = await Navigator.of(context).push<Map<BatchSlipFieldKey, String>>(
+        MaterialPageRoute(
+          builder: (_) => BatchSlipReviewPage(imagePath: photo.path, extraction: extraction),
+        ),
+      );
+      if (reviewed == null || !mounted) return; // user cancelled the review
+
       var filledCount = 0;
-      void fill(TextEditingController ctrl, String? value) {
-        if (value == null || ctrl.text.trim().isNotEmpty) return;
+      void fill(TextEditingController ctrl, BatchSlipFieldKey key) {
+        final value = reviewed[key];
+        if (value == null || value.isEmpty || ctrl.text.trim().isNotEmpty) return;
         ctrl.text = value;
         filledCount++;
       }
 
-      fill(_truckNoCtrl, extraction.truckNo);
-      fill(_challanCtrl, extraction.deliveryChallanNo);
-      fill(_gradeCtrl, extraction.mixIdOrGrade);
-      fill(_qtyCtrl, extraction.quantityM3?.toString());
-      fill(_slumpCtrl, extraction.slumpMm?.toString());
-      fill(_batchStartCtrl, extraction.batchStartTime);
-      fill(_supplierNameCtrl, extraction.supplierName);
+      fill(_truckNoCtrl, BatchSlipFieldKey.truckNo);
+      fill(_challanCtrl, BatchSlipFieldKey.deliveryChallanNo);
+      fill(_gradeCtrl, BatchSlipFieldKey.mixGrade);
+      fill(_qtyCtrl, BatchSlipFieldKey.quantityM3);
+      fill(_slumpCtrl, BatchSlipFieldKey.slumpMm);
+      fill(_batchStartCtrl, BatchSlipFieldKey.batchStartTime);
+      fill(_supplierNameCtrl, BatchSlipFieldKey.supplierName);
 
       if (filledCount > 0) {
         _dirty = true;
         setState(() {}); // refresh cumulative-quantity preview + dirty state
       }
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(filledCount > 0
-            ? 'Filled $filledCount field${filledCount == 1 ? '' : 's'} from the batch slip — please review.'
-            : 'Read the slip, but every matched field was already filled in.'),
+            ? 'Filled $filledCount field${filledCount == 1 ? '' : 's'} from the batch slip.'
+            : 'Nothing to fill — every reviewed field was already set on this entry.'),
       ));
     } catch (e) {
       if (mounted) {
@@ -179,6 +207,41 @@ class _PourEntryDetailPageState extends State<PourEntryDetailPage> {
       if (mounted) setState(() => _scanning = false);
     }
   }
+
+  /// Debug-build-only escape hatch: lets whoever's testing the scan feature
+  /// on real batch slips see exactly what ML Kit recognized, so mismatches
+  /// between real slip wording and [parseBatchSlipText]'s patterns can be
+  /// reported (or copy-pasted straight into a bug report) without needing
+  /// `adb logcat` — this is the feedback loop that makes tuning the regex
+  /// possible without a backend template-mapping system.
+  SnackBarAction _viewOcrTextAction(String rawText) => SnackBarAction(
+        label: 'View OCR text',
+        onPressed: () => showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Raw OCR text (debug)'),
+            content: SingleChildScrollView(
+              child: SelectableText(
+                rawText.isEmpty ? '(nothing recognized)' : rawText,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: rawText));
+                  Navigator.of(ctx).pop();
+                },
+                child: const Text('Copy'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+      );
 
   PourCardEntry _buildDraft() {
     double? d(String s) => s.trim().isEmpty ? null : double.tryParse(s.trim());

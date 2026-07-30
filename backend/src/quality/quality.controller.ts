@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Request,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -40,6 +41,39 @@ export class QualityController {
     private readonly qualityService: QualityService,
     private readonly structureService: QualityStructureService,
   ) {}
+
+  @Get('batch-slip-config')
+  @Permissions('QUALITY.BATCH_SLIP_CONFIG.READ')
+  getBatchSlipConfig(@Query('projectId') projectId?: string) {
+    return this.qualityService.getBatchSlipConfig(projectId);
+  }
+
+  @Get('batch-slip-config/synonyms')
+  @Permissions('QUALITY.BATCH_SLIP_CONFIG.MANAGE')
+  listBatchSlipSynonyms(@Query('projectId') projectId?: string) {
+    return this.qualityService.listBatchSlipSynonyms(projectId);
+  }
+
+  @Post('batch-slip-config/synonyms')
+  @Permissions('QUALITY.BATCH_SLIP_CONFIG.MANAGE')
+  createBatchSlipSynonym(@Body() data: any, @Request() req: any) {
+    return this.qualityService.createBatchSlipSynonym(
+      data,
+      req.user?.id ?? req.user?.userId ?? null,
+    );
+  }
+
+  @Put('batch-slip-config/synonyms/:id')
+  @Permissions('QUALITY.BATCH_SLIP_CONFIG.MANAGE')
+  updateBatchSlipSynonym(@Param('id') id: number, @Body() data: any) {
+    return this.qualityService.updateBatchSlipSynonym(Number(id), data);
+  }
+
+  @Delete('batch-slip-config/synonyms/:id')
+  @Permissions('QUALITY.BATCH_SLIP_CONFIG.MANAGE')
+  deleteBatchSlipSynonym(@Param('id') id: number) {
+    return this.qualityService.deleteBatchSlipSynonym(Number(id));
+  }
 
   // ... (Existing endpoints omitted for brevity, keeping all existing methods via replace_file logic) ...
   // Wait, I cannot use "..." in replacement unless I use multi_replace or target specific chunks.

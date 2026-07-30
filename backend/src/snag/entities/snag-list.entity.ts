@@ -15,6 +15,7 @@ import { User } from '../../users/user.entity';
 import { SnagRound } from './snag-round.entity';
 
 export enum SnagListStatus {
+  READY_FOR_SNAG = 'ready_for_snag',
   SNAGGING = 'snagging',
   DESNAGGING = 'desnagging',
   RELEASED = 'released',
@@ -77,6 +78,7 @@ export class SnagList {
     name: 'overall_status',
     type: 'enum',
     enum: SnagListStatus,
+    enumName: 'snag_list_status',
     default: SnagListStatus.SNAGGING,
   })
   overallStatus: SnagListStatus;

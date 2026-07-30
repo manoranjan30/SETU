@@ -178,6 +178,7 @@ class _PourCardViewState extends State<_PourCardView> {
                         _PourCardBody(
                           card: card,
                           inspectionId: widget.inspectionId,
+                          projectId: widget.projectId,
                           concreteGrades: _grades,
                         ),
                         if (isSaving)
@@ -224,11 +225,13 @@ class _ErrorView extends StatelessWidget {
 class _PourCardBody extends StatefulWidget {
   final QualityPourCard card;
   final int inspectionId;
+  final int? projectId;
   final List<ConcreteGrade> concreteGrades;
 
   const _PourCardBody({
     required this.card,
     required this.inspectionId,
+    this.projectId,
     this.concreteGrades = const [],
   });
 
@@ -451,6 +454,7 @@ class _PourCardBodyState extends State<_PourCardBody> {
           isNew: isNew,
           concreteGrades: widget.concreteGrades,
           precedingCumulativeQtyM3: preceding,
+          projectId: widget.projectId,
         ),
       ),
     ));

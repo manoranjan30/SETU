@@ -30,6 +30,7 @@ import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_
 import 'package:setu_mobile/features/profile/presentation/bloc/profile_bloc.dart';
 import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/core/update/app_update_service.dart';
+import 'package:setu_mobile/features/quality/data/batch_slip_config_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/app.dart';
 
@@ -188,6 +189,7 @@ void initDependencies({
   sl.registerSingleton<ConnectivitySyncService>(connectivitySyncService);
   sl.registerSingleton<BackgroundDownloadService>(backgroundDownloadService);
   sl.registerSingleton<AppUpdateService>(AppUpdateService(apiClient));
+  sl.registerSingleton<BatchSlipConfigService>(BatchSlipConfigService(apiClient));
 
   // BLoCs
   // Factories ensure each feature screen starts with a clean BLoC state.

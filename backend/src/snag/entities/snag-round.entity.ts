@@ -75,6 +75,22 @@ export class SnagRound {
   @Column({ name: 'desnag_release_comments', type: 'text', nullable: true })
   desnagReleaseComments: string | null;
 
+  @Column({ name: 'final_closure_signed_at', type: 'timestamp', nullable: true })
+  finalClosureSignedAt: Date | null;
+
+  @Column({ name: 'final_closure_signed_by_id', type: 'int', nullable: true })
+  finalClosureSignedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'final_closure_signed_by_id' })
+  finalClosureSignedBy: User | null;
+
+  @Column({ name: 'final_closure_signature_data', type: 'text', nullable: true })
+  finalClosureSignatureData: string | null;
+
+  @Column({ name: 'final_closure_remarks', type: 'text', nullable: true })
+  finalClosureRemarks: string | null;
+
   @Column({ name: 'is_skipped', type: 'boolean', default: false })
   isSkipped: boolean;
 

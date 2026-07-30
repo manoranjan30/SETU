@@ -1,6 +1,8 @@
 import api from "../api/axios";
 
 export type SnagOverallStatus =
+  | "unready"
+  | "ready_for_snag"
   | "snagging"
   | "desnagging"
   | "released"
@@ -60,6 +62,7 @@ export interface SnagListDetail {
     name: string;
     rooms: Array<{ id: number; name: string; roomType?: string | null }>;
   };
+  processSteps?: SnagProcessStepConfig[];
   rounds: SnagRoundDetail[];
 }
 
@@ -77,6 +80,9 @@ export interface SnagRoundDetail {
     | "approval_pending"
     | "approved"
     | "rejected";
+  finalClosureSignedAt?: string | null;
+  finalClosureSignedById?: number | null;
+  finalClosureRemarks?: string | null;
   items: SnagItemDetail[];
   approvals?: SnagApproval[];
 }
@@ -93,6 +99,10 @@ export interface SnagItemDetail {
   holdReason: string | null;
   rectificationNotes?: string | null;
   closureRemarks?: string | null;
+  notSatisfactoryCount?: number;
+  lastNotSatisfactoryRemarks?: string | null;
+  lastNotSatisfactoryAt?: string | null;
+  lastNotSatisfactoryById?: number | null;
   beforePhotos: SnagPhoto[];
   afterPhotos: SnagPhoto[];
   closurePhotos: SnagPhoto[];
@@ -114,15 +124,188 @@ export interface SnagApproval {
   }>;
 }
 
+export interface SnagCommonPointConfig {
+  id: number;
+  projectId: number;
+  processActivityId: number;
+  activityId: number;
+  title: string;
+  description: string | null;
+  severity: string;
+  requiresEvidence: boolean;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface SnagProcessActivityConfig {
+  id: number;
+  projectId: number;
+  processStepId: number;
+  activityId: number;
+  sortOrder: number;
+  isActive: boolean;
+  activity?: {
+    id: number;
+    activityName?: string | null;
+    name?: string | null;
+    activityCode?: string | null;
+  };
+  commonPoints?: SnagCommonPointConfig[];
+}
+
+export interface SnagProcessStepConfig {
+  id?: number;
+  projectId: number;
+  name: string;
+  description: string | null;
+  workflowSerialNo: number;
+  isActive: boolean;
+  raisePhotoRequired?: boolean;
+  rectificationPhotoRequired?: boolean;
+  desnagCompletionPhotoRequired?: boolean;
+  activities?: SnagProcessActivityConfig[];
+}
+
+export interface SnagAnalyticsRow {
+  label: string;
+  count: number;
+}
+
+export interface SnagAnalytics {
+  summary: {
+    totalUnits: number;
+    notReadyUnits: number;
+    readyUnits: number;
+    snaggingUnits: number;
+    desnaggingUnits: number;
+    customerInspectionReadyUnits: number;
+    totalSnagPoints: number;
+    openSnagPoints: number;
+    rectifiedPendingDesnag: number;
+    closedSnagPoints: number;
+    notSatisfactoryPoints: number;
+    averageOpenAgeDays: number;
+  };
+  byStatus: SnagAnalyticsRow[];
+  byProcessStep: SnagAnalyticsRow[];
+  byTower: SnagAnalyticsRow[];
+  byFloor: SnagAnalyticsRow[];
+  byRoom: SnagAnalyticsRow[];
+  byActivity: SnagAnalyticsRow[];
+  byPriority: SnagAnalyticsRow[];
+  agingBuckets: SnagAnalyticsRow[];
+  recurringSnags: SnagAnalyticsRow[];
+  blockedUnits: Array<{
+    listId: number;
+    unitLabel: string;
+    currentRound: number;
+    status: SnagOverallStatus;
+  }>;
+}
+
 export const snagService = {
+  listProcessSteps: async (projectId: number): Promise<SnagProcessStepConfig[]> =>
+    (await api.get(`/snag/${projectId}/config/process-steps`)).data,
+
+  saveProcessStep: async (
+    projectId: number,
+    body: {
+      name: string;
+      description?: string | null;
+      workflowSerialNo: number;
+      isActive?: boolean;
+      raisePhotoRequired?: boolean;
+      rectificationPhotoRequired?: boolean;
+      desnagCompletionPhotoRequired?: boolean;
+    },
+    stepId?: number,
+  ): Promise<SnagProcessStepConfig[]> =>
+    stepId
+      ? (await api.post(`/snag/${projectId}/config/process-steps/${stepId}`, body))
+          .data
+      : (await api.post(`/snag/${projectId}/config/process-steps`, body)).data,
+
+  deleteProcessStep: async (
+    projectId: number,
+    stepId: number,
+  ): Promise<SnagProcessStepConfig[]> =>
+    (await api.delete(`/snag/${projectId}/config/process-steps/${stepId}`)).data,
+
+  addProcessActivity: async (
+    projectId: number,
+    body: { processStepId: number; activityId: number; sortOrder?: number },
+  ): Promise<SnagProcessStepConfig[]> =>
+    (await api.post(`/snag/${projectId}/config/activity-map`, body)).data,
+
+  moveProcessActivity: async (
+    projectId: number,
+    mappingId: number,
+    body: { processStepId: number; sortOrder?: number },
+  ): Promise<SnagProcessStepConfig[]> =>
+    (
+      await api.post(
+        `/snag/${projectId}/config/activity-map/${mappingId}/move`,
+        body,
+      )
+    ).data,
+
+  deleteProcessActivity: async (
+    projectId: number,
+    mappingId: number,
+  ): Promise<SnagProcessStepConfig[]> =>
+    (await api.delete(`/snag/${projectId}/config/activity-map/${mappingId}`)).data,
+
+  saveCommonPoint: async (
+    projectId: number,
+    mappingId: number,
+    body: {
+      title: string;
+      description?: string | null;
+      severity?: string;
+      requiresEvidence?: boolean;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+    pointId?: number,
+  ): Promise<SnagProcessStepConfig[]> =>
+    pointId
+      ? (
+          await api.post(
+            `/snag/${projectId}/config/activity-map/${mappingId}/common-points/${pointId}`,
+            body,
+          )
+        ).data
+      : (
+          await api.post(
+            `/snag/${projectId}/config/activity-map/${mappingId}/common-points`,
+            body,
+          )
+        ).data,
+
+  deleteCommonPoint: async (
+    projectId: number,
+    pointId: number,
+  ): Promise<SnagProcessStepConfig[]> =>
+    (await api.delete(`/snag/${projectId}/config/common-points/${pointId}`))
+      .data,
+
   listUnits: async (projectId: number): Promise<SnagUnitSummary[]> =>
     (await api.get(`/snag/${projectId}/units`)).data,
+
+  getAnalytics: async (projectId: number): Promise<SnagAnalytics> =>
+    (await api.get(`/snag/${projectId}/analytics`)).data,
 
   createOrGetList: async (
     projectId: number,
     body: { qualityUnitId: number; epsNodeId?: number | null },
   ): Promise<SnagListDetail> =>
     (await api.post(`/snag/${projectId}/lists`, body)).data,
+
+  resetReady: async (
+    projectId: number,
+    listId: number,
+  ): Promise<{ reset: boolean }> =>
+    (await api.post(`/snag/${projectId}/lists/${listId}/reset-ready`, {})).data,
 
   getList: async (
     projectId: number,
@@ -161,7 +344,7 @@ export const snagService = {
       defectDescription?: string;
       trade?: string;
       priority?: string;
-      beforePhotoUrls: string[];
+      beforePhotoUrls?: string[];
       linkedChecklistItemId?: string;
     },
   ): Promise<SnagListDetail> =>
@@ -178,7 +361,7 @@ export const snagService = {
     roundNumber: number,
     body: {
       itemIds: number[];
-      afterPhotoUrls: string[];
+      afterPhotoUrls?: string[];
       rectificationNotes?: string;
     },
   ): Promise<SnagListDetail> =>
@@ -209,7 +392,7 @@ export const snagService = {
   rectifyItem: async (
     projectId: number,
     itemId: number,
-    body: { afterPhotoUrls: string[]; rectificationNotes?: string },
+    body: { afterPhotoUrls?: string[]; rectificationNotes?: string },
   ): Promise<SnagListDetail> =>
     (await api.post(`/snag/${projectId}/items/${itemId}/rectify`, body)).data,
 
@@ -219,6 +402,18 @@ export const snagService = {
     body: { remarks?: string; closurePhotoUrls: string[] },
   ): Promise<SnagListDetail> =>
     (await api.post(`/snag/${projectId}/items/${itemId}/close`, body)).data,
+
+  rejectRectification: async (
+    projectId: number,
+    itemId: number,
+    body: { remarks?: string },
+  ): Promise<SnagListDetail> =>
+    (
+      await api.post(
+        `/snag/${projectId}/items/${itemId}/reject-rectification`,
+        body,
+      )
+    ).data,
 
   holdItem: async (
     projectId: number,
@@ -251,6 +446,26 @@ export const snagService = {
       await api.post(`/snag/${projectId}/rounds/${roundId}/submit-release`, {
         comments,
       })
+    ).data,
+
+  finalClosure: async (
+    projectId: number,
+    roundId: number,
+    body: { remarks?: string; signatureData?: string },
+  ): Promise<SnagListDetail> =>
+    (await api.post(`/snag/${projectId}/rounds/${roundId}/final-closure`, body))
+      .data,
+
+  downloadStatusReport: async (
+    projectId: number,
+    listId: number,
+    roundNumber: number,
+  ): Promise<Blob> =>
+    (
+      await api.get(
+        `/snag/${projectId}/lists/${listId}/rounds/${roundNumber}/status-report.pdf`,
+        { responseType: "blob" },
+      )
     ).data,
 
   skipRound: async (

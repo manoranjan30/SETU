@@ -228,6 +228,10 @@ import { SnagItem } from './snag/entities/snag-item.entity';
 import { SnagPhoto } from './snag/entities/snag-photo.entity';
 import { SnagReleaseApproval } from './snag/entities/snag-release-approval.entity';
 import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-step.entity';
+import { SnagProcessStep } from './snag/entities/snag-process-step.entity';
+import { SnagProcessActivity } from './snag/entities/snag-process-activity.entity';
+import { SnagCommonPoint } from './snag/entities/snag-common-point.entity';
+import { QualityBatchSlipFieldSynonym } from './quality/entities/quality-batch-slip-field-synonym.entity';
 // AI Insights
 import { AiInsightsModule } from './ai-insights/ai-insights.module';
 import { SyncModule } from './sync/sync.module';
@@ -340,6 +344,7 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         QualityMaterialApprovalStep,
         QualityCubeTestRegister,
         QualityConcreteGrade,
+        QualityBatchSlipFieldSynonym,
         QualitySignatureQrSession,
         QualityInspectionAttachment,
         QualityObservationNcr,
@@ -443,6 +448,9 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         SnagPhoto,
         SnagReleaseApproval,
         SnagReleaseApprovalStep,
+        SnagProcessStep,
+        SnagProcessActivity,
+        SnagCommonPoint,
         // AI Insights
         AiModelConfig,
         InsightTemplate,

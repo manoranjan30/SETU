@@ -677,7 +677,12 @@ class SyncService {
               t.entityType.equals('ehs_site_obs_create') |
               t.entityType.equals('ehs_site_obs_rectify') |
               t.entityType.equals('ehs_site_obs_close') |
-              t.entityType.equals('clearance_attachment_upload'))
+              t.entityType.equals('clearance_attachment_upload') |
+              t.entityType.equals('snag_item_raise') |
+              t.entityType.equals('snag_item_rectify') |
+              t.entityType.equals('snag_item_bulk_rectify') |
+              t.entityType.equals('snag_item_close') |
+              t.entityType.equals('snag_item_bulk_close'))
           ..orderBy([
             (t) => OrderingTerm.desc(t.priority),  // Highest priority first
             (t) => OrderingTerm.asc(t.createdAt),  // FIFO within same priority
@@ -887,6 +892,75 @@ class SyncService {
             await _apiClient.closeEhsSiteObs(
               id: payload['id'] as String,
               closureNotes: payload['closureNotes'] as String?,
+            );
+            break;
+
+          case 'snag_item_raise':
+            // Upload local before-photos then raise the snag point.
+            final rBeforePhotos = await _resolvePhotos(
+                (payload['beforePhotoUrls'] as List?) ?? []);
+            await _apiClient.addSnagItem(
+              payload['projectId'] as int,
+              payload['listId'] as int,
+              payload['roundNumber'] as int,
+              qualityRoomId: payload['qualityRoomId'] as int?,
+              roomLabel: payload['roomLabel'] as String?,
+              defectTitle: payload['defectTitle'] as String,
+              defectDescription: payload['defectDescription'] as String?,
+              trade: payload['trade'] as String?,
+              priority: payload['priority'] as String? ?? 'medium',
+              linkedChecklistItemId: payload['linkedChecklistItemId'] as String?,
+              beforePhotoUrls: rBeforePhotos,
+            );
+            break;
+
+          case 'snag_item_rectify':
+            // Upload local after-photos then submit the rectification.
+            final rAfterPhotos = await _resolvePhotos(
+                (payload['afterPhotoUrls'] as List?) ?? []);
+            await _apiClient.rectifySnagItem(
+              payload['projectId'] as int,
+              payload['itemId'] as int,
+              afterPhotoUrls: rAfterPhotos,
+              rectificationNotes: payload['rectificationNotes'] as String?,
+            );
+            break;
+
+          case 'snag_item_bulk_rectify':
+            final rBulkAfterPhotos = await _resolvePhotos(
+                (payload['afterPhotoUrls'] as List?) ?? []);
+            await _apiClient.bulkRectifySnagItems(
+              payload['projectId'] as int,
+              payload['listId'] as int,
+              payload['roundNumber'] as int,
+              itemIds: (payload['itemIds'] as List).cast<int>(),
+              afterPhotoUrls: rBulkAfterPhotos,
+              rectificationNotes: payload['rectificationNotes'] as String?,
+            );
+            break;
+
+          case 'snag_item_close':
+            // Upload local closure photos (if any) then close the item.
+            final rClosurePhotos = await _resolvePhotos(
+                (payload['closurePhotoUrls'] as List?) ?? []);
+            await _apiClient.closeSnagItem(
+              payload['projectId'] as int,
+              payload['itemId'] as int,
+              remarks: payload['remarks'] as String?,
+              closurePhotoUrls: rClosurePhotos.isEmpty ? null : rClosurePhotos,
+            );
+            break;
+
+          case 'snag_item_bulk_close':
+            final rBulkClosurePhotos = await _resolvePhotos(
+                (payload['closurePhotoUrls'] as List?) ?? []);
+            await _apiClient.bulkCloseSnagItems(
+              payload['projectId'] as int,
+              payload['listId'] as int,
+              payload['roundNumber'] as int,
+              itemIds: (payload['itemIds'] as List).cast<int>(),
+              remarks: payload['remarks'] as String?,
+              closurePhotoUrls: rBulkClosurePhotos.isEmpty ? null : rBulkClosurePhotos,
             );
             break;
 

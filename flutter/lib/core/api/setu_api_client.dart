@@ -1972,6 +1972,16 @@ class SetuApiClient {
     return [];
   }
 
+  /// Resolved batch-slip label-synonym dictionary for [projectId], e.g.
+  /// `{"TRUCK_NO": ["Truck No", "Vehicle No"], ...}`. Empty map if nothing
+  /// has been configured — the on-device parser's built-in labels still
+  /// work fine on their own.
+  Future<Map<String, dynamic>> getBatchSlipConfig(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.batchSlipConfig(projectId));
+    final data = response.data;
+    return data is Map<String, dynamic> ? data : {};
+  }
+
   // ==================== CUBE TEST REGISTER ====================
 
   Future<List<Map<String, dynamic>>> getCubeTestRegister(int projectId) async {
@@ -2017,6 +2027,245 @@ class SetuApiClient {
 
   Future<void> deleteSnag(int snagId) async {
     await _dio.delete(ApiEndpoints.deleteSnag(snagId));
+  }
+
+  // ==================== SNAG / DESNAG (process-driven module) ====================
+
+  Future<List<dynamic>> getSnagProcessSteps(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.snagProcessSteps(projectId));
+    final data = response.data;
+    return data is List ? data : [];
+  }
+
+  Future<List<dynamic>> getSnagUnits(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.snagUnits(projectId));
+    final data = response.data;
+    return data is List ? data : [];
+  }
+
+  Future<Map<String, dynamic>> createOrGetSnagList(
+    int projectId, {
+    required int qualityUnitId,
+    int? epsNodeId,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagLists(projectId),
+      data: {
+        'qualityUnitId': qualityUnitId,
+        if (epsNodeId != null) 'epsNodeId': epsNodeId,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getSnagListDetail(int projectId, int listId) async {
+    final response = await _dio.get(ApiEndpoints.snagListDetail(projectId, listId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Raises a new snag point. [beforePhotoUrls] must be non-empty — the
+  /// backend rejects the request with 400 otherwise (photos are mandatory
+  /// when raising a snag, not optional).
+  Future<Map<String, dynamic>> addSnagItem(
+    int projectId,
+    int listId,
+    int roundNumber, {
+    int? qualityRoomId,
+    String? roomLabel,
+    required String defectTitle,
+    String? defectDescription,
+    String? trade,
+    String priority = 'medium',
+    String? linkedChecklistItemId,
+    required List<String> beforePhotoUrls,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagItems(projectId, listId, roundNumber),
+      data: {
+        if (qualityRoomId != null) 'qualityRoomId': qualityRoomId,
+        if (roomLabel != null) 'roomLabel': roomLabel,
+        'defectTitle': defectTitle,
+        if (defectDescription != null) 'defectDescription': defectDescription,
+        if (trade != null) 'trade': trade,
+        'priority': priority,
+        if (linkedChecklistItemId != null) 'linkedChecklistItemId': linkedChecklistItemId,
+        'beforePhotoUrls': beforePhotoUrls,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> rectifySnagItem(
+    int projectId,
+    int itemId, {
+    required List<String> afterPhotoUrls,
+    String? rectificationNotes,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagItemRectify(projectId, itemId),
+      data: {
+        'afterPhotoUrls': afterPhotoUrls,
+        if (rectificationNotes != null) 'rectificationNotes': rectificationNotes,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> bulkRectifySnagItems(
+    int projectId,
+    int listId,
+    int roundNumber, {
+    required List<int> itemIds,
+    required List<String> afterPhotoUrls,
+    String? rectificationNotes,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagBulkRectify(projectId, listId, roundNumber),
+      data: {
+        'itemIds': itemIds,
+        'afterPhotoUrls': afterPhotoUrls,
+        if (rectificationNotes != null) 'rectificationNotes': rectificationNotes,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> closeSnagItem(
+    int projectId,
+    int itemId, {
+    String? remarks,
+    List<String>? closurePhotoUrls,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagItemClose(projectId, itemId),
+      data: {
+        if (remarks != null) 'remarks': remarks,
+        if (closurePhotoUrls != null) 'closurePhotoUrls': closurePhotoUrls,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> bulkCloseSnagItems(
+    int projectId,
+    int listId,
+    int roundNumber, {
+    required List<int> itemIds,
+    String? remarks,
+    List<String>? closurePhotoUrls,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagBulkClose(projectId, listId, roundNumber),
+      data: {
+        'itemIds': itemIds,
+        if (remarks != null) 'remarks': remarks,
+        if (closurePhotoUrls != null) 'closurePhotoUrls': closurePhotoUrls,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> holdSnagItem(
+    int projectId,
+    int itemId, {
+    required String holdReason,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagItemHold(projectId, itemId),
+      data: {'holdReason': holdReason},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteSnagItem(int projectId, int itemId) async {
+    await _dio.delete(ApiEndpoints.snagItemDelete(projectId, itemId));
+  }
+
+  Future<Map<String, dynamic>> submitSnagPhase(
+    int projectId,
+    int roundId, {
+    String? comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagSubmitSnagPhase(projectId, roundId),
+      data: {if (comments != null) 'comments': comments},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> submitDesnagRelease(
+    int projectId,
+    int roundId, {
+    String? comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagSubmitRelease(projectId, roundId),
+      data: {if (comments != null) 'comments': comments},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// [action] is `'APPROVE'` or `'REJECT'`.
+  Future<Map<String, dynamic>> advanceSnagApproval(
+    int projectId,
+    int approvalId, {
+    required String action,
+    String? comments,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagAdvanceApproval(projectId, approvalId),
+      data: {'action': action, if (comments != null) 'comments': comments},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getSnagAnalytics(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.snagAnalytics(projectId));
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Checker reverts a ready-for-snag unit (with zero raised points) back
+  /// to unready — this deletes the underlying snag list row entirely, per
+  /// `snag.service.ts:resetReadyForSnag`.
+  Future<void> resetSnagReady(int projectId, int listId) async {
+    await _dio.post(ApiEndpoints.snagResetReady(projectId, listId));
+  }
+
+  Future<Map<String, dynamic>> rejectSnagRectification(
+    int projectId,
+    int itemId, {
+    String? remarks,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagRejectRectification(projectId, itemId),
+      data: {if (remarks != null) 'remarks': remarks},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> finalCloseSnagRound(
+    int projectId,
+    int roundId, {
+    String? remarks,
+    String? signatureData,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagFinalClosure(projectId, roundId),
+      data: {
+        if (remarks != null) 'remarks': remarks,
+        if (signatureData != null) 'signatureData': signatureData,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> downloadSnagStatusReportPdf(
+    int projectId,
+    int listId,
+    int roundNumber,
+    String savePath,
+  ) async {
+    await _dio.download(ApiEndpoints.snagStatusReportPdf(projectId, listId, roundNumber), savePath);
   }
 
   // ==================== EHS DASHBOARD ====================

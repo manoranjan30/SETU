@@ -152,6 +152,33 @@ export interface QualityFloorStructure {
   units: QualityUnitNode[];
 }
 
+export const BatchSlipFieldKey = {
+  TRUCK_NO: "TRUCK_NO",
+  DELIVERY_CHALLAN_NO: "DELIVERY_CHALLAN_NO",
+  MIX_GRADE: "MIX_GRADE",
+  QUANTITY_M3: "QUANTITY_M3",
+  SLUMP_MM: "SLUMP_MM",
+  BATCH_START_TIME: "BATCH_START_TIME",
+  SUPPLIER_NAME: "SUPPLIER_NAME",
+} as const;
+export type BatchSlipFieldKey =
+  (typeof BatchSlipFieldKey)[keyof typeof BatchSlipFieldKey];
+
+export interface QualityBatchSlipFieldSynonym {
+  id: number;
+  projectId: number | null;
+  fieldKey: BatchSlipFieldKey;
+  label: string;
+  isActive: boolean;
+  createdByUserId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type QualityBatchSlipResolvedConfig = Partial<
+  Record<BatchSlipFieldKey, string[]>
+>;
+
 // === SEQUENCER ===
 export interface NodePositionDto {
   id: number;

@@ -360,7 +360,7 @@ export default function QualityStructureManager({ projectId }: Props) {
       <div className="w-1/3 border-r flex flex-col bg-surface-base/50">
         <div className="p-4 border-b flex justify-between items-center bg-surface-base">
           <h2 className="font-bold text-text-secondary text-sm uppercase tracking-wider">
-            Project Structure
+            Floor and Unit Structure
           </h2>
           <button
             onClick={fetchProjectTree}
@@ -372,7 +372,7 @@ export default function QualityStructureManager({ projectId }: Props) {
         <div className="p-4 overflow-y-auto flex-1">
           {loading ? (
             <p className="text-text-disabled text-sm text-center py-4">
-              Loading structure...
+              Loading floor and unit structure...
             </p>
           ) : tree ? (
             <TreeNode
@@ -410,7 +410,7 @@ export default function QualityStructureManager({ projectId }: Props) {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-text-primary">
-                  Quality Floor Builder
+                  Floor and Unit Builder
                 </h2>
                 <p className="text-sm text-text-muted mt-1">
                   {getNodeName(selectedNode)} (ID: {selectedNode.id})
@@ -608,7 +608,7 @@ export default function QualityStructureManager({ projectId }: Props) {
                   onClick={handleCopy}
                   className="mt-3 px-4 py-2 bg-secondary text-white rounded-lg text-sm font-semibold hover:bg-secondary-dark"
                 >
-                  Copy Structure
+                  Copy Floor and Unit Structure
                 </button>
               </div>
             </div>
@@ -694,7 +694,7 @@ export default function QualityStructureManager({ projectId }: Props) {
 
             <div className="border border-border-default rounded-xl p-4 bg-surface-card">
               <h3 className="font-bold text-gray-800 mb-3 text-sm uppercase tracking-wider">
-                Current Floor Structure
+                Current Floor and Unit Structure
               </h3>
               {(floorStructure?.units?.length || 0) === 0 ? (
                 <div className="text-sm text-text-disabled">

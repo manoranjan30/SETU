@@ -8,12 +8,14 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  BarChart3,
   Building2,
   Camera,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  FileText,
   Grid2X2,
   Hammer,
   Home,
@@ -21,9 +23,11 @@ import {
   Layers,
   ListChecks,
   Loader2,
+  PenLine,
   RefreshCw,
   Search,
   ShieldCheck,
+  TrendingUp,
   Trash2,
   Upload,
   X,
@@ -35,11 +39,14 @@ import { PermissionCode } from "../../config/permissions";
 import { useAuth } from "../../context/AuthContext";
 import {
   snagService,
+  type SnagAnalytics,
+  type SnagAnalyticsRow,
   type SnagApproval,
   type SnagChecklistItem,
   type SnagChecklistStatus,
   type SnagItemDetail,
   type SnagListDetail,
+  type SnagProcessStepConfig,
   type SnagRoundDetail,
   type SnagUnitSummary,
 } from "../../services/snag.service";
@@ -90,8 +97,18 @@ type DeleteItemDialogState = {
   defectTitle: string;
 };
 
+type FinalClosureDialogState = {
+  roundId: number;
+  roundNumber: number;
+  label: string;
+};
+
+type SnagView = "dashboard" | "workflow" | "final";
+
 type SnagFormState = {
   qualityRoomId: number | "";
+  processActivityId: number | "OTHER" | "";
+  commonPointId: number | "OTHER" | "";
   defectTitle: string;
   defectDescription: string;
   trade: string;
@@ -109,6 +126,8 @@ const STATUS_ORDER: Record<string, number> = {
 
 const DEFAULT_SNAG_FORM: SnagFormState = {
   qualityRoomId: "",
+  processActivityId: "",
+  commonPointId: "",
   defectTitle: "",
   defectDescription: "",
   trade: "",
@@ -123,7 +142,7 @@ const CHECKLIST_STATUSES: SnagChecklistStatus[] = [
   "NA",
 ];
 
-const MAX_SNAG_CYCLES = 3;
+const DEFAULT_SNAG_CYCLES = 3;
 
 function naturalSort(a: string, b: string) {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -141,14 +160,18 @@ function getDesnagCycleLabel(roundNumber: number) {
   return `De-snag ${roundNumber}`;
 }
 
-function getNextSnagCycleLabel(roundNumber: number) {
-  return roundNumber >= MAX_SNAG_CYCLES
-    ? "Handover"
+function getNextSnagCycleLabel(roundNumber: number, maxCycles: number) {
+  return roundNumber >= maxCycles
+    ? "Customer Inspection"
     : getSnagCycleLabel(roundNumber + 1);
 }
 
 function getWorkflowStatusLabel(status: string, currentRound: number) {
   switch (status) {
+    case "unready":
+      return "Not ready for snagging";
+    case "ready_for_snag":
+      return `Ready for ${getSnagCycleLabel(currentRound)}`;
     case "snagging":
       return `${getSnagCycleLabel(currentRound)} open`;
     case "desnagging":
@@ -156,7 +179,7 @@ function getWorkflowStatusLabel(status: string, currentRound: number) {
     case "released":
       return `Released to ${getSnagCycleLabel(currentRound)}`;
     case "handover_ready":
-      return "Released to Handover";
+      return "Ready for Customer Inspection";
     default:
       return status.replace(/_/g, " ");
   }
@@ -168,17 +191,17 @@ function getSubmitSnagActionLabel(roundNumber: number) {
   )}`;
 }
 
-function getReleaseActionLabel(roundNumber: number) {
-  return roundNumber >= MAX_SNAG_CYCLES
-    ? `Send ${getDesnagCycleLabel(roundNumber)} for Final Release to Handover`
+function getReleaseActionLabel(roundNumber: number, maxCycles: number) {
+  return roundNumber >= maxCycles
+    ? `Send ${getDesnagCycleLabel(roundNumber)} for Final Release to Customer Inspection`
     : `Send ${getDesnagCycleLabel(roundNumber)} for Release to ${getSnagCycleLabel(
         roundNumber + 1,
       )}`;
 }
 
-function getReleaseWorkflowTitle(roundNumber: number) {
-  return roundNumber >= MAX_SNAG_CYCLES
-    ? "Final Release to Handover"
+function getReleaseWorkflowTitle(roundNumber: number, maxCycles: number) {
+  return roundNumber >= maxCycles
+    ? "Final Release to Customer Inspection"
     : `${getDesnagCycleLabel(roundNumber)} Release Workflow`;
 }
 
@@ -223,6 +246,10 @@ function statusBadgeClass(status: string) {
       return "border-success/20 bg-success-muted text-success";
     case "desnagging":
       return "border-info/20 bg-info-muted text-info";
+    case "ready_for_snag":
+      return "border-primary/20 bg-primary-muted text-primary";
+    case "unready":
+      return "border-border-default bg-surface-base text-text-muted";
     case "released":
       return "border-secondary/20 bg-secondary-muted text-secondary";
     case "submitted":
@@ -250,6 +277,14 @@ function checklistStatusClass(status: SnagChecklistStatus) {
     default:
       return "border-border-default bg-surface-base text-text-muted";
   }
+}
+
+function getConfigActivityLabel(activity?: {
+  activityName?: string | null;
+  name?: string | null;
+  activityCode?: string | null;
+} | null) {
+  return activity?.activityName || activity?.name || "Activity";
 }
 
 function buildExplorer(units: SnagUnitSummary[]) {
@@ -349,10 +384,240 @@ function SectionCard({
   );
 }
 
+function MetricTile({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number | string;
+  tone?: "default" | "danger" | "warning" | "info" | "success";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "text-error"
+      : tone === "warning"
+        ? "text-warning"
+        : tone === "info"
+          ? "text-info"
+          : tone === "success"
+            ? "text-success"
+            : "text-text-primary";
+  return (
+    <div className="rounded-2xl border border-border-default bg-surface-card px-4 py-3">
+      <div className={`text-2xl font-semibold ${toneClass}`}>{value}</div>
+      <div className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function AnalysisList({
+  title,
+  rows,
+  emptyLabel = "No data",
+}: {
+  title: string;
+  rows: SnagAnalyticsRow[];
+  emptyLabel?: string;
+}) {
+  const max = Math.max(1, ...rows.map((row) => row.count));
+  return (
+    <section className="rounded-2xl border border-border-default bg-surface-card p-4">
+      <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+      <div className="mt-4 space-y-3">
+        {rows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border-default px-3 py-5 text-center text-sm text-text-muted">
+            {emptyLabel}
+          </div>
+        ) : (
+          rows.map((row) => (
+            <div key={row.label} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="truncate font-medium text-text-secondary">
+                  {row.label}
+                </span>
+                <span className="font-semibold text-text-primary">
+                  {row.count}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-surface-base">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.max(5, (row.count / max) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SnagAnalysisDashboard({
+  analytics,
+  loading,
+  error,
+  onRefresh,
+}: {
+  analytics: SnagAnalytics | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  if (loading && !analytics) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border-default px-6 py-16 text-sm text-text-muted">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading snag analysis...
+      </div>
+    );
+  }
+
+  if (error && !analytics) {
+    return (
+      <div className="rounded-2xl border border-error/25 bg-error-muted/50 px-6 py-8 text-sm text-error">
+        <div className="flex items-center gap-2 font-semibold">
+          <AlertTriangle className="h-4 w-4" />
+          Snag analysis could not load.
+        </div>
+        <p className="mt-3">{error}</p>
+        <button
+          onClick={onRefresh}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-error/30 bg-white px-3 py-2 font-medium text-error hover:bg-error-muted/40"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const summary = analytics?.summary;
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-text-primary">
+            Snag Analysis Dashboard
+          </h2>
+          <p className="text-sm text-text-muted">
+            Project-wide snag health across units, cycles, rooms, activities,
+            rejection history, and aging.
+          </p>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-xl border border-border-default px-3 py-2 text-sm text-text-secondary hover:bg-surface-base disabled:opacity-60"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Refresh
+        </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <MetricTile label="Total Units" value={summary?.totalUnits ?? 0} />
+        <MetricTile
+          label="Open Points"
+          value={summary?.openSnagPoints ?? 0}
+          tone="danger"
+        />
+        <MetricTile
+          label="Rectified Pending"
+          value={summary?.rectifiedPendingDesnag ?? 0}
+          tone="warning"
+        />
+        <MetricTile
+          label="Not Satisfactory"
+          value={summary?.notSatisfactoryPoints ?? 0}
+          tone="danger"
+        />
+        <MetricTile
+          label="Closed Points"
+          value={summary?.closedSnagPoints ?? 0}
+          tone="success"
+        />
+        <MetricTile
+          label="Avg Open Age"
+          value={`${summary?.averageOpenAgeDays ?? 0}d`}
+          tone="info"
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <AnalysisList title="Units by Status" rows={analytics?.byStatus || []} />
+        <AnalysisList
+          title="Snags by Process Step"
+          rows={analytics?.byProcessStep || []}
+        />
+        <AnalysisList
+          title="Open Aging Buckets"
+          rows={analytics?.agingBuckets || []}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <AnalysisList title="Snags by Tower" rows={analytics?.byTower || []} />
+        <AnalysisList title="Snags by Room" rows={analytics?.byRoom || []} />
+        <AnalysisList
+          title="Snags by Activity"
+          rows={analytics?.byActivity || []}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <AnalysisList
+          title="Recurring Snag Points"
+          rows={analytics?.recurringSnags || []}
+          emptyLabel="No repeated snag points yet"
+        />
+        <section className="rounded-2xl border border-border-default bg-surface-card p-4">
+          <h3 className="text-sm font-semibold text-text-primary">
+            Blocked by Rejection
+          </h3>
+          <div className="mt-4 space-y-2">
+            {!analytics?.blockedUnits?.length ? (
+              <div className="rounded-xl border border-dashed border-border-default px-3 py-5 text-center text-sm text-text-muted">
+                No rejected rectification loops.
+              </div>
+            ) : (
+              analytics.blockedUnits.map((unit) => (
+                <div
+                  key={unit.listId}
+                  className="rounded-xl border border-warning/20 bg-warning-muted/30 px-3 py-3"
+                >
+                  <div className="font-medium text-text-primary">
+                    {unit.unitLabel}
+                  </div>
+                  <div className="mt-1 text-xs text-warning">
+                    Snag {unit.currentRound} / {unit.status.replace(/_/g, " ")}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function SnagManagementPage() {
   const { projectId } = useParams();
   const { user } = useAuth();
   const pId = Number(projectId);
+  const canReadSnag = Boolean(
+    user &&
+      (user.roles.includes("Admin") ||
+        user.permissions.includes(PermissionCode.QUALITY_SNAG_READ)),
+  );
   const canApproveSnagRelease = Boolean(
     user &&
       (user.roles.includes("Admin") ||
@@ -365,6 +630,11 @@ export default function SnagManagementPage() {
   );
 
   const [units, setUnits] = useState<SnagUnitSummary[]>([]);
+  const [analytics, setAnalytics] = useState<SnagAnalytics | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [activeView, setActiveView] = useState<SnagView>("dashboard");
+  const [processSteps, setProcessSteps] = useState<SnagProcessStepConfig[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -376,6 +646,7 @@ export default function SnagManagementPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [roundNumber, setRoundNumber] = useState(1);
   const [unitModalOpen, setUnitModalOpen] = useState(false);
+  const [raiseSnagDialogOpen, setRaiseSnagDialogOpen] = useState(false);
 
   const [snagForm, setSnagForm] = useState<SnagFormState>(DEFAULT_SNAG_FORM);
   const [checklistDraft, setChecklistDraft] = useState<SnagChecklistItem[]>([]);
@@ -395,15 +666,22 @@ export default function SnagManagementPage() {
   const [resetRoundReason, setResetRoundReason] = useState("");
   const [deleteItemDialog, setDeleteItemDialog] =
     useState<DeleteItemDialogState | null>(null);
+  const [finalClosureDialog, setFinalClosureDialog] =
+    useState<FinalClosureDialogState | null>(null);
+  const [finalClosureRemarks, setFinalClosureRemarks] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadUnits = useCallback(async () => {
-    if (!pId) return;
+    if (!pId || !canReadSnag) return;
     setLoadingUnits(true);
     try {
-      const data = await snagService.listUnits(pId);
+      const [data, configuredSteps] = await Promise.all([
+        snagService.listUnits(pId),
+        snagService.listProcessSteps(pId).catch(() => []),
+      ]);
       setUnitsError(null);
       setUnits(data);
+      setProcessSteps(configuredSteps);
       setExpandedKeys((current) => {
         if (current.size > 0) return current;
         const next = new Set<string>();
@@ -427,7 +705,29 @@ export default function SnagManagementPage() {
     } finally {
       setLoadingUnits(false);
     }
-  }, [pId]);
+  }, [canReadSnag, pId]);
+
+  const loadAnalytics = useCallback(async () => {
+    if (!pId || !canReadSnag) return;
+    setLoadingAnalytics(true);
+    try {
+      const data = await snagService.getAnalytics(pId);
+      setAnalytics(data);
+      setAnalyticsError(null);
+    } catch (error) {
+      console.error(error);
+      setAnalyticsError(
+        getErrorMessage(error, "Unable to load snag analysis right now."),
+      );
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, [canReadSnag, pId]);
+
+  const configuredCycleCount = processSteps.filter(
+    (step) => step.isActive !== false,
+  ).length;
+  const maxSnagCycles = configuredCycleCount || DEFAULT_SNAG_CYCLES;
 
   const loadDetail = useCallback(async (listId: number) => {
     if (!pId) return;
@@ -437,8 +737,10 @@ export default function SnagManagementPage() {
   }, [pId]);
 
   useEffect(() => {
+    if (!canReadSnag) return;
     void loadUnits();
-  }, [loadUnits]);
+    void loadAnalytics();
+  }, [canReadSnag, loadAnalytics, loadUnits]);
 
   useEffect(() => {
     setChecklistDraft(detail?.commonChecklist || []);
@@ -481,6 +783,27 @@ export default function SnagManagementPage() {
     () => detail?.rounds?.find((round) => round.roundNumber === roundNumber),
     [detail, roundNumber],
   );
+  const canRaiseSnagPoints = canApproveSnagRelease;
+
+  const currentProcessStep = useMemo(() => {
+    return [...processSteps]
+      .filter((step) => step.isActive !== false)
+      .sort((a, b) => a.workflowSerialNo - b.workflowSerialNo)
+      .find((step) => step.workflowSerialNo === roundNumber);
+  }, [processSteps, roundNumber]);
+
+  const currentConfiguredActivities = currentProcessStep?.activities || [];
+  const selectedConfiguredActivity = currentConfiguredActivities.find(
+    (activity) => activity.id === snagForm.processActivityId,
+  );
+  const selectedCommonPoint = selectedConfiguredActivity?.commonPoints?.find(
+    (point) => point.id === snagForm.commonPointId,
+  );
+  const raisePhotoRequired = currentProcessStep?.raisePhotoRequired ?? false;
+  const rectificationPhotoRequired =
+    currentProcessStep?.rectificationPhotoRequired ?? false;
+  const desnagCompletionPhotoRequired =
+    currentProcessStep?.desnagCompletionPhotoRequired ?? false;
 
   const currentCycleLabel = currentRound
     ? getSnagCycleLabel(currentRound.roundNumber)
@@ -489,7 +812,7 @@ export default function SnagManagementPage() {
     ? getDesnagCycleLabel(currentRound.roundNumber)
     : "De-snag";
   const nextReleaseTargetLabel = currentRound
-    ? getNextSnagCycleLabel(currentRound.roundNumber)
+    ? getNextSnagCycleLabel(currentRound.roundNumber, maxSnagCycles)
     : "next stage";
 
   const activeApproval = useMemo<SnagApproval | undefined>(
@@ -555,6 +878,8 @@ export default function SnagManagementPage() {
       !currentRound.isSkipped &&
       currentRound.snagPhaseStatus === "open",
   );
+  const canCheckerRaiseInSelectedCycle =
+    canCreateInSelectedCycle && canRaiseSnagPoints;
   const canSkipSelectedCycle = Boolean(
     currentRound &&
       canApproveSnagRelease &&
@@ -564,13 +889,23 @@ export default function SnagManagementPage() {
       currentRoundSummary.total === 0,
   );
   const canResetSelectedCycle = Boolean(currentRound && canDeleteSnag);
+  const canFinalCloseSelectedCycle = Boolean(
+    currentRound &&
+      canApproveSnagRelease &&
+      !currentRound.isSkipped &&
+      !currentRound.finalClosureSignedAt &&
+      currentRoundSummary.total > 0 &&
+      currentRoundSummary.open === 0 &&
+      currentRoundSummary.rectified === 0 &&
+      currentRoundSummary.onHold === 0,
+  );
 
   const workflowSteps = useMemo(() => {
     const roundsByNumber = new Map(
       (detail?.rounds || []).map((round) => [round.roundNumber, round]),
     );
 
-    const roundSteps = Array.from({ length: MAX_SNAG_CYCLES }, (_, index) => {
+    const roundSteps = Array.from({ length: maxSnagCycles }, (_, index) => {
       const roundNo = index + 1;
       const round = roundsByNumber.get(roundNo);
       let state: "pending" | "current" | "complete" | "skipped" = "pending";
@@ -605,10 +940,10 @@ export default function SnagManagementPage() {
 
     roundSteps.push({
       key: "handover",
-      title: "Release to Handover",
+      title: "Ready for Customer Inspection",
       subtitle:
         detail?.overallStatus === "handover_ready"
-          ? "Released"
+          ? "Ready"
           : "Pending final release",
       state:
         detail?.overallStatus === "handover_ready"
@@ -617,12 +952,17 @@ export default function SnagManagementPage() {
     });
 
     return roundSteps;
-  }, [detail]);
+  }, [detail, maxSnagCycles]);
 
   const pendingQueue = useMemo(
     () =>
       [...units]
-        .filter((unit) => unit.overallStatus !== "handover_ready")
+        .filter(
+          (unit) =>
+            unit.snagListId &&
+            unit.overallStatus !== "handover_ready" &&
+            unit.overallStatus !== "unready",
+        )
         .sort((a, b) => naturalSort(a.unitLabel, b.unitLabel))
         .slice(0, 12),
     [units],
@@ -660,18 +1000,15 @@ export default function SnagManagementPage() {
     setResetRoundDialog(null);
     setResetRoundReason("");
     setDeleteItemDialog(null);
+    setFinalClosureDialog(null);
+    setFinalClosureRemarks("");
     setSelectedUnit(unit);
     setUnitModalOpen(true);
     try {
       if (unit.snagListId) {
         await loadDetail(unit.snagListId);
       } else {
-        const data = await snagService.createOrGetList(pId, {
-          qualityUnitId: unit.qualityUnitId,
-        });
-        setDetail(data);
-        setRoundNumber(data.currentRound || 1);
-        await loadUnits();
+        setDetail(null);
       }
     } catch (error) {
       console.error(error);
@@ -679,6 +1016,7 @@ export default function SnagManagementPage() {
       setSkipDialog(null);
       setResetRoundDialog(null);
       setDeleteItemDialog(null);
+      setFinalClosureDialog(null);
       alert(
         getErrorMessage(
           error,
@@ -713,6 +1051,50 @@ export default function SnagManagementPage() {
     setSnagForm((current) => ({ ...current, ...patch }));
   };
 
+  const markUnitReady = async () => {
+    if (!selectedUnit || !pId) return;
+    setLoadingDetail(true);
+    try {
+      const data = await snagService.createOrGetList(pId, {
+        qualityUnitId: selectedUnit.qualityUnitId,
+      });
+      setDetail(data);
+      setRoundNumber(data.currentRound || 1);
+      await loadUnits();
+    } catch (error) {
+      console.error(error);
+      alert(
+        getErrorMessage(
+          error,
+          "Unable to mark this unit ready for snagging right now.",
+        ),
+      );
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const resetReady = async () => {
+    if (!detail?.id || !selectedUnit) return;
+    setBusy(true);
+    try {
+      await snagService.resetReady(pId, detail.id);
+      setDetail(null);
+      setUnitModalOpen(false);
+      await loadUnits();
+    } catch (error) {
+      console.error(error);
+      alert(getErrorMessage(error, "Unable to reset this unit to unready."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openRaiseSnagDialog = (prefill?: Partial<SnagFormState>) => {
+    setSnagForm({ ...DEFAULT_SNAG_FORM, ...prefill });
+    setRaiseSnagDialogOpen(true);
+  };
+
   const createItem = async () => {
     if (!detail?.id || !currentRound) return;
     if (!snagForm.defectTitle.trim()) {
@@ -723,8 +1105,8 @@ export default function SnagManagementPage() {
     setBusy(true);
     try {
       const beforePhotoUrls = await uploadFiles(snagForm.beforeFiles);
-      if (!beforePhotoUrls.length) {
-        alert("Before photos are required");
+      if (raisePhotoRequired && !beforePhotoUrls.length) {
+        alert("Before photos are required for this snag process step");
         return;
       }
 
@@ -740,6 +1122,7 @@ export default function SnagManagementPage() {
       });
       setDetail(data);
       setSnagForm(DEFAULT_SNAG_FORM);
+      setRaiseSnagDialogOpen(false);
       await loadUnits();
     } catch (error) {
       console.error(error);
@@ -789,7 +1172,7 @@ export default function SnagManagementPage() {
   };
 
   const prefillSnagFromChecklist = (item: SnagChecklistItem) => {
-    updateSnagForm({
+    openRaiseSnagDialog({
       qualityRoomId: item.qualityRoomId ?? "",
       defectTitle: item.title,
       trade: item.trade || "",
@@ -817,8 +1200,20 @@ export default function SnagManagementPage() {
 
   const submitEvidence = async () => {
     if (!detail?.id || !currentRound || !evidenceDialog) return;
-    if (evidenceDialog.mode === "RECTIFY" && !evidenceFiles?.length) {
-      alert("Photo evidence is required");
+    if (
+      evidenceDialog.mode === "RECTIFY" &&
+      rectificationPhotoRequired &&
+      !evidenceFiles?.length
+    ) {
+      alert("Rectification photos are required for this snag process step");
+      return;
+    }
+    if (
+      evidenceDialog.mode === "CLOSE" &&
+      desnagCompletionPhotoRequired &&
+      !evidenceFiles?.length
+    ) {
+      alert("De-snag completion photos are required for this snag process step");
       return;
     }
 
@@ -878,6 +1273,24 @@ export default function SnagManagementPage() {
     }
   };
 
+  const rejectRectification = async (item: SnagItemDetail) => {
+    const remarks = prompt("Enter not satisfactory remarks");
+    if (!remarks) return;
+    setBusy(true);
+    try {
+      const data = await snagService.rejectRectification(pId, item.id, {
+        remarks,
+      });
+      setDetail(data);
+      await loadUnits();
+    } catch (error) {
+      console.error(error);
+      alert(getErrorMessage(error, "Failed to mark rectification as not satisfactory"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitSnagPhase = async () => {
     if (!currentRound) return;
     setBusy(true);
@@ -915,7 +1328,7 @@ export default function SnagManagementPage() {
       roundId: currentRound.id,
       currentLabel: getSnagCycleLabel(currentRound.roundNumber),
       currentDesnagLabel: getDesnagCycleLabel(currentRound.roundNumber),
-      nextLabel: getNextSnagCycleLabel(currentRound.roundNumber),
+      nextLabel: getNextSnagCycleLabel(currentRound.roundNumber, maxSnagCycles),
     });
   };
 
@@ -1026,17 +1439,133 @@ export default function SnagManagementPage() {
     }
   };
 
+  const downloadStatusReport = async () => {
+    if (!detail?.id || !currentRound) return;
+    setBusy(true);
+    try {
+      const blob = await snagService.downloadStatusReport(
+        pId,
+        detail.id,
+        currentRound.roundNumber,
+      );
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${detail.unitLabel || "unit"}-snag-${currentRound.roundNumber}-status.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      alert(getErrorMessage(error, "Failed to download snag status PDF"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openFinalClosureDialog = () => {
+    if (!currentRound) return;
+    setFinalClosureRemarks("");
+    setFinalClosureDialog({
+      roundId: currentRound.id,
+      roundNumber: currentRound.roundNumber,
+      label: getSnagCycleLabel(currentRound.roundNumber),
+    });
+  };
+
+  const submitFinalClosure = async () => {
+    if (!finalClosureDialog) return;
+    setBusy(true);
+    try {
+      const data = await snagService.finalClosure(pId, finalClosureDialog.roundId, {
+        remarks: finalClosureRemarks.trim() || undefined,
+      });
+      setDetail(data);
+      setRoundNumber(data.currentRound || finalClosureDialog.roundNumber);
+      setFinalClosureDialog(null);
+      setFinalClosureRemarks("");
+      await loadUnits();
+    } catch (error) {
+      console.error(error);
+      alert(getErrorMessage(error, "Failed to sign final closure"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const canBulkRectify =
     selectedItems.selected.length > 0 &&
     selectedItems.selected.every((item) => item.status === "open");
   const canBulkClose =
+    canApproveSnagRelease &&
     selectedItems.selected.length > 0 &&
     selectedItems.selected.every((item) => item.status === "rectified");
   const hasUnitsLoadFailure = Boolean(unitsError && units.length === 0);
   const hasSearchTerm = deferredSearchQuery.trim().length > 0;
 
+  if (!canReadSnag) {
+    return (
+      <div className="rounded-2xl border border-warning/25 bg-warning-muted/40 px-6 py-8">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-1 h-5 w-5 text-warning" />
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">
+              Snag access is restricted
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-text-muted">
+              You need `QUALITY.SNAG.READ` permission to view snag dashboards,
+              unit workflows, reports, and analysis for this project.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-default bg-surface-card px-5 py-4">
+        <div>
+          <h2 className="text-xl font-semibold text-text-primary">
+            Snag / De-snag
+          </h2>
+          <p className="text-sm text-text-muted">
+            Analyse project snag health separately from unit-level execution.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-border-default bg-surface-base p-1">
+          {[
+            ["dashboard", "Analysis"],
+            ["workflow", "Unit Workflow"],
+            ["final", "Customer Inspection Ready"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveView(key as SnagView)}
+              className={`rounded-xl px-3 py-2 text-sm font-semibold ${
+                activeView === key
+                  ? "bg-primary text-white"
+                  : "text-text-secondary hover:bg-surface-card"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeView === "dashboard" && (
+        <SnagAnalysisDashboard
+          analytics={analytics}
+          loading={loadingAnalytics}
+          error={analyticsError}
+          onRefresh={() => void loadAnalytics()}
+        />
+      )}
+
+      {activeView === "workflow" && (
+        <>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <SectionCard
@@ -1073,7 +1602,7 @@ export default function SnagManagementPage() {
             </p>
           </SectionCard>
           <SectionCard
-            title="Released to Handover"
+            title="Ready for Customer Inspection"
             icon={<ShieldCheck className="h-4 w-4" />}
           >
             <div className="text-3xl font-bold text-success">
@@ -1095,12 +1624,12 @@ export default function SnagManagementPage() {
               of working from a giant unit list.
             </div>
             <div>
-              2. Use the common snag checklist to mark standard points as
-              identified, rectified, or not applicable.
+              2. Use configured activities and common snag points from the
+              Quality Activity List.
             </div>
             <div>
               3. Raise only the actual defects as snag items, then bulk
-              rectify, close, and release them with photo evidence.
+              rectify, de-snag complete, and release them with photo evidence.
             </div>
           </div>
         </SectionCard>
@@ -1324,7 +1853,7 @@ export default function SnagManagementPage() {
                                                   </div>
                                                   <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
                                                     <span>
-                                                      Checklist:{" "}
+                                                      Configured points:{" "}
                                                       {unit.commonChecklistCount}
                                                     </span>
                                                     <span>
@@ -1395,6 +1924,64 @@ export default function SnagManagementPage() {
           </SectionCard>
         </aside>
       </div>
+        </>
+      )}
+
+      {activeView === "final" && (
+        <section className="rounded-2xl border border-border-default bg-surface-card">
+          <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">
+                Customer Inspection Ready Units
+              </h2>
+              <p className="text-sm text-text-muted">
+                Units where all configured snag and de-snag cycles are finally
+                closed by checker signoff.
+              </p>
+            </div>
+            <button
+              onClick={() => void loadUnits()}
+              className="inline-flex items-center gap-2 rounded-xl border border-border-default px-3 py-2 text-sm text-text-secondary hover:bg-surface-base"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
+          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
+            {units.filter((unit) => unit.overallStatus === "handover_ready")
+              .length === 0 ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-border-default px-6 py-12 text-center text-sm text-text-muted">
+                No units have reached customer inspection readiness yet.
+              </div>
+            ) : (
+              units
+                .filter((unit) => unit.overallStatus === "handover_ready")
+                .map((unit) => (
+                  <button
+                    key={unit.qualityUnitId}
+                    onClick={() => void openUnit(unit)}
+                    className="rounded-2xl border border-success/20 bg-success-muted/30 p-4 text-left hover:border-success"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-text-primary">
+                          {unit.unitLabel}
+                        </div>
+                        <div className="mt-1 text-xs text-text-muted">
+                          {unit.towerLabel} / {unit.floorLabel}
+                        </div>
+                      </div>
+                      <ShieldCheck className="h-5 w-5 text-success" />
+                    </div>
+                    <div className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-success">
+                      Ready for Customer Inspection
+                    </div>
+                  </button>
+                ))
+            )}
+          </div>
+        </section>
+      )}
 
       {unitModalOpen && (
         <div className="fixed inset-0 z-[1000] bg-surface-base/80 backdrop-blur-sm">
@@ -1432,7 +2019,7 @@ export default function SnagManagementPage() {
                       </span>
                       {detail.overallStatus === "handover_ready" && (
                         <span className="rounded-full border border-success/20 bg-success-muted px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-success">
-                          After Release to Handover
+                          After Release to Customer Inspection
                         </span>
                       )}
                       {savingChecklist && (
@@ -1466,10 +2053,31 @@ export default function SnagManagementPage() {
                 </div>
               </div>
 
-              {loadingDetail || !detail ? (
+              {loadingDetail ? (
                 <div className="flex flex-1 items-center justify-center gap-2 text-sm text-text-muted">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading snag workspace...
+                </div>
+              ) : !detail ? (
+                <div className="flex flex-1 items-center justify-center p-6">
+                  <div className="w-full max-w-xl rounded-3xl border border-border-default bg-surface-base px-6 py-8 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-muted text-primary">
+                      <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <h3 className="mt-4 text-lg font-semibold text-text-primary">
+                      Mark Unit Ready for Snagging
+                    </h3>
+                    <p className="mt-2 text-sm text-text-muted">
+                      {selectedUnit?.unitLabel} is not yet started for snagging.
+                    </p>
+                    <button
+                      onClick={() => void markUnitReady()}
+                      disabled={busy}
+                      className="mt-5 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      Mark Ready and Start Snag 1
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -1587,28 +2195,41 @@ export default function SnagManagementPage() {
                           <div className="rounded-2xl border border-border-default bg-surface-base/70 p-3 text-xs leading-6 text-text-muted">
                             {detail.overallStatus === "handover_ready" ? (
                               <>
-                                All three snag and de-snag cycles are complete.
+                                All {maxSnagCycles} snag and de-snag cycles are complete.
                                 This unit is now after final release to handover.
                               </>
                             ) : currentRound?.isSkipped ? (
                               <>
                                 {currentCycleLabel} was skipped by an authorized
                                 user and released directly to{" "}
-                                {getNextSnagCycleLabel(currentRound.roundNumber)}.
+                                {getNextSnagCycleLabel(
+                                  currentRound.roundNumber,
+                                  maxSnagCycles,
+                                )}.
                                 {currentRound.skipReason
                                   ? ` Reason: ${currentRound.skipReason}`
                                   : ""}
                               </>
                             ) : (
                               <>
-                                Close snag items from the live list below, then
-                                send {currentDesnagLabel} for approval. After
-                                approval, this unit will be released to{" "}
+                                Maker rectifies each point, then Checker marks
+                                de-snag completed or not satisfactory. Once all
+                                points are completed, this unit moves to{" "}
                                 {nextReleaseTargetLabel}.
                               </>
                             )}
                           </div>
                           <div className="grid gap-2 pt-2">
+                            {detail.overallStatus === "ready_for_snag" &&
+                              canRaiseSnagPoints && (
+                                <button
+                                  onClick={() => void resetReady()}
+                                  disabled={busy}
+                                  className="rounded-xl border border-warning/20 px-3 py-2 text-sm text-warning hover:bg-warning-muted disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Reset Unit as Unready
+                                </button>
+                              )}
                             <button
                               onClick={() => void submitSnagPhase()}
                               disabled={
@@ -1634,8 +2255,31 @@ export default function SnagManagementPage() {
                             >
                               {getReleaseActionLabel(
                                 currentRound?.roundNumber || 1,
+                                maxSnagCycles,
                               )}
                             </button>
+                            <button
+                              onClick={openFinalClosureDialog}
+                              disabled={!canFinalCloseSelectedCycle || busy}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-success/20 px-3 py-2 text-sm font-semibold text-success hover:bg-success-muted disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <PenLine className="h-4 w-4" />
+                              Final Closure of {currentCycleLabel}
+                            </button>
+                            <button
+                              onClick={() => void downloadStatusReport()}
+                              disabled={busy || !detail?.id || !currentRound}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-border-default px-3 py-2 text-sm text-text-primary hover:bg-surface-base disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <FileText className="h-4 w-4" />
+                              Download Snag Status PDF
+                            </button>
+                            {currentRound?.finalClosureSignedAt && (
+                              <div className="rounded-xl border border-success/20 bg-success-muted/40 px-3 py-2 text-xs text-success">
+                                {currentCycleLabel} final closure signed on{" "}
+                                {currentRound.finalClosureSignedAt.slice(0, 10)}.
+                              </div>
+                            )}
                             {canApproveSnagRelease && (
                               <button
                                 onClick={openSkipDialog}
@@ -1680,7 +2324,7 @@ export default function SnagManagementPage() {
                         title={`Raise ${currentCycleLabel}`}
                         icon={<Hammer className="h-4 w-4" />}
                       >
-                        <div className="space-y-3">
+                        <div className="space-y-3 text-sm">
                           {!canCreateInSelectedCycle && (
                             <div className="rounded-xl border border-border-default bg-surface-base/70 px-3 py-3 text-xs leading-6 text-text-muted">
                               {currentCycleLabel} is not open for new defects.
@@ -1688,97 +2332,23 @@ export default function SnagManagementPage() {
                               raise fresh snag items.
                             </div>
                           )}
-                          <select
-                            value={snagForm.qualityRoomId}
-                            disabled={!canCreateInSelectedCycle}
-                            onChange={(event) =>
-                              updateSnagForm({
-                                qualityRoomId: event.target.value
-                                  ? Number(event.target.value)
-                                  : "",
-                              })
-                            }
-                            className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
-                          >
-                            <option value="">Room / area (optional)</option>
-                            {(detail.unit?.rooms || []).map((room) => (
-                              <option key={room.id} value={room.id}>
-                                {room.name}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            value={snagForm.defectTitle}
-                            disabled={!canCreateInSelectedCycle}
-                            onChange={(event) =>
-                              updateSnagForm({ defectTitle: event.target.value })
-                            }
-                            placeholder="Defect title"
-                            className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
-                          />
-                          <textarea
-                            value={snagForm.defectDescription}
-                            disabled={!canCreateInSelectedCycle}
-                            onChange={(event) =>
-                              updateSnagForm({
-                                defectDescription: event.target.value,
-                              })
-                            }
-                            rows={4}
-                            placeholder="Describe the snag or defect"
-                            className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
-                          />
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <input
-                              value={snagForm.trade}
-                              disabled={!canCreateInSelectedCycle}
-                              onChange={(event) =>
-                                updateSnagForm({ trade: event.target.value })
-                              }
-                              placeholder="Trade"
-                              className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
-                            />
-                            <select
-                              value={snagForm.priority}
-                              disabled={!canCreateInSelectedCycle}
-                              onChange={(event) =>
-                                updateSnagForm({ priority: event.target.value })
-                              }
-                              className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
-                            >
-                              <option value="low">Low</option>
-                              <option value="medium">Medium</option>
-                              <option value="high">High</option>
-                              <option value="critical">Critical</option>
-                            </select>
-                          </div>
-                          <label
-                            className={`flex items-center gap-2 rounded-xl border border-dashed border-border-default bg-surface-base px-3 py-3 text-sm ${
-                              canCreateInSelectedCycle
-                                ? "cursor-pointer text-text-secondary"
-                                : "cursor-not-allowed text-text-disabled"
-                            }`}
-                          >
-                            <Upload className="h-4 w-4" />
-                            Upload before photos
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                              disabled={!canCreateInSelectedCycle}
-                              onChange={(event) =>
-                                updateSnagForm({ beforeFiles: event.target.files })
-                              }
-                            />
-                          </label>
+                          {canCreateInSelectedCycle && !canRaiseSnagPoints && (
+                            <div className="rounded-xl border border-warning/20 bg-warning-muted/40 px-3 py-3 text-xs leading-6 text-warning">
+                              Snag points can be raised by Checker users only.
+                            </div>
+                          )}
                           <button
-                            onClick={() => void createItem()}
-                            disabled={busy || !canCreateInSelectedCycle}
+                            onClick={() => openRaiseSnagDialog()}
+                            disabled={busy || !canCheckerRaiseInSelectedCycle}
                             className="w-full rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            Add Snag Item
+                            Raise Snag Point
                           </button>
+                          <div className="rounded-xl border border-border-default bg-surface-base/70 px-3 py-3 text-xs leading-6 text-text-muted">
+                            Select room, then the configured activity and common
+                            snag point in the popup. Use Others when the defect
+                            is not part of the configured point list.
+                          </div>
                         </div>
                       </SectionCard>
 
@@ -1786,6 +2356,7 @@ export default function SnagManagementPage() {
                         <SectionCard
                           title={getReleaseWorkflowTitle(
                             currentRound?.roundNumber || 1,
+                            maxSnagCycles,
                           )}
                           icon={<ShieldCheck className="h-4 w-4" />}
                         >
@@ -1840,7 +2411,7 @@ export default function SnagManagementPage() {
 
                     <div className="space-y-4 overflow-y-auto pr-1">
                       <SectionCard
-                        title="Common Snag Checklist"
+                        title="Configured Snag Points"
                         icon={<ListChecks className="h-4 w-4" />}
                         actions={
                           <button
@@ -1854,8 +2425,9 @@ export default function SnagManagementPage() {
                         <div className="space-y-3">
                           {checklistDraft.length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-border-default px-4 py-8 text-center text-sm text-text-muted">
-                              No common snag points added yet. Add the standard
-                              handover points you want checked for every unit.
+                              No configured snag points are available for this
+                              unit. Add activities and common points in Snag /
+                              Desnag Process configuration.
                             </div>
                           ) : (
                             checklistDraft.map((item) => (
@@ -1985,13 +2557,13 @@ export default function SnagManagementPage() {
                                   openEvidenceDialog(
                                     "CLOSE",
                                     selectedItemIds,
-                                    "Bulk Close Selected Snags",
+                                    "Bulk Mark De-snag Completed",
                                   )
                                 }
                                 disabled={!canBulkClose}
                                 className="rounded-xl border border-border-default px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-base disabled:cursor-not-allowed disabled:opacity-40"
                               >
-                                Bulk Close
+                                Bulk De-snag Complete
                               </button>
                             </div>
                           ) : null
@@ -1999,11 +2571,10 @@ export default function SnagManagementPage() {
                       >
                         <div className="space-y-4">
                           <div className="rounded-2xl border border-border-default bg-surface-base/70 px-4 py-3 text-xs leading-6 text-text-muted">
-                            Rectified items can be closed here, with or without
-                            photo evidence. Once every item is Closed or On
-                            Hold,{" "}
-                            {currentDesnagLabel} can be sent for approval and
-                            then released to {nextReleaseTargetLabel}.
+                            Checker can mark rectified points as de-snag
+                            completed, or mark not satisfactory to send the
+                            point back to Maker. Once every item is completed,
+                            the unit automatically moves to {nextReleaseTargetLabel}.
                           </div>
                           <div className="rounded-2xl border border-border-default bg-surface-base/70 px-4 py-3 text-xs leading-6 text-text-muted">
                             Snag items can be permanently deleted only by users
@@ -2068,6 +2639,18 @@ export default function SnagManagementPage() {
                                           Hold: {item.holdReason}
                                         </p>
                                       )}
+                                      {Boolean(item.notSatisfactoryCount) && (
+                                        <p className="mt-1 text-xs text-warning">
+                                          Not satisfactory{" "}
+                                          {item.notSatisfactoryCount} time
+                                          {item.notSatisfactoryCount === 1
+                                            ? ""
+                                            : "s"}
+                                          {item.lastNotSatisfactoryRemarks
+                                            ? `: ${item.lastNotSatisfactoryRemarks}`
+                                            : ""}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap gap-2">
@@ -2093,19 +2676,28 @@ export default function SnagManagementPage() {
                                         </button>
                                       </>
                                     )}
-                                    {item.status === "rectified" && (
-                                      <button
-                                        onClick={() =>
-                                          openEvidenceDialog(
-                                            "CLOSE",
-                                            [item.id],
-                                            `Close ${item.defectTitle}`,
-                                          )
-                                        }
-                                        className="rounded-xl border border-border-default px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-card"
-                                      >
-                                        Close
-                                      </button>
+                                    {item.status === "rectified" &&
+                                      canApproveSnagRelease && (
+                                      <>
+                                        <button
+                                          onClick={() =>
+                                            openEvidenceDialog(
+                                              "CLOSE",
+                                              [item.id],
+                                              `Mark De-snag Completed: ${item.defectTitle}`,
+                                            )
+                                          }
+                                          className="rounded-xl border border-border-default px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-card"
+                                        >
+                                          De-snag Completed
+                                        </button>
+                                        <button
+                                          onClick={() => void rejectRectification(item)}
+                                          className="rounded-xl border border-warning/20 px-3 py-2 text-xs font-semibold text-warning hover:bg-warning-muted"
+                                        >
+                                          Not Satisfactory
+                                        </button>
+                                      </>
                                     )}
                                     {canDeleteItem(item) && (
                                       <button
@@ -2163,6 +2755,282 @@ export default function SnagManagementPage() {
         </div>
       )}
 
+      {raiseSnagDialogOpen && detail && currentRound && (
+        <div className="fixed inset-0 z-[1200] bg-surface-base/80 backdrop-blur-sm">
+          <div className="flex h-full items-center justify-center p-4">
+            <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border-default bg-surface-card shadow-2xl">
+              <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">
+                    Raise {currentCycleLabel} Point
+                  </h3>
+                  <p className="text-sm text-text-muted">
+                    {selectedUnit?.unitLabel || detail.unitLabel} /{" "}
+                    {currentProcessStep?.name || currentCycleLabel}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setRaiseSnagDialogOpen(false)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border-default text-text-secondary hover:bg-surface-base"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="space-y-4 overflow-y-auto px-5 py-5">
+                {!canCheckerRaiseInSelectedCycle && (
+                  <div className="rounded-2xl border border-warning/20 bg-warning-muted/40 px-4 py-3 text-sm text-warning">
+                    This snag cycle is not open for Checker snag entry.
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs font-medium text-text-muted">
+                    Room
+                    <select
+                      value={snagForm.qualityRoomId}
+                      disabled={!canCheckerRaiseInSelectedCycle}
+                      onChange={(event) =>
+                        updateSnagForm({
+                          qualityRoomId: event.target.value
+                            ? Number(event.target.value)
+                            : "",
+                        })
+                      }
+                      className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                    >
+                      <option value="">Common area / no room</option>
+                      {(detail.unit?.rooms || []).map((room) => (
+                        <option key={room.id} value={room.id}>
+                          {room.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1 text-xs font-medium text-text-muted">
+                    Activity
+                    <select
+                      value={snagForm.processActivityId}
+                      disabled={!canCheckerRaiseInSelectedCycle}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value === "OTHER") {
+                          updateSnagForm({
+                            processActivityId: "OTHER",
+                            commonPointId: "OTHER",
+                            defectTitle: "",
+                            defectDescription: "",
+                            trade: "Others",
+                          });
+                          return;
+                        }
+                        const activity = currentConfiguredActivities.find(
+                          (item) => String(item.id) === value,
+                        );
+                        updateSnagForm({
+                          processActivityId: value ? Number(value) : "",
+                          commonPointId: "",
+                          defectTitle: "",
+                          defectDescription: "",
+                          trade: activity
+                            ? getConfigActivityLabel(activity.activity)
+                            : "",
+                        });
+                      }}
+                      className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                    >
+                      <option value="">Select configured activity</option>
+                      {currentConfiguredActivities.map((activity) => (
+                        <option key={activity.id} value={activity.id}>
+                          {getConfigActivityLabel(activity.activity)}
+                        </option>
+                      ))}
+                      <option value="OTHER">Others</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label className="space-y-1 text-xs font-medium text-text-muted">
+                  Snag Point
+                  <select
+                    value={snagForm.commonPointId}
+                    disabled={
+                      !canCheckerRaiseInSelectedCycle ||
+                      !snagForm.processActivityId ||
+                      snagForm.processActivityId === "OTHER"
+                    }
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "OTHER") {
+                        updateSnagForm({
+                          commonPointId: "OTHER",
+                          defectTitle: "",
+                          defectDescription: "",
+                        });
+                        return;
+                      }
+                      const point = selectedConfiguredActivity?.commonPoints?.find(
+                        (item) => String(item.id) === value,
+                      );
+                      updateSnagForm({
+                        commonPointId: value ? Number(value) : "",
+                        defectTitle: point?.title || "",
+                        defectDescription: point?.description || "",
+                      });
+                    }}
+                    className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">Select predefined point</option>
+                    {(selectedConfiguredActivity?.commonPoints || []).map((point) => (
+                      <option key={point.id} value={point.id}>
+                        {point.title}
+                      </option>
+                    ))}
+                    <option value="OTHER">Others</option>
+                  </select>
+                </label>
+
+                {selectedCommonPoint?.requiresEvidence && (
+                  <div className="rounded-2xl border border-warning/20 bg-warning-muted/40 px-4 py-3 text-sm text-warning">
+                    This configured point requires photo evidence.
+                  </div>
+                )}
+
+                <input
+                  value={snagForm.defectTitle}
+                  disabled={!canCheckerRaiseInSelectedCycle}
+                  onChange={(event) =>
+                    updateSnagForm({ defectTitle: event.target.value })
+                  }
+                  placeholder="Snag point / defect title"
+                  className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+                <textarea
+                  value={snagForm.defectDescription}
+                  disabled={!canCheckerRaiseInSelectedCycle}
+                  onChange={(event) =>
+                    updateSnagForm({ defectDescription: event.target.value })
+                  }
+                  rows={4}
+                  placeholder="Description"
+                  className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    value={snagForm.trade}
+                    disabled={!canCheckerRaiseInSelectedCycle}
+                    onChange={(event) => updateSnagForm({ trade: event.target.value })}
+                    placeholder="Activity / trade"
+                    className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                  <select
+                    value={snagForm.priority}
+                    disabled={!canCheckerRaiseInSelectedCycle}
+                    onChange={(event) =>
+                      updateSnagForm({ priority: event.target.value })
+                    }
+                    className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <label
+                  className={`flex items-center gap-2 rounded-xl border border-dashed border-border-default bg-surface-base px-3 py-3 text-sm ${
+                    canCheckerRaiseInSelectedCycle
+                      ? "cursor-pointer text-text-secondary"
+                      : "cursor-not-allowed text-text-disabled"
+                  }`}
+                >
+                            <Upload className="h-4 w-4" />
+                            Upload before photos
+                            {raisePhotoRequired ? " (required)" : " (optional)"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    disabled={!canCheckerRaiseInSelectedCycle}
+                    onChange={(event) =>
+                      updateSnagForm({ beforeFiles: event.target.files })
+                    }
+                  />
+                </label>
+                <button
+                  onClick={() => void createItem()}
+                  disabled={busy || !canCheckerRaiseInSelectedCycle}
+                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Add Snag Point
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {finalClosureDialog && (
+        <div className="fixed inset-0 z-[1100] bg-surface-base/80 backdrop-blur-sm">
+          <div className="flex h-full items-center justify-center p-4">
+            <div className="w-full max-w-xl rounded-3xl border border-border-default bg-surface-card shadow-2xl">
+              <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">
+                    Final Closure of {finalClosureDialog.label}
+                  </h3>
+                  <p className="text-sm text-text-muted">
+                    Checker signoff will be printed at the bottom of the snag
+                    status PDF.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setFinalClosureDialog(null)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border-default text-text-secondary hover:bg-surface-base"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="space-y-4 px-5 py-5">
+                <div className="rounded-2xl border border-success/20 bg-success-muted/40 px-4 py-3 text-sm text-success">
+                  All snag points in this cycle are closed. Signing
+                  final closure will release the unit to the next configured
+                  snag cycle, or to customer inspection after the last cycle.
+                </div>
+                <textarea
+                  value={finalClosureRemarks}
+                  onChange={(event) => setFinalClosureRemarks(event.target.value)}
+                  rows={4}
+                  placeholder="Final closure remarks"
+                  className="w-full rounded-2xl border border-border-default bg-surface-base px-3 py-3 text-sm outline-none focus:border-primary"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setFinalClosureDialog(null)}
+                    className="rounded-xl border border-border-default px-4 py-2 text-sm text-text-secondary hover:bg-surface-base"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void submitFinalClosure()}
+                    disabled={busy}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <PenLine className="h-4 w-4" />
+                    )}
+                    Sign Final Closure
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {evidenceDialog && (
         <div className="fixed inset-0 z-[1100] bg-surface-base/80 backdrop-blur-sm">
           <div className="flex h-full items-center justify-center p-4">
@@ -2193,7 +3061,13 @@ export default function SnagManagementPage() {
                     ? "rectification"
                     : "closure"}{" "}
                   photos
-                  {evidenceDialog.mode === "CLOSE" ? " (optional)" : ""}
+                  {evidenceDialog.mode === "RECTIFY"
+                    ? rectificationPhotoRequired
+                      ? " (required)"
+                      : " (optional)"
+                    : desnagCompletionPhotoRequired
+                      ? " (required)"
+                      : " (optional)"}
                   <input
                     type="file"
                     accept="image/*"

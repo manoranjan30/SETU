@@ -19,6 +19,9 @@ import type {
   QualityMaterialTestResult,
   QualityCubeTestRegister,
   QualityConcreteGrade,
+  QualityBatchSlipFieldSynonym,
+  QualityBatchSlipResolvedConfig,
+  BatchSlipFieldKey,
   QualityInspectionAttachment,
   RelatedChecklistOption,
 } from "../types/quality";
@@ -718,6 +721,46 @@ export const qualityService = {
 
   deleteConcreteGrade: async (id: number) => {
     const res = await api.delete(`${BASE_URL}/concrete-grades/${id}`);
+    return res.data;
+  },
+
+  getBatchSlipConfig: async (
+    projectId?: number,
+  ): Promise<QualityBatchSlipResolvedConfig> => {
+    const res = await api.get(`${BASE_URL}/batch-slip-config`, {
+      params: projectId ? { projectId } : undefined,
+    });
+    return res.data;
+  },
+
+  listBatchSlipSynonyms: async (
+    projectId?: number,
+  ): Promise<QualityBatchSlipFieldSynonym[]> => {
+    const res = await api.get(`${BASE_URL}/batch-slip-config/synonyms`, {
+      params: projectId ? { projectId } : undefined,
+    });
+    return res.data;
+  },
+
+  createBatchSlipSynonym: async (data: {
+    projectId: number | null;
+    fieldKey: BatchSlipFieldKey;
+    label: string;
+  }): Promise<QualityBatchSlipFieldSynonym> => {
+    const res = await api.post(`${BASE_URL}/batch-slip-config/synonyms`, data);
+    return res.data;
+  },
+
+  updateBatchSlipSynonym: async (
+    id: number,
+    data: Partial<Pick<QualityBatchSlipFieldSynonym, "label" | "isActive">>,
+  ): Promise<QualityBatchSlipFieldSynonym> => {
+    const res = await api.put(`${BASE_URL}/batch-slip-config/synonyms/${id}`, data);
+    return res.data;
+  },
+
+  deleteBatchSlipSynonym: async (id: number) => {
+    const res = await api.delete(`${BASE_URL}/batch-slip-config/synonyms/${id}`);
     return res.data;
   },
 
