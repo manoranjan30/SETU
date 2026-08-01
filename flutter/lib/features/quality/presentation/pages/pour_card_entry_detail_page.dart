@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -157,14 +156,18 @@ class _PourEntryDetailPageState extends State<PourEntryDetailPage> {
       if (extraction.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: const Text("Couldn't read the slip clearly — please enter details manually."),
-          action: kDebugMode ? _viewOcrTextAction(text) : null,
+          // Not debug-gated — a site user needs this to tell whether the
+          // scan just failed on messy handwriting (nothing to fix) or read
+          // fine but under label wording the parser doesn't know yet
+          // (worth reporting so it can be added to the scan config).
+          action: _viewOcrTextAction(text),
         ));
         return;
       }
 
       final reviewed = await Navigator.of(context).push<Map<BatchSlipFieldKey, String>>(
         MaterialPageRoute(
-          builder: (_) => BatchSlipReviewPage(imagePath: photo.path, extraction: extraction),
+          builder: (_) => BatchSlipReviewPage(imagePath: photo.path, extraction: extraction, rawText: text),
         ),
       );
       if (reviewed == null || !mounted) return; // user cancelled the review
@@ -208,18 +211,19 @@ class _PourEntryDetailPageState extends State<PourEntryDetailPage> {
     }
   }
 
-  /// Debug-build-only escape hatch: lets whoever's testing the scan feature
-  /// on real batch slips see exactly what ML Kit recognized, so mismatches
-  /// between real slip wording and [parseBatchSlipText]'s patterns can be
-  /// reported (or copy-pasted straight into a bug report) without needing
-  /// `adb logcat` — this is the feedback loop that makes tuning the regex
-  /// possible without a backend template-mapping system.
+  /// Lets a site user (not just whoever's testing) see exactly what ML Kit
+  /// recognized when nothing matched at all, so mismatches between real
+  /// slip wording and [parseBatchSlipText]'s patterns can be reported (or
+  /// copy-pasted straight into a bug report) without needing `adb logcat` —
+  /// this is the feedback loop that makes tuning the regex possible without
+  /// a backend template-mapping system. See [BatchSlipReviewPage] for the
+  /// equivalent when *some* fields matched but one is missing or wrong.
   SnackBarAction _viewOcrTextAction(String rawText) => SnackBarAction(
         label: 'View OCR text',
         onPressed: () => showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Raw OCR text (debug)'),
+            title: const Text('Raw scanned text'),
             content: SingleChildScrollView(
               child: SelectableText(
                 rawText.isEmpty ? '(nothing recognized)' : rawText,

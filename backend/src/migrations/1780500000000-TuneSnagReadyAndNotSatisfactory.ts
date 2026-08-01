@@ -12,6 +12,9 @@ export class TuneSnagReadyAndNotSatisfactory1780500000000
         IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_list_status') THEN
           ALTER TYPE "snag_list_status" ADD VALUE IF NOT EXISTS 'ready_for_snag';
         END IF;
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'snag_list_overall_status_enum') THEN
+          ALTER TYPE "snag_list_overall_status_enum" ADD VALUE IF NOT EXISTS 'ready_for_snag';
+        END IF;
       END $$;
     `);
 

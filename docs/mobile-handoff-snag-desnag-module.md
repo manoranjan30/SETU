@@ -32,10 +32,93 @@ The web/backend process is now:
 9. If not satisfactory, Checker marks the point as rejected/not satisfactory with remarks. Backend increments `notSatisfactoryCount`, stores latest rejection remarks/date/user, and sends the point back to `open`.
 10. Maker re-rectifies rejected/open points.
 11. Once all points in that cycle are closed, Checker must press `Final Closure of Snag X`.
-12. Final closure records checker signoff details and moves the unit to the next configured snag cycle.
-13. After final closure of the last configured snag cycle, unit status becomes `handover_ready`, shown in UI as `Ready for Customer Inspection`.
+12. Final closure records checker signoff details and marks the completed cycle as released. It must not automatically start the next snag cycle.
+13. If another configured cycle exists, the unit status becomes `released`, meaning the next cycle is waiting for Maker action.
+14. Maker must explicitly press `Mark Ready and Start Snag X+1` before Checker can raise points in the next cycle.
+15. After final closure of the last configured snag cycle, unit status becomes `handover_ready`, shown in UI as `Ready for Customer Inspection`.
 
-Important: closing all items alone must not be treated as final release. The final closure button/signoff is the gate.
+Important: closing all items alone must not be treated as final release. The final closure button/signoff is the gate. Final closure is also not the gate to auto-start the next cycle; Maker readiness is a separate gate.
+
+## July 2026 Workflow Update
+
+Use this updated state behavior in the mobile app:
+
+- `POST /api/snag/:projectId/lists` is only for first-time unit readiness where no snag list exists yet.
+- `POST /api/snag/:projectId/lists/:listId/mark-current-round-ready` starts the next configured cycle after the previous cycle is finally closed or skipped and the list is in `released` status.
+- When `overallStatus = released`, show a Maker action named `Mark Ready and Start Snag N`.
+- While `overallStatus = released`, Checker must not be allowed to raise new points. Backend will reject it.
+- Once Maker marks ready, backend sets `overallStatus = ready_for_snag`, increments `currentRound`, creates/carries forward the next round, and Checker can raise points.
+- If Checker finds additional defects after all de-snag points were closed but before `finalClosureSignedAt`, mobile must still allow `Raise Snag Point` in the same round.
+- Raising an additional point before final closure reopens the current round and backend clears stale release approval state for that round. The new point then follows the normal open -> rectified -> closed flow.
+- After `finalClosureSignedAt` is present for a round, mobile must not allow new points in that round.
+- Display point timestamps from backend fields:
+  - `raisedAt`
+  - `rectifiedAt`
+  - `closedAt`
+  - `lastNotSatisfactoryAt`
+
+## Required Mobile Workflow Hierarchy
+
+The mobile Snag / De-snag screen must be process-step first, not unit-first.
+
+Top-level hierarchy:
+
+1. Show the configured `n` process steps at the top of the Snag / De-snag screen.
+2. Each process step tab/card represents one configured workflow serial number, for example:
+   - `Snag 1 / De-snag 1`
+   - `Snag 2 / De-snag 2`
+   - `Snag 3 / De-snag 3`
+   - Any other configured step name from backend configuration
+3. User taps a process step.
+4. Below the selected process step, show the project hierarchy and unit board:
+   - Blocks
+   - Towers
+   - Floors
+   - Units
+5. Each unit card must show its status for the selected process step.
+6. User taps a unit to enter the current Snag / De-snag workspace for that selected process step.
+
+Do not show the full configured step list only inside every unit as the primary navigation. A unit workspace may still show a compact progress strip, but the main navigation must start from configured process steps.
+
+## Unit Status Mapping For Selected Step
+
+Given:
+
+- `selectedRound = selected process step workflowSerialNo`
+- `unit.snagListId`
+- `unit.currentRound`
+- `unit.overallStatus`
+
+Map each unit card like this:
+
+- If `snagListId = null` and `selectedRound = 1`: show `Not ready`.
+- If `snagListId = null` and `selectedRound > 1`: show `Locked`.
+- If `overallStatus = handover_ready`: show `Ready for Customer Inspection` / completed.
+- If `unit.currentRound > selectedRound`: show `Snag N completed`.
+- If `unit.currentRound < selectedRound`:
+  - If `overallStatus = released` and `unit.currentRound + 1 = selectedRound`: show `Ready request pending for Snag N`.
+  - Otherwise show `Locked`.
+- If `unit.currentRound = selectedRound`, map `overallStatus` directly:
+  - `ready_for_snag`: `Ready for Snag N`
+  - `snagging`: `Snag N open`
+  - `desnagging`: `De-snag N active`
+  - `released`: `Snag N closed - next snag pending`
+  - `handover_ready`: `Ready for Customer Inspection`
+
+Unit actions:
+
+- `Not ready` on Snag 1: Maker can mark unit ready using `POST /api/snag/:projectId/lists`.
+- `Ready request pending for Snag N`: Maker can start next step using `POST /api/snag/:projectId/lists/:listId/mark-current-round-ready`.
+- `Ready for Snag N`, `Snag N open`, `De-snag N active`: open the unit workspace for that round.
+- `Locked`: do not allow raising snag points.
+- `Completed`: allow read-only viewing of the completed round if detail exists.
+
+Step cards at the top should show small counters:
+
+- Active: units in `ready_for_snag`, `snagging`, or `desnagging` for that selected step.
+- Waiting: units where previous round is `released` and this step is waiting for Maker readiness.
+- Done: units where this step is complete or the unit is customer-inspection ready.
+- Locked: units not yet eligible for this step.
 
 ## Navigation
 

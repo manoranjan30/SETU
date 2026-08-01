@@ -64,6 +64,7 @@ class SnagFullFinalApprovedPage extends StatelessWidget {
                         towerLabel: unit.towerLabel,
                         floorLabel: unit.floorLabel,
                         blockLabel: unit.blockLabel,
+                        snagListId: unit.snagListId,
                       ),
                     )),
                   ),

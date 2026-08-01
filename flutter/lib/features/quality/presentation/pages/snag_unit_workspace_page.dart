@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
@@ -11,6 +12,9 @@ import 'package:setu_mobile/features/quality/presentation/pages/snag_item_action
 import 'package:setu_mobile/features/quality/presentation/pages/snag_raise_flow_page.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/shared/widgets/app_snackbar.dart';
+import 'package:setu_mobile/shared/widgets/empty_state_view.dart';
+import 'package:setu_mobile/shared/widgets/loading_view.dart';
 
 /// The operational "unit workspace" — header, current round summary, the
 /// actual raised snag list with rectify/close/reject/hold actions (single
@@ -33,6 +37,13 @@ class SnagUnitWorkspacePage extends StatelessWidget {
   final String floorLabel;
   final String? blockLabel;
 
+  /// The unit's existing snag list id, if any — pass
+  /// [SnagUnitSummary.snagListId] from whichever units list navigated here.
+  /// When null, the unit hasn't started snagging yet; the workspace shows a
+  /// "Mark Ready" screen instead of auto-creating the list (see
+  /// [OpenSnagUnit]'s doc comment).
+  final int? snagListId;
+
   const SnagUnitWorkspacePage({
     super.key,
     required this.projectId,
@@ -41,13 +52,14 @@ class SnagUnitWorkspacePage extends StatelessWidget {
     required this.towerLabel,
     required this.floorLabel,
     this.blockLabel,
+    this.snagListId,
   });
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => SnagDesnagBloc(apiClient: sl<SetuApiClient>(), syncService: sl<SyncService>())
-        ..add(OpenSnagUnit(projectId, qualityUnitId)),
+        ..add(OpenSnagUnit(projectId, qualityUnitId, snagListId: snagListId)),
       child: _WorkspaceView(
         projectId: projectId,
         unitLabel: unitLabel,
@@ -113,10 +125,7 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('PDF download failed: $e'),
-          backgroundColor: Colors.red.shade700,
-        ));
+        AppSnackbar.error(context, 'PDF download failed: $e');
       }
     } finally {
       if (mounted) setState(() => _downloadingPdf = false);
@@ -174,16 +183,10 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
       body: BlocConsumer<SnagDesnagBloc, SnagDesnagState>(
         listener: (context, state) {
           if (state is SnagDesnagError) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red.shade700,
-            ));
+            AppSnackbar.error(context, state.message);
           }
           if (state is SnagActionSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.green.shade700,
-            ));
+            AppSnackbar.success(context, state.message);
             setState(() {
               _bulkMode = false;
               _selectedItemIds.clear();
@@ -198,41 +201,90 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
           final list = _listFrom(state);
           if (list == null) {
             if (state is SnagDesnagError) {
+              return EmptyStateView(icon: Icons.error_outline, message: state.message);
+            }
+            if (state is SnagUnitNotStarted) {
+              // Not [EmptyStateView] — "Mark Ready" is a primary action the
+              // user is meant to take here, not an incidental retry, so it
+              // keeps its own prominent FilledButton + icon.
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                      Icon(Icons.hourglass_empty_rounded, size: 48, color: Colors.grey.shade400),
                       const SizedBox(height: 12),
-                      Text(state.message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+                      const Text(
+                        "This unit hasn't started snagging yet.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
+                      ),
+                      if (ps.canCreateSnag) ...[
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: () => context.read<SnagDesnagBloc>().add(
+                              MarkSnagUnitReadyEvent(state.projectId, state.qualityUnitId, epsNodeId: state.epsNodeId)),
+                          icon: const Icon(Icons.playlist_add_check_rounded),
+                          label: const Text('Mark Ready for Snagging'),
+                        ),
+                      ],
                     ],
                   ),
                 ),
               );
             }
-            return const Center(child: CircularProgressIndicator());
+            return const LoadingView();
           }
 
           final round = list.activeRound;
           final step = list.processSteps.where((s) => s.workflowSerialNo == list.currentRound).firstOrNull;
           // Raising is a Checker action per the current backend contract
           // (`addItem` is gated QUALITY.SNAG.APPROVE) — not the Maker
-          // CREATE permission that opens/creates the workspace itself.
-          final canRaise = ps.canApproveSnag && round != null && round.snagPhaseStatus == SnagRoundSnagPhaseStatus.open;
+          // CREATE permission that marks the unit ready in the first place
+          // (see the SnagUnitNotStarted branch above).
+          //
+          // Matches `addItem`'s real backend gate (snag.service.ts), not
+          // just "snagPhaseStatus == open": per the July 2026 handoff, a
+          // Checker can still raise additional points after the snag phase
+          // is submitted (even after every de-snag point is closed) right
+          // up until final closure — the backend silently reopens the round
+          // when that happens. Blocked only once the round is finally
+          // closed, skipped, or the unit is `released` awaiting the Maker
+          // to start the next cycle.
+          final canRaise = ps.canApproveSnag &&
+              round != null &&
+              !round.isSkipped &&
+              !round.isFinallyClosed &&
+              list.overallStatus != SnagListStatus.released;
           final canResetReady = ps.canApproveSnag &&
               list.overallStatus == SnagListStatus.readyForSnag &&
               (round?.items.isEmpty ?? true);
+          // Maker action to open the next configured cycle once the
+          // current one is finally closed but more cycles remain — the
+          // unit sits in `released` until this is pressed. Distinct
+          // endpoint from first-time readiness; see MarkNextSnagCycleReadyEvent.
+          final canStartNextCycle = ps.canCreateSnag && list.overallStatus == SnagListStatus.released;
 
           return Stack(
             children: [
               RefreshIndicator(
-                onRefresh: () async => context.read<SnagDesnagBloc>().add(OpenSnagUnit(widget.projectId, list.qualityUnitId)),
+                onRefresh: () async => context.read<SnagDesnagBloc>().add(
+                    OpenSnagUnit(widget.projectId, list.qualityUnitId, snagListId: list.id)),
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(16, 16, 16, _bulkMode && _selectedItemIds.isNotEmpty ? 90 : 16),
                   children: [
                     _HeaderCard(list: list, step: step),
+                    if (canStartNextCycle) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => context.read<SnagDesnagBloc>().add(
+                            MarkNextSnagCycleReadyEvent(widget.projectId, list.id)),
+                        icon: const Icon(Icons.playlist_add_check_rounded),
+                        label: Text('Mark Ready and Start Snag ${list.currentRound + 1}'),
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                      ),
+                    ],
                     if (canResetReady) ...[
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
@@ -308,7 +360,13 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                 final list = _listFrom(state);
                 if (list == null) return const SizedBox.shrink();
                 final round = list.activeRound;
-                final canRaise = ps.canApproveSnag && round != null && round.snagPhaseStatus == SnagRoundSnagPhaseStatus.open;
+                // Mirrors the gate above the item list — see that comment
+                // for why this isn't just "snagPhaseStatus == open".
+                final canRaise = ps.canApproveSnag &&
+                    round != null &&
+                    !round.isSkipped &&
+                    !round.isFinallyClosed &&
+                    list.overallStatus != SnagListStatus.released;
                 if (!canRaise) return const SizedBox.shrink();
 
                 final bloc = context.read<SnagDesnagBloc>();
@@ -879,6 +937,20 @@ class _SnagItemTile extends StatelessWidget {
     SnagItemStatus.onHold => Colors.grey,
   };
 
+  /// The single most relevant timestamp for this item's current state —
+  /// prefers the latest not-satisfactory rejection (the most actionable
+  /// event) over the plain status timestamp when both are present.
+  String? get _timelineLabel {
+    const fmt = 'd MMM, HH:mm';
+    if (item.lastNotSatisfactoryAt != null) {
+      return 'Rejected ${DateFormat(fmt).format(item.lastNotSatisfactoryAt!)}';
+    }
+    if (item.closedAt != null) return 'Closed ${DateFormat(fmt).format(item.closedAt!)}';
+    if (item.rectifiedAt != null) return 'Rectified ${DateFormat(fmt).format(item.rectifiedAt!)}';
+    if (item.raisedAt != null) return 'Raised ${DateFormat(fmt).format(item.raisedAt!)}';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -896,23 +968,34 @@ class _SnagItemTile extends StatelessWidget {
                 ))
             : (bulkMode ? onToggleSelect : onTap),
         title: Text(item.defectTitle, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-        subtitle: Row(
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: Text(
-                [if (item.roomLabel != null) item.roomLabel!, if (item.trade != null) item.trade!].join(' • '),
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              ),
-            ),
-            if (item.notSatisfactoryCount > 0)
-              Container(
-                margin: const EdgeInsets.only(left: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
-                child: Text(
-                  'Rejected ${item.notSatisfactoryCount}x',
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.red.shade700),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    [if (item.roomLabel != null) item.roomLabel!, if (item.trade != null) item.trade!].join(' • '),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
                 ),
+                if (item.notSatisfactoryCount > 0)
+                  Container(
+                    margin: const EdgeInsets.only(left: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
+                    child: Text(
+                      'Rejected ${item.notSatisfactoryCount}x',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.red.shade700),
+                    ),
+                  ),
+              ],
+            ),
+            if (_timelineLabel != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(_timelineLabel!, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
               ),
           ],
         ),

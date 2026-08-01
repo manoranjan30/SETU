@@ -7,6 +7,8 @@ import 'package:setu_mobile/features/quality/presentation/bloc/snag_desnag_bloc.
 import 'package:setu_mobile/features/quality/presentation/pages/snag_full_final_approved_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/snag_unit_explorer_page.dart';
 import 'package:setu_mobile/injection_container.dart';
+import 'package:setu_mobile/shared/widgets/empty_state_view.dart';
+import 'package:setu_mobile/shared/widgets/loading_view.dart';
 
 /// Landing screen for the process-driven Snag / Desnag module
 /// (Project > Quality > Snag / Desnag). Unit-status counts and navigation
@@ -61,13 +63,13 @@ class _DashboardView extends StatelessWidget {
         buildWhen: (_, state) => state is SnagDesnagOverviewLoaded || state is SnagDesnagError || state is SnagDesnagLoading,
         builder: (overviewContext, overviewState) {
           if (overviewState is SnagDesnagError) {
-            return _ErrorView(
+            return EmptyStateView.error(
               message: overviewState.message,
               onRetry: () => overviewContext.read<SnagDesnagBloc>().add(LoadSnagOverview(projectId)),
             );
           }
           if (overviewState is! SnagDesnagOverviewLoaded) {
-            return const Center(child: CircularProgressIndicator());
+            return const LoadingView();
           }
 
           final counts = _StatusCounts.from(overviewState.units);
@@ -192,7 +194,7 @@ class _AnalyticsSection extends StatelessWidget {
           if (state is! SnagAnalyticsLoaded) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator()),
+              child: LoadingView(),
             );
           }
           return _AnalyticsBody(analytics: state.analytics);
@@ -403,31 +405,3 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

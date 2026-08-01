@@ -2002,33 +2002,6 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  // ==================== SNAGS ====================
-
-  Future<List<Map<String, dynamic>>> getSnags(int projectId) async {
-    final response = await _dio.get(ApiEndpoints.snags(projectId));
-    final data = response.data;
-    if (data is List) return data.cast<Map<String, dynamic>>();
-    return [];
-  }
-
-  Future<Map<String, dynamic>> createSnag(
-      Map<String, dynamic> data) async {
-    final response =
-        await _dio.post(ApiEndpoints.createSnag, data: data);
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> updateSnag(
-      int snagId, Map<String, dynamic> data) async {
-    final response =
-        await _dio.put(ApiEndpoints.updateSnag(snagId), data: data);
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<void> deleteSnag(int snagId) async {
-    await _dio.delete(ApiEndpoints.deleteSnag(snagId));
-  }
-
   // ==================== SNAG / DESNAG (process-driven module) ====================
 
   Future<List<dynamic>> getSnagProcessSteps(int projectId) async {
@@ -2229,6 +2202,14 @@ class SetuApiClient {
   /// `snag.service.ts:resetReadyForSnag`.
   Future<void> resetSnagReady(int projectId, int listId) async {
     await _dio.post(ApiEndpoints.snagResetReady(projectId, listId));
+  }
+
+  /// Maker starts the next configured snag cycle for a `released` unit —
+  /// increments `currentRound` and opens the next round. Per
+  /// `snag.service.ts:markCurrentRoundReady`.
+  Future<Map<String, dynamic>> markSnagRoundReady(int projectId, int listId) async {
+    final response = await _dio.post(ApiEndpoints.snagMarkCurrentRoundReady(projectId, listId));
+    return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> rejectSnagRectification(

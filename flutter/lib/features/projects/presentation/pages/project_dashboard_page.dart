@@ -4,32 +4,25 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/navigation/app_routes.dart';
+import 'package:setu_mobile/core/theme/app_colors.dart';
 import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:setu_mobile/features/design/presentation/pages/design_hub_page.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_incident_bloc.dart';
 import 'package:setu_mobile/features/ehs/presentation/bloc/ehs_site_obs_bloc.dart';
 import 'package:setu_mobile/features/ehs/presentation/pages/ehs_incidents_page.dart';
+import 'package:setu_mobile/features/ehs/presentation/pages/ehs_main_hub_page.dart';
 import 'package:setu_mobile/features/ehs/presentation/pages/ehs_site_obs_page.dart';
 import 'package:setu_mobile/features/labor/presentation/bloc/labor_bloc.dart';
 import 'package:setu_mobile/features/labor/presentation/pages/labor_presence_page.dart';
 import 'package:setu_mobile/features/progress/presentation/pages/progress_approvals_page.dart';
+import 'package:setu_mobile/features/progress/presentation/pages/progress_hub_page.dart';
 import 'package:setu_mobile/features/projects/data/models/project_model.dart';
 import 'package:setu_mobile/features/projects/presentation/cubit/dashboard_cubit.dart';
-import 'package:setu_mobile/features/projects/presentation/pages/eps_explorer_page.dart';
-import 'package:setu_mobile/features/projects/presentation/bloc/project_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_approval_bloc.dart';
-import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard_bloc.dart'
-    hide DashboardLoaded, DashboardLoading, DashboardInitial, DashboardError;
-import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_approvals_page.dart';
-import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
-import 'package:setu_mobile/features/quality/presentation/pages/quality_request_page.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/quality_hub_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_site_obs_page.dart';
-import 'package:setu_mobile/features/quality/presentation/pages/snag_list_page.dart';
-import 'package:setu_mobile/features/quality/presentation/pages/snag_desnag_dashboard_page.dart';
-import 'package:setu_mobile/features/quality/presentation/pages/materials_testing_page.dart';
-import 'package:setu_mobile/features/ehs/presentation/pages/ehs_hub_page.dart';
-import 'package:setu_mobile/features/design/presentation/pages/design_register_page.dart';
 import 'package:setu_mobile/features/planning/presentation/pages/planning_hub_page.dart';
 import 'package:setu_mobile/features/tower_lens/presentation/pages/tower_lens_page.dart';
 import 'package:setu_mobile/injection_container.dart';
@@ -635,8 +628,13 @@ class _AnimatedCount extends StatelessWidget {
 
 // ─── Module grid ──────────────────────────────────────────────────────────────
 
-/// 3-column grid of feature module tiles.  Only tiles for which the current
-/// user holds the relevant permission are rendered.
+/// 4-tile grid for the app's main modules (Progress, Quality, EHS, Design).
+/// Everything that used to be a separate top-level tile now lives inside
+/// the corresponding hub page — see [ProgressHubPage], [QualityHubPage],
+/// [EhsMainHubPage], [DesignHubPage]. A main tile is hidden only when the
+/// user has none of that module's underlying permissions; Progress and
+/// Design always show since Planning/3D Tower Progress/Design Drawings
+/// require no permission.
 class _ModuleGrid extends StatelessWidget {
   final Project project;
   final PermissionService ps;
@@ -645,374 +643,70 @@ class _ModuleGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Assemble module list based on user permissions
+    final showQuality = ps.canRaiseRfi ||
+        ps.canReadInspection ||
+        ps.hasAnyQualityObsAccess ||
+        ps.canReadCubeTest ||
+        ps.canReadSnag;
+    final showEhs = ps.hasAnyEhsAccess ||
+        ps.hasAnyEhsIncidentAccess ||
+        ps.canReadEhsDashboard;
+
     final modules = <_ModuleDef>[
-      // Progress reporting — navigates to EPS explorer
-      if (ps.canEntryProgress)
-        _ModuleDef(
-          icon: Icons.timeline_rounded,
-          label: 'Progress\nReporting',
-          color: const Color(0xFF1565C0),
-          onTap: () => _goProgress(context),
-        ),
-      // Progress approvals — only for approvers
-      if (ps.canApproveProgress)
-        _ModuleDef(
-          icon: Icons.fact_check_outlined,
-          label: 'Progress\nApprovals',
-          color: const Color(0xFF0369A1),
-          onTap: () => _goProgressApprovals(context),
-        ),
-      // Quality RFI request — for site engineers
-      if (ps.canRaiseRfi)
-        _ModuleDef(
-          icon: Icons.task_alt_rounded,
-          label: 'Quality\nRequest',
-          color: const Color(0xFF0E7490),
-          onTap: () => _goQualityRequest(context),
-        ),
-      // Quality inspection approvals — for QC inspectors
-      if (ps.canReadInspection)
-        _ModuleDef(
-          icon: Icons.verified_rounded,
-          label: 'Quality\nApprovals',
-          color: const Color(0xFF3730A3),
-          onTap: () => _goQualityApprovals(context),
-        ),
-      // Checklist Progress Dashboard — drill-down Block→Floor→Activity
-      if (ps.canReadInspection || ps.canRaiseRfi)
-        _ModuleDef(
-          icon: Icons.dashboard_rounded,
-          label: 'Checklist\nProgress',
-          color: const Color(0xFF0891B2),
-          onTap: () => _goChecklistDashboard(context),
-        ),
-      // Quality site observations
-      if (ps.hasAnyQualityObsAccess)
-        _ModuleDef(
-          icon: Icons.remove_red_eye_outlined,
-          label: 'Quality\nObservations',
-          color: const Color(0xFF0F766E),
-          onTap: () => _goQualityObs(context),
-        ),
-      // EHS site observations
-      if (ps.hasAnyEhsAccess)
-        _ModuleDef(
-          icon: Icons.health_and_safety_outlined,
-          label: 'EHS\nObservations',
-          color: const Color(0xFFD97706),
-          onTap: () => _goEhsObs(context),
-        ),
-      // EHS incidents — safety incident reporting
-      if (ps.hasAnyEhsIncidentAccess)
-        _ModuleDef(
-          icon: Icons.report_problem_outlined,
-          label: 'EHS\nIncidents',
-          color: const Color(0xFFB91C1C),
-          onTap: () => _goEhsIncidents(context),
-        ),
-      // Materials Testing — concrete cube tests and future materials modules
-      if (ps.canReadCubeTest)
-        _ModuleDef(
-          icon: Icons.science_outlined,
-          label: 'Materials\nTesting',
-          color: const Color(0xFF6D28D9),
-          onTap: () => _goMaterialsTesting(context),
-        ),
-      // EHS Hub — full dashboard (manhours, training, legal, machinery, vehicles)
-      if (ps.canReadEhsDashboard)
-        _ModuleDef(
-          icon: Icons.shield_outlined,
-          label: 'EHS\nHub',
-          color: const Color(0xFF7C3AED),
-          onTap: () => _goEhsHub(context),
-        ),
-      // Snag list — quality punch list / snag tracking
-      if (ps.hasAnyQualityObsAccess)
-        _ModuleDef(
-          icon: Icons.bug_report_outlined,
-          label: 'Snag\nList',
-          color: const Color(0xFFDB2777),
-          onTap: () => _goSnagList(context),
-        ),
-      // Snag / Desnag — process-step-driven unit snagging workflow
-      if (ps.canReadSnag)
-        _ModuleDef(
-          icon: Icons.checklist_rtl_rounded,
-          label: 'Snag /\nDesnag',
-          color: const Color(0xFF9D174D),
-          onTap: () => _goSnagDesnag(context),
-        ),
-      // Labor register — daily headcount entry
-      if (ps.hasAnyLaborAccess)
-        _ModuleDef(
-          icon: Icons.people_outline_rounded,
-          label: 'Labor\nRegister',
-          color: const Color(0xFF065F46),
-          onTap: () => _goLabor(context),
-        ),
-      // Planning — Schedule, Issues, WO Linker, Micro Schedule
+      // Progress — reporting, approvals, planning, 3D tower progress, labor.
+      // Always shown: Planning/3D Tower Progress require no permission.
       _ModuleDef(
-        icon: Icons.timeline_outlined,
-        label: 'Planning',
-        color: const Color(0xFF4F46E5),
+        icon: Icons.timeline_rounded,
+        label: 'Progress',
+        color: AppColors.moduleProgress,
         onTap: () => Navigator.push(context, FadeSlideRoute(
-          child: PlanningHubPage(project: project),
+          child: ProgressHubPage(project: project),
         )),
       ),
-      // Design register — drawing register with Open With for DWG/PDF files (available to all)
+      // Quality — request, approvals, checklist progress, observations,
+      // materials testing, snag/desnag.
+      if (showQuality)
+        _ModuleDef(
+          icon: Icons.verified_rounded,
+          label: 'Quality',
+          color: AppColors.moduleQuality,
+          onTap: () => Navigator.push(context, FadeSlideRoute(
+            child: QualityHubPage(projectId: project.id, projectName: project.name),
+          )),
+        ),
+      // EHS — observations, incidents, EHS hub dashboard.
+      if (showEhs)
+        _ModuleDef(
+          icon: Icons.health_and_safety_outlined,
+          label: 'EHS',
+          color: AppColors.moduleEhs,
+          onTap: () => Navigator.push(context, FadeSlideRoute(
+            child: EhsMainHubPage(projectId: project.id, projectName: project.name),
+          )),
+        ),
+      // Design — drawing register. Always shown (available to all users).
       _ModuleDef(
         icon: Icons.architecture_outlined,
-        label: 'Design\nDrawings',
-        color: const Color(0xFF0C4A6E),
-        onTap: () => _goDesign(context),
-      ),
-      // Tower Lens — 3D building progress visualization (available to all users)
-      _ModuleDef(
-        icon: Icons.view_in_ar_rounded,
-        label: '3D Tower\nProgress',
-        color: const Color(0xFF4C1D95),
-        onTap: () => _goTowerLens(context),
+        label: 'Design',
+        color: AppColors.moduleDesign,
+        onTap: () => Navigator.push(context, FadeSlideRoute(
+          child: DesignHubPage(projectId: project.id, projectName: project.name),
+        )),
       ),
     ];
-
-    // No accessible modules — show a lock icon + admin message
-    if (modules.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.lock_outline_rounded,
-                  size: 48, color: Colors.grey.shade400),
-              const SizedBox(height: 12),
-              Text(
-                'No modules available\nContact your administrator',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 
     return GridView.builder(
       shrinkWrap: true,
       // Prevent independent scrolling — the parent ListView handles scrolling
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+        crossAxisCount: 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: 0.9,
+        childAspectRatio: 1.4,
       ),
       itemCount: modules.length,
       itemBuilder: (_, i) => _ModuleGridItem(def: modules[i]),
-    );
-  }
-
-  /// Navigate to the EPS explorer (progress reporting entry point).
-  void _goProgress(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<ProjectBloc>(),
-          child: EpsExplorerPage(project: project),
-        ),
-      ),
-    );
-  }
-
-  void _goProgressApprovals(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: ProgressApprovalsPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
-    );
-  }
-
-  void _goQualityRequest(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<QualityRequestBloc>(),
-          child: QualityRequestPage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goQualityApprovals(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<QualityApprovalBloc>(),
-          child: QualityApprovalsPage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goQualityObs(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<QualitySiteObsBloc>(),
-          child: QualitySiteObsPage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goEhsObs(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<EhsSiteObsBloc>(),
-          child: EhsSiteObsPage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goEhsIncidents(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<EhsIncidentBloc>(),
-          child: EhsIncidentsPage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goLabor(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<LaborBloc>(),
-          child: LaborPresencePage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goChecklistDashboard(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: BlocProvider(
-          create: (_) => sl<QualityDashboardBloc>(),
-          child: QualityDashboardPage(
-            projectId: project.id,
-            projectName: project.name,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _goTowerLens(BuildContext context) {
-    // TowerLensPage creates its own BLoC and TowerProgressRepository internally
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: TowerLensPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
-    );
-  }
-
-  void _goDesign(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: DesignRegisterPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
-    );
-  }
-
-  void _goEhsHub(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: EhsHubPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
-    );
-  }
-
-  void _goSnagList(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: SnagListPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
-    );
-  }
-
-  void _goSnagDesnag(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: SnagDesnagDashboardPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
-    );
-  }
-
-  void _goMaterialsTesting(BuildContext context) {
-    Navigator.push(
-      context,
-      FadeSlideRoute(
-        child: MaterialsTestingPage(
-          projectId: project.id,
-          projectName: project.name,
-        ),
-      ),
     );
   }
 }

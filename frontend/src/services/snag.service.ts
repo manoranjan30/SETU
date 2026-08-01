@@ -307,6 +307,17 @@ export const snagService = {
   ): Promise<{ reset: boolean }> =>
     (await api.post(`/snag/${projectId}/lists/${listId}/reset-ready`, {})).data,
 
+  markCurrentRoundReady: async (
+    projectId: number,
+    listId: number,
+  ): Promise<SnagListDetail> =>
+    (
+      await api.post(
+        `/snag/${projectId}/lists/${listId}/mark-current-round-ready`,
+        {},
+      )
+    ).data,
+
   getList: async (
     projectId: number,
     listId: number,
