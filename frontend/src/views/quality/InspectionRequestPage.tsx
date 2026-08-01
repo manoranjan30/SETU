@@ -137,12 +137,21 @@ interface QualityInspection {
     totalStages?: number;
     pourClearanceTriggerApproved?: boolean;
     pourClearanceTriggerStageName?: string | null;
+    pourClearanceTriggerApprovalLevelName?: string | null;
+    pourCardTriggerApproved?: boolean;
+    pourCardTriggerStageName?: string | null;
+    pourCardTriggerApprovalLevelName?: string | null;
   };
   cardSummary?: {
     pourCardStatus?: string | null;
+    pourCardActive?: boolean;
     pourCardApproved?: boolean;
+    pourCardTriggerApproved?: boolean;
     prePourClearanceStatus?: string | null;
+    prePourClearanceSubmitted?: boolean;
     prePourClearanceApproved?: boolean;
+    prePourClearanceGateSatisfied?: boolean;
+    prePourClearanceApprovalRequirement?: "SUBMITTED" | "APPROVED";
   };
 }
 
@@ -424,9 +433,16 @@ export default function InspectionRequestPage() {
     if (
       kind === "POUR_CARD" &&
       requiresPourClearance &&
-      !inspection.cardSummary?.prePourClearanceApproved
+      !inspection.cardSummary?.prePourClearanceGateSatisfied
     ) {
-      alert("Concrete pour card will open only after pour clearance approval.");
+      const requiresApproval =
+        inspection.cardSummary?.prePourClearanceApprovalRequirement ===
+        "APPROVED";
+      alert(
+        requiresApproval
+          ? "Concrete pour card will open only after pour clearance approval."
+          : "Concrete pour card will open after pour clearance submission.",
+      );
       return;
     }
     setActiveCardInspection(inspection);
@@ -1781,9 +1797,10 @@ export default function InspectionRequestPage() {
                                   </span>
                                 ) : null}
                                 {item.requiresPourCard &&
+                                item.inspection.cardSummary?.pourCardActive &&
                                 (!item.requiresPourClearanceCard ||
                                   item.inspection.cardSummary
-                                    ?.prePourClearanceApproved) ? (
+                                    ?.prePourClearanceGateSatisfied) ? (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -1799,7 +1816,13 @@ export default function InspectionRequestPage() {
                                   </button>
                                 ) : item.requiresPourCard ? (
                                   <span className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800">
-                                    Pour card unlocks after clearance approval
+                                    {item.inspection.cardSummary?.pourCardActive
+                                      ? item.inspection.cardSummary
+                                          ?.prePourClearanceApprovalRequirement ===
+                                        "APPROVED"
+                                        ? "Pour card unlocks after clearance approval"
+                                        : "Pour card unlocks after clearance submission"
+                                      : "Pour card unlocks after configured RFI approval level"}
                                   </span>
                                 ) : null}
                                 <span className="text-xs text-text-muted">

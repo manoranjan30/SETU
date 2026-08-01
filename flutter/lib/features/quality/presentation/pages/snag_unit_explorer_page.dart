@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/features/quality/data/models/snag_desnag_models.dart';
+import 'package:setu_mobile/features/quality/presentation/bloc/snag_desnag_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/snag_unit_workspace_page.dart';
+import 'package:setu_mobile/injection_container.dart';
 
 /// Process-step-first Block > Tower > Floor > Unit drilldown over the flat
 /// unit list from `GET /snag/:projectId/units`.
@@ -46,7 +50,17 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
   int? _selectedFloorId;
   String? _selectedFloorLabel;
 
-  bool get _hasBlocks => widget.units.any((u) => u.blockId != null);
+  // A local, refreshable copy of widget.units rather than reading
+  // widget.units directly — the dashboard only fetches the units list once
+  // (when it first loads), so without this, opening a unit, marking it
+  // ready / raising a point / advancing its cycle, then coming back here
+  // would keep showing the *stale* pre-action snagListId/overallStatus for
+  // that unit — e.g. tapping "Mark Ready" still doing something server-side
+  // but the card and the next re-open of that unit both looking exactly
+  // like nothing happened. Refetched after every unit visit in _openUnit.
+  late List<SnagUnitSummary> _units = widget.units;
+
+  bool get _hasBlocks => _units.any((u) => u.blockId != null);
 
   _Level get _level {
     if (_hasBlocks && _selectedBlockId == null) return _Level.block;
@@ -73,7 +87,7 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
         children: [
           _StepFilterBar(
             steps: widget.processSteps,
-            units: widget.units,
+            units: _units,
             selectedSerial: _selectedStepSerial,
             onSelected: (serial) => setState(() => _selectedStepSerial = serial),
           ),
@@ -105,7 +119,7 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
     switch (_level) {
       case _Level.block:
         final blocks = <int, String>{};
-        for (final u in widget.units) {
+        for (final u in _units) {
           if (u.blockId != null) blocks[u.blockId!] = u.blockLabel ?? 'Block ${u.blockId}';
         }
         return _EntryList(
@@ -119,7 +133,7 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
         );
 
       case _Level.tower:
-        final scoped = widget.units.where((u) => _selectedBlockId == null || u.blockId == _selectedBlockId);
+        final scoped = _units.where((u) => _selectedBlockId == null || u.blockId == _selectedBlockId);
         final towers = <int, String>{};
         for (final u in scoped) {
           towers[u.towerId] = u.towerLabel;
@@ -135,7 +149,7 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
         );
 
       case _Level.floor:
-        final scoped = widget.units.where((u) => u.towerId == _selectedTowerId);
+        final scoped = _units.where((u) => u.towerId == _selectedTowerId);
         final floors = <int, String>{};
         for (final u in scoped) {
           floors[u.floorId] = u.floorLabel;
@@ -151,7 +165,7 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
         );
 
       case _Level.unit:
-        final scoped = widget.units.where((u) => u.floorId == _selectedFloorId).toList()
+        final scoped = _units.where((u) => u.floorId == _selectedFloorId).toList()
           ..sort((a, b) => a.unitLabel.compareTo(b.unitLabel));
         if (scoped.isEmpty) {
           return const Center(child: Text('No units on this floor.', style: TextStyle(color: Colors.grey)));
@@ -185,6 +199,35 @@ class _SnagUnitExplorerPageState extends State<SnagUnitExplorerPage> {
         snagListId: unit.snagListId,
       ),
     ));
+    // Always refetch on return, whether or not something changed — the
+    // workspace may have created a list, raised a point, advanced a cycle,
+    // or the unit may have moved on via the web app, none of which this
+    // page would otherwise ever find out about. See _units' doc comment.
+    if (mounted) await _refreshUnits();
+  }
+
+  Future<void> _refreshUnits() async {
+    try {
+      final raw = await sl<SetuApiClient>().getSnagUnits(widget.projectId);
+      final fresh = raw.whereType<Map<String, dynamic>>().map(SnagUnitSummary.fromJson).toList();
+      if (mounted) setState(() => _units = fresh);
+    } catch (_) {
+      // Keep showing the last-known list rather than blocking on a failed
+      // background refresh — the user can still act on stale data and will
+      // get a fresh view next time they leave and return to a unit.
+    }
+    // The dashboard this page was pushed from shares this SnagDesnagBloc
+    // instance (see snag_desnag_dashboard_page.dart) — re-dispatching here
+    // means its stat cards/step chips are also fresh by the time the user
+    // navigates back to it, not just this page.
+    if (mounted) {
+      try {
+        context.read<SnagDesnagBloc>().add(LoadSnagOverview(widget.projectId));
+      } catch (_) {
+        // No SnagDesnagBloc in the ancestor tree — fine, this page's own
+        // _units refresh above still stands on its own.
+      }
+    }
   }
 }
 

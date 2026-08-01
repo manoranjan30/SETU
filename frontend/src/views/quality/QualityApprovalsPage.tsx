@@ -63,6 +63,7 @@ interface QualityInspection {
     requiresPourCard?: boolean;
     requiresPourClearanceCard?: boolean;
     pourClearanceTriggerStageTemplateId?: number | null;
+    prePourClearanceApprovalRequirement?: "SUBMITTED" | "APPROVED";
     pourClearanceSignoffTemplate?: Array<{
       id: string;
       department: string;
@@ -170,7 +171,11 @@ interface QualityInspection {
     pourCardStatus?: string | null;
     prePourClearanceStatus?: string | null;
     pourCardApproved?: boolean;
+    pourCardActive?: boolean;
     prePourClearanceApproved?: boolean;
+    prePourClearanceSubmitted?: boolean;
+    prePourClearanceGateSatisfied?: boolean;
+    prePourClearanceApprovalRequirement?: "SUBMITTED" | "APPROVED";
   };
   slaDueAt?: string;
   isLocked?: boolean;
@@ -2999,6 +3004,10 @@ export default function QualityApprovalsPage() {
   const cardReadiness = useMemo(() => {
     const requiresPourCard = requiresPourCardForSelected;
     const requiresPrePourClearance = requiresPourClearanceForSelected;
+    const clearanceRequirement =
+      effectiveInspectionActivity?.prePourClearanceApprovalRequirement ||
+      inspectionDetail?.cardSummary?.prePourClearanceApprovalRequirement ||
+      "SUBMITTED";
     const pourCardReady = !requiresPourCard
       ? true
       : ["APPROVED", "LOCKED"].includes(pourCard?.status || "");
@@ -3006,11 +3015,16 @@ export default function QualityApprovalsPage() {
       ? true
       : !clearanceActivation.isActivated
         ? true
-      : ["APPROVED", "LOCKED"].includes(prePourClearanceCard?.status || "");
+        : clearanceRequirement === "APPROVED"
+          ? ["APPROVED", "LOCKED"].includes(prePourClearanceCard?.status || "")
+          : ["SUBMITTED", "APPROVED", "LOCKED"].includes(
+              prePourClearanceCard?.status || "",
+            );
 
     return {
       requiresPourCard,
       requiresPrePourClearance,
+      clearanceRequirement,
       pourCardReady,
       prePourClearanceReady,
       allReady: pourCardReady && prePourClearanceReady,
@@ -3019,6 +3033,8 @@ export default function QualityApprovalsPage() {
     requiresPourCardForSelected,
     requiresPourClearanceForSelected,
     clearanceActivation.isActivated,
+    effectiveInspectionActivity?.prePourClearanceApprovalRequirement,
+    inspectionDetail?.cardSummary?.prePourClearanceApprovalRequirement,
     pourCard?.status,
     prePourClearanceCard?.status,
   ]);
@@ -6869,7 +6885,10 @@ export default function QualityApprovalsPage() {
                               : ""}
                             {cardReadiness.requiresPrePourClearance &&
                             !cardReadiness.prePourClearanceReady
-                              ? "Required pre-pour clearance card is not approved yet."
+                              ? cardReadiness.clearanceRequirement ===
+                                "APPROVED"
+                                ? "Required pre-pour clearance card is not approved yet."
+                                : "Required pre-pour clearance card is not submitted yet."
                               : ""}
                           </p>
                         </div>

@@ -105,11 +105,17 @@ export class QualityActivity {
   @Column({ type: 'int', nullable: true })
   pourClearanceTriggerStageTemplateId: number | null;
 
+  @Column({ type: 'int', nullable: true })
+  pourClearanceTriggerApprovalLevel: number | null;
+
   @Column({ type: 'varchar', length: 20, default: 'SUBMITTED' })
   prePourClearanceApprovalRequirement: PrePourClearanceApprovalRequirement;
 
   @Column({ type: 'int', nullable: true })
   pourCardTriggerStageTemplateId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  pourCardTriggerApprovalLevel: number | null;
 
   @Column({ type: 'jsonb', default: () => "'[]'" })
   pourClearanceSignoffTemplate: PourClearanceSignoffTemplateEntry[];
