@@ -1545,7 +1545,7 @@ export class QualityInspectionService {
 
     const stages = await this.stageRepo.find({
       where: { inspectionId: stage.inspectionId },
-      relations: ['stageTemplate'],
+      relations: ['stageTemplate', 'signatures'],
     });
     const [pourCard, prePourClearance] = await Promise.all([
       this.pourCardRepo.findOne({ where: { inspectionId: stage.inspectionId } }),
@@ -1609,14 +1609,34 @@ export class QualityInspectionService {
     return Number.isFinite(sequence) ? sequence : fallback;
   }
 
-  private getTriggerStageMeta(stages: any[], triggerStageTemplateId?: number | null) {
+  private normalizeTriggerApprovalLevel(level?: number | string | null) {
+    const normalized = Number(level);
+    return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+  }
+
+  private getTriggerStageMeta(
+    stages: any[],
+    triggerStageTemplateId?: number | null,
+    triggerApprovalLevel?: number | string | null,
+  ) {
     const normalizedTriggerId = Number(triggerStageTemplateId);
+    const normalizedApprovalLevel =
+      this.normalizeTriggerApprovalLevel(triggerApprovalLevel);
     if (!Number.isFinite(normalizedTriggerId) || normalizedTriggerId <= 0) {
+      const approvedByAnyStageLevel =
+        normalizedApprovalLevel != null &&
+        (stages || []).some((stage: any) =>
+          this.isStageApprovalLevelApproved(stage, normalizedApprovalLevel),
+        );
       return {
         stage: null as any,
         sequence: null as number | null,
-        approved: false,
+        approved: normalizedApprovalLevel ? approvedByAnyStageLevel : true,
         name: null as string | null,
+        approvalLevel: normalizedApprovalLevel,
+        approvalLevelName: normalizedApprovalLevel
+          ? `Level ${normalizedApprovalLevel}`
+          : null,
       };
     }
 
@@ -1628,17 +1648,56 @@ export class QualityInspectionService {
     );
     const stage = index >= 0 ? sortedStages[index] : null;
     const approved = Boolean(
-      stage?.stageApproval?.fullyApproved ||
-        stage?.status === StageStatus.APPROVED ||
-        stage?.isLocked,
+      normalizedApprovalLevel
+        ? this.isStageApprovalLevelApproved(stage, normalizedApprovalLevel)
+        : stage?.stageApproval?.fullyApproved ||
+            stage?.status === StageStatus.APPROVED ||
+            stage?.isLocked,
     );
+    const approvalLevelName =
+      normalizedApprovalLevel && stage
+        ? (stage.stageApproval?.levels || []).find(
+            (level: any) => Number(level.stepOrder) === normalizedApprovalLevel,
+          )?.stepName ||
+          (stage.signatures || []).find(
+            (signature: any) =>
+              Number(signature.approvalLevelOrder) === normalizedApprovalLevel,
+          )?.approvalLevelName ||
+          `Level ${normalizedApprovalLevel}`
+        : normalizedApprovalLevel
+          ? `Level ${normalizedApprovalLevel}`
+          : null;
 
     return {
       stage,
       sequence: stage ? this.getStageSequence(stage, index) : null,
       approved,
       name: stage?.stageTemplate?.name || null,
+      approvalLevel: normalizedApprovalLevel,
+      approvalLevelName,
     };
+  }
+
+  private isStageApprovalLevelApproved(stage: any, approvalLevel: number) {
+    if (!stage) return false;
+    if (
+      stage.stageApproval?.fullyApproved ||
+      stage?.status === StageStatus.APPROVED ||
+      stage?.isLocked
+    ) {
+      return true;
+    }
+    const levelDetail = (stage.stageApproval?.levels || []).find(
+      (level: any) => Number(level.stepOrder) === approvalLevel,
+    );
+    if (levelDetail?.approved) {
+      return true;
+    }
+    return (stage.signatures || []).some(
+      (signature: any) =>
+        !signature.isReversed &&
+        Number(signature.approvalLevelOrder) === approvalLevel,
+    );
   }
 
   private isStageAfterTrigger(
@@ -1684,13 +1743,17 @@ export class QualityInspectionService {
     const pourCardTrigger = this.getTriggerStageMeta(
       stages,
       activity?.pourCardTriggerStageTemplateId,
+      activity?.pourCardTriggerApprovalLevel,
     );
     const clearanceTrigger = this.getTriggerStageMeta(
       stages,
       activity?.pourClearanceTriggerStageTemplateId,
+      activity?.pourClearanceTriggerApprovalLevel,
     );
     const pourCardActivatesImmediately =
-      requiresPourCard && !activity?.pourCardTriggerStageTemplateId;
+      requiresPourCard &&
+      !activity?.pourCardTriggerStageTemplateId &&
+      !activity?.pourCardTriggerApprovalLevel;
     const pourCardActive =
       requiresPourCard &&
       (pourCardActivatesImmediately || pourCardTrigger.approved);
@@ -1789,6 +1852,8 @@ export class QualityInspectionService {
       pourCardTriggerStageTemplateId:
         activity?.pourCardTriggerStageTemplateId ?? null,
       pourCardTriggerStageName: pourCardTrigger.name,
+      pourCardTriggerApprovalLevel: pourCardTrigger.approvalLevel,
+      pourCardTriggerApprovalLevelName: pourCardTrigger.approvalLevelName,
       pourCardTriggerApproved:
         pourCardActivatesImmediately || pourCardTrigger.approved,
       pourCardActive,
@@ -1803,6 +1868,9 @@ export class QualityInspectionService {
       prePourClearanceTriggerStageTemplateId:
         activity?.pourClearanceTriggerStageTemplateId ?? null,
       prePourClearanceTriggerStageName: clearanceTrigger.name,
+      prePourClearanceTriggerApprovalLevel: clearanceTrigger.approvalLevel,
+      prePourClearanceTriggerApprovalLevelName:
+        clearanceTrigger.approvalLevelName,
       prePourClearanceTriggerApproved: clearanceTrigger.approved,
       prePourClearanceActive,
       stageApprovalBlockers,
@@ -3830,12 +3898,20 @@ export class QualityInspectionService {
             cardGateSummary.prePourClearanceTriggerStageTemplateId,
           pourClearanceTriggerStageName:
             cardGateSummary.prePourClearanceTriggerStageName,
+          pourClearanceTriggerApprovalLevel:
+            cardGateSummary.prePourClearanceTriggerApprovalLevel,
+          pourClearanceTriggerApprovalLevelName:
+            cardGateSummary.prePourClearanceTriggerApprovalLevelName,
           pourClearanceTriggerApproved:
             cardGateSummary.prePourClearanceTriggerApproved,
           pourCardTriggerStageTemplateId:
             cardGateSummary.pourCardTriggerStageTemplateId,
           pourCardTriggerStageName:
             cardGateSummary.pourCardTriggerStageName,
+          pourCardTriggerApprovalLevel:
+            cardGateSummary.pourCardTriggerApprovalLevel,
+          pourCardTriggerApprovalLevelName:
+            cardGateSummary.pourCardTriggerApprovalLevelName,
           pourCardTriggerApproved:
             cardGateSummary.pourCardTriggerApproved,
         },

@@ -65,8 +65,10 @@ export interface CreateActivityDto {
   requiresPourCard?: boolean;
   requiresPourClearanceCard?: boolean;
   pourClearanceTriggerStageTemplateId?: number | null;
+  pourClearanceTriggerApprovalLevel?: number | null;
   prePourClearanceApprovalRequirement?: PrePourClearanceApprovalRequirement;
   pourCardTriggerStageTemplateId?: number | null;
+  pourCardTriggerApprovalLevel?: number | null;
   pourClearanceSignoffTemplate?: Array<{
     id?: string;
     department?: string;
@@ -259,12 +261,16 @@ export class QualityActivityService {
       ...dto,
       pourClearanceTriggerStageTemplateId:
         dto.pourClearanceTriggerStageTemplateId ?? null,
+      pourClearanceTriggerApprovalLevel:
+        dto.pourClearanceTriggerApprovalLevel ?? null,
       prePourClearanceApprovalRequirement:
         this.normalizePrePourClearanceApprovalRequirement(
           dto.prePourClearanceApprovalRequirement,
         ),
       pourCardTriggerStageTemplateId:
         dto.pourCardTriggerStageTemplateId ?? null,
+      pourCardTriggerApprovalLevel:
+        dto.pourCardTriggerApprovalLevel ?? null,
       pourClearanceSignoffTemplate: this.normalizePourClearanceSignoffTemplate(
         dto.pourClearanceSignoffTemplate,
       ),
@@ -293,6 +299,10 @@ export class QualityActivityService {
       activity.pourClearanceTriggerStageTemplateId =
         dto.pourClearanceTriggerStageTemplateId ?? null;
     }
+    if ('pourClearanceTriggerApprovalLevel' in dto) {
+      activity.pourClearanceTriggerApprovalLevel =
+        dto.pourClearanceTriggerApprovalLevel ?? null;
+    }
     if ('prePourClearanceApprovalRequirement' in dto) {
       activity.prePourClearanceApprovalRequirement =
         this.normalizePrePourClearanceApprovalRequirement(
@@ -302,6 +312,10 @@ export class QualityActivityService {
     if ('pourCardTriggerStageTemplateId' in dto) {
       activity.pourCardTriggerStageTemplateId =
         dto.pourCardTriggerStageTemplateId ?? null;
+    }
+    if ('pourCardTriggerApprovalLevel' in dto) {
+      activity.pourCardTriggerApprovalLevel =
+        dto.pourCardTriggerApprovalLevel ?? null;
     }
     if ('pourClearanceSignoffTemplate' in dto) {
       activity.pourClearanceSignoffTemplate =
@@ -1004,6 +1018,8 @@ export class QualityActivityService {
           ) ??
           act.pourClearanceTriggerStageTemplateId ??
           undefined,
+        pourClearanceTriggerApprovalLevel:
+          act.pourClearanceTriggerApprovalLevel ?? null,
         prePourClearanceApprovalRequirement:
           this.normalizePrePourClearanceApprovalRequirement(
             act.prePourClearanceApprovalRequirement,
@@ -1014,6 +1030,7 @@ export class QualityActivityService {
           ) ??
           act.pourCardTriggerStageTemplateId ??
           undefined,
+        pourCardTriggerApprovalLevel: act.pourCardTriggerApprovalLevel ?? null,
         pourClearanceSignoffTemplate: act.pourClearanceSignoffTemplate || [],
         floorVisibility: act.floorVisibility,
         position: act.position,

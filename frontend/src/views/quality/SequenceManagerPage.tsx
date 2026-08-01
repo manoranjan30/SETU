@@ -38,6 +38,10 @@ import {
 } from "lucide-react";
 import api from "../../api/axios";
 import {
+  releaseStrategyService,
+  type ReleaseStrategyStepDto,
+} from "../../services/releaseStrategy.service";
+import {
   collectDescendantIds,
   collectNodeIds,
   filterFloorVisibilityTree,
@@ -69,8 +73,10 @@ interface Activity {
   requiresPourCard?: boolean;
   requiresPourClearanceCard?: boolean;
   pourClearanceTriggerStageTemplateId?: number | null;
+  pourClearanceTriggerApprovalLevel?: number | null;
   prePourClearanceApprovalRequirement?: "SUBMITTED" | "APPROVED";
   pourCardTriggerStageTemplateId?: number | null;
+  pourCardTriggerApprovalLevel?: number | null;
   pourClearanceSignoffTemplate?: PourClearanceSignoffTemplateEntry[];
   floorVisibility?: FloorVisibilityConfig;
 }
@@ -309,6 +315,12 @@ const SortableRow = ({
                     Pour Card After: {pourCardTriggerLabel}
                   </span>
                 ) : null}
+                {activity.requiresPourCard &&
+                activity.pourCardTriggerApprovalLevel ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-900 px-1.5 py-0.5 rounded border border-violet-200 font-medium">
+                    Pour Card Level: {activity.pourCardTriggerApprovalLevel}
+                  </span>
+                ) : null}
                 {activity.requiresPourClearanceCard ? (
                   <span className="inline-flex items-center gap-1 text-xs bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100 font-medium">
                     Pour Clearance
@@ -318,6 +330,13 @@ const SortableRow = ({
                 pourClearanceTriggerLabel ? (
                   <span className="inline-flex items-center gap-1 text-xs bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded border border-cyan-200 font-medium">
                     After: {pourClearanceTriggerLabel}
+                  </span>
+                ) : null}
+                {activity.requiresPourClearanceCard &&
+                activity.pourClearanceTriggerApprovalLevel ? (
+                  <span className="inline-flex items-center gap-1 text-xs bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded border border-cyan-200 font-medium">
+                    Clearance Level:{" "}
+                    {activity.pourClearanceTriggerApprovalLevel}
                   </span>
                 ) : null}
                 {activity.requiresPourClearanceCard ? (
@@ -569,12 +588,14 @@ const ActivityForm = ({
   initial,
   allActivities,
   checklists,
+  approvalLevels,
   onSave,
   onCancel,
 }: {
   initial?: Activity;
   allActivities: Activity[];
   checklists: ChecklistTemplate[];
+  approvalLevels: ReleaseStrategyStepDto[];
   onSave: (data: Partial<Activity>) => Promise<void>;
   onCancel: () => void;
 }) => {
@@ -595,10 +616,13 @@ const ActivityForm = ({
     requiresPourClearanceCard: initial?.requiresPourClearanceCard || false,
     pourClearanceTriggerStageTemplateId:
       initial?.pourClearanceTriggerStageTemplateId ?? null,
+    pourClearanceTriggerApprovalLevel:
+      initial?.pourClearanceTriggerApprovalLevel ?? null,
     prePourClearanceApprovalRequirement:
       initial?.prePourClearanceApprovalRequirement || "SUBMITTED",
     pourCardTriggerStageTemplateId:
       initial?.pourCardTriggerStageTemplateId ?? null,
+    pourCardTriggerApprovalLevel: initial?.pourCardTriggerApprovalLevel ?? null,
     pourClearanceSignoffTemplate:
       initial?.pourClearanceSignoffTemplate?.length
         ? initial.pourClearanceSignoffTemplate
@@ -657,6 +681,11 @@ const ActivityForm = ({
 
   useEffect(() => {
     if (!form.requiresPourClearanceCard) {
+      setForm((prev) => ({
+        ...prev,
+        pourClearanceTriggerStageTemplateId: null,
+        pourClearanceTriggerApprovalLevel: null,
+      }));
       return;
     }
 
@@ -680,8 +709,16 @@ const ActivityForm = ({
   }, [form.pourClearanceTriggerStageTemplateId, pourClearanceStageOptions]);
 
   useEffect(() => {
-    if (!form.requiresPourCard && form.pourCardTriggerStageTemplateId) {
-      set("pourCardTriggerStageTemplateId", null);
+    if (
+      !form.requiresPourCard &&
+      (form.pourCardTriggerStageTemplateId ||
+        form.pourCardTriggerApprovalLevel)
+    ) {
+      setForm((prev) => ({
+        ...prev,
+        pourCardTriggerStageTemplateId: null,
+        pourCardTriggerApprovalLevel: null,
+      }));
       return;
     }
     if (
@@ -695,6 +732,7 @@ const ActivityForm = ({
   }, [
     form.requiresPourCard,
     form.pourCardTriggerStageTemplateId,
+    form.pourCardTriggerApprovalLevel,
     pourClearanceStageOptions,
   ]);
 
@@ -732,15 +770,6 @@ const ActivityForm = ({
   const handleSave = async () => {
     if (!form.activityName.trim()) {
       setError("Activity name is required");
-      return;
-    }
-    if (
-      form.requiresPourClearanceCard &&
-      form.assignedChecklistIds.length > 0 &&
-      pourClearanceStageOptions.length > 0 &&
-      !form.pourClearanceTriggerStageTemplateId
-    ) {
-      setError("Select the checklist stage after which pour clearance activates.");
       return;
     }
     setSaving(true);
@@ -998,9 +1027,36 @@ const ActivityForm = ({
               </select>
             </div>
             <div className="rounded-lg border border-dashed border-cyan-300 bg-white/70 px-3 py-2 text-xs text-cyan-900">
-              Once this stage is fully approved in QA/QC, the pre-pour
-              clearance certificate and concrete details form will open for the
-              inspection.
+              Select a stage and/or release-strategy level. If both are set,
+              clearance opens after that selected stage reaches the selected
+              approval level.
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-text-secondary">
+                Activate At RFI Approval Level
+              </label>
+              <select
+                className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
+                value={form.pourClearanceTriggerApprovalLevel ?? ""}
+                onChange={(e) =>
+                  set(
+                    "pourClearanceTriggerApprovalLevel",
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+              >
+                <option value="">After full stage approval</option>
+                {approvalLevels.map((level) => (
+                  <option key={level.levelNo} value={level.levelNo}>
+                    Level {level.levelNo}: {level.stepName || "Approval"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-lg border border-dashed border-cyan-300 bg-white/70 px-3 py-2 text-xs text-cyan-900">
+              Use this when pour clearance should appear at a partial QA/QC RFI
+              approval level, for example Level 1 submission/checking instead
+              of final approval.
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -1148,8 +1204,34 @@ const ActivityForm = ({
               </select>
             </div>
             <div className="rounded-lg border border-dashed border-emerald-300 bg-white/70 px-3 py-2 text-xs text-emerald-900">
-              After activation, later checklist stages require pour card
-              submission. The final checklist stage requires pour card approval.
+              Select a stage and/or RFI approval level. Leave both blank to show
+              the pour card immediately when this activity requires it.
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-text-secondary">
+                Activate At RFI Approval Level
+              </label>
+              <select
+                className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
+                value={form.pourCardTriggerApprovalLevel ?? ""}
+                onChange={(e) =>
+                  set(
+                    "pourCardTriggerApprovalLevel",
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+              >
+                <option value="">No approval-level gate</option>
+                {approvalLevels.map((level) => (
+                  <option key={level.levelNo} value={level.levelNo}>
+                    Level {level.levelNo}: {level.stepName || "Approval"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-lg border border-dashed border-emerald-300 bg-white/70 px-3 py-2 text-xs text-emerald-900">
+              Pour card submission still follows the configured pre-pour
+              clearance requirement: submitted is enough or approval required.
             </div>
           </div>
         </div>
@@ -1186,6 +1268,9 @@ const SequenceManagerPage = () => {
   const [list, setList] = useState<ActivityList | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [checklists, setChecklists] = useState<ChecklistTemplate[]>([]);
+  const [approvalLevels, setApprovalLevels] = useState<ReleaseStrategyStepDto[]>(
+    [],
+  );
   const [epsTree, setEpsTree] = useState<EpsNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1214,6 +1299,44 @@ const SequenceManagerPage = () => {
       .get(`/eps/${projectId}/tree`)
       .then((res) => setEpsTree(Array.isArray(res.data) ? res.data : [res.data]))
       .catch(() => setEpsTree([]));
+
+    releaseStrategyService
+      .list(Number(projectId), {
+        status: "ACTIVE",
+        moduleCode: "QUALITY",
+        processCode: "RFI_APPROVAL",
+      })
+      .then((strategies) => {
+        const byLevel = new Map<number, ReleaseStrategyStepDto>();
+        strategies
+          .flatMap((strategy) => strategy.steps || [])
+          .forEach((step) => {
+            if (!byLevel.has(step.levelNo)) {
+              byLevel.set(step.levelNo, step);
+            }
+          });
+        const levels = [...byLevel.values()].sort(
+          (a, b) => a.levelNo - b.levelNo,
+        );
+        setApprovalLevels(
+          levels.length
+            ? levels
+            : [1, 2, 3, 4, 5].map((levelNo) => ({
+                levelNo,
+                stepName: `Approval Level ${levelNo}`,
+                approverMode: "PROJECT_ROLE",
+              })),
+        );
+      })
+      .catch(() =>
+        setApprovalLevels(
+          [1, 2, 3, 4, 5].map((levelNo) => ({
+            levelNo,
+            stepName: `Approval Level ${levelNo}`,
+            approverMode: "PROJECT_ROLE",
+          })),
+        ),
+      );
   }, [projectId]);
 
   const fetchData = async () => {
@@ -1468,6 +1591,7 @@ const SequenceManagerPage = () => {
             <ActivityForm
               allActivities={activities}
               checklists={checklists}
+              approvalLevels={approvalLevels}
               onSave={handleAddActivity}
               onCancel={() => setShowAddForm(false)}
             />
@@ -1510,6 +1634,7 @@ const SequenceManagerPage = () => {
                       initial={activity}
                       allActivities={activities}
                       checklists={checklists}
+                      approvalLevels={approvalLevels}
                       onSave={handleEditActivity}
                       onCancel={() => setEditTarget(null)}
                     />

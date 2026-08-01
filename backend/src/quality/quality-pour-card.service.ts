@@ -82,18 +82,35 @@ type PourCardEntry = QualityPourCard['entries'][number];
 type ClearanceInspectionContext = QualityInspection & {
   activity?: {
     pourClearanceTriggerStageTemplateId?: number | null;
+    pourClearanceTriggerApprovalLevel?: number | null;
     prePourClearanceApprovalRequirement?: string | null;
+    pourCardTriggerStageTemplateId?: number | null;
+    pourCardTriggerApprovalLevel?: number | null;
     pourClearanceSignoffTemplate?: PourClearanceSignoffTemplateEntry[];
     activityName?: string | null;
   } | null;
   epsNode?: { name?: string | null } | null;
   stages?: Array<{
     status?: string | null;
+    isLocked?: boolean | null;
     stageTemplateId?: number | null;
     stageTemplate?: {
       name?: string | null;
       template?: { name?: string | null } | null;
     } | null;
+    signatures?: Array<{
+      approvalLevelOrder?: number | null;
+      approvalLevelName?: string | null;
+      isReversed?: boolean | null;
+    }>;
+    stageApproval?: {
+      fullyApproved?: boolean;
+      levels?: Array<{
+        stepOrder?: number | null;
+        stepName?: string | null;
+        approved?: boolean;
+      }>;
+    };
   }>;
 };
 
@@ -150,6 +167,7 @@ export class QualityPourCardService {
         'stages',
         'stages.stageTemplate',
         'stages.stageTemplate.template',
+        'stages.signatures',
       ],
     });
     if (!inspection) {
@@ -1216,25 +1234,101 @@ export class QualityPourCardService {
     });
   }
 
+  private normalizeTriggerApprovalLevel(level?: number | string | null) {
+    const normalized = Number(level);
+    return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+  }
+
+  private getTriggerStageApprovalMeta(
+    inspection: ClearanceInspectionContext,
+    triggerStageTemplateId?: number | null,
+    triggerApprovalLevel?: number | string | null,
+  ) {
+    const normalizedStageTemplateId = this.normalizeTriggerApprovalLevel(
+      triggerStageTemplateId,
+    );
+    const normalizedApprovalLevel =
+      this.normalizeTriggerApprovalLevel(triggerApprovalLevel);
+    const triggerStage: any = triggerStageTemplateId
+      ? (inspection.stages || []).find(
+          (stage: any) =>
+            Number(stage.stageTemplateId) === normalizedStageTemplateId,
+        )
+      : null;
+    const candidateStages = triggerStage
+      ? [triggerStage]
+      : normalizedApprovalLevel
+        ? inspection.stages || []
+        : [];
+    const hasApprovedLevel = candidateStages.some((stage: any) => {
+      const levelDetail = (stage.stageApproval?.levels || []).find(
+        (level: any) => Number(level.stepOrder) === normalizedApprovalLevel,
+      );
+      if (levelDetail?.approved) {
+        return true;
+      }
+      return (stage.signatures || []).some(
+        (signature: any) =>
+          !signature.isReversed &&
+          Number(signature.approvalLevelOrder) === normalizedApprovalLevel,
+      );
+    });
+    const stageFullyApproved = triggerStage
+      ? Boolean(
+          triggerStage.stageApproval?.fullyApproved ||
+            String(triggerStage.status || '').toUpperCase() === 'APPROVED' ||
+            triggerStage.isLocked,
+        )
+      : false;
+    const approved = normalizedApprovalLevel
+      ? hasApprovedLevel || stageFullyApproved
+      : normalizedStageTemplateId
+        ? stageFullyApproved
+        : true;
+    const triggerLevelName =
+      normalizedApprovalLevel && triggerStage
+        ? (triggerStage.stageApproval?.levels || []).find(
+            (level: any) => Number(level.stepOrder) === normalizedApprovalLevel,
+          )?.stepName ||
+          (triggerStage.signatures || []).find(
+            (signature: any) =>
+              Number(signature.approvalLevelOrder) === normalizedApprovalLevel,
+          )?.approvalLevelName ||
+          `Level ${normalizedApprovalLevel}`
+        : normalizedApprovalLevel
+          ? `Level ${normalizedApprovalLevel}`
+          : null;
+
+    return {
+      triggerStageTemplateId: normalizedStageTemplateId,
+      triggerStageName: triggerStage?.stageTemplate?.name || null,
+      triggerApprovalLevel: normalizedApprovalLevel,
+      triggerApprovalLevelName: triggerLevelName,
+      triggerApproved: approved,
+    };
+  }
+
   private getClearanceActivationMeta(
     inspection: ClearanceInspectionContext,
   ) {
-    const triggerStageTemplateId =
-      inspection.activity?.pourClearanceTriggerStageTemplateId ?? null;
-    const triggerStage = triggerStageTemplateId
-      ? (inspection.stages || []).find(
-          (stage: any) => stage.stageTemplateId === triggerStageTemplateId,
-        )
-      : null;
-    const triggerStageApproved = triggerStage
-      ? String(triggerStage.status || '').toUpperCase() === 'APPROVED'
-      : !triggerStageTemplateId;
+    const meta = this.getTriggerStageApprovalMeta(
+      inspection,
+      inspection.activity?.pourClearanceTriggerStageTemplateId ?? null,
+      inspection.activity?.pourClearanceTriggerApprovalLevel ?? null,
+    );
 
     return {
-      triggerStageTemplateId,
-      triggerStageName: triggerStage?.stageTemplate?.name || null,
-      triggerStageApproved,
+      ...meta,
+      triggerStageApproved: meta.triggerApproved,
     };
+  }
+
+  private getPourCardActivationMeta(inspection: ClearanceInspectionContext) {
+    return this.getTriggerStageApprovalMeta(
+      inspection,
+      inspection.activity?.pourCardTriggerStageTemplateId ?? null,
+      inspection.activity?.pourCardTriggerApprovalLevel ?? null,
+    );
   }
 
   private async syncClearanceActivationState(
@@ -1335,7 +1429,14 @@ export class QualityPourCardService {
     if (changed) {
       card = await this.pourCardRepo.save(card);
     }
-    return card;
+    const activationMeta = this.getPourCardActivationMeta(inspection);
+    return Object.assign(card, {
+      isActivated: activationMeta.triggerApproved,
+      activationStageTemplateId: activationMeta.triggerStageTemplateId,
+      activationStageName: activationMeta.triggerStageName,
+      activationApprovalLevel: activationMeta.triggerApprovalLevel,
+      activationApprovalLevelName: activationMeta.triggerApprovalLevelName,
+    });
   }
 
   async savePourCard(inspectionId: number, payload: Partial<QualityPourCard>, userId?: number) {
@@ -1414,18 +1515,45 @@ export class QualityPourCardService {
     const inspection = await this.getInspectionWithClearanceContextOrThrow(
       inspectionId,
     );
+    const activationMeta = this.getPourCardActivationMeta(inspection);
+    if (!activationMeta.triggerApproved) {
+      const triggerLabel = [
+        activationMeta.triggerStageName || 'configured checklist stage',
+        activationMeta.triggerApprovalLevelName,
+      ]
+        .filter(Boolean)
+        .join(' / ');
+      throw new BadRequestException(
+        `Concrete pour card is not active yet. Complete ${triggerLabel} first.`,
+      );
+    }
     if (inspection.activity?.requiresPourClearanceCard) {
       const clearance = await this.clearanceRepo.findOne({
         where: { inspectionId },
       });
+      const requiredStatus =
+        String(
+          inspection.activity?.prePourClearanceApprovalRequirement ||
+            'SUBMITTED',
+        ).toUpperCase() === 'APPROVED'
+          ? 'APPROVED'
+          : 'SUBMITTED';
+      const allowedStatuses =
+        requiredStatus === 'APPROVED'
+          ? [QualityCardStatus.APPROVED, QualityCardStatus.LOCKED]
+          : [
+              QualityCardStatus.SUBMITTED,
+              QualityCardStatus.APPROVED,
+              QualityCardStatus.LOCKED,
+            ];
       if (
         !clearance ||
-        ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-          clearance.status,
-        )
+        !allowedStatuses.includes(clearance.status)
       ) {
         throw new BadRequestException(
-          'Pre-pour clearance must be approved before submitting the pour card.',
+          requiredStatus === 'APPROVED'
+            ? 'Pre-pour clearance must be approved before submitting the pour card.'
+            : 'Pre-pour clearance must be submitted before submitting the pour card.',
         );
       }
     }
@@ -2141,7 +2269,11 @@ export class QualityPourCardService {
     if (defaultsChanged) {
       card = await this.clearanceRepo.save(card);
     }
-    return card;
+    const activationMeta = this.getClearanceActivationMeta(inspection);
+    return Object.assign(card, {
+      activationApprovalLevel: activationMeta.triggerApprovalLevel,
+      activationApprovalLevelName: activationMeta.triggerApprovalLevelName,
+    });
   }
 
   async savePrePourClearanceCard(
@@ -2698,16 +2830,19 @@ export class QualityPourCardService {
     );
 
     if (requiresPourCard) {
-      const pourCard = await this.pourCardRepo.findOne({ where: { inspectionId } });
-      if (
-        !pourCard ||
-        ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
-          pourCard.status,
-        )
-      ) {
-        throw new BadRequestException(
-          'Required pour card is not yet approved for this inspection.',
-        );
+      const activationMeta = this.getPourCardActivationMeta(inspection);
+      if (activationMeta.triggerApproved) {
+        const pourCard = await this.pourCardRepo.findOne({ where: { inspectionId } });
+        if (
+          !pourCard ||
+          ![QualityCardStatus.APPROVED, QualityCardStatus.LOCKED].includes(
+            pourCard.status,
+          )
+        ) {
+          throw new BadRequestException(
+            'Required pour card is not yet approved for this inspection.',
+          );
+        }
       }
     }
 
@@ -2778,4 +2913,3 @@ export class QualityPourCardService {
     }
   }
 }
-
