@@ -289,6 +289,111 @@ class SnagUnitSummary extends Equatable {
   ];
 }
 
+/// A unit's status *relative to a specific process step being viewed* —
+/// distinct from [SnagUnitSummary.overallStatus], which only describes the
+/// unit's actual current round. The Unit Explorer must be process-step
+/// first (per the mobile handoff's "Required Mobile Workflow Hierarchy"):
+/// the same unit shows a different status depending on which step tab is
+/// selected — e.g. a unit on round 2 shows "Snag 1 Completed" under the
+/// Step 1 tab but "Snag 2 Open" under the Step 2 tab.
+enum SnagStepUnitStatus {
+  /// No snag list yet and this is the very first configured step.
+  notReady,
+
+  /// Either no snag list yet and this isn't the first step, or the unit's
+  /// current round is behind this step with no pending readiness request
+  /// for it — not enterable from this step's board.
+  locked,
+
+  /// This is the unit's current round and it's ready for the Checker to
+  /// start raising points.
+  readyForStep,
+
+  /// This is the unit's current round and points are being raised.
+  open,
+
+  /// This is the unit's current round and it's in de-snag review.
+  desnagActive,
+
+  /// This is the unit's current round and it was just finally closed —
+  /// waiting on the Maker to start the *next* configured step.
+  closedNextPending,
+
+  /// The unit is one step behind this one and `released` — the Maker can
+  /// press "Mark Ready and Start Snag N" to advance it onto this step.
+  readyRequestPending,
+
+  /// The unit has already moved past this step.
+  stepCompleted,
+
+  /// Every configured step is finally closed.
+  customerInspectionReady;
+
+  /// Only [locked] units are non-actionable from the board — every other
+  /// status either opens the unit's real current workspace (which exposes
+  /// whatever action, if any, that status allows) or is a terminal/read
+  /// state that's still safe to open.
+  bool get isLocked => this == SnagStepUnitStatus.locked;
+
+  String label(int selectedWorkflowSerialNo) => switch (this) {
+    SnagStepUnitStatus.notReady => 'Not Ready',
+    SnagStepUnitStatus.locked => 'Locked',
+    SnagStepUnitStatus.readyForStep => 'Ready for Snag $selectedWorkflowSerialNo',
+    SnagStepUnitStatus.open => 'Snag $selectedWorkflowSerialNo Open',
+    SnagStepUnitStatus.desnagActive => 'De-snag $selectedWorkflowSerialNo Active',
+    SnagStepUnitStatus.closedNextPending => 'Snag $selectedWorkflowSerialNo Closed — Next Pending',
+    SnagStepUnitStatus.readyRequestPending => 'Ready Request Pending',
+    SnagStepUnitStatus.stepCompleted => 'Snag $selectedWorkflowSerialNo Completed',
+    SnagStepUnitStatus.customerInspectionReady => 'Ready for Customer Inspection',
+  };
+
+  /// Which of the step-card counter buckets this status rolls up into.
+  SnagStepCounterBucket get bucket => switch (this) {
+    SnagStepUnitStatus.readyForStep ||
+    SnagStepUnitStatus.open ||
+    SnagStepUnitStatus.desnagActive => SnagStepCounterBucket.active,
+    SnagStepUnitStatus.readyRequestPending => SnagStepCounterBucket.waiting,
+    SnagStepUnitStatus.stepCompleted ||
+    SnagStepUnitStatus.customerInspectionReady ||
+    SnagStepUnitStatus.closedNextPending => SnagStepCounterBucket.done,
+    SnagStepUnitStatus.notReady || SnagStepUnitStatus.locked => SnagStepCounterBucket.locked,
+  };
+}
+
+enum SnagStepCounterBucket { active, waiting, done, locked }
+
+/// Maps [unit] to its [SnagStepUnitStatus] for the step whose
+/// `workflowSerialNo` is [selectedWorkflowSerialNo] — the exact table from
+/// the mobile handoff's "Unit Status Mapping For Selected Step".
+SnagStepUnitStatus computeSnagStepUnitStatus(SnagUnitSummary unit, int selectedWorkflowSerialNo) {
+  if (unit.snagListId == null) {
+    return selectedWorkflowSerialNo == 1 ? SnagStepUnitStatus.notReady : SnagStepUnitStatus.locked;
+  }
+  if (unit.overallStatus == SnagListStatus.handoverReady) {
+    return SnagStepUnitStatus.customerInspectionReady;
+  }
+  if (unit.currentRound > selectedWorkflowSerialNo) {
+    return SnagStepUnitStatus.stepCompleted;
+  }
+  if (unit.currentRound < selectedWorkflowSerialNo) {
+    if (unit.overallStatus == SnagListStatus.released && unit.currentRound + 1 == selectedWorkflowSerialNo) {
+      return SnagStepUnitStatus.readyRequestPending;
+    }
+    return SnagStepUnitStatus.locked;
+  }
+  // unit.currentRound == selectedWorkflowSerialNo
+  return switch (unit.overallStatus) {
+    SnagListStatus.readyForSnag => SnagStepUnitStatus.readyForStep,
+    SnagListStatus.snagging => SnagStepUnitStatus.open,
+    SnagListStatus.desnagging => SnagStepUnitStatus.desnagActive,
+    SnagListStatus.released => SnagStepUnitStatus.closedNextPending,
+    SnagListStatus.handoverReady => SnagStepUnitStatus.customerInspectionReady,
+    // Defensive only — snagListId != null here, so the backend's synthetic
+    // 'unready' string (see SnagListStatus.unready's doc) shouldn't occur.
+    SnagListStatus.unready => SnagStepUnitStatus.notReady,
+  };
+}
+
 // ============================================================
 // UNIT WORKSPACE (snag list detail)
 // ============================================================

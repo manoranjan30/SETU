@@ -467,6 +467,36 @@ export class SnagService {
     return this.getListDetail(projectId, snagList.id);
   }
 
+  async markCurrentRoundReady(projectId: number, listId: number, userId: number) {
+    const snagList = await this.requireList(projectId, listId);
+    if (snagList.overallStatus !== SnagListStatus.RELEASED) {
+      throw new BadRequestException(
+        'Only released units waiting for the next snag cycle can be marked ready',
+      );
+    }
+
+    const maxRoundNumber = await this.getMaxRoundNumber(projectId);
+    if (snagList.currentRound >= maxRoundNumber) {
+      throw new BadRequestException(
+        'All configured snag cycles are already complete',
+      );
+    }
+
+    const nextRoundNumber = snagList.currentRound + 1;
+    snagList.currentRound = nextRoundNumber;
+    snagList.overallStatus = SnagListStatus.READY_FOR_SNAG;
+    await this.openNextRoundWithCarryForward(snagList, nextRoundNumber);
+
+    const nextRound = await this.requireRound(snagList.id, nextRoundNumber);
+    if (!nextRound.initiatedById) {
+      nextRound.initiatedById = userId || null;
+      await this.snagRoundRepo.save(nextRound);
+    }
+
+    await this.snagListRepo.save(snagList);
+    return this.getListDetail(projectId, snagList.id);
+  }
+
   async resetReadyForSnag(projectId: number, listId: number) {
     const snagList = await this.requireList(projectId, listId);
     if (snagList.overallStatus !== SnagListStatus.READY_FOR_SNAG) {
@@ -684,17 +714,40 @@ export class SnagService {
         'Skipped snag cycles cannot accept new snag items',
       );
     }
-    if (round.snagPhaseStatus !== SnagRoundSnagPhaseStatus.OPEN) {
+    if (round.finalClosureSignedAt) {
+      throw new BadRequestException(
+        'This snag cycle is finally closed. Mark the next cycle ready before raising new snag points',
+      );
+    }
+    if (snagList.currentRound !== round.roundNumber) {
+      throw new BadRequestException(
+        'Snag points can be raised only in the current snag cycle',
+      );
+    }
+    if (snagList.overallStatus === SnagListStatus.RELEASED) {
+      throw new BadRequestException(
+        'Maker must mark this unit ready for the next snag cycle before snag points can be raised',
+      );
+    }
+    if (
+      round.snagPhaseStatus !== SnagRoundSnagPhaseStatus.OPEN &&
+      !this.canReopenRoundBeforeFinalClosure(round)
+    ) {
       throw new BadRequestException(
         'Snag phase is already submitted for this round',
       );
     }
+
     if (
       snagList.overallStatus === SnagListStatus.READY_FOR_SNAG ||
-      snagList.overallStatus === SnagListStatus.RELEASED
+      snagList.overallStatus === SnagListStatus.DESNAGGING
     ) {
       snagList.overallStatus = SnagListStatus.SNAGGING;
       await this.snagListRepo.save(snagList);
+    }
+
+    if (round.snagPhaseStatus !== SnagRoundSnagPhaseStatus.OPEN) {
+      await this.reopenRoundForAdditionalSnags(round);
     }
 
     const room = await this.resolveRoomForList(snagList, dto.qualityRoomId);
@@ -1211,12 +1264,8 @@ export class SnagService {
       snagList.overallStatus = SnagListStatus.HANDOVER_READY;
       snagList.currentRound = maxRoundNumber;
     } else {
-      snagList.currentRound = round.roundNumber + 1;
-      snagList.overallStatus = SnagListStatus.READY_FOR_SNAG;
-      await this.openNextRoundWithCarryForward(
-        snagList,
-        round.roundNumber + 1,
-      );
+      snagList.currentRound = round.roundNumber;
+      snagList.overallStatus = SnagListStatus.RELEASED;
     }
 
     await this.snagListRepo.save(snagList);
@@ -1288,12 +1337,8 @@ export class SnagService {
       snagList.overallStatus = SnagListStatus.HANDOVER_READY;
       snagList.currentRound = maxRoundNumber;
     } else {
-      snagList.currentRound = round.roundNumber + 1;
+      snagList.currentRound = round.roundNumber;
       snagList.overallStatus = SnagListStatus.RELEASED;
-      await this.openNextRoundWithCarryForward(
-        snagList,
-        round.roundNumber + 1,
-      );
     }
 
     await this.snagListRepo.save(snagList);
@@ -2027,6 +2072,38 @@ export class SnagService {
     snagList.overallStatus = SnagListStatus.DESNAGGING;
     await this.snagListRepo.save(snagList);
     this.triggerMilestoneRefresh(projectId);
+  }
+
+  private canReopenRoundBeforeFinalClosure(round: SnagRound) {
+    return (
+      !round.finalClosureSignedAt &&
+      !round.isSkipped &&
+      [
+        SnagRoundDesnagPhaseStatus.OPEN,
+        SnagRoundDesnagPhaseStatus.APPROVAL_PENDING,
+        SnagRoundDesnagPhaseStatus.APPROVED,
+        SnagRoundDesnagPhaseStatus.REJECTED,
+      ].includes(round.desnagPhaseStatus)
+    );
+  }
+
+  private async reopenRoundForAdditionalSnags(round: SnagRound) {
+    round.snagPhaseStatus = SnagRoundSnagPhaseStatus.OPEN;
+    round.snagSubmittedAt = null;
+    round.snagSubmittedById = null;
+    round.snagSubmittedComments = null;
+    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
+    round.desnagReleasedAt = null;
+    round.desnagReleaseComments =
+      'Additional snag point raised before final closure';
+    await this.snagRoundRepo.save(round);
+
+    const approvals = await this.approvalRepo.find({
+      where: { snagRoundId: round.id },
+    });
+    if (approvals.length) {
+      await this.approvalRepo.delete(approvals.map((approval) => approval.id));
+    }
   }
 
   private async openNextRoundWithCarryForward(

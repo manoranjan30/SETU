@@ -61,6 +61,15 @@ class AppColors {
   static const Color progressCompleted = Color(0xFF10B981);
   static const Color progressDelayed = Color(0xFFEF4444);
 
+  // ── Main module accents — the 4 top-level dashboard tiles (Progress,
+  // Quality, EHS, Design) and everything nested under each one's hub page.
+  // Named here so "what color means Quality" has one answer app-wide,
+  // instead of every page re-picking its own blue/indigo/teal.
+  static const Color moduleProgress = Color(0xFF1565C0);
+  static const Color moduleQuality = Color(0xFF3730A3);
+  static const Color moduleEhs = Color(0xFFD97706);
+  static const Color moduleDesign = Color(0xFF0C4A6E);
+
   // ── Shadow helper (use with BoxShadow)
   static const Color shadowColor = Color(0x12000000); // 7% black
   static const Color shadowColorMd = Color(0x1A000000); // 10% black

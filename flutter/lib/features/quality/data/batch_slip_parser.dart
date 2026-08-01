@@ -18,14 +18,23 @@
 ///
 /// Tuning notes for whoever extends the built-in stems after seeing real
 /// slips:
-/// - Each field tries its labeled pattern(s) first, then (for the two
-///   fields most worth getting right without a label — truck no. and
+/// - Each field tries its labeled pattern(s) first, then (for the fields
+///   most worth getting right without a label — truck no., grade, and
 ///   quantity) falls back to a shape-only match anywhere in the text.
 /// - Numeric captures accept the OCR digit-lookalikes O/o/l/I in digit
 ///   positions and normalize them afterward — pure letters never leak into
 ///   a numeric field, but "6.5O" still reads as `6.5`.
 /// - Add new built-in label synonyms as a `|`-alternative in the relevant
 ///   `_labelGroup(...)` call rather than a whole new field.
+/// - The gap between a matched label and its value is a bounded,
+///   digit-excluding "skip anything" span (see `_gap` below) rather than
+///   requiring the value to sit immediately after the label. Real slips
+///   print rows like "9. Grade of Concrete    M30" or "10. Quantity of this
+///   sheet   06.00 M3", where descriptive words — and, on wide two-column
+///   ruled slips, even ML Kit splitting the label and value onto separate
+///   recognized lines — sit between the label and the actual value. `\n`
+///   counts as whitespace to Dart regex by default, so the gap bridges a
+///   line split the same way it bridges "of Concrete".
 library;
 
 enum BatchSlipFieldConfidence {
@@ -122,6 +131,26 @@ class BatchSlipExtraction {
 // [_fixOcrDigitConfusions] then normalizes the captured substring.
 const _digit = r'[0-9OolI]';
 
+// A numeric value: must *start* with a real 0-9 digit (never bare O/o/l/I),
+// then tolerates the OCR-confusable [_digit] class for the rest, then an
+// optional decimal part. Requiring a genuine leading digit matters once a
+// label's value can be reached across a permissive gap that includes plain
+// words — "Quantity of this sheet" contains a lowercase "o" (in "of"), which
+// $_digit alone would happily match as a one-character "quantity" if the gap
+// were allowed to stop there instead of continuing on to the real "06.00".
+const _numShape = '[0-9]$_digit*(?:\\.$_digit+)?';
+
+// Bridges a matched label to its value without requiring strict adjacency.
+// Real slips routinely put descriptive words between the two — "Grade **of
+// Concrete**    M30", "Quantity **of this sheet**   06.00" — and a wide
+// two-column ruled slip can even end up with ML Kit recognizing the label
+// and its value as separate lines. `\n` is whitespace to Dart regex by
+// default, so this bridges a line split exactly the same way it bridges
+// "of Concrete": lazily, stopping at the first digit, capped at 50 chars
+// (roughly a label phrase plus one extra line) so an unrelated field
+// several rows down never gets attached to the wrong label.
+const _gap = r'[^\d]{0,50}?';
+
 /// Regex-escapes admin-configured literal label text before it goes into a
 /// pattern — those labels are always plain text, never a regex the admin
 /// authored themselves (see the design note in the class doc above).
@@ -168,9 +197,16 @@ BatchSlipExtraction parseBatchSlipText(
   const platePattern =
       r'([A-Z]{2}\s?-?\s?\d{1,2}\s?-?\s?[A-Z]{1,3}\s?-?\s?\d{3,4})';
 
-  final truckLabels = _labelGroup('truck|vehicle|veh|lorry', extrasFor(BatchSlipFieldKey.truckNo));
+  final truckLabels = _labelGroup(
+    'truck|vehicle|veh|lorry|transit\\s*mixer|mixer',
+    extrasFor(BatchSlipFieldKey.truckNo),
+  );
   final truckNoLabeled = firstMatch(RegExp(
-    '(?:$truckLabels)\\.?\\s*(?:reg\\.?)?\\s*(?:no\\.?|number|#)?\\s*[:\\-]?\\s*'
+    // The "no./number/#/reg." qualifier is consumed explicitly, right after
+    // the label and before the bridging gap — otherwise a bare "No" could
+    // itself satisfy the loose `[A-Z0-9]{4,10}` value alternative once the
+    // gap is allowed to reach across filler words.
+    '(?:$truckLabels)(?:\\.?\\s*(?:reg\\.?)?\\s*(?:no\\.?|number|#)?)?$_gap'
     '($platePattern|[A-Z0-9]{4,10})',
     caseSensitive: false,
   ));
@@ -185,27 +221,49 @@ BatchSlipExtraction parseBatchSlipText(
       : (truckNoUnlabeled != null ? BatchSlipFieldConfidence.low : BatchSlipFieldConfidence.none);
 
   final challanLabels = _labelGroup(
-    r'(?:delivery\s*)?(?:challan|d\.?\s?c\.?|ticket|slip|docket|invoice|voucher|bill)',
+    r'(?:delivery\s*)?(?:challan|d\.?\s?c\.?|ticket|slip|docket|invoice|voucher|bill|sl\.?\s*no|serial\s*(?:no)?)',
     extrasFor(BatchSlipFieldKey.deliveryChallanNo),
   );
   final challan = firstMatch(RegExp(
-    '(?:$challanLabels)\\.?\\s*(?:no\\.?|number|#)?\\s*[:\\-]?\\s*([A-Z0-9\\-/]{2,15})',
+    // Same "no./number/#" pre-consumption as truckNo, and for the same
+    // reason — the bare word "No" fits the alphanumeric value shape below.
+    '(?:$challanLabels)(?:\\.?\\s*(?:no\\.?|number|#)?)?$_gap'
+    '([A-Z0-9\\-/]{2,15})',
     caseSensitive: false,
   ));
 
+  // Deliberately no bare "mix" alternative — "Mix" alone collides with
+  // "Transit **Mix**er No.", "Ad**mix**ture", and plant names/branding
+  // like "Ready **Mix** Concrete", all of which are common on real slips
+  // and would otherwise get misread as the grade label. Only the
+  // unambiguous "Mix ID" compound counts.
   final gradeLabels = _labelGroup(
-    r'grade|mix(?:\s*id)?|concrete\s*(?:grade|type|class)|class\s*of\s*concrete',
+    r'grade|mix\s*id|concrete\s*(?:grade|type|class)|class\s*of\s*concrete',
     extrasFor(BatchSlipFieldKey.mixGrade),
   );
-  final grade = firstMatch(RegExp(
-    '(?:$gradeLabels)\\s*[:\\-]?\\s*([A-Z]{1,4}\\s?-?\\s?\\d{2,3})',
+  const gradeShape = r'([A-Z]{1,4}\s?-?\s?\d{2,3})';
+  final gradeLabeled = firstMatch(RegExp(
+    '(?:$gradeLabels)$_gap$gradeShape',
     caseSensitive: false,
   ));
+  // Fallback: a bare concrete-grade-shaped token (M20, M30, M35 (50%), ...)
+  // anywhere in the text — covers slips where the grade is printed in a
+  // table cell far enough from its label that even the bridged gap above
+  // can't reach it. Case-sensitive and requires the "M" prefix specifically
+  // (India's standard IS-456 grade notation) to avoid matching unrelated
+  // two-letter-plus-digits tokens elsewhere on the slip.
+  final gradeUnlabeled = gradeLabeled == null
+      ? firstMatch(RegExp(r'\b(M\s?-?\s?\d{2,3})\b', caseSensitive: true))
+      : null;
+  final grade = gradeLabeled ?? gradeUnlabeled;
+  final gradeConfidence = gradeLabeled != null
+      ? BatchSlipFieldConfidence.high
+      : (gradeUnlabeled != null ? BatchSlipFieldConfidence.low : BatchSlipFieldConfidence.none);
 
   final qtyLabels = _labelGroup('qty|quantity|volume|vol', extrasFor(BatchSlipFieldKey.quantityM3));
   final qtyLabeled = firstMatchDouble(RegExp(
-    '(?:$qtyLabels)\\.?\\s*(?:delivered|net|batch)?\\s*[:\\-]?\\s*'
-    '($_digit+(?:\\.$_digit+)?)\\s*(?:m3|m³|cum|cu\\.?\\s?m)?',
+    '(?:$qtyLabels)(?:\\.?\\s*(?:delivered|net|batch)?)?$_gap'
+    '($_numShape)\\s*(?:m3|m³|cum|cu\\.?\\s?m)?',
     caseSensitive: false,
   ));
   // Fallback: a decimal number immediately followed by a volume unit,
@@ -213,7 +271,7 @@ BatchSlipExtraction parseBatchSlipText(
   // table cell (e.g. "6.50 M3") with no "Qty" label on the same line.
   final qtyUnlabeled = qtyLabeled == null
       ? firstMatchDouble(RegExp(
-          '($_digit+\\.$_digit+)\\s*(?:m3|m³|cum|cu\\.?\\s?m)\\b',
+          '([0-9]$_digit*\\.$_digit+)\\s*(?:m3|m³|cum|cu\\.?\\s?m)\\b',
           caseSensitive: false,
         ))
       : null;
@@ -224,16 +282,18 @@ BatchSlipExtraction parseBatchSlipText(
 
   final slumpLabels = _labelGroup('slump', extrasFor(BatchSlipFieldKey.slumpMm));
   final slump = firstMatchDouble(RegExp(
-    '(?:$slumpLabels)\\s*[:\\-]?\\s*($_digit+(?:\\.$_digit+)?)\\s*(?:mm)?',
+    '(?:$slumpLabels)$_gap($_numShape)\\s*(?:mm)?',
     caseSensitive: false,
   ));
 
   final timeLabels = _labelGroup(
-    r'(?:batch|loading|dispatch|load|departure)?\s*time',
+    r'(?:batch|loading|dispatch|load|departure)?\s*time|time\s*of\s*(?:batch|loading|dispatch|load|departure)',
     extrasFor(BatchSlipFieldKey.batchStartTime),
   );
+  // Separator accepts common OCR misreads of a handwritten colon (an
+  // apostrophe or hyphen) alongside the usual ':' and '.'.
   final time = firstMatch(RegExp(
-    '(?:$timeLabels)\\s*[:\\-]?\\s*(\\d{1,2}[:.]\\d{2})',
+    "(?:$timeLabels)$_gap(\\d{1,2}[:.'\\-]\\d{2})",
     caseSensitive: false,
   ));
 
@@ -259,7 +319,7 @@ BatchSlipExtraction parseBatchSlipText(
     ),
     mixIdOrGrade: BatchSlipFieldResult(
       value: grade?.toUpperCase().replaceAll(RegExp(r'\s+'), ''),
-      confidence: grade != null ? BatchSlipFieldConfidence.high : BatchSlipFieldConfidence.none,
+      confidence: gradeConfidence,
     ),
     quantityM3: BatchSlipFieldResult(value: qty, confidence: qtyConfidence),
     slumpMm: BatchSlipFieldResult(
@@ -289,7 +349,10 @@ String _fixOcrDigitConfusions(String s) =>
 /// leave the field for manual entry than write a wrong-but-plausible time.
 String? _normalizeTime(String? raw) {
   if (raw == null) return null;
-  final parts = raw.split(RegExp(r'[:.]'));
+  // Matches the separator class the time-value pattern itself accepts —
+  // colon/dot plus the common OCR misreads of a handwritten colon
+  // (apostrophe, hyphen).
+  final parts = raw.split(RegExp(r"[:.'\-]"));
   if (parts.length != 2) return null;
   final h = int.tryParse(parts[0]);
   final m = int.tryParse(parts[1]);

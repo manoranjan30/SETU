@@ -676,20 +676,6 @@ class ApiEndpoints {
   static String cubeTestApprove(int id) =>
       '/quality/cube-test-register/$id/approve';
 
-  // ==================== QUALITY SNAG ENDPOINTS ====================
-
-  /// GET /quality/:projectId/snags
-  static String snags(int projectId) => '/quality/$projectId/snags';
-
-  /// POST /quality/snags
-  static const String createSnag = '/quality/snags';
-
-  /// PUT /quality/snags/:id
-  static String updateSnag(int snagId) => '/quality/snags/$snagId';
-
-  /// DELETE /quality/snags/:id
-  static String deleteSnag(int snagId) => '/quality/snags/$snagId';
-
   // ==================== BATCH SLIP SCAN CONFIG ====================
 
   /// GET /quality/batch-slip-config?projectId=:projectId
@@ -700,10 +686,10 @@ class ApiEndpoints {
       '/quality/batch-slip-config?projectId=$projectId';
 
   // ==================== SNAG / DESNAG ENDPOINTS ====================
-  // Process-step/round/unit-workspace module at /snag/... — distinct from
-  // the legacy flat punch-list at /quality/:projectId/snags above (deleteSnag
-  // etc.), which this module does not replace. Verified directly against
-  // backend/src/snag/snag.controller.ts.
+  // Process-step/round/unit-workspace module at /snag/.... Verified directly
+  // against backend/src/snag/snag.controller.ts. The older flat punch-list
+  // at /quality/:projectId/snags was removed from the app in favour of this
+  // module plus Quality Site Observations for general defects.
 
   /// GET /snag/:projectId/config/process-steps
   static String snagProcessSteps(int projectId) =>
@@ -770,6 +756,15 @@ class ApiEndpoints {
   /// ready-for-snag unit (with zero raised points) back to unready.
   static String snagResetReady(int projectId, int listId) =>
       '/snag/$projectId/lists/$listId/reset-ready';
+
+  /// POST /snag/:projectId/lists/:listId/mark-current-round-ready — Maker
+  /// starts the next configured snag cycle once the list is `released`
+  /// (i.e. the current cycle was finally closed but more cycles remain).
+  /// Distinct from [snagLists] (`POST .../lists`), which is *only* for a
+  /// unit's very first readiness when no list exists yet — verified against
+  /// `snag.controller.ts:markCurrentRoundReady` per the July 2026 handoff.
+  static String snagMarkCurrentRoundReady(int projectId, int listId) =>
+      '/snag/$projectId/lists/$listId/mark-current-round-ready';
 
   /// POST /snag/:projectId/items/:itemId/reject-rectification
   static String snagRejectRectification(int projectId, int itemId) =>

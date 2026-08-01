@@ -198,6 +198,16 @@ export class SnagController {
     return this.service.resetReadyForSnag(projectId, listId);
   }
 
+  @Post(':projectId/lists/:listId/mark-current-round-ready')
+  @Permissions('QUALITY.SNAG.CREATE')
+  markCurrentRoundReady(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('listId', ParseIntPipe) listId: number,
+    @Request() req: any,
+  ) {
+    return this.service.markCurrentRoundReady(projectId, listId, req.user?.id);
+  }
+
   @Get(':projectId/lists/:listId')
   @Permissions('QUALITY.SNAG.READ')
   getList(

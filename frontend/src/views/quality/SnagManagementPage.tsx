@@ -8,18 +8,12 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  Building2,
   Camera,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  ClipboardList,
   FileText,
-  Grid2X2,
   Hammer,
   Home,
   ImagePlus,
-  Layers,
   ListChecks,
   Loader2,
   PenLine,
@@ -30,6 +24,20 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  RadialBar,
+  RadialBarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useParams } from "react-router-dom";
 import api from "../../api/axios";
 import { getPublicFileUrl } from "../../api/baseUrl";
@@ -103,6 +111,16 @@ type FinalClosureDialogState = {
 
 type SnagView = "dashboard" | "workflow" | "final";
 
+type StepUnitStatus =
+  | "unready"
+  | "locked"
+  | "ready_for_snag"
+  | "snagging"
+  | "desnagging"
+  | "released"
+  | "completed"
+  | "handover_ready";
+
 type SnagFormState = {
   qualityRoomId: number | "";
   processActivityId: number | "OTHER" | "";
@@ -141,6 +159,25 @@ const CHECKLIST_STATUSES: SnagChecklistStatus[] = [
 ];
 
 const DEFAULT_SNAG_CYCLES = 3;
+const CHART_COLORS = [
+  "var(--color-primary)",
+  "var(--color-success)",
+  "var(--color-warning)",
+  "var(--color-error)",
+  "var(--color-secondary)",
+  "var(--color-info)",
+  "var(--color-primary-dark)",
+  "var(--color-text-muted)",
+];
+
+const STATUS_COLORS: Record<string, string> = {
+  unready: "var(--color-text-muted)",
+  ready_for_snag: "var(--color-primary)",
+  snagging: "var(--color-error)",
+  desnagging: "var(--color-info)",
+  released: "var(--color-secondary)",
+  handover_ready: "var(--color-success)",
+};
 
 function naturalSort(a: string, b: string) {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -175,11 +212,105 @@ function getWorkflowStatusLabel(status: string, currentRound: number) {
     case "desnagging":
       return `${getDesnagCycleLabel(currentRound)} active`;
     case "released":
-      return `Released to ${getSnagCycleLabel(currentRound)}`;
+      return `${getSnagCycleLabel(currentRound)} closed - next snag pending`;
     case "handover_ready":
       return "Ready for Customer Inspection";
     default:
       return status.replace(/_/g, " ");
+  }
+}
+
+function getStepUnitStatus(
+  unit: SnagUnitSummary,
+  selectedRound: number,
+): StepUnitStatus {
+  if (!unit.snagListId) {
+    return selectedRound === 1 ? "unready" : "locked";
+  }
+  if (unit.overallStatus === "handover_ready") {
+    return "handover_ready";
+  }
+  if (unit.currentRound > selectedRound) {
+    return "completed";
+  }
+  if (unit.currentRound < selectedRound) {
+    return unit.overallStatus === "released" &&
+      unit.currentRound + 1 === selectedRound
+      ? "released"
+      : "locked";
+  }
+  return unit.overallStatus;
+}
+
+function getStepUnitStatusLabel(
+  status: StepUnitStatus,
+  selectedRound: number,
+) {
+  switch (status) {
+    case "unready":
+      return selectedRound === 1 ? "Not ready" : "Not started";
+    case "locked":
+      return "Locked";
+    case "ready_for_snag":
+      return `Ready for ${getSnagCycleLabel(selectedRound)}`;
+    case "snagging":
+      return `${getSnagCycleLabel(selectedRound)} open`;
+    case "desnagging":
+      return `${getDesnagCycleLabel(selectedRound)} active`;
+    case "released":
+      return `Ready request pending for ${getSnagCycleLabel(selectedRound)}`;
+    case "completed":
+      return `${getSnagCycleLabel(selectedRound)} completed`;
+    case "handover_ready":
+      return "Ready for Customer Inspection";
+    default:
+      return "Unknown";
+  }
+}
+
+function getCompactStepUnitStatusLabel(
+  status: StepUnitStatus,
+  selectedRound: number,
+) {
+  switch (status) {
+    case "ready_for_snag":
+      return `Ready S${selectedRound}`;
+    case "snagging":
+      return `Snag ${selectedRound}`;
+    case "desnagging":
+      return `De-snag ${selectedRound}`;
+    case "released":
+      return "Ready request";
+    case "completed":
+      return "Complete";
+    case "handover_ready":
+      return "Customer ready";
+    case "locked":
+      return "Locked";
+    case "unready":
+    default:
+      return "Not ready";
+  }
+}
+
+function getStepUnitCardClass(status: StepUnitStatus) {
+  switch (status) {
+    case "ready_for_snag":
+      return "border-primary/25 bg-primary-muted/20 hover:border-primary";
+    case "snagging":
+      return "border-error/25 bg-error-muted/20 hover:border-error";
+    case "desnagging":
+      return "border-info/25 bg-info-muted/20 hover:border-info";
+    case "released":
+      return "border-warning/30 bg-warning-muted/25 hover:border-warning";
+    case "completed":
+    case "handover_ready":
+      return "border-success/25 bg-success-muted/25 hover:border-success";
+    case "locked":
+      return "border-border-subtle bg-surface-sunken text-text-muted";
+    case "unready":
+    default:
+      return "border-border-default bg-surface-card hover:border-primary";
   }
 }
 
@@ -241,12 +372,14 @@ function statusBadgeClass(status: string) {
     case "on_hold":
       return "border-warning/20 bg-warning-muted text-warning";
     case "handover_ready":
+    case "completed":
       return "border-success/20 bg-success-muted text-success";
     case "desnagging":
       return "border-info/20 bg-info-muted text-info";
     case "ready_for_snag":
       return "border-primary/20 bg-primary-muted text-primary";
     case "unready":
+    case "locked":
       return "border-border-default bg-surface-base text-text-muted";
     case "released":
       return "border-secondary/20 bg-secondary-muted text-secondary";
@@ -411,46 +544,124 @@ function MetricTile({
   );
 }
 
-function AnalysisList({
+function UnitCardMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border-subtle bg-surface-base/80 px-3 py-2">
+      <div className="truncate text-sm font-semibold text-text-primary">
+        {value}
+      </div>
+      <div className="mt-0.5 truncate text-[11px] font-medium text-text-muted">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ChartPanel({
   title,
-  rows,
-  emptyLabel = "No data",
+  children,
 }: {
   title: string;
-  rows: SnagAnalyticsRow[];
-  emptyLabel?: string;
+  children: ReactNode;
 }) {
-  const max = Math.max(1, ...rows.map((row) => row.count));
   return (
     <section className="rounded-2xl border border-border-default bg-surface-card p-4">
       <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-      <div className="mt-4 space-y-3">
-        {rows.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border-default px-3 py-5 text-center text-sm text-text-muted">
-            {emptyLabel}
-          </div>
-        ) : (
-          rows.map((row) => (
-            <div key={row.label} className="space-y-1.5">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="truncate font-medium text-text-secondary">
-                  {row.label}
-                </span>
-                <span className="font-semibold text-text-primary">
-                  {row.count}
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-surface-base">
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{ width: `${Math.max(5, (row.count / max) * 100)}%` }}
-                />
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      <div className="mt-3 h-72 min-h-72">{children}</div>
     </section>
+  );
+}
+
+function EmptyChart({ label = "No data" }: { label?: string }) {
+  return (
+    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border-default text-sm text-text-muted">
+      {label}
+    </div>
+  );
+}
+
+function SnagPieChart({ rows }: { rows: SnagAnalyticsRow[] }) {
+  if (!rows.length) return <EmptyChart />;
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie
+          data={rows}
+          dataKey="count"
+          nameKey="label"
+          innerRadius="48%"
+          outerRadius="76%"
+          paddingAngle={2}
+        >
+          {rows.map((row, index) => (
+            <Cell
+              key={row.label}
+              fill={STATUS_COLORS[row.label] || CHART_COLORS[index % CHART_COLORS.length]}
+            />
+          ))}
+        </Pie>
+        <Tooltip />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+}
+
+function SnagBarChart({
+  rows,
+  color = "var(--color-primary)",
+}: {
+  rows: SnagAnalyticsRow[];
+  color?: string;
+}) {
+  if (!rows.length) return <EmptyChart />;
+  const data = rows.slice(0, 10);
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={104}
+          tick={{ fontSize: 11 }}
+        />
+        <Tooltip />
+        <Bar dataKey="count" fill={color} radius={[0, 6, 6, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function ClosureGauge({ closed, total }: { closed: number; total: number }) {
+  const percent = total > 0 ? Math.round((closed / total) * 100) : 0;
+  const data = [{ name: "Closure", value: percent, fill: "var(--color-success)" }];
+  return (
+    <div className="relative h-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <RadialBarChart
+          innerRadius="68%"
+          outerRadius="92%"
+          data={data}
+          startAngle={180}
+          endAngle={0}
+        >
+          <RadialBar dataKey="value" cornerRadius={14} background />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div className="pointer-events-none absolute inset-x-0 bottom-12 text-center">
+        <div className="text-4xl font-semibold text-text-primary">{percent}%</div>
+        <div className="text-xs font-medium uppercase tracking-[0.14em] text-text-muted">
+          Point Closure
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -484,7 +695,7 @@ function SnagAnalysisDashboard({
         <p className="mt-3">{error}</p>
         <button
           onClick={onRefresh}
-          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-error/30 bg-white px-3 py-2 font-medium text-error hover:bg-error-muted/40"
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-error/30 bg-surface-card px-3 py-2 font-medium text-error hover:bg-error-muted/40"
         >
           <RefreshCw className="h-4 w-4" />
           Retry
@@ -521,24 +732,24 @@ function SnagAnalysisDashboard({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <MetricTile label="Total Units" value={summary?.totalUnits ?? 0} />
+        <MetricTile label="Units" value={summary?.totalUnits ?? 0} />
         <MetricTile
-          label="Open Points"
+          label="Open"
           value={summary?.openSnagPoints ?? 0}
           tone="danger"
         />
         <MetricTile
-          label="Rectified Pending"
+          label="Pending De-snag"
           value={summary?.rectifiedPendingDesnag ?? 0}
           tone="warning"
         />
         <MetricTile
-          label="Not Satisfactory"
+          label="Rejected"
           value={summary?.notSatisfactoryPoints ?? 0}
           tone="danger"
         />
         <MetricTile
-          label="Closed Points"
+          label="Closed"
           value={summary?.closedSnagPoints ?? 0}
           tone="success"
         />
@@ -549,33 +760,40 @@ function SnagAnalysisDashboard({
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <AnalysisList title="Units by Status" rows={analytics?.byStatus || []} />
-        <AnalysisList
-          title="Snags by Process Step"
-          rows={analytics?.byProcessStep || []}
-        />
-        <AnalysisList
-          title="Open Aging Buckets"
-          rows={analytics?.agingBuckets || []}
-        />
+      <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)_360px]">
+        <ChartPanel title="Unit Status Mix">
+          <SnagPieChart rows={analytics?.byStatus || []} />
+        </ChartPanel>
+        <ChartPanel title="Closure Health">
+          <ClosureGauge
+            closed={summary?.closedSnagPoints || 0}
+            total={summary?.totalSnagPoints || 0}
+          />
+        </ChartPanel>
+        <ChartPanel title="Open Aging">
+          <SnagBarChart rows={analytics?.agingBuckets || []} color="#dc2626" />
+        </ChartPanel>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-3">
-        <AnalysisList title="Snags by Tower" rows={analytics?.byTower || []} />
-        <AnalysisList title="Snags by Room" rows={analytics?.byRoom || []} />
-        <AnalysisList
-          title="Snags by Activity"
-          rows={analytics?.byActivity || []}
-        />
+        <ChartPanel title="Snags by Process Step">
+          <SnagBarChart rows={analytics?.byProcessStep || []} color="#7c3aed" />
+        </ChartPanel>
+        <ChartPanel title="Tower Hotspots">
+          <SnagBarChart rows={analytics?.byTower || []} color="#0891b2" />
+        </ChartPanel>
+        <ChartPanel title="Activity Hotspots">
+          <SnagBarChart rows={analytics?.byActivity || []} color="#f59e0b" />
+        </ChartPanel>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <AnalysisList
-          title="Recurring Snag Points"
-          rows={analytics?.recurringSnags || []}
-          emptyLabel="No repeated snag points yet"
-        />
+      <div className="grid gap-5 xl:grid-cols-3">
+        <ChartPanel title="Room Hotspots">
+          <SnagBarChart rows={analytics?.byRoom || []} color="#2563eb" />
+        </ChartPanel>
+        <ChartPanel title="Recurring Snag Points">
+          <SnagBarChart rows={analytics?.recurringSnags || []} color="#db2777" />
+        </ChartPanel>
         <section className="rounded-2xl border border-border-default bg-surface-card p-4">
           <h3 className="text-sm font-semibold text-text-primary">
             Blocked by Rejection
@@ -632,12 +850,15 @@ export default function SnagManagementPage() {
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [activeView, setActiveView] = useState<SnagView>("dashboard");
+  const [selectedBlockKey, setSelectedBlockKey] = useState<string | null>(null);
+  const [selectedTowerKey, setSelectedTowerKey] = useState<string | null>(null);
+  const [selectedFloorKey, setSelectedFloorKey] = useState<string | null>(null);
   const [processSteps, setProcessSteps] = useState<SnagProcessStepConfig[]>([]);
+  const [selectedWorkflowRound, setSelectedWorkflowRound] = useState(1);
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   const [selectedUnit, setSelectedUnit] = useState<SnagUnitSummary | null>(null);
   const [detail, setDetail] = useState<SnagListDetail | null>(null);
@@ -680,18 +901,6 @@ export default function SnagManagementPage() {
       setUnitsError(null);
       setUnits(data);
       setProcessSteps(configuredSteps);
-      setExpandedKeys((current) => {
-        if (current.size > 0) return current;
-        const next = new Set<string>();
-        buildExplorer(data).forEach((block) => {
-          next.add(block.key);
-          block.towers.forEach((tower) => {
-            next.add(tower.key);
-            tower.floors.forEach((floor) => next.add(floor.key));
-          });
-        });
-        return next;
-      });
     } catch (error) {
       console.error(error);
       setUnitsError(
@@ -722,16 +931,38 @@ export default function SnagManagementPage() {
     }
   }, [canReadSnag, pId]);
 
-  const configuredCycleCount = processSteps.filter(
-    (step) => step.isActive !== false,
-  ).length;
+  const activeProcessSteps = useMemo(
+    () =>
+      [...processSteps]
+        .filter((step) => step.isActive !== false)
+        .sort((a, b) => a.workflowSerialNo - b.workflowSerialNo),
+    [processSteps],
+  );
+  const configuredCycleCount = activeProcessSteps.length;
   const maxSnagCycles = configuredCycleCount || DEFAULT_SNAG_CYCLES;
+  const workflowStepNumbers = useMemo(
+    () =>
+      activeProcessSteps.length
+        ? activeProcessSteps.map((step) => step.workflowSerialNo)
+        : Array.from({ length: DEFAULT_SNAG_CYCLES }, (_, index) => index + 1),
+    [activeProcessSteps],
+  );
 
-  const loadDetail = useCallback(async (listId: number) => {
+  useEffect(() => {
+    if (workflowStepNumbers.includes(selectedWorkflowRound)) return;
+    setSelectedWorkflowRound(workflowStepNumbers[0] || 1);
+  }, [selectedWorkflowRound, workflowStepNumbers]);
+
+  const loadDetail = useCallback(async (listId: number, preferredRound?: number) => {
     if (!pId) return;
     const data = await snagService.getList(pId, listId);
     setDetail(data);
-    setRoundNumber(data.currentRound || 1);
+    const hasPreferredRound = data.rounds?.some(
+      (round) => round.roundNumber === preferredRound,
+    );
+    setRoundNumber(
+      hasPreferredRound ? preferredRound! : data.currentRound || 1,
+    );
   }, [pId]);
 
   useEffect(() => {
@@ -784,11 +1015,9 @@ export default function SnagManagementPage() {
   const canRaiseSnagPoints = canApproveSnagRelease;
 
   const currentProcessStep = useMemo(() => {
-    return [...processSteps]
-      .filter((step) => step.isActive !== false)
-      .sort((a, b) => a.workflowSerialNo - b.workflowSerialNo)
+    return activeProcessSteps
       .find((step) => step.workflowSerialNo === roundNumber);
-  }, [processSteps, roundNumber]);
+  }, [activeProcessSteps, roundNumber]);
 
   const currentConfiguredActivities = currentProcessStep?.activities || [];
   const selectedConfiguredActivity = currentConfiguredActivities.find(
@@ -809,9 +1038,9 @@ export default function SnagManagementPage() {
   const currentDesnagLabel = currentRound
     ? getDesnagCycleLabel(currentRound.roundNumber)
     : "De-snag";
-  const nextReleaseTargetLabel = currentRound
-    ? getNextSnagCycleLabel(currentRound.roundNumber, maxSnagCycles)
-    : "next stage";
+  const nextCycleReadyLabel = currentRound
+    ? getSnagCycleLabel(Math.min(currentRound.roundNumber + 1, maxSnagCycles))
+    : "next Snag";
 
   const activeApproval = useMemo<SnagApproval | undefined>(
     () =>
@@ -836,18 +1065,54 @@ export default function SnagManagementPage() {
   }, [deferredSearchQuery, units]);
 
   const explorer = useMemo(() => buildExplorer(filteredUnits), [filteredUnits]);
-
-  const summary = useMemo(
-    () => ({
-      totalUnits: units.length,
-      activeLists: units.filter((unit) => unit.snagListId).length,
-      desnagging: units.filter((unit) => unit.overallStatus === "desnagging")
-        .length,
-      handoverReady: units.filter(
-        (unit) => unit.overallStatus === "handover_ready",
-      ).length,
-    }),
-    [units],
+  const selectedBlock = useMemo(
+    () =>
+      explorer.find((block) => block.key === selectedBlockKey) ||
+      explorer[0] ||
+      null,
+    [explorer, selectedBlockKey],
+  );
+  const selectedTower = useMemo(
+    () =>
+      selectedBlock?.towers.find((tower) => tower.key === selectedTowerKey) ||
+      selectedBlock?.towers[0] ||
+      null,
+    [selectedBlock, selectedTowerKey],
+  );
+  const selectedFloor = useMemo(
+    () =>
+      selectedTower?.floors.find((floor) => floor.key === selectedFloorKey) ||
+      selectedTower?.floors[0] ||
+      null,
+    [selectedFloorKey, selectedTower],
+  );
+  const workflowUnits = selectedFloor?.units || [];
+  const workflowStepSummaries = useMemo(
+    () =>
+      workflowStepNumbers.map((roundNo) => {
+        const statuses = units.map((unit) => getStepUnitStatus(unit, roundNo));
+        return {
+          roundNo,
+          title:
+            activeProcessSteps.find(
+              (step) => step.workflowSerialNo === roundNo,
+            )?.name || `${getSnagCycleLabel(roundNo)} / ${getDesnagCycleLabel(roundNo)}`,
+          completed: statuses.filter(
+            (status) => status === "completed" || status === "handover_ready",
+          ).length,
+          active: statuses.filter(
+            (status) =>
+              status === "ready_for_snag" ||
+              status === "snagging" ||
+              status === "desnagging",
+          ).length,
+          waiting: statuses.filter((status) => status === "released").length,
+          locked: statuses.filter(
+            (status) => status === "locked" || status === "unready",
+          ).length,
+        };
+      }),
+    [activeProcessSteps, units, workflowStepNumbers],
   );
 
   const selectedItems = useMemo(() => {
@@ -871,10 +1136,24 @@ export default function SnagManagementPage() {
 
   const unresolvedForRelease =
     currentRoundSummary.open + currentRoundSummary.rectified;
+  const canReopenBeforeFinalClosure = Boolean(
+    currentRound &&
+      !currentRound.isSkipped &&
+      !currentRound.finalClosureSignedAt &&
+      detail?.overallStatus !== "released" &&
+      detail?.overallStatus !== "handover_ready" &&
+      ["open", "approval_pending", "approved", "rejected"].includes(
+        currentRound.desnagPhaseStatus,
+      ),
+  );
   const canCreateInSelectedCycle = Boolean(
     currentRound &&
       !currentRound.isSkipped &&
-      currentRound.snagPhaseStatus === "open",
+      !currentRound.finalClosureSignedAt &&
+      detail?.currentRound === currentRound.roundNumber &&
+      detail?.overallStatus !== "released" &&
+      detail?.overallStatus !== "handover_ready" &&
+      (currentRound.snagPhaseStatus === "open" || canReopenBeforeFinalClosure),
   );
   const canCheckerRaiseInSelectedCycle =
     canCreateInSelectedCycle && canRaiseSnagPoints;
@@ -966,15 +1245,6 @@ export default function SnagManagementPage() {
     [units],
   );
 
-  const toggleExpanded = (key: string) => {
-    setExpandedKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const uploadFiles = async (files: FileList | null) => {
     if (!files?.length) return [];
     const urls: string[] = [];
@@ -989,7 +1259,10 @@ export default function SnagManagementPage() {
     return urls;
   };
 
-  const openUnit = async (unit: SnagUnitSummary) => {
+  const openUnit = async (
+    unit: SnagUnitSummary,
+    preferredRound = selectedWorkflowRound,
+  ) => {
     if (!pId) return;
     setLoadingDetail(true);
     setDetail(null);
@@ -1004,9 +1277,10 @@ export default function SnagManagementPage() {
     setUnitModalOpen(true);
     try {
       if (unit.snagListId) {
-        await loadDetail(unit.snagListId);
+        await loadDetail(unit.snagListId, preferredRound);
       } else {
         setDetail(null);
+        setRoundNumber(preferredRound);
       }
     } catch (error) {
       console.error(error);
@@ -1053,9 +1327,12 @@ export default function SnagManagementPage() {
     if (!selectedUnit || !pId) return;
     setLoadingDetail(true);
     try {
-      const data = await snagService.createOrGetList(pId, {
-        qualityUnitId: selectedUnit.qualityUnitId,
-      });
+      const data =
+        detail?.id && detail.overallStatus === "released"
+          ? await snagService.markCurrentRoundReady(pId, detail.id)
+          : await snagService.createOrGetList(pId, {
+              qualityUnitId: selectedUnit.qualityUnitId,
+            });
       setDetail(data);
       setRoundNumber(data.currentRound || 1);
       await loadUnits();
@@ -1499,7 +1776,6 @@ export default function SnagManagementPage() {
     canApproveSnagRelease &&
     selectedItems.selected.length > 0 &&
     selectedItems.selected.every((item) => item.status === "rectified");
-  const hasUnitsLoadFailure = Boolean(unitsError && units.length === 0);
   const hasSearchTerm = deferredSearchQuery.trim().length > 0;
 
   if (!canReadSnag) {
@@ -1543,7 +1819,7 @@ export default function SnagManagementPage() {
               onClick={() => setActiveView(key as SnagView)}
               className={`rounded-xl px-3 py-2 text-sm font-semibold ${
                 activeView === key
-                  ? "bg-primary text-white"
+                  ? "bg-primary text-on-primary"
                   : "text-text-secondary hover:bg-surface-card"
               }`}
             >
@@ -1563,366 +1839,297 @@ export default function SnagManagementPage() {
       )}
 
       {activeView === "workflow" && (
-        <>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <SectionCard
-            title="Units in Scope"
-            icon={<Home className="h-4 w-4" />}
-          >
-            <div className="text-3xl font-bold text-text-primary">
-              {hasUnitsLoadFailure ? "--" : summary.totalUnits}
+        <div className="space-y-5">
+          <section className="rounded-2xl border border-border-default bg-surface-card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-text-primary">
+                  Snag / De-snag Process Steps
+                </h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  Select the configured workflow step first, then manage unit
+                  status, snag points, de-snag review, and final closure for
+                  that step.
+                </p>
+              </div>
+              <span className="rounded-full border border-border-default bg-surface-base px-3 py-1.5 text-xs font-semibold text-text-muted">
+                {workflowStepSummaries.length} configured steps
+              </span>
             </div>
-            <p className="mt-1 text-sm text-text-muted">
-              Structured handover units ready for snag workflows.
-            </p>
-          </SectionCard>
-          <SectionCard
-            title="Lists Activated"
-            icon={<ClipboardList className="h-4 w-4" />}
-          >
-            <div className="text-3xl font-bold text-text-primary">
-              {hasUnitsLoadFailure ? "--" : summary.activeLists}
+            <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
+              {workflowStepSummaries.map((step) => {
+                const selected = step.roundNo === selectedWorkflowRound;
+                return (
+                  <button
+                    key={step.roundNo}
+                    onClick={() => setSelectedWorkflowRound(step.roundNo)}
+                    className={`min-h-[128px] rounded-2xl border p-4 text-left transition-colors ${
+                      selected
+                        ? "border-primary bg-primary-muted/40"
+                        : "border-border-default bg-surface-base hover:border-primary/50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-text-primary">
+                          {step.title}
+                        </div>
+                        <div className="mt-1 text-xs text-text-muted">
+                          Workflow serial {step.roundNo}
+                        </div>
+                      </div>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+                          selected
+                            ? "border-primary/20 bg-primary text-on-primary"
+                            : "border-border-default bg-surface-card text-text-muted"
+                        }`}
+                      >
+                        {selected ? "Selected" : "Open"}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                      <UnitCardMetric label="Active" value={step.active} />
+                      <UnitCardMetric label="Waiting" value={step.waiting} />
+                      <UnitCardMetric label="Done" value={step.completed} />
+                      <UnitCardMetric label="Locked" value={step.locked} />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <p className="mt-1 text-sm text-text-muted">
-              Units where snagging has already started.
-            </p>
-          </SectionCard>
-          <SectionCard
-            title="In De-snag"
-            icon={<Hammer className="h-4 w-4" />}
-          >
-            <div className="text-3xl font-bold text-info">
-              {hasUnitsLoadFailure ? "--" : summary.desnagging}
-            </div>
-            <p className="mt-1 text-sm text-text-muted">
-              Units waiting for rectification or closeout review.
-            </p>
-          </SectionCard>
-          <SectionCard
-            title="Ready for Customer Inspection"
-            icon={<ShieldCheck className="h-4 w-4" />}
-          >
-            <div className="text-3xl font-bold text-success">
-              {hasUnitsLoadFailure ? "--" : summary.handoverReady}
-            </div>
-            <p className="mt-1 text-sm text-text-muted">
-              Units that have cleared all configured snag cycles.
-            </p>
-          </SectionCard>
-        </div>
+          </section>
 
-        <SectionCard
-          title="Real-World Process"
-          icon={<ListChecks className="h-4 w-4" />}
-        >
-          <div className="space-y-3 text-sm text-text-secondary">
-            <div>
-              1. Drill down block, tower, floor, then open a flat popup instead
-              of working from a giant unit list.
-            </div>
-            <div>
-              2. Use configured activities and common snag points from the
-              Quality Activity List.
-            </div>
-            <div>
-              3. Raise only the actual defects as snag items, then bulk
-              rectify, de-snag complete, and release them with photo evidence.
-            </div>
-          </div>
-        </SectionCard>
-      </div>
+          <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)_300px]">
+          <aside className="space-y-4">
+            <section className="rounded-2xl border border-border-default bg-surface-card p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-semibold text-text-primary">Location Filter</h3>
+                  <p className="mt-0.5 text-xs text-text-muted">Block, tower, floor</p>
+                </div>
+                <button
+                  onClick={() => void loadUnits()}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-default text-text-secondary hover:bg-surface-base"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+              </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="overflow-hidden rounded-3xl border border-border-default bg-surface-card">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
-            <div>
-              <h2 className="text-lg font-semibold text-text-primary">
-                Snag Explorer
-              </h2>
-              <p className="text-sm text-text-muted">
-                Drill through the project hierarchy and open each flat in a
-                focused snag workspace.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="relative w-72 max-w-full">
+              <label className="relative mt-4 block">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-disabled" />
                 <input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search block, tower, floor or flat"
-                  className="w-full rounded-xl border border-border-default bg-surface-base pl-9 pr-3 py-2 text-sm outline-none transition-colors focus:border-primary"
+                  placeholder="Search flat or location"
+                  className="h-11 w-full rounded-xl border border-border-default bg-surface-base pl-9 pr-3 text-sm text-text-primary outline-none placeholder:text-text-disabled focus:border-primary"
                 />
               </label>
-              <button
-                onClick={() => void loadUnits()}
-                className="inline-flex items-center gap-2 rounded-xl border border-border-default px-3 py-2 text-sm text-text-secondary hover:bg-surface-base"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </button>
-            </div>
-          </div>
 
-          <div className="max-h-[72vh] overflow-y-auto p-5">
-            {loadingUnits ? (
-              <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border-default px-6 py-16 text-sm text-text-muted">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading project units...
-              </div>
-            ) : unitsError && units.length === 0 ? (
-              <div className="rounded-2xl border border-error/25 bg-error-muted/50 px-6 py-8 text-sm text-error">
-                <div className="flex items-center gap-2 font-semibold">
-                  <AlertTriangle className="h-4 w-4" />
-                  Snag Explorer could not load the project units.
-                </div>
-                <p className="mt-3 text-sm leading-6">
-                  {unitsError}
-                </p>
-                <p className="mt-2 text-xs text-error/90">
-                  The project structure may already exist, but the snag API has
-                  to load successfully before block, tower, floor, and flat
-                  drill-down becomes visible here.
-                </p>
-                <button
-                  onClick={() => void loadUnits()}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-error/30 bg-white px-3 py-2 font-medium text-error hover:bg-error-muted/40"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Retry loading units
-                </button>
-              </div>
-            ) : explorer.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border-default px-6 py-16 text-center text-sm text-text-muted">
-                {hasSearchTerm
-                  ? "No quality units match the current search."
-                  : "No quality units are available yet. Open Structure and create units/rooms for the EPS floors first."}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {unitsError && (
-                  <div className="rounded-2xl border border-warning/25 bg-warning-muted/40 px-4 py-3 text-sm text-warning">
-                    <div className="font-semibold">
-                      Snag Explorer is showing the last loaded unit tree.
-                    </div>
-                    <div className="mt-1">
-                      {unitsError}
-                    </div>
-                  </div>
-                )}
-                {explorer.map((block) => {
-                  const blockExpanded = expandedKeys.has(block.key);
-                  return (
-                    <div
-                      key={block.key}
-                      className="rounded-2xl border border-border-default bg-surface-base/60"
-                    >
+              <div className="mt-5 space-y-5">
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Blocks</div>
+                  <div className="space-y-2">
+                    {explorer.map((block) => (
                       <button
-                        onClick={() => toggleExpanded(block.key)}
-                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                        key={block.key}
+                        onClick={() => {
+                          setSelectedBlockKey(block.key);
+                          setSelectedTowerKey(null);
+                          setSelectedFloorKey(null);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${
+                          selectedBlock?.key === block.key
+                            ? "border-primary bg-primary-muted/40 text-primary"
+                            : "border-border-default bg-surface-base text-text-secondary hover:border-primary/50"
+                        }`}
                       >
-                        <div className="flex items-center gap-3">
-                          {blockExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-text-muted" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-text-muted" />
-                          )}
-                          <div className="rounded-xl bg-surface-card p-2 text-primary">
-                            <Grid2X2 className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="font-semibold text-text-primary">
-                              {block.label}
-                            </div>
-                            <div className="text-xs text-text-muted">
-                              {block.towers.reduce(
-                                (count, tower) =>
-                                  count +
-                                  tower.floors.reduce(
-                                    (floorCount, floor) =>
-                                      floorCount + floor.units.length,
-                                    0,
-                                  ),
-                                0,
-                              )}{" "}
-                              units
-                            </div>
-                          </div>
-                        </div>
+                        <span className="truncate font-medium">{block.label}</span>
+                        <span className="text-xs">{block.towers.length}</span>
                       </button>
+                    ))}
+                  </div>
+                </div>
 
-                      {blockExpanded && (
-                        <div className="space-y-3 border-t border-border-subtle p-3">
-                          {block.towers.map((tower) => {
-                            const towerExpanded = expandedKeys.has(tower.key);
-                            return (
-                              <div
-                                key={tower.key}
-                                className="rounded-2xl border border-border-subtle bg-surface-card"
-                              >
-                                <button
-                                  onClick={() => toggleExpanded(tower.key)}
-                                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    {towerExpanded ? (
-                                      <ChevronDown className="h-4 w-4 text-text-muted" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4 text-text-muted" />
-                                    )}
-                                    <div className="rounded-xl bg-surface-base p-2 text-secondary">
-                                      <Building2 className="h-4 w-4" />
-                                    </div>
-                                    <div>
-                                      <div className="font-medium text-text-primary">
-                                        {tower.label}
-                                      </div>
-                                      <div className="text-xs text-text-muted">
-                                        {tower.floors.length} floors
-                                      </div>
-                                    </div>
-                                  </div>
-                                </button>
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Towers</div>
+                  <div className="space-y-2">
+                    {(selectedBlock?.towers || []).map((tower) => (
+                      <button
+                        key={tower.key}
+                        onClick={() => {
+                          setSelectedTowerKey(tower.key);
+                          setSelectedFloorKey(null);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${
+                          selectedTower?.key === tower.key
+                            ? "border-info bg-info-muted/40 text-info"
+                            : "border-border-default bg-surface-base text-text-secondary hover:border-info/50"
+                        }`}
+                      >
+                        <span className="truncate font-medium">{tower.label}</span>
+                        <span className="text-xs">{tower.floors.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                                {towerExpanded && (
-                                  <div className="space-y-3 border-t border-border-subtle p-3">
-                                    {tower.floors.map((floor) => {
-                                      const floorExpanded = expandedKeys.has(
-                                        floor.key,
-                                      );
-                                      return (
-                                        <div
-                                          key={floor.key}
-                                          className="rounded-2xl border border-border-subtle bg-surface-base"
-                                        >
-                                          <button
-                                            onClick={() => toggleExpanded(floor.key)}
-                                            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                                          >
-                                            <div className="flex items-center gap-3">
-                                              {floorExpanded ? (
-                                                <ChevronDown className="h-4 w-4 text-text-muted" />
-                                              ) : (
-                                                <ChevronRight className="h-4 w-4 text-text-muted" />
-                                              )}
-                                              <div className="rounded-xl bg-surface-card p-2 text-info">
-                                                <Layers className="h-4 w-4" />
-                                              </div>
-                                              <div>
-                                                <div className="font-medium text-text-primary">
-                                                  {floor.label}
-                                                </div>
-                                                <div className="text-xs text-text-muted">
-                                                  {floor.units.length} units
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </button>
-
-                                          {floorExpanded && (
-                                            <div className="grid gap-3 border-t border-border-subtle p-3 sm:grid-cols-2 xl:grid-cols-3">
-                                              {floor.units.map((unit) => (
-                                                <button
-                                                  key={unit.qualityUnitId}
-                                                  onClick={() => void openUnit(unit)}
-                                                  className="rounded-2xl border border-border-default bg-surface-card p-4 text-left transition-colors hover:border-primary hover:bg-primary-muted/20"
-                                                >
-                                                  <div className="flex items-start justify-between gap-3">
-                                                    <div>
-                                                      <div className="font-semibold text-text-primary">
-                                                        {unit.unitLabel}
-                                                      </div>
-                                                      <div className="mt-1 text-xs text-text-muted">
-                                                        {getSnagCycleLabel(
-                                                          unit.currentRound,
-                                                        )} |{" "}
-                                                        {unit.roomCount} rooms
-                                                      </div>
-                                                    </div>
-                                                    <span
-                                                      className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusBadgeClass(unit.overallStatus)}`}
-                                                    >
-                                                      {getWorkflowStatusLabel(
-                                                        unit.overallStatus,
-                                                        unit.currentRound,
-                                                      )}
-                                                    </span>
-                                                  </div>
-                                                  <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
-                                                    <span>
-                                                      Configured points:{" "}
-                                                      {unit.commonChecklistCount}
-                                                    </span>
-                                                    <span>
-                                                      {unit.snagListId
-                                                        ? "Continue"
-                                                        : "Start"}
-                                                    </span>
-                                                  </div>
-                                                </button>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Floors</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(selectedTower?.floors || []).map((floor) => (
+                      <button
+                        key={floor.key}
+                        onClick={() => setSelectedFloorKey(floor.key)}
+                        className={`rounded-xl border px-3 py-2 text-sm font-medium ${
+                          selectedFloor?.key === floor.key
+                            ? "border-success bg-success-muted/40 text-success"
+                            : "border-border-default bg-surface-base text-text-secondary hover:border-success/50"
+                        }`}
+                      >
+                        {floor.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-        </section>
+            </section>
+          </aside>
 
-        <aside className="space-y-4">
-          <SectionCard
-            title="Live Queue"
-            icon={<AlertTriangle className="h-4 w-4" />}
-          >
-            <div className="space-y-2">
-              {pendingQueue.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border-default px-3 py-6 text-center text-sm text-text-muted">
-                  No active snag units right now.
+          <section className="min-w-0 rounded-2xl border border-border-default bg-surface-card">
+            <div className="grid gap-3 border-b border-border-subtle px-5 py-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-text-primary">
+                  {getSnagCycleLabel(selectedWorkflowRound)} /{" "}
+                  {getDesnagCycleLabel(selectedWorkflowRound)} Board
+                </h2>
+                <p className="mt-0.5 truncate text-sm text-text-muted">
+                  {selectedBlock?.label || "Block"} / {selectedTower?.label || "Tower"} / {selectedFloor?.label || "Floor"}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 2xl:grid-cols-5">
+                {[
+                  ["Locked", "border-border-default bg-surface-base text-text-muted"],
+                  ["Ready", "border-primary/20 bg-primary-muted text-primary"],
+                  ["Snagging", "border-error/20 bg-error-muted text-error"],
+                  ["De-snag", "border-info/20 bg-info-muted text-info"],
+                  ["Completed", "border-success/20 bg-success-muted text-success"],
+                ].map(([label, className]) => (
+                  <span key={label} className={`inline-flex min-h-8 items-center justify-center rounded-full border px-2.5 text-center font-semibold leading-tight ${className}`}>
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-5">
+              {loadingUnits ? (
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border-default px-6 py-16 text-sm text-text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading units...
+                </div>
+              ) : unitsError && units.length === 0 ? (
+                <div className="rounded-2xl border border-error/25 bg-error-muted/50 px-6 py-8 text-sm text-error">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4" />
+                    Unit workflow could not load.
+                  </div>
+                  <p className="mt-3 leading-6">{unitsError}</p>
+                </div>
+              ) : workflowUnits.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border-default px-6 py-16 text-center text-sm text-text-muted">
+                  {hasSearchTerm ? "No units match the current search." : "No units are configured for this floor."}
                 </div>
               ) : (
-                pendingQueue.map((unit) => (
-                  <button
-                    key={unit.qualityUnitId}
-                    onClick={() => void openUnit(unit)}
-                    className="flex w-full items-center justify-between rounded-xl border border-border-default bg-surface-base px-3 py-3 text-left hover:border-primary"
-                  >
-                    <div>
-                      <div className="font-medium text-text-primary">
-                        {unit.unitLabel}
-                      </div>
-                      <div className="text-xs text-text-muted">
-                        {unit.towerLabel} / {unit.floorLabel}
-                      </div>
-                    </div>
-                    <span
-                      className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusBadgeClass(unit.overallStatus)}`}
-                    >
-                      {getWorkflowStatusLabel(
-                        unit.overallStatus,
-                        unit.currentRound,
-                      )}
-                    </span>
-                  </button>
-                ))
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
+                  {workflowUnits.map((unit) => {
+                    const stepStatus = getStepUnitStatus(
+                      unit,
+                      selectedWorkflowRound,
+                    );
+                    const canOpenStep =
+                      unit.snagListId ||
+                      (selectedWorkflowRound === 1 && stepStatus === "unready");
+                    return (
+                      <button
+                        key={unit.qualityUnitId}
+                        onClick={() => void openUnit(unit, selectedWorkflowRound)}
+                        disabled={!canOpenStep}
+                        className={`group min-h-[178px] rounded-2xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${getStepUnitCardClass(stepStatus)}`}
+                      >
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-lg font-semibold text-text-primary">{unit.unitLabel}</div>
+                            <div className="mt-1 truncate text-xs text-text-muted">
+                              {getSnagCycleLabel(selectedWorkflowRound)} | {unit.roomCount} rooms
+                            </div>
+                          </div>
+                          <span className={`max-w-[8.5rem] rounded-full border px-2.5 py-1 text-center text-[10px] font-semibold leading-tight ${statusBadgeClass(stepStatus)}`}>
+                            {getCompactStepUnitStatusLabel(
+                              stepStatus,
+                              selectedWorkflowRound,
+                            )}
+                          </span>
+                        </div>
+                        <div className="mt-3 min-h-[2.5rem] text-sm font-medium leading-5 text-text-primary">
+                          {getStepUnitStatusLabel(
+                            stepStatus,
+                            selectedWorkflowRound,
+                          )}
+                        </div>
+                        <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+                          <UnitCardMetric label="Points" value={unit.commonChecklistCount} />
+                          <UnitCardMetric label="Step" value={selectedWorkflowRound} />
+                          <UnitCardMetric
+                            label="Action"
+                            value={
+                              stepStatus === "released"
+                                ? "Ready"
+                                : canOpenStep
+                                  ? "Open"
+                                  : "Locked"
+                            }
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
-          </SectionCard>
-        </aside>
-      </div>
-        </>
+          </section>
+
+          <aside className="space-y-4">
+            <SectionCard title="Live Queue" icon={<AlertTriangle className="h-4 w-4" />}>
+              <div className="space-y-2">
+                {pendingQueue.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border-default px-3 py-6 text-center text-sm text-text-muted">
+                    No active snag units.
+                  </div>
+                ) : (
+                  pendingQueue.map((unit) => (
+                    <button
+                      key={unit.qualityUnitId}
+                      onClick={() => void openUnit(unit)}
+                      className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-3 text-left hover:border-primary"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-text-primary">{unit.unitLabel}</div>
+                          <div className="truncate text-xs text-text-muted">{unit.towerLabel} / {unit.floorLabel}</div>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold leading-tight ${statusBadgeClass(unit.overallStatus)}`}>
+                          {getSnagCycleLabel(unit.currentRound)}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </SectionCard>
+          </aside>
+        </div>
+        </div>
       )}
 
       {activeView === "final" && (
@@ -1971,7 +2178,7 @@ export default function SnagManagementPage() {
                       </div>
                       <ShieldCheck className="h-5 w-5 text-success" />
                     </div>
-                    <div className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-success">
+                    <div className="mt-4 text-xs font-semibold leading-5 text-success">
                       Ready for Customer Inspection
                     </div>
                   </button>
@@ -2071,7 +2278,7 @@ export default function SnagManagementPage() {
                     <button
                       onClick={() => void markUnitReady()}
                       disabled={busy}
-                      className="mt-5 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                      className="mt-5 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-on-primary disabled:opacity-60"
                     >
                       Mark Ready and Start Snag 1
                     </button>
@@ -2087,7 +2294,7 @@ export default function SnagManagementPage() {
                           onClick={() => setRoundNumber(round.roundNumber)}
                           className={`rounded-xl px-4 py-2 text-sm font-semibold ${
                             round.roundNumber === roundNumber
-                              ? "bg-primary text-white"
+                              ? "bg-primary text-on-primary"
                               : "border border-border-default bg-surface-base text-text-secondary"
                           }`}
                         >
@@ -2211,13 +2418,29 @@ export default function SnagManagementPage() {
                             ) : (
                               <>
                                 Maker rectifies each point, then Checker marks
-                                de-snag completed or not satisfactory. Once all
-                                points are completed, this unit moves to{" "}
-                                {nextReleaseTargetLabel}.
+                                de-snag completed or not satisfactory. New snag
+                                points can still be added until final closure is
+                                signed.
                               </>
                             )}
                           </div>
                           <div className="grid gap-2 pt-2">
+                            {detail.overallStatus === "released" && (
+                              <button
+                                onClick={() => void markUnitReady()}
+                                disabled={busy}
+                                className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Mark Ready and Start {nextCycleReadyLabel}
+                              </button>
+                            )}
+                            {detail.overallStatus === "released" && (
+                              <div className="rounded-xl border border-primary/20 bg-primary-muted/40 px-3 py-2 text-xs leading-6 text-primary">
+                                {currentCycleLabel} final closure is complete.
+                                The next snag level will open only after Maker
+                                marks this unit ready.
+                              </div>
+                            )}
                             {detail.overallStatus === "ready_for_snag" &&
                               canRaiseSnagPoints && (
                                 <button
@@ -2325,9 +2548,9 @@ export default function SnagManagementPage() {
                         <div className="space-y-3 text-sm">
                           {!canCreateInSelectedCycle && (
                             <div className="rounded-xl border border-border-default bg-surface-base/70 px-3 py-3 text-xs leading-6 text-text-muted">
-                              {currentCycleLabel} is not open for new defects.
-                              Switch to the current snag cycle if you want to
-                              raise fresh snag items.
+                              {detail.overallStatus === "released"
+                                ? `${currentCycleLabel} is finally closed. Maker must start ${nextCycleReadyLabel} before fresh points can be raised.`
+                                : `${currentCycleLabel} is not open for new defects. Switch to the current snag cycle if you want to raise fresh snag items.`}
                             </div>
                           )}
                           {canCreateInSelectedCycle && !canRaiseSnagPoints && (
@@ -2338,7 +2561,7 @@ export default function SnagManagementPage() {
                           <button
                             onClick={() => openRaiseSnagDialog()}
                             disabled={busy || !canCheckerRaiseInSelectedCycle}
-                            className="w-full rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                            className="w-full rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Raise Snag Point
                           </button>
@@ -2382,7 +2605,7 @@ export default function SnagManagementPage() {
                                             "APPROVE",
                                           )
                                         }
-                                        className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white"
+                                        className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary"
                                       >
                                         Approve
                                       </button>
@@ -2572,7 +2795,8 @@ export default function SnagManagementPage() {
                             Checker can mark rectified points as de-snag
                             completed, or mark not satisfactory to send the
                             point back to Maker. Once every item is completed,
-                            the unit automatically moves to {nextReleaseTargetLabel}.
+                            keep adding any newly found points until final
+                            closure is signed.
                           </div>
                           <div className="rounded-2xl border border-border-default bg-surface-base/70 px-4 py-3 text-xs leading-6 text-text-muted">
                             Snag items can be permanently deleted only by users
@@ -2959,7 +3183,7 @@ export default function SnagManagementPage() {
                 <button
                   onClick={() => void createItem()}
                   disabled={busy || !canCheckerRaiseInSelectedCycle}
-                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Add Snag Point
                 </button>
@@ -3013,7 +3237,7 @@ export default function SnagManagementPage() {
                   <button
                     onClick={() => void submitFinalClosure()}
                     disabled={busy}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {busy ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -3088,7 +3312,7 @@ export default function SnagManagementPage() {
                 <button
                   onClick={() => void submitEvidence()}
                   disabled={busy}
-                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {evidenceDialog.mode === "RECTIFY"
                     ? "Submit Rectification"
@@ -3137,7 +3361,7 @@ export default function SnagManagementPage() {
                 <button
                   onClick={() => void submitSkipRound()}
                   disabled={busy}
-                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Skip This Cycle
                 </button>

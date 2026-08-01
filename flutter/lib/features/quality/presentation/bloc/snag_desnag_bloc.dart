@@ -24,18 +24,60 @@ class LoadSnagOverview extends SnagDesnagEvent {
   List<Object?> get props => [projectId];
 }
 
-/// Opens (creating on first access) a single unit's snag list — used by
-/// the Unit Workspace. The backend's create-or-get endpoint already
-/// returns the full list-detail shape, so this is one call, not two.
+/// Opens a single unit's snag list detail — used by the Unit Workspace.
 /// Also the entry point that lets the mutating events below know which
 /// project/unit to refresh after a successful action.
+///
+/// [snagListId] must be passed whenever the caller already knows it (from
+/// [SnagUnitSummary.snagListId], e.g. navigating from the Unit Explorer) —
+/// when present, this does a plain read (`GET lists/:listId`) and nothing
+/// is created. When null (the unit has never been started), this does
+/// **not** call the create-or-get endpoint either — per backend guidance,
+/// simply opening/viewing a unit must never silently create its snag list
+/// as a side effect. Instead [SnagUnitNotStarted] is emitted, and creation
+/// only happens if the user explicitly dispatches [MarkSnagUnitReadyEvent].
 class OpenSnagUnit extends SnagDesnagEvent {
   final int projectId;
   final int qualityUnitId;
   final int? epsNodeId;
-  const OpenSnagUnit(this.projectId, this.qualityUnitId, {this.epsNodeId});
+  final int? snagListId;
+  const OpenSnagUnit(this.projectId, this.qualityUnitId, {this.epsNodeId, this.snagListId});
+  @override
+  List<Object?> get props => [projectId, qualityUnitId, epsNodeId, snagListId];
+}
+
+/// Explicit "Mark Ready for Snagging" action for a unit's *very first*
+/// readiness, where no snag list exists yet. Gated client-side on
+/// `QUALITY.SNAG.CREATE` (`PermissionService.canCreateSnag`), matching the
+/// backend's `@Permissions('QUALITY.SNAG.CREATE')` on `POST :projectId/lists`.
+///
+/// Not for starting the *next* configured cycle after a `released` unit —
+/// that's [MarkNextSnagCycleReadyEvent], a different endpoint per the
+/// July 2026 handoff (`POST .../lists` is documented as first-time-only;
+/// reusing it for the next cycle would incorrectly try to create a second
+/// list row for the same unit).
+class MarkSnagUnitReadyEvent extends SnagDesnagEvent {
+  final int projectId;
+  final int qualityUnitId;
+  final int? epsNodeId;
+  const MarkSnagUnitReadyEvent(this.projectId, this.qualityUnitId, {this.epsNodeId});
   @override
   List<Object?> get props => [projectId, qualityUnitId, epsNodeId];
+}
+
+/// Maker action to start the next configured snag cycle once a unit is
+/// `released` (its current cycle was finally closed but more cycles remain
+/// per the project's configured process steps). Calls
+/// `POST .../lists/:listId/mark-current-round-ready`, distinct from
+/// [MarkSnagUnitReadyEvent]'s first-time `POST .../lists`. Gated on the
+/// same `QUALITY.SNAG.CREATE` permission — verified against
+/// `snag.controller.ts:markCurrentRoundReady`.
+class MarkNextSnagCycleReadyEvent extends SnagDesnagEvent {
+  final int projectId;
+  final int listId;
+  const MarkNextSnagCycleReadyEvent(this.projectId, this.listId);
+  @override
+  List<Object?> get props => [projectId, listId];
 }
 
 /// Raises a new snag point against the currently-open unit/round. Routed
@@ -211,6 +253,19 @@ class SnagDesnagOverviewLoaded extends SnagDesnagState {
   List<Object?> get props => [processSteps, units];
 }
 
+/// A unit was opened with no existing snag list ([OpenSnagUnit.snagListId]
+/// was null) — nothing was created. The workspace should show a "Not
+/// Started" screen offering [MarkSnagUnitReadyEvent] as the only way
+/// forward, rather than any snag detail.
+class SnagUnitNotStarted extends SnagDesnagState {
+  final int projectId;
+  final int qualityUnitId;
+  final int? epsNodeId;
+  const SnagUnitNotStarted(this.projectId, this.qualityUnitId, {this.epsNodeId});
+  @override
+  List<Object?> get props => [projectId, qualityUnitId, epsNodeId];
+}
+
 class SnagUnitDetailLoaded extends SnagDesnagState {
   final SnagList list;
   const SnagUnitDetailLoaded(this.list);
@@ -269,6 +324,8 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
         super(const SnagDesnagInitial()) {
     on<LoadSnagOverview>(_onLoadOverview);
     on<OpenSnagUnit>(_onOpenUnit);
+    on<MarkSnagUnitReadyEvent>(_onMarkReady);
+    on<MarkNextSnagCycleReadyEvent>(_onMarkNextCycleReady);
     on<RaiseSnagItemEvent>(_onRaiseItem);
     on<RectifySnagItemEvent>(_onRectifyItem);
     on<BulkRectifySnagItemsEvent>(_onBulkRectifyItems);
@@ -323,6 +380,36 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
   ) async {
     emit(const SnagDesnagLoading());
     _projectId = event.projectId;
+
+    if (event.snagListId == null) {
+      // No list exists for this unit yet. Do not call the create-or-get
+      // endpoint just because the user opened/viewed it — per backend
+      // guidance, a plain "flat entry" navigation must not silently create
+      // the snag list as a side effect. Only MarkSnagUnitReadyEvent does that.
+      _currentList = null;
+      emit(SnagUnitNotStarted(event.projectId, event.qualityUnitId, epsNodeId: event.epsNodeId));
+      return;
+    }
+
+    try {
+      final data = await _api.getSnagListDetail(event.projectId, event.snagListId!);
+      final list = SnagList.fromJson(data);
+      _currentList = list;
+      emit(SnagUnitDetailLoaded(list));
+    } catch (e) {
+      emit(SnagDesnagError(_friendlyError(e)));
+    }
+  }
+
+  /// Explicit "Mark Ready for Snagging" action for first-time readiness —
+  /// the only path that creates a unit's snag list. See
+  /// [MarkSnagUnitReadyEvent]'s doc comment.
+  Future<void> _onMarkReady(
+    MarkSnagUnitReadyEvent event,
+    Emitter<SnagDesnagState> emit,
+  ) async {
+    emit(const SnagDesnagLoading());
+    _projectId = event.projectId;
     try {
       final data = await _api.createOrGetSnagList(
         event.projectId,
@@ -337,17 +424,41 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
     }
   }
 
+  /// Maker action to start the next configured snag cycle for a `released`
+  /// unit. See [MarkNextSnagCycleReadyEvent]'s doc comment.
+  Future<void> _onMarkNextCycleReady(
+    MarkNextSnagCycleReadyEvent event,
+    Emitter<SnagDesnagState> emit,
+  ) async {
+    final list = _currentList;
+    if (list == null) return;
+    emit(SnagUnitActionInProgress(list));
+    try {
+      final data = await _api.markSnagRoundReady(event.projectId, event.listId);
+      final refreshed = SnagList.fromJson(data);
+      _currentList = refreshed;
+      emit(SnagActionSuccess(message: 'Snag ${refreshed.currentRound} started', list: refreshed));
+    } catch (e) {
+      emit(SnagDesnagError(_friendlyError(e)));
+      if (_currentList != null) emit(SnagUnitDetailLoaded(_currentList!));
+    }
+  }
+
   /// Re-fetches the currently-open unit's detail — used after every
   /// mutating action so the UI reflects the real post-action state
   /// (updated statuses, counts, approval steps) rather than a locally
-  /// guessed one.
+  /// guessed one. Uses the plain read endpoint (the list is guaranteed to
+  /// already exist by the time this is called — every mutating event
+  /// requires [_currentList] to be non-null first) rather than
+  /// create-or-get, consistent with [_onOpenUnit] no longer touching that
+  /// endpoint outside of [MarkSnagUnitReadyEvent].
   Future<SnagList> _refetchCurrentList() async {
     final projectId = _projectId;
     final list = _currentList;
     if (projectId == null || list == null) {
       throw StateError('No snag unit is open — call OpenSnagUnit first.');
     }
-    final data = await _api.createOrGetSnagList(projectId, qualityUnitId: list.qualityUnitId);
+    final data = await _api.getSnagListDetail(projectId, list.id);
     final refreshed = SnagList.fromJson(data);
     _currentList = refreshed;
     return refreshed;

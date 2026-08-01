@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:setu_mobile/features/quality/data/batch_slip_parser.dart';
 
 /// Review-before-apply screen for a batch-slip OCR scan, per the UX
@@ -16,7 +17,20 @@ class BatchSlipReviewPage extends StatefulWidget {
   final String imagePath;
   final BatchSlipExtraction extraction;
 
-  const BatchSlipReviewPage({super.key, required this.imagePath, required this.extraction});
+  /// The raw text ML Kit recognized before parsing, shown collapsed at the
+  /// bottom of the screen. Not gated to debug builds — when a field misses
+  /// or gets the wrong value, seeing exactly what OCR read (vs. what the
+  /// parser matched) is what lets a site user tell whether the slip just
+  /// needs manual entry this once or whether the label wording on this
+  /// vendor's slip needs to be added to the project's scan config.
+  final String rawText;
+
+  const BatchSlipReviewPage({
+    super.key,
+    required this.imagePath,
+    required this.extraction,
+    required this.rawText,
+  });
 
   @override
   State<BatchSlipReviewPage> createState() => _BatchSlipReviewPageState();
@@ -103,6 +117,8 @@ class _BatchSlipReviewPageState extends State<BatchSlipReviewPage> {
                 confidence: widget.extraction.byKey(key).confidence,
               ),
           ],
+          const SizedBox(height: 8),
+          _RawOcrTextSection(rawText: widget.rawText),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -157,6 +173,66 @@ class _FieldRow extends StatelessWidget {
           suffixIcon: Padding(padding: const EdgeInsets.only(right: 8), child: Center(widthFactor: 1, child: badge)),
           suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         ),
+      ),
+    );
+  }
+}
+
+/// Collapsed-by-default panel showing exactly what ML Kit recognized before
+/// parsing. Kept out of the way when a scan goes well, but one tap away
+/// when a field is missing or wrong — lets a site user see whether OCR
+/// misread the handwriting/print entirely (nothing to fix on our end) or
+/// read it fine but under label wording the parser doesn't recognize yet
+/// (worth reporting so that wording can be added to the project's scan
+/// config).
+class _RawOcrTextSection extends StatelessWidget {
+  final String rawText;
+  const _RawOcrTextSection({required this.rawText});
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        title: Text(
+          'Raw scanned text',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+        ),
+        subtitle: const Text(
+          'What the scan actually read — useful if a field above is missing or wrong.',
+          style: TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+        childrenPadding: const EdgeInsets.only(bottom: 12),
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: SelectableText(
+              rawText.isEmpty ? '(nothing recognized)' : rawText,
+              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: rawText));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Copied raw scan text')),
+                );
+              },
+              icon: const Icon(Icons.copy_outlined, size: 14),
+              label: const Text('Copy', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+        ],
       ),
     );
   }
