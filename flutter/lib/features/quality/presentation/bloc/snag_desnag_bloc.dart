@@ -206,6 +206,25 @@ class FinalClosureEvent extends SnagDesnagEvent {
   List<Object?> get props => [roundId, remarks, signatureData];
 }
 
+/// Signed closure of the round's currently-active verifier level — the
+/// *only* way a snag verifier/checker level should be closed per the
+/// multi-level handoff (replaces [AdvanceSnagApprovalEvent] and
+/// [FinalClosureEvent] for rounds using verifier levels; those two remain
+/// only for any older round predating this workflow). Whether this closes
+/// an intermediate level (the round then opens the next configured level
+/// for raising) or the final one (the whole snag stage closes) is entirely
+/// decided server-side — see `SnagRound.canFinalCloseStage`, which the UI
+/// uses only to pick the button's label, never to change what gets sent.
+class CloseVerifierLevelEvent extends SnagDesnagEvent {
+  final int roundId;
+  final int levelOrder;
+  final String? remarks;
+  final String? signatureData;
+  const CloseVerifierLevelEvent(this.roundId, this.levelOrder, {this.remarks, this.signatureData});
+  @override
+  List<Object?> get props => [roundId, levelOrder, remarks, signatureData];
+}
+
 /// Checker reverts a ready-for-snag unit with zero raised points back to
 /// unready — deletes the underlying list row (`resetReadyForSnag`), so
 /// unlike the other mutating events there's nothing left to refetch
@@ -337,6 +356,7 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
     on<AdvanceSnagApprovalEvent>(_onAdvanceApproval);
     on<RejectRectificationEvent>(_onRejectRectification);
     on<FinalClosureEvent>(_onFinalClosure);
+    on<CloseVerifierLevelEvent>(_onCloseVerifierLevel);
     on<ResetSnagReadyEvent>(_onResetReady);
     on<LoadSnagAnalytics>(_onLoadAnalytics);
   }
@@ -788,6 +808,24 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
       emit,
       () => _api.finalCloseSnagRound(projectId, event.roundId, remarks: event.remarks, signatureData: event.signatureData),
       'Snag cycle finally closed',
+    );
+  }
+
+  Future<void> _onCloseVerifierLevel(CloseVerifierLevelEvent event, Emitter<SnagDesnagState> emit) async {
+    final projectId = _projectId;
+    if (projectId == null) return;
+    // Whether this was actually the final level (whole stage closes) or an
+    // intermediate one (next level opens) is known only after the backend
+    // responds — read it back off the refreshed round rather than guessing
+    // from the request, so the success message matches what really happened.
+    final wasFinal = _currentList?.activeRound?.canFinalCloseStage ?? false;
+    await _runMutation(
+      emit,
+      () => _api.closeSnagVerifierLevel(
+        projectId, event.roundId, event.levelOrder,
+        remarks: event.remarks, signatureData: event.signatureData,
+      ),
+      wasFinal ? 'Snag stage finally closed' : 'Verifier level closed — next level is now open',
     );
   }
 

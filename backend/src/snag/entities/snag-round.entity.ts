@@ -11,6 +11,7 @@ import { User } from '../../users/user.entity';
 import { SnagList } from './snag-list.entity';
 import { SnagItem } from './snag-item.entity';
 import { SnagReleaseApproval } from './snag-release-approval.entity';
+import { SnagRoundLevelClosure } from './snag-round-level-closure.entity';
 
 export enum SnagRoundSnagPhaseStatus {
   OPEN = 'open',
@@ -22,6 +23,15 @@ export enum SnagRoundDesnagPhaseStatus {
   OPEN = 'open',
   APPROVAL_PENDING = 'approval_pending',
   APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
+export enum SnagRoundLevelStatus {
+  READY_PENDING = 'ready_pending',
+  SNAGGING = 'snagging',
+  RECTIFICATION = 'rectification',
+  DESNAGGING = 'desnagging',
+  COMPLETED = 'completed',
   REJECTED = 'rejected',
 }
 
@@ -75,6 +85,38 @@ export class SnagRound {
   @Column({ name: 'desnag_release_comments', type: 'text', nullable: true })
   desnagReleaseComments: string | null;
 
+  @Column({ name: 'current_verifier_level', type: 'int', default: 1 })
+  currentVerifierLevel: number;
+
+  @Column({
+    name: 'current_verifier_level_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  currentVerifierLevelName: string | null;
+
+  @Column({
+    name: 'level_status',
+    type: 'varchar',
+    length: 40,
+    default: SnagRoundLevelStatus.READY_PENDING,
+  })
+  levelStatus: SnagRoundLevelStatus;
+
+  @Column({ name: 'level_closed_at', type: 'timestamp', nullable: true })
+  levelClosedAt: Date | null;
+
+  @Column({ name: 'level_closed_by_id', type: 'int', nullable: true })
+  levelClosedById: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'level_closed_by_id' })
+  levelClosedBy: User | null;
+
+  @Column({ name: 'level_closure_signature_data', type: 'text', nullable: true })
+  levelClosureSignatureData: string | null;
+
   @Column({ name: 'final_closure_signed_at', type: 'timestamp', nullable: true })
   finalClosureSignedAt: Date | null;
 
@@ -122,4 +164,7 @@ export class SnagRound {
 
   @OneToMany(() => SnagReleaseApproval, (approval) => approval.snagRound)
   approvals: SnagReleaseApproval[];
+
+  @OneToMany(() => SnagRoundLevelClosure, (closure) => closure.snagRound)
+  levelClosures: SnagRoundLevelClosure[];
 }

@@ -533,27 +533,24 @@ class QualityRequestBloc
       //
       // For unit-wise activities one inspection exists per unit — we fetch each
       // separately so observations from Unit 101 never appear in Unit 102's view.
+      //
+      // Deliberately NO fallback to `activity.status == 'PENDING_OBSERVATION'`
+      // for activities with no local inspection here. That field lives on the
+      // shared activity *template* row, not this floor's inspection, so it
+      // flips for every floor/block using the same activity whenever *any one*
+      // of them has a pending observation. A fallback used to exist for
+      // "inspection record hasn't refreshed its count yet" — but with no
+      // local inspection to scope by, it fetched observations by activityId
+      // alone (`getActivityObservations(activityId, inspectionId: null)`),
+      // which returned *another* floor/block's observation and displayed it
+      // here as if it belonged to this one, on an activity where no RFI had
+      // even been raised on this floor. Showing nothing during a brief
+      // staleness window is correct; showing the wrong block's data isn't.
       final pendingObsInspections = <QualityInspection>[];
       for (final inspList in inspListMap.values) {
         for (final insp in inspList) {
           if (insp.pendingObservationCount > 0) {
             pendingObsInspections.add(insp);
-          }
-        }
-      }
-      // Also include activities whose backend status is still PENDING_OBSERVATION
-      // but whose inspection record hasn't refreshed the count yet (stale cache).
-      for (final a in activities) {
-        if (a.status == 'PENDING_OBSERVATION') {
-          final hasInsp = inspListMap[a.id]?.isNotEmpty ?? false;
-          if (!hasInsp) {
-            // No inspection found — fall back to un-scoped fetch for this activity.
-            pendingObsInspections.add(QualityInspection(
-              id: -1,
-              activityId: a.id,
-              status: InspectionStatus.pending,
-              requestDate: '',
-            ));
           }
         }
       }
@@ -683,13 +680,18 @@ class QualityRequestBloc
 
       // Compute the display status from the merged context.
       //
-      // Pending-observation detection: prefer inspection-level
-      // pendingObservationCount so the flag is scoped to this floor/unit.
-      // Fall back to activity.status == 'PENDING_OBSERVATION' for backward
-      // compat when the inspection record hasn't refreshed its count yet.
+      // Pending-observation detection: inspection-level
+      // pendingObservationCount only — it's scoped to this floor/unit's own
+      // inspection (fetched with listId: list.id above). `act.status` is
+      // NOT used here even as a fallback: it lives on the shared activity
+      // *template* row, not this floor's inspection, so the same activity
+      // used on another floor/block with a pending observation flips it
+      // there too — using it caused this floor to show "Fix Observation"
+      // (and, via the obsMap fetch below, another block's actual
+      // observation text) for an activity that had no RFI raised here at
+      // all. See the matching removal in _loadActivities' obsMap fallback.
       final allInspForAct = inspListMap[act.id] ?? [];
-      final hasPendingObs = act.status == 'PENDING_OBSERVATION' ||
-          allInspForAct.any((i) => i.pendingObservationCount > 0);
+      final hasPendingObs = allInspForAct.any((i) => i.pendingObservationCount > 0);
 
       ActivityDisplayStatus displayStatus;
       if (hasPendingObs) {

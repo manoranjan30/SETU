@@ -437,6 +437,16 @@ class SnagItem extends Equatable {
   final DateTime? closedAt;
   final List<SnagPhoto> photos;
 
+  /// Which verifier level (within the round's Release Strategy step chain)
+  /// raised this point — e.g. 1 = Contractor QC, 2 = Client Engineer.
+  /// Defaults to 1 for older data raised before verifier levels existed.
+  /// Drives both the "L{n} {name}" card badge and the item-action gating
+  /// (`item.verifierLevelOrder == round.activeVerifierLevel.levelOrder`) —
+  /// see `snag.service.ts:closeItem`/`rejectRectification`, which reject
+  /// the action server-side otherwise.
+  final int verifierLevelOrder;
+  final String? verifierLevelName;
+
   /// True for an optimistic item/update applied locally while its mutation
   /// (raise/rectify/close) sits in the offline sync queue — never set by
   /// [fromJson], since anything the server returns is by definition synced.
@@ -465,8 +475,18 @@ class SnagItem extends Equatable {
     this.rectifiedAt,
     this.closedAt,
     this.photos = const [],
+    this.verifierLevelOrder = 1,
+    this.verifierLevelName,
     this.isPendingSync = false,
   });
+
+  /// The backend keeps a single `photos` list tagged with a [SnagPhotoType]
+  /// rather than three separate arrays — these mirror the handoff's
+  /// "Snagged / Rectified / De-snag Confirmed" evidence sections without
+  /// needing a second copy of the same data in JSON.
+  List<SnagPhoto> get snaggedPhotos => photos.where((p) => p.type == SnagPhotoType.before).toList();
+  List<SnagPhoto> get rectifiedPhotos => photos.where((p) => p.type == SnagPhotoType.after).toList();
+  List<SnagPhoto> get desnagConfirmedPhotos => photos.where((p) => p.type == SnagPhotoType.closure).toList();
 
   SnagItem copyWith({
     SnagItemStatus? status,
@@ -498,6 +518,8 @@ class SnagItem extends Equatable {
       rectifiedAt: rectifiedAt ?? this.rectifiedAt,
       closedAt: closedAt ?? this.closedAt,
       photos: photos,
+      verifierLevelOrder: verifierLevelOrder,
+      verifierLevelName: verifierLevelName,
       isPendingSync: isPendingSync ?? this.isPendingSync,
     );
   }
@@ -528,11 +550,16 @@ class SnagItem extends Equatable {
               ?.map((e) => SnagPhoto.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      verifierLevelOrder: j['verifierLevelOrder'] as int? ?? 1,
+      verifierLevelName: j['verifierLevelName'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [id, snagRoundId, defectTitle, status, priority, photos, notSatisfactoryCount, isPendingSync];
+  List<Object?> get props => [
+    id, snagRoundId, defectTitle, status, priority, photos, notSatisfactoryCount,
+    verifierLevelOrder, verifierLevelName, isPendingSync,
+  ];
 }
 
 class SnagApprovalStep extends Equatable {
@@ -601,6 +628,98 @@ class SnagApproval extends Equatable {
   List<Object?> get props => [id, currentStepOrder, status, steps];
 }
 
+/// A signed sign-off record for one verifier level within a round — present
+/// on [SnagVerifierLevel.closure] once that level has been closed. Matches
+/// `snag_round_level_closure` (`snag.service.ts:closeVerifierLevel`).
+class SnagLevelClosure extends Equatable {
+  final int levelOrder;
+  final String levelName;
+  final int? closedByUserId;
+  final DateTime? closedAt;
+  final String? signatureData;
+  final String? remarks;
+
+  const SnagLevelClosure({
+    required this.levelOrder,
+    required this.levelName,
+    this.closedByUserId,
+    this.closedAt,
+    this.signatureData,
+    this.remarks,
+  });
+
+  factory SnagLevelClosure.fromJson(Map<String, dynamic> j) => SnagLevelClosure(
+    levelOrder: j['levelOrder'] as int? ?? 1,
+    levelName: j['levelName'] as String? ?? '',
+    closedByUserId: j['closedById'] as int?,
+    closedAt: j['closedAt'] == null ? null : DateTime.tryParse(j['closedAt'].toString()),
+    signatureData: j['signatureData'] as String?,
+    remarks: j['remarks'] as String?,
+  );
+
+  @override
+  List<Object?> get props => [levelOrder, levelName, closedByUserId, closedAt, signatureData, remarks];
+}
+
+/// One verifier/checker level within a round's multi-level snag/de-snag
+/// workflow — e.g. Level 1 Contractor QC, Level 2 Client Engineer — per the
+/// "Snag Stage > Verifier Level" hierarchy from the mobile handoff. Derived
+/// server-side from the round's Release Strategy approval steps
+/// (`snag.service.ts:buildVerifierLevels`), enriched with per-level item
+/// counts and, once closed, the [closure] signature record.
+class SnagVerifierLevel extends Equatable {
+  final int levelOrder;
+  final String levelName;
+
+  /// Raw backend status string (a [SnagRoundLevelStatus] value like
+  /// 'snagging'/'rectification'/'desnagging'/'completed', or the
+  /// underlying approval step's own status for a not-yet-reached future
+  /// level). Prefer [isActive]/[isClosed] for UI branching — those are
+  /// unambiguous; this is mostly for a supplementary label.
+  final String status;
+  final bool isActive;
+  final int raisedCount;
+  final int openCount;
+  final int rectifiedPendingDesnagCount;
+  final int desnagConfirmedCount;
+  final int notSatisfactoryCount;
+  final SnagLevelClosure? closure;
+
+  const SnagVerifierLevel({
+    required this.levelOrder,
+    required this.levelName,
+    this.status = 'snagging',
+    this.isActive = false,
+    this.raisedCount = 0,
+    this.openCount = 0,
+    this.rectifiedPendingDesnagCount = 0,
+    this.desnagConfirmedCount = 0,
+    this.notSatisfactoryCount = 0,
+    this.closure,
+  });
+
+  bool get isClosed => closure != null;
+
+  factory SnagVerifierLevel.fromJson(Map<String, dynamic> j) => SnagVerifierLevel(
+    levelOrder: j['levelOrder'] as int? ?? 1,
+    levelName: j['levelName'] as String? ?? 'Level 1',
+    status: j['status'] as String? ?? 'snagging',
+    isActive: j['isActive'] as bool? ?? false,
+    raisedCount: j['raisedCount'] as int? ?? 0,
+    openCount: j['openCount'] as int? ?? 0,
+    rectifiedPendingDesnagCount: j['rectifiedPendingDesnagCount'] as int? ?? 0,
+    desnagConfirmedCount: j['desnagConfirmedCount'] as int? ?? 0,
+    notSatisfactoryCount: j['notSatisfactoryCount'] as int? ?? 0,
+    closure: j['closure'] == null ? null : SnagLevelClosure.fromJson(j['closure'] as Map<String, dynamic>),
+  );
+
+  @override
+  List<Object?> get props => [
+    levelOrder, levelName, status, isActive, raisedCount, openCount,
+    rectifiedPendingDesnagCount, desnagConfirmedCount, notSatisfactoryCount, closure,
+  ];
+}
+
 class SnagRound extends Equatable {
   final int id;
   final int roundNumber;
@@ -617,6 +736,22 @@ class SnagRound extends Equatable {
   final String? finalClosureSignatureData;
   final String? finalClosureRemarks;
 
+  // ── Multi-level verifier workflow (see SnagVerifierLevel's doc comment) ──
+  final List<SnagVerifierLevel> verifierLevels;
+  final SnagVerifierLevel? activeVerifierLevel;
+  final List<SnagLevelClosure> levelClosures;
+  final int currentVerifierLevel;
+  final String? currentVerifierLevelName;
+
+  /// Backend-computed action gates (`snag.service.ts:serializeRound`) — the
+  /// mobile handoff is explicit that these, not locally-derived state
+  /// checks or role assumptions, are what should drive button visibility.
+  final bool canRaiseSnag;
+  final bool canRectify;
+  final bool canConfirmDesnag;
+  final bool canCloseLevel;
+  final bool canFinalCloseStage;
+
   const SnagRound({
     required this.id,
     required this.roundNumber,
@@ -632,6 +767,16 @@ class SnagRound extends Equatable {
     this.finalClosureSignedByUserId,
     this.finalClosureSignatureData,
     this.finalClosureRemarks,
+    this.verifierLevels = const [],
+    this.activeVerifierLevel,
+    this.levelClosures = const [],
+    this.currentVerifierLevel = 1,
+    this.currentVerifierLevelName,
+    this.canRaiseSnag = false,
+    this.canRectify = false,
+    this.canConfirmDesnag = false,
+    this.canCloseLevel = false,
+    this.canFinalCloseStage = false,
   });
 
   SnagRound copyWith({List<SnagItem>? items}) {
@@ -650,6 +795,16 @@ class SnagRound extends Equatable {
       finalClosureSignedByUserId: finalClosureSignedByUserId,
       finalClosureSignatureData: finalClosureSignatureData,
       finalClosureRemarks: finalClosureRemarks,
+      verifierLevels: verifierLevels,
+      activeVerifierLevel: activeVerifierLevel,
+      levelClosures: levelClosures,
+      currentVerifierLevel: currentVerifierLevel,
+      currentVerifierLevelName: currentVerifierLevelName,
+      canRaiseSnag: canRaiseSnag,
+      canRectify: canRectify,
+      canConfirmDesnag: canConfirmDesnag,
+      canCloseLevel: canCloseLevel,
+      canFinalCloseStage: canFinalCloseStage,
     );
   }
 
@@ -694,12 +849,32 @@ class SnagRound extends Equatable {
       finalClosureSignedByUserId: j['finalClosureSignedById'] as int?,
       finalClosureSignatureData: j['finalClosureSignatureData'] as String?,
       finalClosureRemarks: j['finalClosureRemarks'] as String?,
+      verifierLevels: (j['verifierLevels'] as List<dynamic>?)
+              ?.map((e) => SnagVerifierLevel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      activeVerifierLevel: j['activeVerifierLevel'] == null
+          ? null
+          : SnagVerifierLevel.fromJson(j['activeVerifierLevel'] as Map<String, dynamic>),
+      levelClosures: (j['levelClosures'] as List<dynamic>?)
+              ?.map((e) => SnagLevelClosure.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      currentVerifierLevel: j['currentVerifierLevel'] as int? ?? 1,
+      currentVerifierLevelName: j['currentVerifierLevelName'] as String?,
+      canRaiseSnag: j['canRaiseSnag'] as bool? ?? false,
+      canRectify: j['canRectify'] as bool? ?? false,
+      canConfirmDesnag: j['canConfirmDesnag'] as bool? ?? false,
+      canCloseLevel: j['canCloseLevel'] as bool? ?? false,
+      canFinalCloseStage: j['canFinalCloseStage'] as bool? ?? false,
     );
   }
 
   @override
   List<Object?> get props => [
     id, roundNumber, snagPhaseStatus, desnagPhaseStatus, isSkipped, items, approvals, finalClosureSignedAt,
+    verifierLevels, activeVerifierLevel, levelClosures,
+    canRaiseSnag, canRectify, canConfirmDesnag, canCloseLevel, canFinalCloseStage,
   ];
 }
 

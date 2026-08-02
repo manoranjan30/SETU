@@ -2240,6 +2240,25 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Closes the round's currently-active verifier level, signed. See
+  /// [ApiEndpoints.snagCloseVerifierLevel]'s doc comment.
+  Future<Map<String, dynamic>> closeSnagVerifierLevel(
+    int projectId,
+    int roundId,
+    int levelOrder, {
+    String? remarks,
+    String? signatureData,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagCloseVerifierLevel(projectId, roundId, levelOrder),
+      data: {
+        if (remarks != null) 'remarks': remarks,
+        if (signatureData != null) 'signatureData': signatureData,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<void> downloadSnagStatusReportPdf(
     int projectId,
     int listId,

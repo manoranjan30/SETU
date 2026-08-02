@@ -388,6 +388,24 @@ export class SnagController {
     return this.service.finalClosureRound(projectId, roundId, dto, req.user?.id);
   }
 
+  @Post(':projectId/rounds/:roundId/levels/:levelOrder/close')
+  @Permissions('QUALITY.SNAG.APPROVE')
+  closeLevel(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('roundId', ParseIntPipe) roundId: number,
+    @Param('levelOrder', ParseIntPipe) levelOrder: number,
+    @Body() dto: FinalClosureSnagRoundDto,
+    @Request() req: any,
+  ) {
+    return this.service.closeVerifierLevel(
+      projectId,
+      roundId,
+      dto,
+      req.user?.id,
+      levelOrder,
+    );
+  }
+
   @Post(':projectId/rounds/:roundId/skip')
   @Permissions('QUALITY.SNAG.APPROVE')
   skipRound(

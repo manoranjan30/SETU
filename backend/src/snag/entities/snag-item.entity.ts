@@ -62,6 +62,24 @@ export class SnagItem {
   @Column({ name: 'priority', type: 'varchar', length: 40, default: 'medium' })
   priority: string;
 
+  @Column({ name: 'verifier_level_order', type: 'int', default: 1 })
+  verifierLevelOrder: number;
+
+  @Column({
+    name: 'verifier_level_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  verifierLevelName: string | null;
+
+  @Column({ name: 'raised_by_verifier_user_id', type: 'int', nullable: true })
+  raisedByVerifierUserId: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'raised_by_verifier_user_id' })
+  raisedByVerifierUser: User | null;
+
   @Column({
     type: 'enum',
     enum: SnagItemStatus,
