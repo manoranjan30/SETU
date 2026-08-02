@@ -28,6 +28,7 @@ import {
 import {
   SnagRound,
   SnagRoundDesnagPhaseStatus,
+  SnagRoundLevelStatus,
   SnagRoundSnagPhaseStatus,
 } from './entities/snag-round.entity';
 import { SnagItem, SnagItemStatus } from './entities/snag-item.entity';
@@ -66,12 +67,22 @@ import {
 import { SnagProcessStep } from './entities/snag-process-step.entity';
 import { SnagProcessActivity } from './entities/snag-process-activity.entity';
 import { SnagCommonPoint } from './entities/snag-common-point.entity';
+import { SnagRoundLevelClosure } from './entities/snag-round-level-closure.entity';
 import { User } from '../users/user.entity';
 
 type SnagCarryForwardRepos = {
   snagRoundRepo: Repository<SnagRound>;
   snagItemRepo: Repository<SnagItem>;
   snagPhotoRepo: Repository<SnagPhoto>;
+};
+
+type SnagVerifierStep = {
+  stepOrder: number;
+  stepName: string;
+  assignedRoleId: number | null;
+  assignedUserId: number | null;
+  assignedUserIds: number[] | null;
+  status: SnagReleaseApprovalStepStatus;
 };
 
 const DEFAULT_SNAG_PROCESS_STEPS = [
@@ -101,6 +112,8 @@ export class SnagService {
     private readonly processActivityRepo: Repository<SnagProcessActivity>,
     @InjectRepository(SnagCommonPoint)
     private readonly commonPointRepo: Repository<SnagCommonPoint>,
+    @InjectRepository(SnagRoundLevelClosure)
+    private readonly levelClosureRepo: Repository<SnagRoundLevelClosure>,
     @InjectRepository(QualityFloorStructure)
     private readonly floorStructureRepo: Repository<QualityFloorStructure>,
     @InjectRepository(QualityUnit)
@@ -351,6 +364,209 @@ export class SnagService {
     return configured > 0 ? configured : DEFAULT_SNAG_PROCESS_STEPS.length;
   }
 
+  private async ensureRoundVerifierWorkflow(
+    projectId: number,
+    round: SnagRound,
+    fallbackUserId?: number | null,
+  ) {
+    let approval = await this.approvalRepo.findOne({
+      where: { snagRoundId: round.id },
+      relations: ['steps'],
+    });
+
+    if (!approval) {
+      const resolution = await this.releaseStrategyService.resolveStrategy(
+        projectId,
+        {
+          projectId,
+          moduleCode: 'QUALITY',
+          processCode: 'SNAG_RELEASE_APPROVAL',
+          documentType: 'SNAG_ROUND_RELEASE',
+          amount: 0,
+        } as any,
+      );
+
+      const resolvedSteps = (
+        resolution.matchedStrategy?.resolvedSteps?.length
+          ? resolution.matchedStrategy.resolvedSteps
+          : [
+              {
+                levelNo: 1,
+                stepName: 'Checker',
+                approverMode: ReleaseStrategyApproverMode.USER,
+                userId: fallbackUserId ?? null,
+                userIds: fallbackUserId ? [fallbackUserId] : [],
+                roleId: null,
+              },
+            ]
+      ).map((step: any, index: number): SnagVerifierStep => ({
+        stepOrder: step.levelNo ?? index + 1,
+        stepName: step.stepName || `Level ${step.levelNo ?? index + 1}`,
+        assignedRoleId: step.roleId ?? null,
+        assignedUserId: step.userId ?? null,
+        assignedUserIds: step.userIds || (step.userId ? [step.userId] : null),
+        status:
+          (step.levelNo ?? index + 1) === 1
+            ? SnagReleaseApprovalStepStatus.PENDING
+            : SnagReleaseApprovalStepStatus.WAITING,
+      }));
+
+      approval = await this.approvalRepo.save(
+        this.approvalRepo.create({
+          snagRoundId: round.id,
+          projectId,
+          currentStepOrder: resolvedSteps[0]?.stepOrder ?? 1,
+          status: SnagReleaseApprovalStatus.PENDING,
+          releaseStrategyId: resolution.matchedStrategy?.id ?? null,
+          processCode:
+            resolution.matchedStrategy?.processCode ??
+            'SNAG_RELEASE_APPROVAL',
+        }),
+      );
+
+      await this.approvalStepRepo.save(
+        resolvedSteps.map((step) =>
+          this.approvalStepRepo.create({
+            approvalId: approval!.id,
+            stepOrder: step.stepOrder,
+            stepName: step.stepName,
+            assignedRoleId: step.assignedRoleId,
+            assignedUserId: step.assignedUserId,
+            assignedUserIds: step.assignedUserIds,
+            status: step.status,
+          }),
+        ),
+      );
+
+      approval = await this.approvalRepo.findOne({
+        where: { id: approval.id },
+        relations: ['steps'],
+      });
+    }
+
+    const steps = [...(approval?.steps || [])].sort(
+      (a, b) => a.stepOrder - b.stepOrder,
+    );
+    const activeStep =
+      steps.find((step) => step.status === SnagReleaseApprovalStepStatus.PENDING) ||
+      steps.find((step) => step.stepOrder === approval?.currentStepOrder) ||
+      steps[0] ||
+      null;
+
+    if (activeStep) {
+      let changed = false;
+      if (round.currentVerifierLevel !== activeStep.stepOrder) {
+        round.currentVerifierLevel = activeStep.stepOrder;
+        changed = true;
+      }
+      if (round.currentVerifierLevelName !== activeStep.stepName) {
+        round.currentVerifierLevelName = activeStep.stepName;
+        changed = true;
+      }
+      if (!round.levelStatus) {
+        round.levelStatus = SnagRoundLevelStatus.READY_PENDING;
+        changed = true;
+      }
+      if (changed) {
+        await this.snagRoundRepo.save(round);
+      }
+    }
+
+    return { approval, steps, activeStep };
+  }
+
+  private async requireActiveVerifierStep(
+    projectId: number,
+    round: SnagRound,
+    userId: number,
+  ) {
+    const workflow = await this.ensureRoundVerifierWorkflow(
+      projectId,
+      round,
+      userId,
+    );
+    if (!workflow.activeStep) {
+      throw new BadRequestException('No active snag checker level is configured');
+    }
+    const canAct = await this.canUserActOnStep(
+      projectId,
+      userId,
+      workflow.activeStep,
+    );
+    if (!canAct) {
+      throw new BadRequestException(
+        `Only the active checker for ${workflow.activeStep.stepName} can perform this action`,
+      );
+    }
+    return workflow.activeStep;
+  }
+
+  private async getRoundLevelClosures(roundId: number) {
+    return this.levelClosureRepo.find({
+      where: { snagRoundId: roundId },
+      relations: ['closedBy'],
+      order: { levelOrder: 'ASC' },
+    });
+  }
+
+  private buildVerifierLevels(
+    round: SnagRound,
+    closures: SnagRoundLevelClosure[],
+  ) {
+    const approval = (round.approvals || []).find(
+      (entry) => entry.status === SnagReleaseApprovalStatus.PENDING,
+    ) || (round.approvals || [])[0];
+    const steps = [...(approval?.steps || [])].sort(
+      (a, b) => a.stepOrder - b.stepOrder,
+    );
+    const items = round.items || [];
+    const closuresByLevel = new Map(
+      closures.map((closure) => [closure.levelOrder, closure]),
+    );
+    const sourceSteps = steps.length
+      ? steps
+      : [
+          {
+            stepOrder: round.currentVerifierLevel || 1,
+            stepName: round.currentVerifierLevelName || 'Checker',
+            status: SnagReleaseApprovalStepStatus.PENDING,
+          } as SnagReleaseApprovalStep,
+        ];
+
+    return sourceSteps.map((step) => {
+      const levelItems = items.filter(
+        (item) => (item.verifierLevelOrder || 1) === step.stepOrder,
+      );
+      const closure = closuresByLevel.get(step.stepOrder) || null;
+      return {
+        levelOrder: step.stepOrder,
+        levelName: step.stepName,
+        status: closure
+          ? 'completed'
+          : step.status === SnagReleaseApprovalStepStatus.PENDING
+            ? round.levelStatus || 'snagging'
+            : step.status,
+        isActive:
+          step.stepOrder === round.currentVerifierLevel &&
+          step.status === SnagReleaseApprovalStepStatus.PENDING,
+        raisedCount: levelItems.length,
+        openCount: levelItems.filter((item) => item.status === SnagItemStatus.OPEN)
+          .length,
+        rectifiedPendingDesnagCount: levelItems.filter(
+          (item) => item.status === SnagItemStatus.RECTIFIED,
+        ).length,
+        desnagConfirmedCount: levelItems.filter(
+          (item) => item.status === SnagItemStatus.CLOSED,
+        ).length,
+        notSatisfactoryCount: levelItems.reduce(
+          (sum, item) => sum + (item.notSatisfactoryCount || 0),
+          0,
+        ),
+        closure,
+      };
+    });
+  }
+
   private async buildConfiguredCommonChecklist(projectId: number) {
     const points = await this.commonPointRepo.find({
       where: { projectId, isActive: true },
@@ -453,15 +669,18 @@ export class SnagService {
         }),
       );
 
-      await this.snagRoundRepo.save(
+      const round = await this.snagRoundRepo.save(
         this.snagRoundRepo.create({
           snagListId: snagList.id,
           roundNumber: 1,
           snagPhaseStatus: SnagRoundSnagPhaseStatus.OPEN,
           desnagPhaseStatus: SnagRoundDesnagPhaseStatus.LOCKED,
+          currentVerifierLevel: 1,
+          levelStatus: SnagRoundLevelStatus.READY_PENDING,
           initiatedById: userId,
         }),
       );
+      await this.ensureRoundVerifierWorkflow(projectId, round, userId);
     }
 
     return this.getListDetail(projectId, snagList.id);
@@ -492,6 +711,7 @@ export class SnagService {
       nextRound.initiatedById = userId || null;
       await this.snagRoundRepo.save(nextRound);
     }
+    await this.ensureRoundVerifierWorkflow(projectId, nextRound, userId);
 
     await this.snagListRepo.save(snagList);
     return this.getListDetail(projectId, snagList.id);
@@ -649,6 +869,8 @@ export class SnagService {
         'rounds.finalClosureSignedBy',
         'rounds.items',
         'rounds.items.photos',
+        'rounds.levelClosures',
+        'rounds.levelClosures.closedBy',
         'rounds.approvals',
         'rounds.approvals.steps',
       ],
@@ -750,6 +972,12 @@ export class SnagService {
       await this.reopenRoundForAdditionalSnags(round);
     }
 
+    const activeStep = await this.requireActiveVerifierStep(
+      projectId,
+      round,
+      userId,
+    );
+
     const room = await this.resolveRoomForList(snagList, dto.qualityRoomId);
     const item = await this.snagItemRepo.save(
       this.snagItemRepo.create({
@@ -761,10 +989,18 @@ export class SnagService {
         defectDescription: dto.defectDescription ?? null,
         trade: dto.trade ?? null,
         priority: dto.priority ?? 'medium',
+        verifierLevelOrder: activeStep.stepOrder,
+        verifierLevelName: activeStep.stepName,
+        raisedByVerifierUserId: userId,
         raisedById: userId,
         raisedAt: new Date(),
       }),
     );
+
+    round.levelStatus = SnagRoundLevelStatus.SNAGGING;
+    round.currentVerifierLevel = activeStep.stepOrder;
+    round.currentVerifierLevelName = activeStep.stepName;
+    await this.snagRoundRepo.save(round);
 
     await this.savePhotos(item.id, dto.beforePhotoUrls || [], SnagPhotoType.BEFORE);
 
@@ -799,6 +1035,11 @@ export class SnagService {
       );
     }
     const items = await this.requireBulkItems(projectId, dto.itemIds);
+    const activeStep = await this.requireActiveVerifierStep(
+      projectId,
+      round,
+      userId,
+    );
 
     for (const item of items) {
       if (item.snagListId !== snagList.id || item.snagRoundId !== round.id) {
@@ -818,6 +1059,8 @@ export class SnagService {
     }
 
     await this.snagItemRepo.save(items);
+    round.levelStatus = SnagRoundLevelStatus.RECTIFICATION;
+    await this.snagRoundRepo.save(round);
     for (const item of items) {
       await this.savePhotos(item.id, dto.afterPhotoUrls || [], SnagPhotoType.AFTER);
       await this.syncChecklistStatusForSnag(
@@ -859,6 +1102,8 @@ export class SnagService {
     item.rectifiedAt = new Date();
     item.rectificationNotes = dto.rectificationNotes?.trim() || null;
     await this.snagItemRepo.save(item);
+    round.levelStatus = SnagRoundLevelStatus.RECTIFICATION;
+    await this.snagRoundRepo.save(round);
     await this.savePhotos(item.id, dto.afterPhotoUrls || [], SnagPhotoType.AFTER);
     await this.syncChecklistStatusForSnag(
       item.snagListId,
@@ -894,6 +1139,11 @@ export class SnagService {
         'Closure photos are required while marking de-snag completed',
       );
     }
+    const activeStep = await this.requireActiveVerifierStep(
+      projectId,
+      round,
+      userId,
+    );
     const items = await this.requireBulkItems(projectId, dto.itemIds);
 
     for (const item of items) {
@@ -905,6 +1155,11 @@ export class SnagService {
       if (item.status !== SnagItemStatus.RECTIFIED) {
         throw new BadRequestException(
           'Only rectified snag items can be closed',
+        );
+      }
+      if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder) {
+        throw new BadRequestException(
+          'Only snag points raised at the active checker level can be de-snag confirmed',
         );
       }
       item.status = SnagItemStatus.CLOSED;
@@ -941,6 +1196,11 @@ export class SnagService {
   ) {
     const item = await this.requireItem(projectId, itemId);
     const round = await this.requireRoundById(projectId, item.snagRoundId);
+    const activeStep = await this.requireActiveVerifierStep(
+      projectId,
+      round,
+      userId,
+    );
     const photoConfig = await this.getPhotoRequirementConfig(
       projectId,
       round.roundNumber,
@@ -955,6 +1215,11 @@ export class SnagService {
     }
     if (item.status !== SnagItemStatus.RECTIFIED) {
       throw new BadRequestException('Only rectified snag items can be closed');
+    }
+    if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder) {
+      throw new BadRequestException(
+        'Only snag points raised at the active checker level can be de-snag confirmed',
+      );
     }
 
     item.status = SnagItemStatus.CLOSED;
@@ -987,9 +1252,20 @@ export class SnagService {
     userId: number,
   ) {
     const item = await this.requireItem(projectId, itemId);
+    const round = await this.requireRoundById(projectId, item.snagRoundId);
+    const activeStep = await this.requireActiveVerifierStep(
+      projectId,
+      round,
+      userId,
+    );
     if (item.status !== SnagItemStatus.RECTIFIED) {
       throw new BadRequestException(
         'Only rectified snag items can be marked not satisfactory',
+      );
+    }
+    if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder) {
+      throw new BadRequestException(
+        'Only snag points raised at the active checker level can be marked not satisfactory',
       );
     }
 
@@ -1010,6 +1286,10 @@ export class SnagService {
     await this.snagListRepo.update(item.snagListId, {
       overallStatus: SnagListStatus.SNAGGING,
     });
+    round.levelStatus = SnagRoundLevelStatus.REJECTED;
+    round.snagPhaseStatus = SnagRoundSnagPhaseStatus.OPEN;
+    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
+    await this.snagRoundRepo.save(round);
 
     return this.getListDetail(projectId, item.snagListId);
   }
@@ -1097,11 +1377,19 @@ export class SnagService {
         'Skipped snag cycles are already released to the next stage',
       );
     }
+    const activeStep = await this.requireActiveVerifierStep(
+      projectId,
+      round,
+      userId,
+    );
     round.snagPhaseStatus = SnagRoundSnagPhaseStatus.SUBMITTED;
     round.snagSubmittedAt = new Date();
     round.snagSubmittedById = userId;
     round.snagSubmittedComments = dto.comments ?? null;
     round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
+    round.currentVerifierLevel = activeStep.stepOrder;
+    round.currentVerifierLevelName = activeStep.stepName;
+    round.levelStatus = SnagRoundLevelStatus.DESNAGGING;
     await this.snagRoundRepo.save(round);
     await this.snagListRepo.update(round.snagListId, {
       overallStatus: SnagListStatus.DESNAGGING,
@@ -1169,7 +1457,7 @@ export class SnagService {
                 roleId: null,
               },
             ]
-      ).slice(0, 1);
+      );
 
       approval = await this.approvalRepo.save(
         this.approvalRepo.create({
@@ -1212,31 +1500,62 @@ export class SnagService {
     dto: FinalClosureSnagRoundDto,
     userId: number,
   ) {
+    return this.closeVerifierLevel(projectId, roundId, dto, userId);
+  }
+
+  async closeVerifierLevel(
+    projectId: number,
+    roundId: number,
+    dto: FinalClosureSnagRoundDto,
+    userId: number,
+    requestedLevelOrder?: number,
+  ) {
     const round = await this.requireRoundById(projectId, roundId);
     const snagList = round.snagList || (await this.requireList(projectId, round.snagListId));
     if (snagList.currentRound !== round.roundNumber) {
       throw new BadRequestException(
-        'Only the current snag cycle can be finally closed',
+        'Only the current snag cycle level can be closed',
       );
     }
     if (round.isSkipped) {
-      throw new BadRequestException('Skipped snag cycles do not need final closure');
+      throw new BadRequestException('Skipped snag cycles do not need level closure');
+    }
+
+    const workflow = await this.ensureRoundVerifierWorkflow(projectId, round, userId);
+    const activeStep = workflow.activeStep;
+    if (!activeStep) {
+      throw new BadRequestException('No active checker level is configured');
+    }
+    if (
+      requestedLevelOrder &&
+      Number(requestedLevelOrder) !== Number(activeStep.stepOrder)
+    ) {
+      throw new BadRequestException('Only the active checker level can be closed');
+    }
+    const canAct = await this.canUserActOnStep(projectId, userId, activeStep);
+    if (!canAct) {
+      throw new BadRequestException(
+        `Only the active checker for ${activeStep.stepName} can close this level`,
+      );
     }
 
     const items = await this.snagItemRepo.find({
       where: { snagRoundId: round.id },
     });
-    if (!items.length) {
+    const levelItems = items.filter(
+      (item) => (item.verifierLevelOrder || 1) === activeStep.stepOrder,
+    );
+    if (!levelItems.length) {
       throw new BadRequestException(
-        'At least one snag point is required before final closure',
+        'At least one snag point is required before level closure',
       );
     }
-    const unresolved = items.filter(
+    const unresolved = levelItems.filter(
       (item) => item.status !== SnagItemStatus.CLOSED,
     );
     if (unresolved.length > 0) {
       throw new BadRequestException(
-        'All snag points must be closed before final closure',
+        'All snag points for this checker level must be de-snag confirmed before closure',
       );
     }
 
@@ -1245,19 +1564,73 @@ export class SnagService {
       : null;
 
     round.snagPhaseStatus = SnagRoundSnagPhaseStatus.SUBMITTED;
-    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.APPROVED;
-    round.desnagReleasedAt = round.desnagReleasedAt ?? new Date();
+    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
     round.desnagReleaseComments =
-      round.desnagReleaseComments ?? 'All de-snag points completed';
-    round.finalClosureSignedAt = new Date();
-    round.finalClosureSignedById = userId || null;
-    round.finalClosureSignatureData =
+      round.desnagReleaseComments ?? `Level ${activeStep.stepOrder} de-snag completed`;
+    round.levelStatus = SnagRoundLevelStatus.COMPLETED;
+    round.levelClosedAt = new Date();
+    round.levelClosedById = userId || null;
+    round.levelClosureSignatureData =
       dto.signatureData?.trim() ||
       signer?.signatureData ||
       signer?.signatureImageUrl ||
       null;
+    await this.levelClosureRepo.upsert(
+      {
+        snagRoundId: round.id,
+        levelOrder: activeStep.stepOrder,
+        levelName: activeStep.stepName || `Level ${activeStep.stepOrder}`,
+        closedById: userId || null,
+        closedAt: round.levelClosedAt,
+        signatureData: round.levelClosureSignatureData,
+        remarks: dto.remarks?.trim() || null,
+      },
+      ['snagRoundId', 'levelOrder'],
+    );
+
+    activeStep.status = SnagReleaseApprovalStepStatus.APPROVED;
+    activeStep.actedAt = round.levelClosedAt;
+    activeStep.actedByUserId = userId || null;
+    activeStep.comments = dto.remarks?.trim() || null;
+    await this.approvalStepRepo.save(activeStep);
+
+    const nextStep = workflow.steps.find(
+      (step) => step.stepOrder > activeStep.stepOrder,
+    );
+    if (nextStep) {
+      nextStep.status = SnagReleaseApprovalStepStatus.PENDING;
+      if (workflow.approval) {
+        workflow.approval.currentStepOrder = nextStep.stepOrder;
+        await this.approvalRepo.save(workflow.approval);
+      }
+      await this.approvalStepRepo.save(nextStep);
+      round.currentVerifierLevel = nextStep.stepOrder;
+      round.currentVerifierLevelName = nextStep.stepName;
+      round.levelStatus = SnagRoundLevelStatus.READY_PENDING;
+      round.levelClosedAt = null;
+      round.levelClosedById = null;
+      round.levelClosureSignatureData = null;
+      round.snagPhaseStatus = SnagRoundSnagPhaseStatus.OPEN;
+      round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.LOCKED;
+      await this.snagRoundRepo.save(round);
+      snagList.overallStatus = SnagListStatus.READY_FOR_SNAG;
+      await this.snagListRepo.save(snagList);
+      this.triggerMilestoneRefresh(projectId);
+      return this.getListDetail(projectId, snagList.id);
+    }
+
+    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.APPROVED;
+    round.desnagReleasedAt = round.desnagReleasedAt ?? round.levelClosedAt;
+    round.finalClosureSignedAt = round.levelClosedAt;
+    round.finalClosureSignedById = userId || null;
+    round.finalClosureSignatureData = round.levelClosureSignatureData;
     round.finalClosureRemarks = dto.remarks?.trim() || null;
     await this.snagRoundRepo.save(round);
+
+    if (workflow.approval) {
+      workflow.approval.status = SnagReleaseApprovalStatus.APPROVED;
+      await this.approvalRepo.save(workflow.approval);
+    }
 
     const maxRoundNumber = await this.getMaxRoundNumber(projectId);
     if (round.roundNumber >= maxRoundNumber) {
@@ -1401,6 +1774,9 @@ export class SnagService {
           roundNumber: round.roundNumber,
           snagPhaseStatus: SnagRoundSnagPhaseStatus.OPEN,
           desnagPhaseStatus: SnagRoundDesnagPhaseStatus.LOCKED,
+          currentVerifierLevel: 1,
+          currentVerifierLevelName: null,
+          levelStatus: SnagRoundLevelStatus.READY_PENDING,
           initiatedById: userId,
           snagSubmittedAt: null,
           snagSubmittedById: null,
@@ -1445,6 +1821,11 @@ export class SnagService {
       relations: ['steps', 'snagRound', 'snagRound.snagList'],
     });
     if (!approval) throw new NotFoundException('Approval not found');
+    if (approval.processCode === 'SNAG_RELEASE_APPROVAL') {
+      throw new BadRequestException(
+        'Snag verifier levels must be closed with signature from the level closure action',
+      );
+    }
 
     const currentStep = (approval.steps || []).find(
       (step) => step.stepOrder === approval.currentStepOrder,
@@ -1513,6 +1894,12 @@ export class SnagService {
         'qualityUnit',
         'rounds',
         'rounds.items',
+        'rounds.items.photos',
+        'rounds.items.raisedBy',
+        'rounds.items.rectifiedBy',
+        'rounds.items.closedBy',
+        'rounds.levelClosures',
+        'rounds.levelClosures.closedBy',
         'rounds.finalClosureSignedBy',
       ],
     });
@@ -1686,191 +2073,345 @@ export class SnagService {
 
   private writeSnagStatusTable(doc: PDFKit.PDFDocument, round: SnagRound) {
     const left = doc.page.margins.left;
-    const widths = [30, 235, 54, 36, 36, 36, 36, 92];
-    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const bottom = doc.page.height - doc.page.margins.bottom;
-    const drawHeader = () => {
-      const y = doc.y;
-      doc.rect(left, y, totalWidth, 44).stroke('#111827');
-      const xs = widths.reduce<number[]>((acc, width, index) => {
-        acc.push(index === 0 ? left : acc[index - 1] + widths[index - 1]);
-        return acc;
-      }, []);
-      xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + 44).stroke('#111827'));
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(7)
-        .text('Sl No', xs[0] + 3, y + 15, { width: widths[0] - 6, align: 'center' })
-        .text('Clearance Points/Rectification Points', xs[1] + 4, y + 15, {
-          width: widths[1] - 8,
-          align: 'center',
-        })
-        .text('Rectification Points attended to', xs[2], y + 5, {
-          width: widths[2] + widths[3] + widths[4],
-          align: 'center',
-        })
-        .text('PL/PHL QA & QC', xs[5], y + 5, {
-          width: widths[5] + widths[6],
-          align: 'center',
-        })
-        .text('Remarks', xs[7] + 4, y + 15, { width: widths[7] - 8, align: 'center' });
-      doc.text('Contractor Engineer', xs[2] + 2, y + 19, {
-        width: widths[2] + widths[3] + widths[4] - 4,
-        align: 'center',
-      });
-      doc.fontSize(6.8);
-      ['Yes', 'No', '', 'Yes', 'No'].forEach((label, index) => {
-        if (!label) return;
-        doc.text(label, xs[index + 2] + 2, y + 33, {
-          width: widths[index + 2] - 4,
-          align: 'center',
+    const levelClosures = [...(round.levelClosures || [])].sort(
+      (a, b) => a.levelOrder - b.levelOrder,
+    );
+    const levels = this.buildVerifierLevels(round, levelClosures).sort(
+      (a, b) => b.levelOrder - a.levelOrder,
+    );
+    const fallbackLevels = levels.length
+      ? levels
+      : [{ levelOrder: 1, levelName: 'Checker', closure: null }];
+    const maxLevelOrder = Math.max(
+      ...fallbackLevels.map((level: any) => Number(level.levelOrder || 1)),
+    );
+
+    for (const level of fallbackLevels as any[]) {
+      const levelItems = [...(round.items || [])]
+        .filter((item) => (item.verifierLevelOrder || 1) === level.levelOrder)
+        .sort((a, b) => {
+          const room = this.formatPdfValue(a.roomLabel || 'Common Area').localeCompare(
+            this.formatPdfValue(b.roomLabel || 'Common Area'),
+            undefined,
+            { numeric: true, sensitivity: 'base' },
+          );
+          if (room !== 0) return room;
+          const trade = this.formatPdfValue(a.trade || 'Others').localeCompare(
+            this.formatPdfValue(b.trade || 'Others'),
+            undefined,
+            { numeric: true, sensitivity: 'base' },
+          );
+          if (trade !== 0) return trade;
+          return a.id - b.id;
         });
-      });
-      doc.y = y + 44;
-    };
+      const isFinalLevel = level.levelOrder === maxLevelOrder;
+      const makerLabel = isFinalLevel ? 'Contractor Engineer' : 'Maker';
+      const checkerLabel = isFinalLevel
+        ? 'Client Engineer / PL / PHL Engineer'
+        : 'Checker';
 
-    const rows = this.buildSnagStatusRows(round);
-    drawHeader();
-    rows.forEach((row) => {
-      const minHeight = row.kind === 'item' ? 26 : 20;
-      const textHeight = doc.heightOfString(row.text, {
-        width: widths[1] - 14,
-      });
-      const height = Math.max(minHeight, textHeight + 12);
-      if (doc.y + height > bottom) {
-        doc.addPage();
-        drawHeader();
+      if (doc.y + 72 > bottom) doc.addPage();
+      const sectionY = doc.y + 8;
+      doc
+        .rect(left, sectionY, width, 28)
+        .fillAndStroke('#eef2ff', '#111827');
+      doc
+        .fillColor('#111827')
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(
+          `Level ${level.levelOrder}: ${level.levelName || 'Checker'} (${makerLabel} / ${checkerLabel})`,
+          left + 8,
+          sectionY + 9,
+          { width: width - 16 },
+        );
+      doc.fillColor('#000000');
+      doc.y = sectionY + 34;
+
+      this.drawSnagEvidenceTableHeader(doc, left, width);
+      if (!levelItems.length) {
+        this.drawSnagEvidenceEmptyRow(doc, left, width, 'No snag points raised at this level');
+      } else {
+        let serial = 1;
+        for (const item of levelItems) {
+          const rowHeight = this.estimateEvidenceRowHeight(doc, item, width);
+          if (doc.y + rowHeight > bottom) {
+            doc.addPage();
+            this.drawSnagEvidenceTableHeader(doc, left, width);
+          }
+          this.drawSnagEvidenceRow(
+            doc,
+            left,
+            width,
+            serial,
+            item,
+            makerLabel,
+            checkerLabel,
+            rowHeight,
+          );
+          serial += 1;
+        }
       }
-      this.drawSnagStatusRow(doc, left, widths, row, height);
-    });
+      this.writeLevelClosureSignature(doc, level.closure || null, checkerLabel);
+      doc.moveDown(0.6);
+    }
   }
 
-  private buildSnagStatusRows(round: SnagRound) {
-    const items = [...(round.items || [])].sort((a, b) => {
-      const trade = this.formatPdfValue(a.trade).localeCompare(
-        this.formatPdfValue(b.trade),
-        undefined,
-        { numeric: true, sensitivity: 'base' },
-      );
-      if (trade !== 0) return trade;
-      const room = this.formatPdfValue(a.roomLabel).localeCompare(
-        this.formatPdfValue(b.roomLabel),
-        undefined,
-        { numeric: true, sensitivity: 'base' },
-      );
-      if (room !== 0) return room;
-      return a.id - b.id;
-    });
-
-    const rows: Array<{
-      kind: 'group' | 'room' | 'item';
-      serial?: number;
-      text: string;
-      item?: SnagItem;
-    }> = [];
-    let currentTrade = '';
-    let currentRoom = '';
-    let serial = 1;
-
-    for (const item of items) {
-      const trade = this.formatPdfValue(item.trade || 'Others');
-      const room = this.formatPdfValue(item.roomLabel || 'Common Area');
-      if (trade !== currentTrade) {
-        currentTrade = trade;
-        currentRoom = '';
-        rows.push({ kind: 'group', text: trade });
-      }
-      if (room !== currentRoom) {
-        currentRoom = room;
-        rows.push({ kind: 'room', text: room });
-      }
-      rows.push({
-        kind: 'item',
-        serial,
-        text: item.defectDescription
-          ? `${item.defectTitle} - ${item.defectDescription}`
-          : item.defectTitle,
-        item,
-      });
-      serial += 1;
-    }
-
-    if (!rows.length) {
-      rows.push({ kind: 'item', serial: 1, text: 'No snag points raised' });
-    }
-    return rows;
-  }
-
-  private drawSnagStatusRow(
+  private drawSnagEvidenceTableHeader(
     doc: PDFKit.PDFDocument,
     left: number,
-    widths: number[],
-    row: {
-      kind: 'group' | 'room' | 'item';
-      serial?: number;
-      text: string;
-      item?: SnagItem;
-    },
-    height: number,
+    width: number,
+  ) {
+    const widths = [24, 118, 131, 131, 131];
+    const y = doc.y;
+    const xs = this.getTableXs(left, widths);
+    doc.rect(left, y, width, 26).stroke('#111827');
+    xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + 26).stroke('#111827'));
+    ['Sl', 'Room / Activity / Snag Point', 'Snagged', 'Rectified', 'De-snag Confirmed'].forEach(
+      (label, index) => {
+        doc.font('Helvetica-Bold').fontSize(6.7).text(label, xs[index] + 3, y + 8, {
+          width: widths[index] - 6,
+          align: index === 0 ? 'center' : 'left',
+        });
+      },
+    );
+    doc.y = y + 26;
+  }
+
+  private drawSnagEvidenceEmptyRow(
+    doc: PDFKit.PDFDocument,
+    left: number,
+    width: number,
+    text: string,
   ) {
     const y = doc.y;
-    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
-    const xs = widths.reduce<number[]>((acc, width, index) => {
+    doc.rect(left, y, width, 26).stroke('#9ca3af');
+    doc.font('Helvetica-Oblique').fontSize(7).text(text, left + 8, y + 9, {
+      width: width - 16,
+    });
+    doc.y = y + 26;
+  }
+
+  private estimateEvidenceRowHeight(
+    doc: PDFKit.PDFDocument,
+    item: SnagItem,
+    tableWidth: number,
+  ) {
+    const textWidth = 112;
+    const title = [
+      item.roomLabel || 'Common Area',
+      item.trade || 'General',
+      item.defectDescription
+        ? `${item.defectTitle} - ${item.defectDescription}`
+        : item.defectTitle,
+    ].join('\n');
+    const textHeight = doc.heightOfString(title, { width: textWidth });
+    const maxPhotos = Math.max(
+      this.getItemPhotos(item, SnagPhotoType.BEFORE).length,
+      this.getItemPhotos(item, SnagPhotoType.AFTER).length,
+      this.getItemPhotos(item, SnagPhotoType.CLOSURE).length,
+    );
+    const photoRows = Math.ceil(Math.min(maxPhotos, 6) / 3);
+    return Math.max(96, textHeight + 18, 48 + photoRows * 28);
+  }
+
+  private drawSnagEvidenceRow(
+    doc: PDFKit.PDFDocument,
+    left: number,
+    tableWidth: number,
+    serial: number,
+    item: SnagItem,
+    makerLabel: string,
+    checkerLabel: string,
+    height: number,
+  ) {
+    const widths = [24, 118, 131, 131, 131];
+    const y = doc.y;
+    const xs = this.getTableXs(left, widths);
+    doc.rect(left, y, tableWidth, height).stroke('#9ca3af');
+    xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + height).stroke('#9ca3af'));
+
+    doc.font('Helvetica').fontSize(6.7).text(String(serial), xs[0] + 3, y + 8, {
+      width: widths[0] - 6,
+      align: 'center',
+    });
+    doc.font('Helvetica-Bold').fontSize(6.8).text(item.roomLabel || 'Common Area', xs[1] + 4, y + 6, {
+      width: widths[1] - 8,
+    });
+    doc.font('Helvetica').fontSize(6.5).text(item.trade || 'General', xs[1] + 4, y + 20, {
+      width: widths[1] - 8,
+    });
+    doc.text(
+      item.defectDescription
+        ? `${item.defectTitle} - ${item.defectDescription}`
+        : item.defectTitle,
+      xs[1] + 4,
+      y + 34,
+      { width: widths[1] - 8 },
+    );
+
+    this.drawEvidenceCell(doc, xs[2], y, widths[2], height, {
+      label: 'Snagged',
+      actorLabel: checkerLabel,
+      actor: this.getUserDisplayName(item.raisedBy),
+      date: this.formatDate(item.raisedAt),
+      remarks: item.defectDescription || item.defectTitle,
+      photos: this.getItemPhotos(item, SnagPhotoType.BEFORE),
+    });
+    this.drawEvidenceCell(doc, xs[3], y, widths[3], height, {
+      label: 'Rectified',
+      actorLabel: makerLabel,
+      actor: this.getUserDisplayName(item.rectifiedBy),
+      date: this.formatDate(item.rectifiedAt),
+      remarks: item.rectificationNotes || '',
+      photos: this.getItemPhotos(item, SnagPhotoType.AFTER),
+    });
+    this.drawEvidenceCell(doc, xs[4], y, widths[4], height, {
+      label: item.status === SnagItemStatus.CLOSED ? 'Confirmed' : 'Pending',
+      actorLabel: checkerLabel,
+      actor: this.getUserDisplayName(item.closedBy),
+      date: this.formatDate(item.closedAt),
+      remarks:
+        item.closureRemarks ||
+        item.lastNotSatisfactoryRemarks ||
+        item.holdReason ||
+        '',
+      photos: this.getItemPhotos(item, SnagPhotoType.CLOSURE),
+    });
+    doc.y = y + height;
+  }
+
+  private drawEvidenceCell(
+    doc: PDFKit.PDFDocument,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    cell: {
+      label: string;
+      actorLabel: string;
+      actor: string;
+      date: string;
+      remarks: string;
+      photos: SnagPhoto[];
+    },
+  ) {
+    doc.font('Helvetica-Bold').fontSize(6.4).text(cell.label, x + 4, y + 5, {
+      width: width - 8,
+    });
+    doc.font('Helvetica').fontSize(5.9).text(
+      `${cell.actorLabel}: ${cell.actor || '-'}\nDate: ${cell.date}\n${this.formatPdfValue(cell.remarks)}`,
+      x + 4,
+      y + 17,
+      { width: width - 8, height: Math.max(24, height - 54) },
+    );
+    this.drawPdfPhotoGrid(doc, cell.photos, x + 4, y + height - 34, width - 8, 28);
+  }
+
+  private drawPdfPhotoGrid(
+    doc: PDFKit.PDFDocument,
+    photos: SnagPhoto[],
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) {
+    const visible = photos.slice(0, 3);
+    if (!visible.length) {
+      doc.font('Helvetica-Oblique').fontSize(5.8).text('No photos', x, y + 8, {
+        width,
+        align: 'center',
+      });
+      return;
+    }
+    const gap = 3;
+    const cellWidth = (width - gap * 2) / 3;
+    visible.forEach((photo, index) => {
+      const px = x + index * (cellWidth + gap);
+      doc.rect(px, y, cellWidth, height).stroke('#d1d5db');
+      const path = this.resolveUploadPath(photo.fileUrl);
+      if (path) {
+        try {
+          doc.image(readFileSync(path), px + 1, y + 1, {
+            fit: [cellWidth - 2, height - 2],
+            align: 'center',
+            valign: 'center',
+          });
+          return;
+        } catch {
+          // fall through to text placeholder
+        }
+      }
+      doc.font('Helvetica').fontSize(5.2).text(`Photo ${index + 1}`, px + 2, y + 10, {
+        width: cellWidth - 4,
+        align: 'center',
+      });
+    });
+    if (photos.length > visible.length) {
+      doc.font('Helvetica').fontSize(5.4).text(`+${photos.length - visible.length}`, x, y + height - 7, {
+        width,
+        align: 'right',
+      });
+    }
+  }
+
+  private writeLevelClosureSignature(
+    doc: PDFKit.PDFDocument,
+    closure: SnagRoundLevelClosure | null,
+    checkerLabel: string,
+  ) {
+    const left = doc.page.margins.left;
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const height = 58;
+    if (doc.y + height > doc.page.height - doc.page.margins.bottom) {
+      doc.addPage();
+    }
+    const y = doc.y + 4;
+    doc.rect(left, y, width, height).stroke('#111827');
+    doc.font('Helvetica-Bold').fontSize(7).text(`${checkerLabel} Level Closure`, left + 8, y + 8, {
+      width: width / 2,
+    });
+    doc.font('Helvetica').fontSize(6.5).text(
+      `Closed By: ${this.getUserDisplayName(closure?.closedBy)}\nDate: ${this.formatDate(closure?.closedAt)}\nRemarks: ${this.formatPdfValue(closure?.remarks)}`,
+      left + 8,
+      y + 22,
+      { width: width / 2 - 12 },
+    );
+    const signature = closure?.signatureData;
+    const signaturePath = this.resolveUploadPath(signature);
+    if (signature?.startsWith('data:image/')) {
+      try {
+        doc.image(Buffer.from(signature.split(',')[1], 'base64'), left + width - 154, y + 12, {
+          fit: [134, 34],
+        });
+      } catch {
+        doc.font('Helvetica-Oblique').text('Digital signature recorded', left + width - 154, y + 26);
+      }
+    } else if (signaturePath) {
+      try {
+        doc.image(readFileSync(signaturePath), left + width - 154, y + 12, {
+          fit: [134, 34],
+        });
+      } catch {
+        doc.font('Helvetica-Oblique').text('Digital signature recorded', left + width - 154, y + 26);
+      }
+    } else {
+      doc.font('Helvetica-Oblique').fontSize(6.5).text('Signature pending', left + width - 154, y + 26);
+    }
+    doc.y = y + height;
+  }
+
+  private getTableXs(left: number, widths: number[]) {
+    return widths.reduce<number[]>((acc, width, index) => {
       acc.push(index === 0 ? left : acc[index - 1] + widths[index - 1]);
       return acc;
     }, []);
+  }
 
-    if (row.kind !== 'item') {
-      doc.rect(left, y, totalWidth, height).fillAndStroke('#f3f4f6', '#9ca3af');
-      doc
-        .fillColor('#111827')
-        .font(row.kind === 'group' ? 'Helvetica-Bold' : 'Helvetica-Oblique')
-        .fontSize(7.5)
-        .text(row.kind === 'group' ? row.text : `  ${row.text}`, xs[1] + 4, y + 6, {
-          width: totalWidth - widths[0] - 8,
-        });
-      doc.fillColor('#000000');
-      doc.y = y + height;
-      return;
-    }
-
-    doc.rect(left, y, totalWidth, height).stroke('#9ca3af');
-    xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + height).stroke('#9ca3af'));
-    const item = row.item;
-    const rectifiedYes =
-      item?.status === SnagItemStatus.RECTIFIED ||
-      item?.status === SnagItemStatus.CLOSED ||
-      item?.status === SnagItemStatus.ON_HOLD;
-    const rectifiedNo =
-      item?.status === SnagItemStatus.OPEN &&
-      (item.notSatisfactoryCount || 0) > 0;
-    const qaYes = item?.status === SnagItemStatus.CLOSED;
-    const qaNo = item?.status === SnagItemStatus.RECTIFIED && !qaYes;
-    const remarks =
-      item?.lastNotSatisfactoryRemarks ||
-      item?.closureRemarks ||
-      item?.rectificationNotes ||
-      item?.holdReason ||
-      '';
-
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .text(String(row.serial ?? ''), xs[0] + 3, y + 8, {
-        width: widths[0] - 6,
-        align: 'center',
-      })
-      .text(`    ${row.text}`, xs[1] + 4, y + 6, {
-        width: widths[1] - 8,
-      })
-      .text(this.formatPdfValue(remarks), xs[7] + 4, y + 6, {
-        width: widths[7] - 8,
-      });
-    this.drawPdfCheckbox(doc, xs[2], y, widths[2], rectifiedYes);
-    this.drawPdfCheckbox(doc, xs[3], y, widths[3], rectifiedNo);
-    this.drawPdfCheckbox(doc, xs[5], y, widths[5], qaYes);
-    this.drawPdfCheckbox(doc, xs[6], y, widths[6], qaNo);
-    doc.y = y + height;
+  private getItemPhotos(item: SnagItem, type: SnagPhotoType) {
+    return (item.photos || []).filter((photo) => photo.type === type);
   }
 
   private drawPdfCheckbox(
@@ -1958,8 +2499,45 @@ export class SnagService {
   }
 
   private serializeRound(round: SnagRound) {
+    const levelClosures = [...(round.levelClosures || [])].sort(
+      (a, b) => a.levelOrder - b.levelOrder,
+    );
+    const verifierLevels = this.buildVerifierLevels(round, levelClosures);
+    const activeVerifierLevel =
+      verifierLevels.find((level) => level.isActive) || verifierLevels[0] || null;
+    const activeLevelItems = (round.items || []).filter(
+      (item) =>
+        (item.verifierLevelOrder || 1) ===
+        (activeVerifierLevel?.levelOrder || round.currentVerifierLevel || 1),
+    );
+    const activeLevelHasItems = activeLevelItems.length > 0;
+    const activeLevelAllClosed =
+      activeLevelHasItems &&
+      activeLevelItems.every((item) => item.status === SnagItemStatus.CLOSED);
     return {
       ...round,
+      verifierLevels,
+      activeVerifierLevel,
+      levelClosures,
+      canRaiseSnag:
+        !round.isSkipped &&
+        !round.finalClosureSignedAt &&
+        round.snagPhaseStatus === SnagRoundSnagPhaseStatus.OPEN,
+      canRectify: !round.isSkipped && !round.finalClosureSignedAt,
+      canConfirmDesnag:
+        !round.isSkipped &&
+        !round.finalClosureSignedAt &&
+        activeLevelItems.some((item) => item.status === SnagItemStatus.RECTIFIED),
+      canCloseLevel: !round.isSkipped && !round.finalClosureSignedAt && activeLevelAllClosed,
+      canFinalCloseStage:
+        !round.isSkipped &&
+        !round.finalClosureSignedAt &&
+        activeLevelAllClosed &&
+        Boolean(
+          activeVerifierLevel &&
+            activeVerifierLevel.levelOrder ===
+              verifierLevels[verifierLevels.length - 1]?.levelOrder,
+        ),
       items: [...(round.items || [])]
         .sort((a, b) => this.getStatusSortOrder(a.status) - this.getStatusSortOrder(b.status))
         .map((item) => this.serializeItem(item)),
@@ -1979,6 +2557,11 @@ export class SnagService {
       beforePhotos: photos.filter((photo) => photo.type === SnagPhotoType.BEFORE),
       afterPhotos: photos.filter((photo) => photo.type === SnagPhotoType.AFTER),
       closurePhotos: photos.filter(
+        (photo) => photo.type === SnagPhotoType.CLOSURE,
+      ),
+      snaggedPhotos: photos.filter((photo) => photo.type === SnagPhotoType.BEFORE),
+      rectifiedPhotos: photos.filter((photo) => photo.type === SnagPhotoType.AFTER),
+      desnagConfirmedPhotos: photos.filter(
         (photo) => photo.type === SnagPhotoType.CLOSURE,
       ),
     };
@@ -2024,9 +2607,12 @@ export class SnagService {
     const items = await this.snagItemRepo.find({
       where: { snagRoundId: round.id },
     });
-    if (!items.length) return;
+    const levelItems = items.filter(
+      (item) => (item.verifierLevelOrder || 1) === (round.currentVerifierLevel || 1),
+    );
+    if (!levelItems.length) return;
 
-    const allReadyForChecker = items.every(
+    const allReadyForChecker = levelItems.every(
       (item) =>
         item.status === SnagItemStatus.RECTIFIED ||
         item.status === SnagItemStatus.CLOSED ||
@@ -2040,6 +2626,7 @@ export class SnagService {
     round.snagSubmittedComments =
       round.snagSubmittedComments ?? 'All snag points rectified';
     round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
+    round.levelStatus = SnagRoundLevelStatus.DESNAGGING;
     await this.snagRoundRepo.save(round);
 
     snagList.overallStatus = SnagListStatus.DESNAGGING;
@@ -2054,18 +2641,21 @@ export class SnagService {
     const items = await this.snagItemRepo.find({
       where: { snagRoundId: round.id },
     });
-    if (!items.length) return;
+    const levelItems = items.filter(
+      (item) => (item.verifierLevelOrder || 1) === (round.currentVerifierLevel || 1),
+    );
+    if (!levelItems.length) return;
 
-    const allCompleted = items.every(
+    const allCompleted = levelItems.every(
       (item) => item.status === SnagItemStatus.CLOSED,
     );
     if (!allCompleted) return;
 
     round.snagPhaseStatus = SnagRoundSnagPhaseStatus.SUBMITTED;
-    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.APPROVED;
-    round.desnagReleasedAt = new Date();
+    round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
     round.desnagReleaseComments =
-      round.desnagReleaseComments ?? 'All de-snag points completed';
+      round.desnagReleaseComments ?? 'All active-level de-snag points completed';
+    round.levelStatus = SnagRoundLevelStatus.DESNAGGING;
     await this.snagRoundRepo.save(round);
 
     snagList.currentRound = round.roundNumber;
@@ -2377,7 +2967,12 @@ export class SnagService {
       );
       return actors.some(
         (actor: any) =>
-          actor.userId === userId && actor.roleId === step.assignedRoleId,
+          actor.userId === userId &&
+          (actor.roleId === step.assignedRoleId ||
+            (actor.projectRoleIds || []).includes(step.assignedRoleId) ||
+            (actor.projectRoles || []).some(
+              (role: any) => role.id === step.assignedRoleId,
+            )),
       );
     }
 
@@ -2400,6 +2995,8 @@ export class SnagService {
           roundNumber: nextRoundNumber,
           snagPhaseStatus: SnagRoundSnagPhaseStatus.OPEN,
           desnagPhaseStatus: SnagRoundDesnagPhaseStatus.LOCKED,
+          currentVerifierLevel: 1,
+          levelStatus: SnagRoundLevelStatus.READY_PENDING,
         }),
       );
     }

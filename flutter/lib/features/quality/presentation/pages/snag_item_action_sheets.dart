@@ -40,10 +40,10 @@ Future<SnagActionInput?> showCloseSheet(BuildContext context, {bool photoRequire
     context: context,
     isScrollControlled: true,
     builder: (_) => _PhotoNoteSheet(
-      title: 'Close Snag Point',
+      title: 'De-snag Confirmed',
       notesLabel: 'Closure Remarks',
-      confirmLabel: 'Close',
-      photosLabel: photoRequired ? 'Closure Photos *' : 'Closure Photos (optional)',
+      confirmLabel: 'Confirm De-snag',
+      photosLabel: photoRequired ? 'De-snag Confirmed Photos *' : 'De-snag Confirmed Photos (optional)',
       photoRequired: photoRequired,
     ),
   );

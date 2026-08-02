@@ -766,6 +766,16 @@ class ApiEndpoints {
   static String snagMarkCurrentRoundReady(int projectId, int listId) =>
       '/snag/$projectId/lists/$listId/mark-current-round-ready';
 
+  /// POST /snag/:projectId/rounds/:roundId/levels/:levelOrder/close — closes
+  /// the active verifier level for a round, signed. Handles both an
+  /// intermediate level (advances to the next configured verifier level in
+  /// the same round) and the final level (closes the whole snag stage) —
+  /// the response's `canFinalCloseStage` tells the caller which one just
+  /// happened. Replaces the release-strategy `.../approvals/:id/advance`
+  /// endpoint for snag verifier sign-off per the multi-level handoff.
+  static String snagCloseVerifierLevel(int projectId, int roundId, int levelOrder) =>
+      '/snag/$projectId/rounds/$roundId/levels/$levelOrder/close';
+
   /// POST /snag/:projectId/items/:itemId/reject-rectification
   static String snagRejectRectification(int projectId, int itemId) =>
       '/snag/$projectId/items/$itemId/reject-rectification';

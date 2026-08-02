@@ -231,6 +231,7 @@ import { SnagReleaseApprovalStep } from './snag/entities/snag-release-approval-s
 import { SnagProcessStep } from './snag/entities/snag-process-step.entity';
 import { SnagProcessActivity } from './snag/entities/snag-process-activity.entity';
 import { SnagCommonPoint } from './snag/entities/snag-common-point.entity';
+import { SnagRoundLevelClosure } from './snag/entities/snag-round-level-closure.entity';
 import { QualityBatchSlipFieldSynonym } from './quality/entities/quality-batch-slip-field-synonym.entity';
 // AI Insights
 import { AiInsightsModule } from './ai-insights/ai-insights.module';
@@ -448,6 +449,7 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         SnagPhoto,
         SnagReleaseApproval,
         SnagReleaseApprovalStep,
+        SnagRoundLevelClosure,
         SnagProcessStep,
         SnagProcessActivity,
         SnagCommonPoint,

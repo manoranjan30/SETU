@@ -18,6 +18,7 @@ import { SnagReleaseApprovalStep } from './entities/snag-release-approval-step.e
 import { SnagProcessStep } from './entities/snag-process-step.entity';
 import { SnagProcessActivity } from './entities/snag-process-activity.entity';
 import { SnagCommonPoint } from './entities/snag-common-point.entity';
+import { SnagRoundLevelClosure } from './entities/snag-round-level-closure.entity';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { SnagCommonPoint } from './entities/snag-common-point.entity';
       SnagProcessStep,
       SnagProcessActivity,
       SnagCommonPoint,
+      SnagRoundLevelClosure,
       QualityFloorStructure,
       QualityUnit,
       QualityRoom,

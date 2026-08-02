@@ -626,11 +626,6 @@ export class ReleaseStrategyService {
           'SNAG_RELEASE_APPROVAL must use document type SNAG_ROUND_RELEASE',
         );
       }
-      if (dto.steps.length !== 1) {
-        throw new BadRequestException(
-          'SNAG_RELEASE_APPROVAL supports exactly one approval level',
-        );
-      }
     }
     dto.steps.forEach((step, index) => {
       if (!step.stepName?.trim()) {

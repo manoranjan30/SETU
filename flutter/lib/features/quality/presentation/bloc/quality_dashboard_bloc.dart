@@ -646,15 +646,25 @@ class QualityDashboardBloc
         }
       }
 
-      // Compute display status
+      // Compute display status.
+      //
+      // Pending-observation detection uses this floor's own inspection(s)
+      // only (inspListMap was built from inspections fetched with
+      // epsNodeId: floorId, so it's already scoped) — never `act.status`,
+      // which lives on the shared activity *template* row and flips for
+      // every floor/block using that activity whenever *any one* of them
+      // has a pending observation. Using it here showed "Fix Observation"
+      // on floors that had never even raised an RFI for the activity. See
+      // the matching fix in QualityRequestBloc._buildRows.
+      final allInspForAct = inspListMap[act.id] ?? [];
       ActivityDisplayStatus displayStatus;
-      if (act.status == 'PENDING_OBSERVATION') {
+      if (allInspForAct.any((i) => i.pendingObservationCount > 0)) {
         displayStatus = ActivityDisplayStatus.pendingObservation;
       } else if (inspection != null) {
         // For multi-go (totalParts > 1) or unit-wise, check ALL parts/units
         // before declaring the whole activity approved. Prevents one approved
         // unit/part from blocking the others from being raised.
-        final allInsp = inspListMap[act.id] ?? [];
+        final allInsp = allInspForAct;
         final isMultiGoOrUnit =
             inspection.totalParts > 1 || act.applicabilityLevel == 'UNIT';
 

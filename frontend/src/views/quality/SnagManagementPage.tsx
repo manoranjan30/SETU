@@ -107,6 +107,9 @@ type FinalClosureDialogState = {
   roundId: number;
   roundNumber: number;
   label: string;
+  levelOrder: number;
+  levelName: string;
+  isFinalStageLevel: boolean;
 };
 
 type SnagView = "dashboard" | "workflow" | "final";
@@ -1012,7 +1015,21 @@ export default function SnagManagementPage() {
     () => detail?.rounds?.find((round) => round.roundNumber === roundNumber),
     [detail, roundNumber],
   );
-  const canRaiseSnagPoints = canApproveSnagRelease;
+  const verifierLevels = currentRound?.verifierLevels || [];
+  const activeVerifierLevel = currentRound?.activeVerifierLevel || null;
+  const activeVerifierLevelOrder =
+    activeVerifierLevel?.levelOrder || currentRound?.currentVerifierLevel || 1;
+  const activeVerifierLevelName =
+    activeVerifierLevel?.levelName ||
+    currentRound?.currentVerifierLevelName ||
+    "Checker";
+  const isFinalVerifierLevel =
+    Boolean(activeVerifierLevel) &&
+    activeVerifierLevelOrder ===
+      Math.max(...verifierLevels.map((level) => level.levelOrder), activeVerifierLevelOrder);
+  const canRaiseSnagPoints = Boolean(
+    canApproveSnagRelease && (currentRound?.canRaiseSnag ?? true),
+  );
 
   const currentProcessStep = useMemo(() => {
     return activeProcessSteps
@@ -1134,6 +1151,19 @@ export default function SnagManagementPage() {
     };
   }, [currentRound?.items]);
 
+  const activeLevelSummary = useMemo(() => {
+    const items = (currentRound?.items || []).filter(
+      (item) => (item.verifierLevelOrder || 1) === activeVerifierLevelOrder,
+    );
+    return {
+      total: items.length,
+      open: items.filter((item) => item.status === "open").length,
+      rectified: items.filter((item) => item.status === "rectified").length,
+      closed: items.filter((item) => item.status === "closed").length,
+      onHold: items.filter((item) => item.status === "on_hold").length,
+    };
+  }, [activeVerifierLevelOrder, currentRound?.items]);
+
   const unresolvedForRelease =
     currentRoundSummary.open + currentRoundSummary.rectified;
   const canReopenBeforeFinalClosure = Boolean(
@@ -1168,13 +1198,14 @@ export default function SnagManagementPage() {
   const canResetSelectedCycle = Boolean(currentRound && canDeleteSnag);
   const canFinalCloseSelectedCycle = Boolean(
     currentRound &&
-      canApproveSnagRelease &&
-      !currentRound.isSkipped &&
-      !currentRound.finalClosureSignedAt &&
-      currentRoundSummary.total > 0 &&
-      currentRoundSummary.open === 0 &&
-      currentRoundSummary.rectified === 0 &&
-      currentRoundSummary.onHold === 0,
+    canApproveSnagRelease &&
+    !currentRound.isSkipped &&
+    !currentRound.finalClosureSignedAt &&
+      currentRound.canCloseLevel &&
+      activeLevelSummary.total > 0 &&
+      activeLevelSummary.open === 0 &&
+      activeLevelSummary.rectified === 0 &&
+      activeLevelSummary.onHold === 0,
   );
 
   const workflowSteps = useMemo(() => {
@@ -1697,23 +1728,6 @@ export default function SnagManagementPage() {
     }
   };
 
-  const advanceApproval = async (
-    approvalId: number,
-    action: "APPROVE" | "REJECT",
-  ) => {
-    setBusy(true);
-    try {
-      const data = await snagService.advanceApproval(pId, approvalId, { action });
-      setDetail(data);
-      await loadUnits();
-    } catch (error) {
-      console.error(error);
-      alert("Failed to update release approval");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const downloadStatusReport = async () => {
     if (!detail?.id || !currentRound) return;
     setBusy(true);
@@ -1746,6 +1760,9 @@ export default function SnagManagementPage() {
       roundId: currentRound.id,
       roundNumber: currentRound.roundNumber,
       label: getSnagCycleLabel(currentRound.roundNumber),
+      levelOrder: activeVerifierLevelOrder,
+      levelName: activeVerifierLevelName,
+      isFinalStageLevel: Boolean(currentRound.canFinalCloseStage && isFinalVerifierLevel),
     });
   };
 
@@ -1753,9 +1770,13 @@ export default function SnagManagementPage() {
     if (!finalClosureDialog) return;
     setBusy(true);
     try {
-      const data = await snagService.finalClosure(pId, finalClosureDialog.roundId, {
-        remarks: finalClosureRemarks.trim() || undefined,
-      });
+      const body = { remarks: finalClosureRemarks.trim() || undefined };
+      const data = await snagService.closeVerifierLevel(
+        pId,
+        finalClosureDialog.roundId,
+        finalClosureDialog.levelOrder,
+        body,
+      );
       setDetail(data);
       setRoundNumber(data.currentRound || finalClosureDialog.roundNumber);
       setFinalClosureDialog(null);
@@ -1770,12 +1791,18 @@ export default function SnagManagementPage() {
   };
 
   const canBulkRectify =
+    Boolean(currentRound?.canRectify) &&
     selectedItems.selected.length > 0 &&
     selectedItems.selected.every((item) => item.status === "open");
   const canBulkClose =
     canApproveSnagRelease &&
+    Boolean(currentRound?.canConfirmDesnag) &&
     selectedItems.selected.length > 0 &&
-    selectedItems.selected.every((item) => item.status === "rectified");
+    selectedItems.selected.every(
+      (item) =>
+        item.status === "rectified" &&
+        (item.verifierLevelOrder || 1) === activeVerifierLevelOrder,
+    );
   const hasSearchTerm = deferredSearchQuery.trim().length > 0;
 
   if (!canReadSnag) {
@@ -2397,6 +2424,48 @@ export default function SnagManagementPage() {
                               <div>On Hold</div>
                             </div>
                           </div>
+                          {verifierLevels.length > 0 && (
+                            <div className="space-y-2 rounded-2xl border border-border-default bg-surface-base/70 p-3">
+                              <div className="flex items-center justify-between gap-2 text-xs">
+                                <span className="font-semibold uppercase tracking-[0.16em] text-text-muted">
+                                  Active verifier level
+                                </span>
+                                <span className="rounded-full border border-primary/25 bg-primary-muted px-2 py-1 font-semibold text-primary">
+                                  L{activeVerifierLevelOrder} {activeVerifierLevelName}
+                                </span>
+                              </div>
+                              <div className="space-y-2">
+                                {verifierLevels.map((level) => (
+                                  <div
+                                    key={level.levelOrder}
+                                    className={`rounded-xl border px-3 py-2 ${
+                                      level.isActive
+                                        ? "border-primary/30 bg-primary-muted/40"
+                                        : level.closure
+                                          ? "border-success/20 bg-success-muted/40"
+                                          : "border-border-default bg-surface-card"
+                                    }`}
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="min-w-0 text-sm font-semibold text-text-primary">
+                                        Level {level.levelOrder}: {level.levelName}
+                                      </div>
+                                      <span className="rounded-full border border-border-default bg-surface-base px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                                        {level.closure ? "Closed" : level.isActive ? "Active" : "Waiting"}
+                                      </span>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-5 gap-1 text-center text-[10px] text-text-muted">
+                                      <span>{level.counts.raised} raised</span>
+                                      <span>{level.counts.open} open</span>
+                                      <span>{level.counts.rectifiedPendingDesnag} rectified</span>
+                                      <span>{level.counts.desnagConfirmed} closed</span>
+                                      <span>{level.counts.notSatisfactory} reject</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="rounded-2xl border border-border-default bg-surface-base/70 p-3 text-xs leading-6 text-text-muted">
                             {detail.overallStatus === "handover_ready" ? (
                               <>
@@ -2485,7 +2554,9 @@ export default function SnagManagementPage() {
                               className="inline-flex items-center justify-center gap-2 rounded-xl border border-success/20 px-3 py-2 text-sm font-semibold text-success hover:bg-success-muted disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <PenLine className="h-4 w-4" />
-                              Final Closure of {currentCycleLabel}
+                              {isFinalVerifierLevel
+                                ? `Final Closure of ${currentCycleLabel}`
+                                : `Close Level ${activeVerifierLevelOrder}`}
                             </button>
                             <button
                               onClick={() => void downloadStatusReport()}
@@ -2555,7 +2626,8 @@ export default function SnagManagementPage() {
                           )}
                           {canCreateInSelectedCycle && !canRaiseSnagPoints && (
                             <div className="rounded-xl border border-warning/20 bg-warning-muted/40 px-3 py-3 text-xs leading-6 text-warning">
-                              Snag points can be raised by Checker users only.
+                              Snag points can be raised only by the active
+                              checker for Level {activeVerifierLevelOrder}.
                             </div>
                           )}
                           <button
@@ -2597,30 +2669,9 @@ export default function SnagManagementPage() {
                                     </div>
                                   </div>
                                   {step.status === "pending" && (
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() =>
-                                          void advanceApproval(
-                                            activeApproval.id,
-                                            "APPROVE",
-                                          )
-                                        }
-                                        className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary"
-                                      >
-                                        Approve
-                                      </button>
-                                      <button
-                                        onClick={() =>
-                                          void advanceApproval(
-                                            activeApproval.id,
-                                            "REJECT",
-                                          )
-                                        }
-                                        className="rounded-xl border border-error/20 px-3 py-1.5 text-xs font-semibold text-error"
-                                      >
-                                        Reject
-                                      </button>
-                                    </div>
+                                    <span className="rounded-full border border-primary/25 bg-primary-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+                                      Active
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -2836,6 +2887,16 @@ export default function SnagManagementPage() {
                                             {item.priority}
                                           </span>
                                         )}
+                                        <span
+                                          className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                                            (item.verifierLevelOrder || 1) === activeVerifierLevelOrder
+                                              ? "border-primary/25 bg-primary-muted text-primary"
+                                              : "border-border-default bg-surface-card text-text-muted"
+                                          }`}
+                                        >
+                                          L{item.verifierLevelOrder || 1}{" "}
+                                          {item.verifierLevelName || "Checker"}
+                                        </span>
                                       </div>
                                       <div className="mt-1 text-xs text-text-muted">
                                         {item.roomLabel || "Common area"} |{" "}
@@ -2886,6 +2947,7 @@ export default function SnagManagementPage() {
                                               `Rectify ${item.defectTitle}`,
                                             )
                                           }
+                                          disabled={!currentRound?.canRectify}
                                           className="rounded-xl border border-border-default px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-card"
                                         >
                                           Rectify
@@ -2899,7 +2961,9 @@ export default function SnagManagementPage() {
                                       </>
                                     )}
                                     {item.status === "rectified" &&
-                                      canApproveSnagRelease && (
+                                      canApproveSnagRelease &&
+                                      currentRound?.canConfirmDesnag &&
+                                      (item.verifierLevelOrder || 1) === activeVerifierLevelOrder && (
                                       <>
                                         <button
                                           onClick={() =>
@@ -3200,11 +3264,13 @@ export default function SnagManagementPage() {
               <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
                 <div>
                   <h3 className="text-lg font-semibold text-text-primary">
-                    Final Closure of {finalClosureDialog.label}
+                    {finalClosureDialog.isFinalStageLevel
+                      ? `Final Closure of ${finalClosureDialog.label}`
+                      : `Close Level ${finalClosureDialog.levelOrder}`}
                   </h3>
                   <p className="text-sm text-text-muted">
-                    Checker signoff will be printed at the bottom of the snag
-                    status PDF.
+                    {finalClosureDialog.levelName} signoff will be printed in
+                    the matching level section of the snag status PDF.
                   </p>
                 </div>
                 <button
@@ -3216,9 +3282,9 @@ export default function SnagManagementPage() {
               </div>
               <div className="space-y-4 px-5 py-5">
                 <div className="rounded-2xl border border-success/20 bg-success-muted/40 px-4 py-3 text-sm text-success">
-                  All snag points in this cycle are closed. Signing
-                  final closure will release the unit to the next configured
-                  snag cycle, or to customer inspection after the last cycle.
+                  {finalClosureDialog.isFinalStageLevel
+                    ? "All active-level snag points are closed. Signing final closure will complete this snag stage and make the next configured stage available only after Maker marks the unit ready."
+                    : "All active-level snag points are closed. Signing this level closure will hand the same snag stage to the next release-strategy checker level."}
                 </div>
                 <textarea
                   value={finalClosureRemarks}
@@ -3244,7 +3310,9 @@ export default function SnagManagementPage() {
                     ) : (
                       <PenLine className="h-4 w-4" />
                     )}
-                    Sign Final Closure
+                    {finalClosureDialog.isFinalStageLevel
+                      ? "Sign Final Closure"
+                      : "Close Level"}
                   </button>
                 </div>
               </div>

@@ -69,6 +69,18 @@ export interface SnagListDetail {
 export interface SnagRoundDetail {
   id: number;
   roundNumber: number;
+  currentVerifierLevel?: number;
+  currentVerifierLevelName?: string | null;
+  levelStatus?:
+    | "ready_pending"
+    | "snagging"
+    | "rectification"
+    | "desnagging"
+    | "completed"
+    | "rejected";
+  levelClosedAt?: string | null;
+  levelClosedById?: number | null;
+  levelClosureSignatureData?: string | null;
   isSkipped: boolean;
   skippedAt: string | null;
   skippedById: number | null;
@@ -85,6 +97,14 @@ export interface SnagRoundDetail {
   finalClosureRemarks?: string | null;
   items: SnagItemDetail[];
   approvals?: SnagApproval[];
+  verifierLevels?: SnagVerifierLevel[];
+  activeVerifierLevel?: SnagVerifierLevel | null;
+  levelClosures?: SnagLevelClosure[];
+  canRaiseSnag?: boolean;
+  canRectify?: boolean;
+  canConfirmDesnag?: boolean;
+  canCloseLevel?: boolean;
+  canFinalCloseStage?: boolean;
 }
 
 export interface SnagItemDetail {
@@ -111,6 +131,12 @@ export interface SnagItemDetail {
   rectifiedAt: string | null;
   closedAt: string | null;
   raisedById?: number | null;
+  verifierLevelOrder?: number;
+  verifierLevelName?: string | null;
+  raisedByVerifierUserId?: number | null;
+  snaggedPhotos?: SnagPhoto[];
+  rectifiedPhotos?: SnagPhoto[];
+  desnagConfirmedPhotos?: SnagPhoto[];
 }
 
 export interface SnagApproval {
@@ -201,6 +227,34 @@ export interface SnagAnalytics {
     currentRound: number;
     status: SnagOverallStatus;
   }>;
+}
+
+export interface SnagLevelClosure {
+  id: number;
+  snagRoundId: number;
+  levelOrder: number;
+  levelName: string;
+  status: string;
+  closedById: number | null;
+  closedAt: string | null;
+  signatureData?: string | null;
+  remarks?: string | null;
+  closedBy?: { id?: number; username?: string; displayName?: string | null } | null;
+}
+
+export interface SnagVerifierLevel {
+  levelOrder: number;
+  levelName: string;
+  status: string;
+  isActive: boolean;
+  closure: SnagLevelClosure | null;
+  counts: {
+    raised: number;
+    open: number;
+    rectifiedPendingDesnag: number;
+    desnagConfirmed: number;
+    notSatisfactory: number;
+  };
 }
 
 export const snagService = {
@@ -466,6 +520,19 @@ export const snagService = {
   ): Promise<SnagListDetail> =>
     (await api.post(`/snag/${projectId}/rounds/${roundId}/final-closure`, body))
       .data,
+
+  closeVerifierLevel: async (
+    projectId: number,
+    roundId: number,
+    levelOrder: number,
+    body: { remarks?: string; signatureData?: string },
+  ): Promise<SnagListDetail> =>
+    (
+      await api.post(
+        `/snag/${projectId}/rounds/${roundId}/levels/${levelOrder}/close`,
+        body,
+      )
+    ).data,
 
   downloadStatusReport: async (
     projectId: number,

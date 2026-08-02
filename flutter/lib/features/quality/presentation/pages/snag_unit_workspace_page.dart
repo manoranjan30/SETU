@@ -3,8 +3,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/features/quality/data/models/snag_desnag_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/snag_desnag_bloc.dart';
@@ -244,19 +246,10 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
           // CREATE permission that marks the unit ready in the first place
           // (see the SnagUnitNotStarted branch above).
           //
-          // Matches `addItem`'s real backend gate (snag.service.ts), not
-          // just "snagPhaseStatus == open": per the July 2026 handoff, a
-          // Checker can still raise additional points after the snag phase
-          // is submitted (even after every de-snag point is closed) right
-          // up until final closure — the backend silently reopens the round
-          // when that happens. Blocked only once the round is finally
-          // closed, skipped, or the unit is `released` awaiting the Maker
-          // to start the next cycle.
-          final canRaise = ps.canApproveSnag &&
-              round != null &&
-              !round.isSkipped &&
-              !round.isFinallyClosed &&
-              list.overallStatus != SnagListStatus.released;
+          // `canRaiseSnag` is backend-computed (snag.service.ts:
+          // serializeRound) — per the multi-level handoff, mobile must use
+          // that boolean rather than re-deriving round-state rules locally.
+          final canRaise = ps.canApproveSnag && (round?.canRaiseSnag ?? false);
           final canResetReady = ps.canApproveSnag &&
               list.overallStatus == SnagListStatus.readyForSnag &&
               (round?.items.isEmpty ?? true);
@@ -316,21 +309,11 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                           bulkMode: _bulkMode,
                           selected: _selectedItemIds.contains(item.id),
                           onToggleSelect: () => _toggleSelect(item.id),
-                          onTap: (ps.canUpdateSnag || ps.canApproveSnag) && !_bulkMode
-                              ? () => _showItemActions(context, item, ps, step)
-                              : null,
+                          onTap: !_bulkMode ? () => _showItemActions(context, item, ps, step, round) : null,
                         ),
-                    if (round != null) ...[
-                      const SizedBox(height: 16),
-                      _PhaseActions(round: round, canUpdate: ps.canUpdateSnag),
-                    ],
-                    if (round != null && round.approvals.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _ApprovalPanel(approval: round.approvals.last, canApprove: ps.canApproveSnag),
-                    ],
                     if (round != null && !round.isSkipped) ...[
                       const SizedBox(height: 16),
-                      _FinalClosureSection(round: round, canApprove: ps.canApproveSnag),
+                      _VerifierLevelSection(round: round, canApprove: ps.canApproveSnag),
                     ],
                   ],
                 ),
@@ -360,13 +343,8 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                 final list = _listFrom(state);
                 if (list == null) return const SizedBox.shrink();
                 final round = list.activeRound;
-                // Mirrors the gate above the item list — see that comment
-                // for why this isn't just "snagPhaseStatus == open".
-                final canRaise = ps.canApproveSnag &&
-                    round != null &&
-                    !round.isSkipped &&
-                    !round.isFinallyClosed &&
-                    list.overallStatus != SnagListStatus.released;
+                // Mirrors the gate above the item list.
+                final canRaise = ps.canApproveSnag && (round?.canRaiseSnag ?? false);
                 if (!canRaise) return const SizedBox.shrink();
 
                 final bloc = context.read<SnagDesnagBloc>();
@@ -416,29 +394,51 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
     );
   }
 
-  Future<void> _showItemActions(BuildContext context, SnagItem item, PermissionService ps, SnagProcessStep? step) async {
+  Future<void> _showItemActions(
+    BuildContext context, SnagItem item, PermissionService ps, SnagProcessStep? step, SnagRound round,
+  ) async {
+    // The item's own level must match the round's currently-active level —
+    // an item raised at a level that's already closed (or not yet reached)
+    // can't be acted on, matching closeItem/rejectRectification's own
+    // server-side check (snag.service.ts).
+    final isActiveLevel = item.verifierLevelOrder ==
+        (round.activeVerifierLevel?.levelOrder ?? round.currentVerifierLevel);
+    // Backend-computed round gates, per the multi-level handoff — not
+    // locally re-derived from status/permission alone.
+    final canRectifyThis = item.status == SnagItemStatus.open && ps.canUpdateSnag && round.canRectify;
+    final canHoldThis = item.status == SnagItemStatus.open && ps.canUpdateSnag;
+    final canConfirmThis = item.status == SnagItemStatus.rectified &&
+        ps.canApproveSnag &&
+        round.canConfirmDesnag &&
+        isActiveLevel;
+
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (item.status == SnagItemStatus.open && ps.canUpdateSnag) ...[
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: Colors.indigo),
+              title: const Text('View Evidence Photos'),
+              onTap: () => Navigator.of(ctx).pop('view'),
+            ),
+            if (canRectifyThis)
               ListTile(
                 leading: const Icon(Icons.check_circle_outline, color: Colors.blue),
                 title: const Text('Mark Rectified'),
                 onTap: () => Navigator.of(ctx).pop('rectify'),
               ),
+            if (canHoldThis)
               ListTile(
                 leading: const Icon(Icons.pause_circle_outline, color: Colors.grey),
                 title: const Text('Hold'),
                 onTap: () => Navigator.of(ctx).pop('hold'),
               ),
-            ],
-            if (item.status == SnagItemStatus.rectified && ps.canApproveSnag) ...[
+            if (canConfirmThis) ...[
               ListTile(
                 leading: const Icon(Icons.task_alt, color: Colors.green),
-                title: const Text('Close / Desnag'),
+                title: const Text('De-snag Confirmed'),
                 onTap: () => Navigator.of(ctx).pop('close'),
               ),
               ListTile(
@@ -455,6 +455,8 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
     if (action == null || !context.mounted) return;
 
     switch (action) {
+      case 'view':
+        await _showItemEvidence(context, item);
       case 'rectify':
         final input = await showRectifySheet(context, photoRequired: step?.rectificationPhotoRequired ?? false);
         if (input != null && context.mounted) {
@@ -485,6 +487,60 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
         }
     }
   }
+
+  /// Read-only view of the three evidence sections the multi-level handoff
+  /// calls out — Snagged / Rectified / De-snag Confirmed — reusing
+  /// [PhotoThumbnailStrip] the same way every other photo-bearing feature
+  /// in the app does, rather than inventing a new gallery widget.
+  Future<void> _showItemEvidence(BuildContext context, SnagItem item) async {
+    List<String> urls(List<SnagPhoto> photos) =>
+        photos.map((p) => ApiEndpoints.resolveUrl(p.fileUrl)).toList();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(item.defectTitle, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              _EvidenceSection(label: 'Snagged Photos', urls: urls(item.snaggedPhotos)),
+              _EvidenceSection(label: 'Rectified Photos', urls: urls(item.rectifiedPhotos)),
+              _EvidenceSection(label: 'De-snag Confirmed Photos', urls: urls(item.desnagConfirmedPhotos)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EvidenceSection extends StatelessWidget {
+  final String label;
+  final List<String> urls;
+  const _EvidenceSection({required this.label, required this.urls});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+          const SizedBox(height: 6),
+          if (urls.isEmpty)
+            Text('No photos', style: TextStyle(fontSize: 12, color: Colors.grey.shade500))
+          else
+            PhotoThumbnailStrip(photoUrls: urls),
+        ],
+      ),
+    );
+  }
 }
 
 class _BulkActionBar extends StatelessWidget {
@@ -507,8 +563,10 @@ class _BulkActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedItems = round.items.where((i) => selectedIds.contains(i.id)).toList();
+    final activeLevelOrder = round.activeVerifierLevel?.levelOrder ?? round.currentVerifierLevel;
     final allOpen = selectedItems.isNotEmpty && selectedItems.every((i) => i.status == SnagItemStatus.open);
-    final allRectified = selectedItems.isNotEmpty && selectedItems.every((i) => i.status == SnagItemStatus.rectified);
+    final allRectified = selectedItems.isNotEmpty &&
+        selectedItems.every((i) => i.status == SnagItemStatus.rectified && i.verifierLevelOrder == activeLevelOrder);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -520,7 +578,7 @@ class _BulkActionBar extends StatelessWidget {
         children: [
           Text('$selectedCount selected', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           const Spacer(),
-          if (allOpen && canUpdate)
+          if (allOpen && canUpdate && round.canRectify)
             FilledButton.icon(
               onPressed: () async {
                 final input = await showRectifySheet(context, photoRequired: step?.rectificationPhotoRequired ?? false);
@@ -536,7 +594,7 @@ class _BulkActionBar extends StatelessWidget {
               icon: const Icon(Icons.check_circle_outline, size: 16),
               label: const Text('Bulk Rectify'),
             )
-          else if (allRectified && canApprove)
+          else if (allRectified && canApprove && round.canConfirmDesnag)
             FilledButton.icon(
               onPressed: () async {
                 final input = await showCloseSheet(context, photoRequired: step?.desnagCompletionPhotoRequired ?? false);
@@ -550,7 +608,7 @@ class _BulkActionBar extends StatelessWidget {
                 }
               },
               icon: const Icon(Icons.task_alt, size: 16),
-              label: const Text('Bulk Close'),
+              label: const Text('Bulk De-snag Confirm'),
             )
           else
             Text('Select items with the same status to act on them together.',
@@ -561,152 +619,94 @@ class _BulkActionBar extends StatelessWidget {
   }
 }
 
-class _PhaseActions extends StatelessWidget {
+/// Multi-level verifier timeline + signed level closure — the *only* way a
+/// snag stage's verifier levels close, per the multi-level handoff. Item
+/// actions (raise/rectify/de-snag confirm) auto-advance the round's level
+/// state on the backend (see `snag.service.ts:rectifyItem`/`closeItem`),
+/// so — unlike the older flow this replaces — there's no separate "submit
+/// snag phase" / "submit for desnag approval" step for the user to press;
+/// closing the active level is available as soon as every one of its items
+/// is de-snag confirmed.
+class _VerifierLevelSection extends StatelessWidget {
   final SnagRound round;
-  final bool canUpdate;
-  const _PhaseActions({required this.round, required this.canUpdate});
+  final bool canApprove;
+  const _VerifierLevelSection({required this.round, required this.canApprove});
 
   @override
   Widget build(BuildContext context) {
-    if (!canUpdate) return const SizedBox.shrink();
-
-    if (round.snagPhaseStatus == SnagRoundSnagPhaseStatus.open) {
-      return OutlinedButton.icon(
-        onPressed: () => _confirm(
-          context,
-          title: 'Submit Snag Phase',
-          message: 'Submit this round\'s snagging for review? You can still raise more points until the round moves on.',
-          onConfirm: () => context.read<SnagDesnagBloc>().add(SubmitSnagPhaseEvent(round.id)),
-        ),
-        icon: const Icon(Icons.send_outlined, size: 16),
-        label: const Text('Submit Snag Phase'),
-        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
-      );
-    }
-
-    if (round.snagPhaseStatus == SnagRoundSnagPhaseStatus.submitted &&
-        round.desnagPhaseStatus == SnagRoundDesnagPhaseStatus.open) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FilledButton.icon(
-            onPressed: round.allItemsResolved
-                ? () => _confirm(
-                      context,
-                      title: 'Submit for Desnag Approval',
-                      message: 'Send this round for desnag approval? The assigned approver will be notified.',
-                      onConfirm: () => context.read<SnagDesnagBloc>().add(SubmitDesnagReleaseEvent(round.id)),
-                    )
-                : null,
-            icon: const Icon(Icons.verified_outlined, size: 16),
-            label: const Text('Submit for Desnag Approval'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Verifier Levels', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+        const SizedBox(height: 8),
+        for (final level in round.verifierLevels) _VerifierLevelTile(level: level),
+        if (round.isFinallyClosed) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.green.shade100),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.verified, color: Colors.green.shade700, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Snag stage finally closed${round.finalClosureRemarks != null ? ' — ${round.finalClosureRemarks}' : ''}',
+                    style: TextStyle(fontSize: 12, color: Colors.green.shade800),
+                  ),
+                ),
+              ],
+            ),
           ),
-          if (!round.allItemsResolved)
+        ] else if (canApprove) ...[
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: round.canCloseLevel ? () => _closeLevel(context) : null,
+            icon: const Icon(Icons.gavel_outlined, size: 16),
+            label: Text(
+              round.canFinalCloseStage
+                  ? 'Final Closure of Snag Stage ${round.roundNumber}'
+                  : 'Close Level ${round.activeVerifierLevel?.levelOrder ?? round.currentVerifierLevel}',
+            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.indigo.shade700, minimumSize: const Size.fromHeight(44)),
+          ),
+          if (!round.canCloseLevel)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'All snag items must be closed or held before release approval.',
+                'Every snag point at the active verifier level must be de-snag confirmed before closure.',
                 style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
               ),
             ),
         ],
-      );
-    }
-
-    return const SizedBox.shrink();
-  }
-
-  void _confirm(BuildContext context, {required String title, required String message, required VoidCallback onConfirm}) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              onConfirm();
-            },
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The Checker's final sign-off gate — stricter than [_PhaseActions]'
-/// desnag-approval submit: every item must be exactly `closed` (an
-/// on-hold item blocks this), matching `finalClosureRound`'s backend rule.
-/// Not dependent on the release-strategy approval panel having run first —
-/// the backend accepts final closure independently.
-class _FinalClosureSection extends StatelessWidget {
-  final SnagRound round;
-  final bool canApprove;
-  const _FinalClosureSection({required this.round, required this.canApprove});
-
-  @override
-  Widget build(BuildContext context) {
-    if (round.isFinallyClosed) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.green.shade100),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.verified, color: Colors.green.shade700, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Finally closed${round.finalClosureRemarks != null ? ' — ${round.finalClosureRemarks}' : ''}',
-                style: TextStyle(fontSize: 12, color: Colors.green.shade800),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (!canApprove) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        FilledButton.icon(
-          onPressed: round.allItemsClosed ? () => _finalClose(context) : null,
-          icon: const Icon(Icons.gavel_outlined, size: 16),
-          label: Text('Final Closure of Snag ${round.roundNumber}'),
-          style: FilledButton.styleFrom(backgroundColor: Colors.indigo.shade700, minimumSize: const Size.fromHeight(44)),
-        ),
-        if (!round.allItemsClosed)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Every snag point in this round must be Closed (not on hold) before final closure.',
-              style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
-            ),
-          ),
       ],
     );
   }
 
-  Future<void> _finalClose(BuildContext context) async {
+  Future<void> _closeLevel(BuildContext context) async {
+    final activeLevel = round.activeVerifierLevel;
+    final levelOrder = activeLevel?.levelOrder ?? round.currentVerifierLevel;
+    final isFinal = round.canFinalCloseStage;
+    final title = isFinal ? 'Final Closure of Snag Stage ${round.roundNumber}' : 'Close Level $levelOrder';
+
     final remarksCtrl = TextEditingController();
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Final Closure of Snag ${round.roundNumber}'),
+        title: Text(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('This is the final gate — closing all items alone does not release the unit. You\'ll sign next.'),
+            Text(
+              isFinal
+                  ? 'This is the final gate for this snag stage — closing all items alone does not release the unit. You\'ll sign next.'
+                  : 'This closes ${activeLevel?.levelName ?? 'the active level'} and opens the next verifier level for raising. You\'ll sign next.',
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: remarksCtrl,
@@ -727,124 +727,93 @@ class _FinalClosureSection extends StatelessWidget {
     );
     if (proceed != true || !context.mounted) return;
 
-    final signed = await SignatureApprovalSheet.showForSignoff(
-      context,
-      department: 'Snag ${round.roundNumber} Final Closure',
-    );
+    final signed = await SignatureApprovalSheet.showForSignoff(context, department: title);
     if (signed == null || !context.mounted) return;
 
-    context.read<SnagDesnagBloc>().add(FinalClosureEvent(
+    context.read<SnagDesnagBloc>().add(CloseVerifierLevelEvent(
           round.id,
+          levelOrder,
           remarks: remarksCtrl.text.trim().isEmpty ? null : remarksCtrl.text.trim(),
           signatureData: signed.$1,
         ));
   }
 }
 
-class _ApprovalPanel extends StatelessWidget {
-  final SnagApproval approval;
-  final bool canApprove;
-  const _ApprovalPanel({required this.approval, required this.canApprove});
+class _VerifierLevelTile extends StatelessWidget {
+  final SnagVerifierLevel level;
+  const _VerifierLevelTile({required this.level});
 
   @override
   Widget build(BuildContext context) {
+    final (label, color) = level.isClosed
+        ? ('Closed', Colors.green)
+        : level.isActive
+            ? ('Active', Colors.deepOrange)
+            : ('Waiting', Colors.grey);
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
+        color: level.isActive ? Colors.indigo.shade50 : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.shade100),
+        border: Border.all(color: level.isActive ? Colors.indigo.shade100 : Colors.grey.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.rule_folder_outlined, size: 16, color: Colors.amber.shade900),
-              const SizedBox(width: 6),
-              const Text('Desnag Approval', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Text(approval.status.name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.amber.shade900)),
+              Expanded(
+                child: Text('L${level.levelOrder} ${level.levelName}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+                child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          for (final step in approval.steps)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  Icon(
-                    step.status == SnagApprovalStepStatus.approved
-                        ? Icons.check_circle
-                        : step.status == SnagApprovalStepStatus.rejected
-                            ? Icons.cancel
-                            : Icons.radio_button_unchecked,
-                    size: 14,
-                    color: step.status == SnagApprovalStepStatus.approved
-                        ? Colors.green
-                        : step.status == SnagApprovalStepStatus.rejected
-                            ? Colors.red
-                            : Colors.grey,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(child: Text('${step.stepOrder}. ${step.stepName}', style: const TextStyle(fontSize: 12))),
-                  Text(step.status.name, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-                ],
-              ),
-            ),
-          if (approval.status == SnagApprovalStatus.pending && canApprove) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _reject(context),
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade700, side: BorderSide(color: Colors.red.shade400)),
-                    child: const Text('Reject'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => context.read<SnagDesnagBloc>().add(AdvanceSnagApprovalEvent(approval.id, action: 'APPROVE')),
-                    style: FilledButton.styleFrom(backgroundColor: Colors.green.shade700),
-                    child: const Text('Approve'),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _LevelCountChip(label: 'Raised', count: level.raisedCount, color: Colors.blueGrey),
+              _LevelCountChip(label: 'Open', count: level.openCount, color: Colors.deepOrange),
+              _LevelCountChip(label: 'Rect. Pending', count: level.rectifiedPendingDesnagCount, color: Colors.blue),
+              _LevelCountChip(label: 'De-snag OK', count: level.desnagConfirmedCount, color: Colors.green),
+              if (level.notSatisfactoryCount > 0)
+                _LevelCountChip(label: 'Not Satisfactory', count: level.notSatisfactoryCount, color: Colors.red),
+            ],
+          ),
+          if (level.closure != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Signed ${level.closure!.closedAt != null ? DateFormat('d MMM, HH:mm').format(level.closure!.closedAt!) : ''}'
+              '${level.closure!.remarks != null ? ' — ${level.closure!.remarks}' : ''}',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
             ),
           ],
         ],
       ),
     );
   }
+}
 
-  void _reject(BuildContext context) {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Reject Desnag Release'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Reason *', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (ctrl.text.trim().isEmpty) return;
-              Navigator.of(ctx).pop();
-              context.read<SnagDesnagBloc>().add(AdvanceSnagApprovalEvent(approval.id, action: 'REJECT', comments: ctrl.text.trim()));
-            },
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
+class _LevelCountChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final MaterialColor color;
+  const _LevelCountChip({required this.label, required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(color: color.shade50, borderRadius: BorderRadius.circular(6)),
+      child: Text('$label: $count', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color.shade800)),
     );
   }
 }
@@ -974,6 +943,15 @@ class _SnagItemTile extends StatelessWidget {
           children: [
             Row(
               children: [
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(4)),
+                  child: Text(
+                    'L${item.verifierLevelOrder}${item.verifierLevelName != null ? ' ${item.verifierLevelName}' : ''}',
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.indigo.shade700),
+                  ),
+                ),
                 Expanded(
                   child: Text(
                     [if (item.roomLabel != null) item.roomLabel!, if (item.trade != null) item.trade!].join(' • '),
