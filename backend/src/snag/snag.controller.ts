@@ -194,8 +194,9 @@ export class SnagController {
   resetReady(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Param('listId', ParseIntPipe) listId: number,
+    @Request() req: any,
   ) {
-    return this.service.resetReadyForSnag(projectId, listId);
+    return this.service.resetReadyForSnag(projectId, listId, req.user?.id);
   }
 
   @Post(':projectId/lists/:listId/mark-current-round-ready')

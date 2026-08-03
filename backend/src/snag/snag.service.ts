@@ -19,6 +19,7 @@ import { QualityUnit } from '../quality/entities/quality-unit.entity';
 import { ReleaseStrategyApproverMode } from '../planning/entities/release-strategy-step.entity';
 import { ReleaseStrategyService } from '../planning/release-strategy.service';
 import { CustomerMilestoneService } from '../milestone/customer-milestone.service';
+import { AuditService } from '../audit/audit.service';
 import {
   SnagCommonChecklistItem,
   SnagCommonChecklistStatus,
@@ -126,6 +127,7 @@ export class SnagService {
     private readonly userRepo: Repository<User>,
     private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly milestoneService: CustomerMilestoneService,
+    private readonly auditService: AuditService,
   ) {}
 
   async listProcessSteps(projectId: number) {
@@ -488,6 +490,9 @@ export class SnagService {
     if (!workflow.activeStep) {
       throw new BadRequestException('No active snag checker level is configured');
     }
+    if (await this.isAdminUser(userId)) {
+      return workflow.activeStep;
+    }
     const canAct = await this.canUserActOnStep(
       projectId,
       userId,
@@ -499,6 +504,39 @@ export class SnagService {
       );
     }
     return workflow.activeStep;
+  }
+
+  private async isAdminUser(userId?: number | null) {
+    if (!userId) return false;
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['roles'],
+    });
+    return (
+      user?.username?.toLowerCase() === 'admin' ||
+      (user?.roles || []).some((role) => role.name === 'Admin')
+    );
+  }
+
+  private async logAdminSnagOverride(
+    userId: number | null | undefined,
+    projectId: number,
+    action: string,
+    recordId?: string | number,
+    details?: Record<string, any>,
+  ) {
+    if (!(await this.isAdminUser(userId))) return;
+    await this.auditService.log(
+      userId!,
+      'QUALITY',
+      `SNAG_ADMIN_${action}`,
+      recordId,
+      projectId,
+      {
+        adminOverride: true,
+        ...details,
+      },
+    );
   }
 
   private async getRoundLevelClosures(roundId: number) {
@@ -523,15 +561,41 @@ export class SnagService {
     const closuresByLevel = new Map(
       closures.map((closure) => [closure.levelOrder, closure]),
     );
-    const sourceSteps = steps.length
-      ? steps
-      : [
-          {
-            stepOrder: round.currentVerifierLevel || 1,
-            stepName: round.currentVerifierLevelName || 'Checker',
-            status: SnagReleaseApprovalStepStatus.PENDING,
-          } as SnagReleaseApprovalStep,
-        ];
+    const stepByLevel = new Map<number, SnagReleaseApprovalStep>();
+    steps.forEach((step) => stepByLevel.set(step.stepOrder, step));
+    items.forEach((item) => {
+      const levelOrder = item.verifierLevelOrder || 1;
+      if (!stepByLevel.has(levelOrder)) {
+        stepByLevel.set(levelOrder, {
+          stepOrder: levelOrder,
+          stepName: item.verifierLevelName || `Level ${levelOrder}`,
+          status:
+            levelOrder === (round.currentVerifierLevel || 1)
+              ? SnagReleaseApprovalStepStatus.PENDING
+              : SnagReleaseApprovalStepStatus.APPROVED,
+        } as SnagReleaseApprovalStep);
+      }
+    });
+    closures.forEach((closure) => {
+      if (!stepByLevel.has(closure.levelOrder)) {
+        stepByLevel.set(closure.levelOrder, {
+          stepOrder: closure.levelOrder,
+          stepName: closure.levelName || `Level ${closure.levelOrder}`,
+          status: SnagReleaseApprovalStepStatus.APPROVED,
+        } as SnagReleaseApprovalStep);
+      }
+    });
+    if (!stepByLevel.size) {
+      const levelOrder = round.currentVerifierLevel || 1;
+      stepByLevel.set(levelOrder, {
+        stepOrder: levelOrder,
+        stepName: round.currentVerifierLevelName || 'Checker',
+        status: SnagReleaseApprovalStepStatus.PENDING,
+      } as SnagReleaseApprovalStep);
+    }
+    const sourceSteps = [...stepByLevel.values()].sort(
+      (a, b) => a.stepOrder - b.stepOrder,
+    );
 
     return sourceSteps.map((step) => {
       const levelItems = items.filter(
@@ -717,8 +781,13 @@ export class SnagService {
     return this.getListDetail(projectId, snagList.id);
   }
 
-  async resetReadyForSnag(projectId: number, listId: number) {
+  async resetReadyForSnag(
+    projectId: number,
+    listId: number,
+    userId?: number | null,
+  ) {
     const snagList = await this.requireList(projectId, listId);
+    const isAdmin = await this.isAdminUser(userId);
     if (snagList.overallStatus !== SnagListStatus.READY_FOR_SNAG) {
       throw new BadRequestException(
         'Only ready-for-snag units can be reset to unready',
@@ -728,13 +797,18 @@ export class SnagService {
     const itemCount = await this.snagItemRepo.count({
       where: { snagListId: snagList.id },
     });
-    if (itemCount > 0) {
+    if (itemCount > 0 && !isAdmin) {
       throw new BadRequestException(
         'Unit cannot be reset to unready after snag points are raised',
       );
     }
 
     await this.snagListRepo.delete(snagList.id);
+    await this.logAdminSnagOverride(userId, projectId, 'RESET_READY', listId, {
+      qualityUnitId: snagList.qualityUnitId,
+      itemCount,
+      previousStatus: snagList.overallStatus,
+    });
     return { reset: true };
   }
 
@@ -1144,6 +1218,7 @@ export class SnagService {
       round,
       userId,
     );
+    const isAdmin = await this.isAdminUser(userId);
     const items = await this.requireBulkItems(projectId, dto.itemIds);
 
     for (const item of items) {
@@ -1157,7 +1232,7 @@ export class SnagService {
           'Only rectified snag items can be closed',
         );
       }
-      if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder) {
+      if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder && !isAdmin) {
         throw new BadRequestException(
           'Only snag points raised at the active checker level can be de-snag confirmed',
         );
@@ -1184,6 +1259,12 @@ export class SnagService {
     }
 
     await this.advanceRoundIfAllDesnagCompleted(projectId, snagList, round);
+    await this.logAdminSnagOverride(userId, projectId, 'BULK_CLOSE_ITEMS', round.id, {
+      snagListId: snagList.id,
+      roundNumber,
+      activeVerifierLevel: activeStep.stepOrder,
+      itemIds: dto.itemIds,
+    });
 
     return this.getListDetail(projectId, snagList.id);
   }
@@ -1201,6 +1282,7 @@ export class SnagService {
       round,
       userId,
     );
+    const isAdmin = await this.isAdminUser(userId);
     const photoConfig = await this.getPhotoRequirementConfig(
       projectId,
       round.roundNumber,
@@ -1216,7 +1298,7 @@ export class SnagService {
     if (item.status !== SnagItemStatus.RECTIFIED) {
       throw new BadRequestException('Only rectified snag items can be closed');
     }
-    if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder) {
+    if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder && !isAdmin) {
       throw new BadRequestException(
         'Only snag points raised at the active checker level can be de-snag confirmed',
       );
@@ -1241,6 +1323,12 @@ export class SnagService {
 
     const snagList = await this.requireList(projectId, item.snagListId);
     await this.advanceRoundIfAllDesnagCompleted(projectId, snagList, round);
+    await this.logAdminSnagOverride(userId, projectId, 'CLOSE_ITEM', item.id, {
+      snagListId: item.snagListId,
+      snagRoundId: item.snagRoundId,
+      itemVerifierLevel: item.verifierLevelOrder || 1,
+      activeVerifierLevel: activeStep.stepOrder,
+    });
 
     return this.getListDetail(projectId, item.snagListId);
   }
@@ -1258,12 +1346,13 @@ export class SnagService {
       round,
       userId,
     );
+    const isAdmin = await this.isAdminUser(userId);
     if (item.status !== SnagItemStatus.RECTIFIED) {
       throw new BadRequestException(
         'Only rectified snag items can be marked not satisfactory',
       );
     }
-    if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder) {
+    if ((item.verifierLevelOrder || 1) !== activeStep.stepOrder && !isAdmin) {
       throw new BadRequestException(
         'Only snag points raised at the active checker level can be marked not satisfactory',
       );
@@ -1290,6 +1379,13 @@ export class SnagService {
     round.snagPhaseStatus = SnagRoundSnagPhaseStatus.OPEN;
     round.desnagPhaseStatus = SnagRoundDesnagPhaseStatus.OPEN;
     await this.snagRoundRepo.save(round);
+    await this.logAdminSnagOverride(userId, projectId, 'REVERSE_RECTIFICATION', item.id, {
+      snagListId: item.snagListId,
+      snagRoundId: item.snagRoundId,
+      itemVerifierLevel: item.verifierLevelOrder || 1,
+      activeVerifierLevel: activeStep.stepOrder,
+      remarks: dto.remarks?.trim() || null,
+    });
 
     return this.getListDetail(projectId, item.snagListId);
   }
@@ -1330,10 +1426,11 @@ export class SnagService {
       throw new NotFoundException('Snag item not found');
     }
 
+    const isAdmin = await this.isAdminUser(currentUser?.id);
     const isDeleteAdmin = this.userHasExactPermission(
       currentUser,
       'QUALITY.SNAG.DELETE',
-    );
+    ) || isAdmin;
 
     if (!isDeleteAdmin) {
       throw new ForbiddenException(
@@ -1362,6 +1459,12 @@ export class SnagService {
       await txItemRepo.delete(item.id);
     });
 
+    await this.logAdminSnagOverride(currentUser?.id, projectId, 'DELETE_ITEM', item.id, {
+      snagListId: item.snagListId,
+      snagRoundId: item.snagRoundId,
+      defectTitle: item.defectTitle,
+      status: item.status,
+    });
     return this.getListDetail(projectId, item.snagListId);
   }
 
@@ -1512,6 +1615,7 @@ export class SnagService {
   ) {
     const round = await this.requireRoundById(projectId, roundId);
     const snagList = round.snagList || (await this.requireList(projectId, round.snagListId));
+    const isAdmin = await this.isAdminUser(userId);
     if (snagList.currentRound !== round.roundNumber) {
       throw new BadRequestException(
         'Only the current snag cycle level can be closed',
@@ -1616,6 +1720,15 @@ export class SnagService {
       snagList.overallStatus = SnagListStatus.READY_FOR_SNAG;
       await this.snagListRepo.save(snagList);
       this.triggerMilestoneRefresh(projectId);
+      await this.logAdminSnagOverride(userId, projectId, 'CLOSE_LEVEL', round.id, {
+        snagListId: snagList.id,
+        roundNumber: round.roundNumber,
+        closedLevelOrder: activeStep.stepOrder,
+        closedLevelName: activeStep.stepName,
+        nextLevelOrder: nextStep.stepOrder,
+        nextLevelName: nextStep.stepName,
+        actedAsAssignedChecker: !isAdmin ? true : false,
+      });
       return this.getListDetail(projectId, snagList.id);
     }
 
@@ -1643,6 +1756,14 @@ export class SnagService {
 
     await this.snagListRepo.save(snagList);
     this.triggerMilestoneRefresh(projectId);
+    await this.logAdminSnagOverride(userId, projectId, 'FINAL_CLOSE_STAGE', round.id, {
+      snagListId: snagList.id,
+      roundNumber: round.roundNumber,
+      closedLevelOrder: activeStep.stepOrder,
+      closedLevelName: activeStep.stepName,
+      finalStatus: snagList.overallStatus,
+      actedAsAssignedChecker: !isAdmin ? true : false,
+    });
     return this.getListDetail(projectId, snagList.id);
   }
 
@@ -1654,6 +1775,7 @@ export class SnagService {
   ) {
     const round = await this.requireRoundById(projectId, roundId);
     const snagList = round.snagList || (await this.requireList(projectId, round.snagListId));
+    const isAdmin = await this.isAdminUser(userId);
 
     if (snagList.currentRound !== round.roundNumber) {
       throw new BadRequestException(
@@ -1675,7 +1797,7 @@ export class SnagService {
     const existingItemCount = await this.snagItemRepo.count({
       where: { snagRoundId: round.id },
     });
-    if (existingItemCount > 0) {
+    if (existingItemCount > 0 && !isAdmin) {
       throw new BadRequestException(
         'Snag cycle cannot be skipped after snag items have been raised',
       );
@@ -1684,7 +1806,7 @@ export class SnagService {
     const approvalCount = await this.approvalRepo.count({
       where: { snagRoundId: round.id },
     });
-    if (approvalCount > 0) {
+    if (approvalCount > 0 && !isAdmin) {
       throw new BadRequestException(
         'Snag cycle cannot be skipped after release approval has started',
       );
@@ -1716,6 +1838,14 @@ export class SnagService {
 
     await this.snagListRepo.save(snagList);
     this.triggerMilestoneRefresh(projectId);
+    await this.logAdminSnagOverride(userId, projectId, 'SKIP_ROUND', round.id, {
+      snagListId: snagList.id,
+      roundNumber: round.roundNumber,
+      existingItemCount,
+      approvalCount,
+      reason,
+      finalStatus: snagList.overallStatus,
+    });
     return this.getListDetail(projectId, snagList.id);
   }
 
@@ -1807,6 +1937,11 @@ export class SnagService {
     });
 
     this.triggerMilestoneRefresh(projectId);
+    await this.logAdminSnagOverride(userId, projectId, 'RESET_ROUND', round.id, {
+      snagListId: round.snagListId,
+      roundNumber: round.roundNumber,
+      reason,
+    });
     return this.getListDetail(projectId, round.snagListId);
   }
 
@@ -1900,6 +2035,8 @@ export class SnagService {
         'rounds.items.closedBy',
         'rounds.levelClosures',
         'rounds.levelClosures.closedBy',
+        'rounds.approvals',
+        'rounds.approvals.steps',
         'rounds.finalClosureSignedBy',
       ],
     });
@@ -2088,7 +2225,10 @@ export class SnagService {
       ...fallbackLevels.map((level: any) => Number(level.levelOrder || 1)),
     );
 
-    for (const level of fallbackLevels as any[]) {
+    fallbackLevels.forEach((level: any, index: number) => {
+      if (index > 0) {
+        doc.addPage();
+      }
       const levelItems = [...(round.items || [])]
         .filter((item) => (item.verifierLevelOrder || 1) === level.levelOrder)
         .sort((a, b) => {
@@ -2156,7 +2296,7 @@ export class SnagService {
       }
       this.writeLevelClosureSignature(doc, level.closure || null, checkerLabel);
       doc.moveDown(0.6);
-    }
+    });
   }
 
   private drawSnagEvidenceTableHeader(
@@ -2958,6 +3098,7 @@ export class SnagService {
     userId: number,
     step: SnagReleaseApprovalStep,
   ) {
+    if (await this.isAdminUser(userId)) return true;
     if (step.assignedUserId && step.assignedUserId === userId) return true;
     if ((step.assignedUserIds || []).includes(userId)) return true;
 
