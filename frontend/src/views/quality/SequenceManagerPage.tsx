@@ -679,6 +679,60 @@ const ActivityForm = ({
     );
   }, [checklists, form.assignedChecklistIds]);
 
+  const concreteCardDependencyWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    const orderedStages = [...pourClearanceStageOptions].sort(
+      (a, b) => a.sequence - b.sequence,
+    );
+    const lastStage = orderedStages[orderedStages.length - 1];
+
+    if (
+      form.requiresPourCard &&
+      lastStage &&
+      form.pourCardTriggerStageTemplateId === lastStage.id
+    ) {
+      warnings.push(
+        "Pour Card is configured to activate at the last checklist stage. The card will appear only after that trigger approval; final checklist approval will wait for the card after it becomes active.",
+      );
+    }
+
+    if (
+      form.requiresPourClearanceCard &&
+      form.requiresPourCard &&
+      form.pourClearanceTriggerStageTemplateId &&
+      form.pourCardTriggerStageTemplateId &&
+      form.pourClearanceTriggerStageTemplateId ===
+        form.pourCardTriggerStageTemplateId &&
+      (form.pourClearanceTriggerApprovalLevel || null) ===
+        (form.pourCardTriggerApprovalLevel || null)
+    ) {
+      warnings.push(
+        "Pour Card and Pre-Pour Clearance activate at the same point. Users must complete the clearance first because Pour Card submission depends on the clearance rule.",
+      );
+    }
+
+    if (
+      form.requiresPourClearanceCard &&
+      form.requiresPourCard &&
+      form.prePourClearanceApprovalRequirement === "APPROVED"
+    ) {
+      warnings.push(
+        "Pre-Pour Clearance approval is required before Pour Card submission. Use this only when clearance approvers are available at the selected activation level.",
+      );
+    }
+
+    return warnings;
+  }, [
+    form.prePourClearanceApprovalRequirement,
+    form.pourCardTriggerApprovalLevel,
+    form.pourCardTriggerStageTemplateId,
+    form.pourClearanceTriggerApprovalLevel,
+    form.pourClearanceTriggerStageTemplateId,
+    form.requiresPourCard,
+    form.requiresPourClearanceCard,
+    pourClearanceStageOptions,
+  ]);
+
   useEffect(() => {
     if (!form.requiresPourClearanceCard) {
       setForm((prev) => ({
@@ -710,6 +764,18 @@ const ActivityForm = ({
 
   useEffect(() => {
     if (
+      !form.pourClearanceTriggerStageTemplateId &&
+      form.pourClearanceTriggerApprovalLevel
+    ) {
+      set("pourClearanceTriggerApprovalLevel", null);
+    }
+  }, [
+    form.pourClearanceTriggerApprovalLevel,
+    form.pourClearanceTriggerStageTemplateId,
+  ]);
+
+  useEffect(() => {
+    if (
       !form.requiresPourCard &&
       (form.pourCardTriggerStageTemplateId ||
         form.pourCardTriggerApprovalLevel)
@@ -735,6 +801,12 @@ const ActivityForm = ({
     form.pourCardTriggerApprovalLevel,
     pourClearanceStageOptions,
   ]);
+
+  useEffect(() => {
+    if (!form.pourCardTriggerStageTemplateId && form.pourCardTriggerApprovalLevel) {
+      set("pourCardTriggerApprovalLevel", null);
+    }
+  }, [form.pourCardTriggerApprovalLevel, form.pourCardTriggerStageTemplateId]);
 
   const updateSignoffTemplateRow = (
     id: string,
@@ -1006,12 +1078,18 @@ const ActivityForm = ({
               <select
                 className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
                 value={form.pourClearanceTriggerStageTemplateId ?? ""}
-                onChange={(e) =>
-                  set(
-                    "pourClearanceTriggerStageTemplateId",
-                    e.target.value ? Number(e.target.value) : null,
-                  )
-                }
+                onChange={(e) => {
+                  const nextStageId = e.target.value
+                    ? Number(e.target.value)
+                    : null;
+                  setForm((prev) => ({
+                    ...prev,
+                    pourClearanceTriggerStageTemplateId: nextStageId,
+                    pourClearanceTriggerApprovalLevel: nextStageId
+                      ? prev.pourClearanceTriggerApprovalLevel
+                      : null,
+                  }));
+                }}
               >
                 <option value="">
                   {pourClearanceStageOptions.length
@@ -1038,6 +1116,7 @@ const ActivityForm = ({
               <select
                 className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
                 value={form.pourClearanceTriggerApprovalLevel ?? ""}
+                disabled={!form.pourClearanceTriggerStageTemplateId}
                 onChange={(e) =>
                   set(
                     "pourClearanceTriggerApprovalLevel",
@@ -1052,6 +1131,11 @@ const ActivityForm = ({
                   </option>
                 ))}
               </select>
+              {!form.pourClearanceTriggerStageTemplateId ? (
+                <div className="mt-1 text-[11px] text-text-muted">
+                  Select an activation stage before choosing an approval level.
+                </div>
+              ) : null}
             </div>
             <div className="rounded-lg border border-dashed border-cyan-300 bg-white/70 px-3 py-2 text-xs text-cyan-900">
               Use this when pour clearance should appear at a partial QA/QC RFI
@@ -1185,12 +1269,18 @@ const ActivityForm = ({
               <select
                 className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
                 value={form.pourCardTriggerStageTemplateId ?? ""}
-                onChange={(e) =>
-                  set(
-                    "pourCardTriggerStageTemplateId",
-                    e.target.value ? Number(e.target.value) : null,
-                  )
-                }
+                onChange={(e) => {
+                  const nextStageId = e.target.value
+                    ? Number(e.target.value)
+                    : null;
+                  setForm((prev) => ({
+                    ...prev,
+                    pourCardTriggerStageTemplateId: nextStageId,
+                    pourCardTriggerApprovalLevel: nextStageId
+                      ? prev.pourCardTriggerApprovalLevel
+                      : null,
+                  }));
+                }}
               >
                 <option value="">
                   Show immediately when Pour Card is enabled
@@ -1214,6 +1304,7 @@ const ActivityForm = ({
               <select
                 className="w-full rounded-lg border border-border-default bg-white px-3 py-2 text-sm"
                 value={form.pourCardTriggerApprovalLevel ?? ""}
+                disabled={!form.pourCardTriggerStageTemplateId}
                 onChange={(e) =>
                   set(
                     "pourCardTriggerApprovalLevel",
@@ -1228,11 +1319,29 @@ const ActivityForm = ({
                   </option>
                 ))}
               </select>
+              {!form.pourCardTriggerStageTemplateId ? (
+                <div className="mt-1 text-[11px] text-text-muted">
+                  Select an activation stage before choosing an approval level.
+                </div>
+              ) : null}
             </div>
             <div className="rounded-lg border border-dashed border-emerald-300 bg-white/70 px-3 py-2 text-xs text-emerald-900">
               Pour card submission still follows the configured pre-pour
               clearance requirement: submitted is enough or approval required.
             </div>
+          </div>
+        </div>
+      )}
+      {concreteCardDependencyWarnings.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="mb-2 flex items-center gap-2 font-semibold">
+            <AlertCircle className="h-4 w-4" />
+            Concrete card dependency check
+          </div>
+          <div className="space-y-1 text-xs leading-5">
+            {concreteCardDependencyWarnings.map((warning) => (
+              <div key={warning}>{warning}</div>
+            ))}
           </div>
         </div>
       )}

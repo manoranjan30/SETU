@@ -57,6 +57,11 @@ interface QualityInspection {
   inspectionDate?: string;
   comments?: string;
   inspectedBy?: string;
+  requiresPourCard?: boolean;
+  requiresPourClearanceCard?: boolean;
+  requiresPrePourClearance?: boolean;
+  pourCardActive?: boolean;
+  prePourClearanceActive?: boolean;
   activity?: {
     id: number;
     activityName: string;
@@ -168,6 +173,9 @@ interface QualityInspection {
     activeLevel?: number | null;
   };
   cardSummary?: {
+    requiresPourCard?: boolean;
+    requiresPourClearanceCard?: boolean;
+    requiresPrePourClearance?: boolean;
     pourCardStatus?: string | null;
     prePourClearanceStatus?: string | null;
     pourCardApproved?: boolean;
@@ -720,11 +728,29 @@ export default function QualityApprovalsPage() {
 
   const effectiveInspectionActivity =
     inspectionDetail?.activity || selectedInspectionSummary?.activity || null;
+  const effectiveCardSummary =
+    inspectionDetail?.cardSummary || selectedInspectionSummary?.cardSummary || null;
   const requiresPourCardForSelected = Boolean(
-    effectiveInspectionActivity?.requiresPourCard,
+    effectiveInspectionActivity?.requiresPourCard ||
+      inspectionDetail?.requiresPourCard ||
+      selectedInspectionSummary?.requiresPourCard ||
+      effectiveCardSummary?.requiresPourCard ||
+      inspectionDetail?.pourCardActive ||
+      selectedInspectionSummary?.pourCardActive ||
+      effectiveCardSummary?.pourCardActive ||
+      effectiveCardSummary?.pourCardStatus,
   );
   const requiresPourClearanceForSelected = Boolean(
-    effectiveInspectionActivity?.requiresPourClearanceCard,
+    effectiveInspectionActivity?.requiresPourClearanceCard ||
+      inspectionDetail?.requiresPourClearanceCard ||
+      inspectionDetail?.requiresPrePourClearance ||
+      selectedInspectionSummary?.requiresPourClearanceCard ||
+      selectedInspectionSummary?.requiresPrePourClearance ||
+      effectiveCardSummary?.requiresPourClearanceCard ||
+      effectiveCardSummary?.requiresPrePourClearance ||
+      inspectionDetail?.prePourClearanceActive ||
+      selectedInspectionSummary?.prePourClearanceActive ||
+      effectiveCardSummary?.prePourClearanceStatus,
   );
 
   useEffect(() => {
@@ -3040,17 +3066,13 @@ export default function QualityApprovalsPage() {
   ]);
 
   const concreteCardApprovalStatuses = ["SUBMITTED", "APPROVED", "LOCKED"];
-  const shouldShowPourCardInApproval =
-    requiresPourCardForSelected &&
-    concreteCardApprovalStatuses.includes(pourCard?.status || "");
-  const shouldShowPrePourClearanceInApproval =
-    requiresPourClearanceForSelected &&
-    concreteCardApprovalStatuses.includes(prePourClearanceCard?.status || "");
-  const shouldShowConcreteCardsInApproval =
-    shouldShowPourCardInApproval || shouldShowPrePourClearanceInApproval;
+  const hasConcreteCardRequirement =
+    requiresPourCardForSelected || requiresPourClearanceForSelected;
+  const shouldShowPourCardInApproval = requiresPourCardForSelected;
+  const shouldShowPrePourClearanceInApproval = requiresPourClearanceForSelected;
+  const shouldShowConcreteCardsInApproval = hasConcreteCardRequirement;
   const isConcreteCardsApprovalLoading =
-    loadingCards &&
-    (requiresPourCardForSelected || requiresPourClearanceForSelected);
+    loadingCards && hasConcreteCardRequirement;
 
   const getStagePendingObservationCount = (stageId: number) =>
     observations.filter(
@@ -3778,9 +3800,22 @@ export default function QualityApprovalsPage() {
                   const priority = getPriorityScore(insp);
                   const workflowStateBadge = getWorkflowStateBadge(insp);
                   const inspectionActionSummary = getInspectionActionSummary(insp);
-                  const hasPourCard = Boolean(insp.activity?.requiresPourCard);
+                  const hasPourCard = Boolean(
+                    insp.activity?.requiresPourCard ||
+                      insp.requiresPourCard ||
+                      insp.cardSummary?.requiresPourCard ||
+                      insp.pourCardActive ||
+                      insp.cardSummary?.pourCardActive ||
+                      insp.cardSummary?.pourCardStatus,
+                  );
                   const hasPourClearance = Boolean(
-                    insp.activity?.requiresPourClearanceCard,
+                    insp.activity?.requiresPourClearanceCard ||
+                      insp.requiresPourClearanceCard ||
+                      insp.requiresPrePourClearance ||
+                      insp.cardSummary?.requiresPourClearanceCard ||
+                      insp.cardSummary?.requiresPrePourClearance ||
+                      insp.prePourClearanceActive ||
+                      insp.cardSummary?.prePourClearanceStatus,
                   );
                   const totalStageApprovals =
                     insp.stageApprovalSummary?.totalStages || 0;
