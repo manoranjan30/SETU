@@ -52,6 +52,7 @@ import {
   type SnagChecklistStatus,
   type SnagItemDetail,
   type SnagListDetail,
+  type SnagProcessActivityConfig,
   type SnagProcessStepConfig,
   type SnagRoundDetail,
   type SnagUnitSummary,
@@ -210,12 +211,28 @@ function getNextSnagCycleLabel(roundNumber: number, maxCycles: number) {
     : getSnagCycleLabel(roundNumber + 1);
 }
 
-function getWorkflowStatusLabel(status: string, currentRound: number) {
+function getSnaggingReadinessLabel(
+  levelOrder?: number | null,
+  totalLevels?: number,
+) {
+  const normalizedLevel = Number(levelOrder || 1);
+  const normalizedTotal = Math.max(Number(totalLevels || 1), normalizedLevel);
+  return normalizedTotal > 1 && normalizedLevel < normalizedTotal
+    ? `Ready for L${normalizedLevel} Snagging`
+    : "Ready for Snagging";
+}
+
+function getWorkflowStatusLabel(
+  status: string,
+  currentRound: number,
+  levelOrder?: number | null,
+  totalLevels?: number,
+) {
   switch (status) {
     case "unready":
       return "Not ready for snagging";
     case "ready_for_snag":
-      return `Ready for ${getSnagCycleLabel(currentRound)}`;
+      return `${getSnaggingReadinessLabel(levelOrder, totalLevels)} - ${getSnagCycleLabel(currentRound)}`;
     case "snagging":
       return `${getSnagCycleLabel(currentRound)} open`;
     case "desnagging":
@@ -254,6 +271,8 @@ function getStepUnitStatus(
 function getStepUnitStatusLabel(
   status: StepUnitStatus,
   selectedRound: number,
+  levelOrder?: number | null,
+  totalLevels?: number,
 ) {
   switch (status) {
     case "unready":
@@ -261,7 +280,7 @@ function getStepUnitStatusLabel(
     case "locked":
       return "Locked";
     case "ready_for_snag":
-      return `Ready for ${getSnagCycleLabel(selectedRound)}`;
+      return `${getSnaggingReadinessLabel(levelOrder, totalLevels)} - ${getSnagCycleLabel(selectedRound)}`;
     case "snagging":
       return `${getSnagCycleLabel(selectedRound)} open`;
     case "desnagging":
@@ -280,10 +299,14 @@ function getStepUnitStatusLabel(
 function getCompactStepUnitStatusLabel(
   status: StepUnitStatus,
   selectedRound: number,
+  levelOrder?: number | null,
+  totalLevels?: number,
 ) {
   switch (status) {
     case "ready_for_snag":
-      return `Ready S${selectedRound}`;
+      return totalLevels && totalLevels > 1
+        ? `Ready L${levelOrder || 1}`
+        : `Ready S${selectedRound}`;
     case "snagging":
       return `Snag ${selectedRound}`;
     case "desnagging":
@@ -425,6 +448,10 @@ function getConfigActivityLabel(activity?: {
   activityCode?: string | null;
 } | null) {
   return activity?.activityName || activity?.name || "Activity";
+}
+
+function getProcessActivityLabel(activity: SnagProcessActivityConfig) {
+  return activity.customActivityName?.trim() || getConfigActivityLabel(activity.activity);
 }
 
 function buildExplorer(units: SnagUnitSummary[]) {
@@ -1034,6 +1061,11 @@ export default function SnagManagementPage() {
     activeVerifierLevel?.levelName ||
     currentRound?.currentVerifierLevelName ||
     "Checker";
+  const totalVerifierLevels = Math.max(
+    verifierLevels.length,
+    activeVerifierLevelOrder,
+    1,
+  );
   const isFinalVerifierLevel =
     Boolean(activeVerifierLevel) &&
     activeVerifierLevelOrder ===
@@ -2278,6 +2310,8 @@ export default function SnagManagementPage() {
                         {getWorkflowStatusLabel(
                           detail.overallStatus,
                           detail.currentRound,
+                          activeVerifierLevelOrder,
+                          totalVerifierLevels,
                         )}
                       </span>
                       <span className="rounded-full border border-border-default bg-surface-base px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">
@@ -3160,7 +3194,7 @@ export default function SnagManagementPage() {
                           defectTitle: "",
                           defectDescription: "",
                           trade: activity
-                            ? getConfigActivityLabel(activity.activity)
+                            ? getProcessActivityLabel(activity)
                             : "",
                         });
                       }}
@@ -3169,7 +3203,7 @@ export default function SnagManagementPage() {
                       <option value="">Select configured activity</option>
                       {currentConfiguredActivities.map((activity) => (
                         <option key={activity.id} value={activity.id}>
-                          {getConfigActivityLabel(activity.activity)}
+                          {getProcessActivityLabel(activity)}
                         </option>
                       ))}
                       <option value="OTHER">Others</option>

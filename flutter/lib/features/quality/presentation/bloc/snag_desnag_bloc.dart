@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:setu_mobile/core/api/api_exceptions.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
+import 'package:setu_mobile/core/sync/snag_offline_cache.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/features/quality/data/models/snag_desnag_models.dart';
 
@@ -284,13 +285,18 @@ class SnagDesnagOverviewLoaded extends SnagDesnagState {
   final List<SnagProcessStep> processSteps;
   final List<SnagUnitSummary> units;
 
+  /// True when this came from [SnagOfflineCache] because the live request
+  /// failed with no connectivity — see [SnagOfflineCache]'s doc comment.
+  final bool isFromCache;
+
   const SnagDesnagOverviewLoaded({
     required this.processSteps,
     required this.units,
+    this.isFromCache = false,
   });
 
   @override
-  List<Object?> get props => [processSteps, units];
+  List<Object?> get props => [processSteps, units, isFromCache];
 }
 
 /// A unit was opened with no existing snag list ([OpenSnagUnit.snagListId]
@@ -308,9 +314,11 @@ class SnagUnitNotStarted extends SnagDesnagState {
 
 class SnagUnitDetailLoaded extends SnagDesnagState {
   final SnagList list;
-  const SnagUnitDetailLoaded(this.list);
+  /// See [SnagDesnagOverviewLoaded.isFromCache].
+  final bool isFromCache;
+  const SnagUnitDetailLoaded(this.list, {this.isFromCache = false});
   @override
-  List<Object?> get props => [list];
+  List<Object?> get props => [list, isFromCache];
 }
 
 /// Mutating action in flight — keeps the current list visible (unlike
@@ -400,20 +408,50 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
         _api.getSnagProcessSteps(event.projectId),
         _api.getSnagUnits(event.projectId),
       ]);
-      final processSteps = (results[0])
+      final rawSteps = results[0];
+      final rawUnits = results[1];
+      final processSteps = rawSteps
           .whereType<Map<String, dynamic>>()
           .map(SnagProcessStep.fromJson)
           .where((s) => s.isActive)
           .toList()
         ..sort((a, b) => a.workflowSerialNo.compareTo(b.workflowSerialNo));
-      final units = (results[1])
-          .whereType<Map<String, dynamic>>()
-          .map(SnagUnitSummary.fromJson)
-          .toList();
+      final units = rawUnits.whereType<Map<String, dynamic>>().map(SnagUnitSummary.fromJson).toList();
       emit(SnagDesnagOverviewLoaded(processSteps: processSteps, units: units));
+      // Snapshot the raw response for offline viewing — after emit so the
+      // UI updates immediately rather than waiting on the disk write.
+      final cache = await SnagOfflineCache.create();
+      await cache.saveOverview(event.projectId, processSteps: rawSteps, units: rawUnits);
     } catch (e) {
+      if (e is NetworkException) {
+        final cached = await _tryLoadCachedOverview(event.projectId);
+        if (cached != null) {
+          emit(cached);
+          return;
+        }
+      }
       emit(SnagDesnagError(_friendlyError(e)));
     }
+  }
+
+  /// Falls back to [SnagOfflineCache] for the process steps + unit board
+  /// when the live request failed purely because the device is offline —
+  /// see [SnagOfflineCache]'s doc comment for why only [NetworkException]
+  /// (not a real server rejection) triggers this. Returns `null` if nothing
+  /// has ever been cached for this project.
+  Future<SnagDesnagOverviewLoaded?> _tryLoadCachedOverview(int projectId) async {
+    final cache = await SnagOfflineCache.create();
+    final cached = cache.readOverview(projectId);
+    if (cached == null) return null;
+    final (rawSteps, rawUnits) = cached;
+    final processSteps = rawSteps
+        .whereType<Map<String, dynamic>>()
+        .map(SnagProcessStep.fromJson)
+        .where((s) => s.isActive)
+        .toList()
+      ..sort((a, b) => a.workflowSerialNo.compareTo(b.workflowSerialNo));
+    final units = rawUnits.whereType<Map<String, dynamic>>().map(SnagUnitSummary.fromJson).toList();
+    return SnagDesnagOverviewLoaded(processSteps: processSteps, units: units, isFromCache: true);
   }
 
   Future<void> _onOpenUnit(
@@ -438,7 +476,19 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
       final list = SnagList.fromJson(data);
       _currentList = list;
       emit(SnagUnitDetailLoaded(list));
+      final cache = await SnagOfflineCache.create();
+      await cache.saveListDetail(list.id, data);
     } catch (e) {
+      if (e is NetworkException) {
+        final cache = await SnagOfflineCache.create();
+        final cachedData = cache.readListDetail(event.snagListId!);
+        if (cachedData != null) {
+          final list = SnagList.fromJson(cachedData);
+          _currentList = list;
+          emit(SnagUnitDetailLoaded(list, isFromCache: true));
+          return;
+        }
+      }
       emit(SnagDesnagError(_friendlyError(e)));
     }
   }
@@ -786,6 +836,27 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
       emit,
       () => _api.holdSnagItem(projectId, event.itemId, holdReason: event.holdReason),
       'Snag point put on hold',
+      // Hold is a simple item-status flip with no round-level side effects
+      // (unlike close-level/mark-ready, it can't change what the round's
+      // active verifier level or gates are) — safe to apply optimistically.
+      onOffline: () async {
+        await _syncService.addToQueue(
+          entityType: 'snag_item_hold',
+          entityId: event.itemId,
+          operation: 'update',
+          payload: {
+            'projectId': projectId,
+            'itemId': event.itemId,
+            'holdReason': event.holdReason,
+          },
+          priority: 2,
+        );
+        return _updateItem(event.itemId, (item) => item.copyWith(
+          status: SnagItemStatus.onHold,
+          holdReason: event.holdReason,
+          isPendingSync: true,
+        ));
+      },
     );
   }
 
@@ -826,6 +897,29 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
       emit,
       () => _api.rejectSnagRectification(projectId, event.itemId, remarks: event.remarks),
       'Rectification marked not satisfactory',
+      // Like hold, this only flips the one item's own status/fields — it
+      // doesn't change the round's active level or close/gate anything, so
+      // it's safe to reflect locally before the server confirms it.
+      onOffline: () async {
+        await _syncService.addToQueue(
+          entityType: 'snag_item_reject_rectification',
+          entityId: event.itemId,
+          operation: 'update',
+          payload: {
+            'projectId': projectId,
+            'itemId': event.itemId,
+            if (event.remarks != null) 'remarks': event.remarks,
+          },
+          priority: 2,
+        );
+        return _updateItem(event.itemId, (item) => item.copyWith(
+          status: SnagItemStatus.open,
+          notSatisfactoryCount: item.notSatisfactoryCount + 1,
+          lastNotSatisfactoryRemarks: event.remarks,
+          lastNotSatisfactoryAt: DateTime.now(),
+          isPendingSync: true,
+        ));
+      },
     );
   }
 

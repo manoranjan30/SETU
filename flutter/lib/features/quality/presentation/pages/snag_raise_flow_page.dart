@@ -83,11 +83,36 @@ class _SnagRaiseFlowPageState extends State<SnagRaiseFlowPage> {
     try {
       final raw = await sl<SetuApiClient>().getSnagVendors(widget.projectId);
       final vendors = raw.map((e) => SnagVendor.fromJson(e as Map<String, dynamic>)).toList();
-      if (mounted) setState(() { _vendors = vendors; _vendorLoading = false; });
+      // Largest-value-WO vendor first, when the backend sends a value —
+      // both for display order and so _defaultVendor below can just take
+      // the head of the list. Vendors without a value keep their original
+      // (name-sorted) order at the end.
+      vendors.sort((a, b) => (b.totalWorkOrderValue ?? -1).compareTo(a.totalWorkOrderValue ?? -1));
+      if (mounted) {
+        setState(() {
+          _vendors = vendors;
+          _vendorLoading = false;
+          _selectedVendor ??= _defaultVendor(vendors);
+        });
+      }
     } catch (_) {
       // Non-fatal — vendor is optional; the raise flow still works without it.
       if (mounted) setState(() => _vendorLoading = false);
     }
+  }
+
+  /// Pre-selects the vendor with the largest work-order value so the
+  /// Checker doesn't have to pick a vendor on every single snag point —
+  /// they can still change it per-point via the picker. Returns `null`
+  /// (no default) when no vendor carries a value, which is the case today:
+  /// `GET /snag/:projectId/vendors` doesn't yet return `totalWorkOrderValue`
+  /// even though the backend's `WorkOrder.totalAmount` the value would come
+  /// from already exists — this needs a small backend addition before the
+  /// default actually activates. See [SnagVendor.totalWorkOrderValue].
+  SnagVendor? _defaultVendor(List<SnagVendor> vendors) {
+    final withValue = vendors.where((v) => (v.totalWorkOrderValue ?? 0) > 0).toList();
+    if (withValue.isEmpty) return null;
+    return withValue.reduce((a, b) => (a.totalWorkOrderValue ?? 0) >= (b.totalWorkOrderValue ?? 0) ? a : b);
   }
 
   @override

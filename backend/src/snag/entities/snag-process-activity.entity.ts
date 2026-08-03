@@ -31,12 +31,20 @@ export class SnagProcessActivity {
   @JoinColumn({ name: 'process_step_id' })
   processStep: SnagProcessStep;
 
-  @Column({ name: 'activity_id' })
-  activityId: number;
+  @Column({ name: 'activity_id', type: 'int', nullable: true })
+  activityId: number | null;
 
-  @ManyToOne(() => QualityActivity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => QualityActivity, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'activity_id' })
-  activity: QualityActivity;
+  activity: QualityActivity | null;
+
+  @Column({
+    name: 'custom_activity_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  customActivityName: string | null;
 
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder: number;

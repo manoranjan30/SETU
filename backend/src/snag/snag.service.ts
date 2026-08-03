@@ -255,20 +255,44 @@ export class SnagService {
     });
     if (!step) throw new NotFoundException('Snag process step not found');
 
-    const existing = await this.processActivityRepo.findOne({
-      where: { projectId, activityId: dto.activityId },
-    });
-    if (existing) {
+    const customActivityName = dto.customActivityName?.trim() || null;
+    const activityId = dto.activityId ?? null;
+    if (!activityId && !customActivityName) {
       throw new BadRequestException(
-        'This activity is already mapped to a snag process step',
+        'Select a quality activity or enter a custom activity name',
       );
+    }
+
+    if (activityId) {
+      const existing = await this.processActivityRepo.findOne({
+        where: { projectId, activityId },
+      });
+      if (existing) {
+        throw new BadRequestException(
+          'This activity is already mapped to a snag process step',
+        );
+      }
+    } else if (customActivityName) {
+      const existingCustom = await this.processActivityRepo
+        .createQueryBuilder('mapping')
+        .where('mapping.projectId = :projectId', { projectId })
+        .andWhere('LOWER(mapping.customActivityName) = LOWER(:name)', {
+          name: customActivityName,
+        })
+        .getOne();
+      if (existingCustom) {
+        throw new BadRequestException(
+          'This custom activity is already mapped to a snag process step',
+        );
+      }
     }
 
     await this.processActivityRepo.save(
       this.processActivityRepo.create({
         projectId,
         processStepId: step.id,
-        activityId: dto.activityId,
+        activityId,
+        customActivityName,
         sortOrder: dto.sortOrder ?? 0,
         isActive: true,
       }),
@@ -652,7 +676,9 @@ export class SnagService {
       qualityRoomId: null,
       roomLabel: null,
       trade:
-        point.processActivity?.activity?.activityName || null,
+        point.processActivity?.activity?.activityName ||
+        point.processActivity?.customActivityName ||
+        null,
       sequence: index,
       status: 'IDENTIFIED',
       remarks: point.description || null,
@@ -2226,7 +2252,7 @@ export class SnagService {
         ]
           .filter(Boolean)
           .join(' / '),
-        contractor: '-',
+        contractor: this.getRoundVendorNames(round),
         date: this.formatDate(new Date()),
         logoPath,
       });
@@ -2407,7 +2433,7 @@ export class SnagService {
       const isFinalLevel = level.levelOrder === maxLevelOrder;
       const makerLabel = isFinalLevel ? 'Contractor Engineer' : 'Maker';
       const checkerLabel = isFinalLevel
-        ? 'Client Engineer / PL / PHL Engineer'
+        ? 'Client QA & QC'
         : 'Checker';
 
       if (doc.y + 72 > bottom) doc.addPage();
@@ -2428,33 +2454,295 @@ export class SnagService {
       doc.fillColor('#000000');
       doc.y = sectionY + 34;
 
-      this.drawSnagEvidenceTableHeader(doc, left, width);
-      if (!levelItems.length) {
-        this.drawSnagEvidenceEmptyRow(doc, left, width, 'No snag points raised at this level');
+      if (isFinalLevel) {
+        this.writeFinalLevelSnagTextTable(doc, levelItems, left, width);
+        this.writeFinalLevelPhotoComparisonTable(doc, levelItems, left, width);
       } else {
-        let serial = 1;
-        for (const item of levelItems) {
-          const rowHeight = this.estimateEvidenceRowHeight(doc, item, width);
-          if (doc.y + rowHeight > bottom) {
-            doc.addPage();
-            this.drawSnagEvidenceTableHeader(doc, left, width);
+        this.drawSnagEvidenceTableHeader(doc, left, width);
+        if (!levelItems.length) {
+          this.drawSnagEvidenceEmptyRow(doc, left, width, 'No snag points raised at this level');
+        } else {
+          let serial = 1;
+          for (const item of levelItems) {
+            const rowHeight = this.estimateEvidenceRowHeight(doc, item, width);
+            if (doc.y + rowHeight > bottom) {
+              doc.addPage();
+              this.drawSnagEvidenceTableHeader(doc, left, width);
+            }
+            this.drawSnagEvidenceRow(
+              doc,
+              left,
+              width,
+              serial,
+              item,
+              makerLabel,
+              checkerLabel,
+              rowHeight,
+            );
+            serial += 1;
           }
-          this.drawSnagEvidenceRow(
-            doc,
-            left,
-            width,
-            serial,
-            item,
-            makerLabel,
-            checkerLabel,
-            rowHeight,
-          );
-          serial += 1;
         }
       }
       this.writeLevelClosureSignature(doc, level.closure || null, checkerLabel);
       doc.moveDown(0.6);
     });
+  }
+
+  private getRoundVendorNames(round: SnagRound) {
+    const vendors = Array.from(
+      new Set(
+        (round.items || [])
+          .map((item) => (item.vendorName || item.vendor?.name || '').trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return vendors.length ? vendors.join(', ') : '-';
+  }
+
+  private writeFinalLevelSnagTextTable(
+    doc: PDFKit.PDFDocument,
+    items: SnagItem[],
+    left: number,
+    width: number,
+  ) {
+    const bottom = doc.page.height - doc.page.margins.bottom;
+    const widths = [24, 78, 235, 66, 66, 66];
+    const groupedRows = this.buildFinalLevelSnagGroups(items);
+    const drawHeader = () => {
+      const y = doc.y;
+      const xs = this.getTableXs(left, widths);
+      doc.rect(left, y, width, 30).stroke('#111827');
+      xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + 30).stroke('#111827'));
+      [
+        'Sl',
+        'Room',
+        'Clearance Points / Rectification Points',
+        'Contractor Engineer Yes',
+        'Client QA & QC Yes',
+        'Client QA & QC No',
+      ].forEach((label, index) => {
+        doc.font('Helvetica-Bold').fontSize(6.3).text(label, xs[index] + 3, y + 6, {
+          width: widths[index] - 6,
+          align: index >= 3 ? 'center' : 'left',
+        });
+      });
+      doc.y = y + 30;
+    };
+
+    drawHeader();
+    if (!groupedRows.length) {
+      this.drawSnagEvidenceEmptyRow(doc, left, width, 'No snag points raised at this level');
+      return;
+    }
+
+    groupedRows.forEach((group, index) => {
+      const pointsHeight = doc.heightOfString(group.pointsText, {
+        width: widths[2] - 8,
+      });
+      const activityHeight = doc.heightOfString(group.activity, {
+        width: widths[2] - 8,
+      });
+      const rowHeight = Math.max(56, pointsHeight + activityHeight + 22);
+      if (doc.y + rowHeight > bottom) {
+        doc.addPage();
+        drawHeader();
+      }
+      this.drawFinalLevelSnagTextRow(doc, left, width, widths, index + 1, group, rowHeight);
+    });
+  }
+
+  private buildFinalLevelSnagGroups(items: SnagItem[]) {
+    const groups = new Map<
+      string,
+      {
+        room: string;
+        activity: string;
+        items: SnagItem[];
+      }
+    >();
+
+    [...items]
+      .sort((a, b) => {
+        const room = this.formatPdfValue(a.roomLabel || 'Common Area').localeCompare(
+          this.formatPdfValue(b.roomLabel || 'Common Area'),
+          undefined,
+          { numeric: true, sensitivity: 'base' },
+        );
+        if (room !== 0) return room;
+        const activity = this.formatPdfValue(a.trade || 'Others').localeCompare(
+          this.formatPdfValue(b.trade || 'Others'),
+          undefined,
+          { numeric: true, sensitivity: 'base' },
+        );
+        if (activity !== 0) return activity;
+        return a.id - b.id;
+      })
+      .forEach((item) => {
+        const room = this.formatPdfValue(item.roomLabel || 'Common Area');
+        const activity = this.formatPdfValue(item.trade || 'Others');
+        const key = `${room}::${activity}`;
+        const group = groups.get(key) || { room, activity, items: [] };
+        group.items.push(item);
+        groups.set(key, group);
+      });
+
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      pointsText: group.items
+        .map((item, index) => {
+          const text = item.defectDescription
+            ? `${item.defectTitle}: ${item.defectDescription}`
+            : item.defectTitle;
+          return `${index + 1}. ${this.formatPdfValue(text)}`;
+        })
+        .join('\n'),
+      contractorEngineerYes: group.items.every((item) =>
+        [SnagItemStatus.RECTIFIED, SnagItemStatus.CLOSED].includes(item.status),
+      ),
+      clientQaQcYes: group.items.every((item) => item.status === SnagItemStatus.CLOSED),
+      clientQaQcNo: group.items.some(
+        (item) => item.status !== SnagItemStatus.CLOSED && Boolean(item.lastNotSatisfactoryRemarks),
+      ),
+    }));
+  }
+
+  private drawFinalLevelSnagTextRow(
+    doc: PDFKit.PDFDocument,
+    left: number,
+    tableWidth: number,
+    widths: number[],
+    serial: number,
+    group: {
+      room: string;
+      activity: string;
+      pointsText: string;
+      contractorEngineerYes: boolean;
+      clientQaQcYes: boolean;
+      clientQaQcNo: boolean;
+    },
+    height: number,
+  ) {
+    const y = doc.y;
+    const xs = this.getTableXs(left, widths);
+    doc.rect(left, y, tableWidth, height).stroke('#9ca3af');
+    xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + height).stroke('#9ca3af'));
+    doc.font('Helvetica').fontSize(6.7).text(String(serial), xs[0] + 3, y + 8, {
+      width: widths[0] - 6,
+      align: 'center',
+    });
+    doc.font('Helvetica-Bold').fontSize(6.8).text(group.room, xs[1] + 4, y + 8, {
+      width: widths[1] - 8,
+    });
+    doc.font('Helvetica-Bold').fontSize(6.6).text(group.activity, xs[2] + 4, y + 7, {
+      width: widths[2] - 8,
+    });
+    doc.font('Helvetica').fontSize(6.4).text(group.pointsText, xs[2] + 4, y + 20, {
+      width: widths[2] - 8,
+      height: height - 24,
+    });
+    this.drawPdfCheckbox(doc, xs[3], y + 5, widths[3], group.contractorEngineerYes);
+    this.drawPdfCheckbox(doc, xs[4], y + 5, widths[4], group.clientQaQcYes);
+    this.drawPdfCheckbox(doc, xs[5], y + 5, widths[5], group.clientQaQcNo);
+    doc.y = y + height;
+  }
+
+  private writeFinalLevelPhotoComparisonTable(
+    doc: PDFKit.PDFDocument,
+    items: SnagItem[],
+    left: number,
+    width: number,
+  ) {
+    const itemsWithPhotos = items.filter(
+      (item) =>
+        this.getItemPhotos(item, SnagPhotoType.BEFORE).length ||
+        this.getItemPhotos(item, SnagPhotoType.AFTER).length ||
+        this.getItemPhotos(item, SnagPhotoType.CLOSURE).length,
+    );
+    if (!itemsWithPhotos.length) return;
+    const bottom = doc.page.height - doc.page.margins.bottom;
+    const widths = [28, 141, 122, 122, 122];
+    const drawHeader = () => {
+      if (doc.y + 48 > bottom) doc.addPage();
+      doc.moveDown(0.7);
+      doc.font('Helvetica-Bold').fontSize(8).text('Photo Comparison', left, doc.y, {
+        width,
+      });
+      doc.moveDown(0.25);
+      const y = doc.y;
+      const xs = this.getTableXs(left, widths);
+      doc.rect(left, y, width, 26).stroke('#111827');
+      xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + 26).stroke('#111827'));
+      ['Sl', 'Room / Activity / Point', 'Snagged', 'Rectified', 'De-snag Confirmed'].forEach(
+        (label, index) => {
+          doc.font('Helvetica-Bold').fontSize(6.5).text(label, xs[index] + 3, y + 8, {
+            width: widths[index] - 6,
+            align: index >= 2 ? 'center' : 'left',
+          });
+        },
+      );
+      doc.y = y + 26;
+    };
+
+    drawHeader();
+    itemsWithPhotos
+      .sort((a, b) => {
+        const room = this.formatPdfValue(a.roomLabel || 'Common Area').localeCompare(
+          this.formatPdfValue(b.roomLabel || 'Common Area'),
+          undefined,
+          { numeric: true, sensitivity: 'base' },
+        );
+        if (room !== 0) return room;
+        const activity = this.formatPdfValue(a.trade || 'Others').localeCompare(
+          this.formatPdfValue(b.trade || 'Others'),
+          undefined,
+          { numeric: true, sensitivity: 'base' },
+        );
+        if (activity !== 0) return activity;
+        return a.id - b.id;
+      })
+      .forEach((item, index) => {
+        const y = doc.y;
+        const rowHeight = 70;
+        if (y + rowHeight > bottom) {
+          doc.addPage();
+          drawHeader();
+        }
+        this.drawFinalPhotoComparisonRow(doc, left, width, widths, index + 1, item, rowHeight);
+      });
+  }
+
+  private drawFinalPhotoComparisonRow(
+    doc: PDFKit.PDFDocument,
+    left: number,
+    tableWidth: number,
+    widths: number[],
+    serial: number,
+    item: SnagItem,
+    height: number,
+  ) {
+    const y = doc.y;
+    const xs = this.getTableXs(left, widths);
+    doc.rect(left, y, tableWidth, height).stroke('#9ca3af');
+    xs.slice(1).forEach((x) => doc.moveTo(x, y).lineTo(x, y + height).stroke('#9ca3af'));
+    doc.font('Helvetica').fontSize(6.7).text(String(serial), xs[0] + 3, y + 8, {
+      width: widths[0] - 6,
+      align: 'center',
+    });
+    const label = [
+      item.roomLabel || 'Common Area',
+      item.trade || 'Others',
+      item.defectDescription
+        ? `${item.defectTitle}: ${item.defectDescription}`
+        : item.defectTitle,
+    ].join('\n');
+    doc.font('Helvetica').fontSize(6.2).text(label, xs[1] + 4, y + 7, {
+      width: widths[1] - 8,
+      height: height - 12,
+    });
+    this.drawPdfPhotoGrid(doc, this.getItemPhotos(item, SnagPhotoType.BEFORE), xs[2] + 4, y + 8, widths[2] - 8, height - 16);
+    this.drawPdfPhotoGrid(doc, this.getItemPhotos(item, SnagPhotoType.AFTER), xs[3] + 4, y + 8, widths[3] - 8, height - 16);
+    this.drawPdfPhotoGrid(doc, this.getItemPhotos(item, SnagPhotoType.CLOSURE), xs[4] + 4, y + 8, widths[4] - 8, height - 16);
+    doc.y = y + height;
   }
 
   private drawSnagEvidenceTableHeader(

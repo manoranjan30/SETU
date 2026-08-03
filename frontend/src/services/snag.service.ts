@@ -157,7 +157,7 @@ export interface SnagCommonPointConfig {
   id: number;
   projectId: number;
   processActivityId: number;
-  activityId: number;
+  activityId: number | null;
   title: string;
   description: string | null;
   severity: string;
@@ -170,7 +170,8 @@ export interface SnagProcessActivityConfig {
   id: number;
   projectId: number;
   processStepId: number;
-  activityId: number;
+  activityId: number | null;
+  customActivityName?: string | null;
   sortOrder: number;
   isActive: boolean;
   activity?: {
@@ -299,7 +300,12 @@ export const snagService = {
 
   addProcessActivity: async (
     projectId: number,
-    body: { processStepId: number; activityId: number; sortOrder?: number },
+    body: {
+      processStepId: number;
+      activityId?: number;
+      customActivityName?: string;
+      sortOrder?: number;
+    },
   ): Promise<SnagProcessStepConfig[]> =>
     (await api.post(`/snag/${projectId}/config/activity-map`, body)).data,
 

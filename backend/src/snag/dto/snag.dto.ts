@@ -226,8 +226,14 @@ export class CreateSnagProcessActivityDto {
   @IsInt()
   processStepId: number;
 
+  @IsOptional()
   @IsInt()
-  activityId: number;
+  activityId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  customActivityName?: string;
 
   @IsOptional()
   @IsInt()
