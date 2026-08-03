@@ -90,6 +90,8 @@ class RaiseSnagItemEvent extends SnagDesnagEvent {
   final String defectTitle;
   final String? defectDescription;
   final String? trade;
+  final int? vendorId;
+  final String? vendorName;
   final String priority;
   final String? linkedChecklistItemId;
   final List<String> beforePhotoUrls;
@@ -99,13 +101,17 @@ class RaiseSnagItemEvent extends SnagDesnagEvent {
     required this.defectTitle,
     this.defectDescription,
     this.trade,
+    this.vendorId,
+    this.vendorName,
     this.priority = 'medium',
     this.linkedChecklistItemId,
     this.beforePhotoUrls = const [],
   });
   @override
-  List<Object?> get props =>
-      [qualityRoomId, roomLabel, defectTitle, defectDescription, trade, priority, linkedChecklistItemId, beforePhotoUrls];
+  List<Object?> get props => [
+    qualityRoomId, roomLabel, defectTitle, defectDescription, trade,
+    vendorId, vendorName, priority, linkedChecklistItemId, beforePhotoUrls,
+  ];
 }
 
 class RectifySnagItemEvent extends SnagDesnagEvent {
@@ -233,6 +239,21 @@ class ResetSnagReadyEvent extends SnagDesnagEvent {
   const ResetSnagReadyEvent();
 }
 
+/// Admin-only destructive override (August 2026 handoff) — deletes every
+/// point/photo/approval/level closure for the round and rolls the stage
+/// back to unready. [reason] is mandatory (`ResetSnagRoundDto.reason`); the
+/// backend independently enforces the Admin-role check regardless of
+/// permission grants, so this is never offered as a substitute for the
+/// ordinary Checker/Maker flow — see the button gate in
+/// `snag_unit_workspace_page.dart`.
+class AdminResetSnagRoundToUnreadyEvent extends SnagDesnagEvent {
+  final int roundId;
+  final String reason;
+  const AdminResetSnagRoundToUnreadyEvent(this.roundId, this.reason);
+  @override
+  List<Object?> get props => [roundId, reason];
+}
+
 /// Project-wide aggregation for the Dashboard — separate from
 /// [LoadSnagOverview] since it hits its own endpoint
 /// (`GET /snag/:projectId/analytics`).
@@ -358,6 +379,7 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
     on<FinalClosureEvent>(_onFinalClosure);
     on<CloseVerifierLevelEvent>(_onCloseVerifierLevel);
     on<ResetSnagReadyEvent>(_onResetReady);
+    on<AdminResetSnagRoundToUnreadyEvent>(_onAdminResetToUnready);
     on<LoadSnagAnalytics>(_onLoadAnalytics);
   }
 
@@ -577,6 +599,8 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
         defectTitle: event.defectTitle,
         defectDescription: event.defectDescription,
         trade: event.trade,
+        vendorId: event.vendorId,
+        vendorName: event.vendorName,
         priority: event.priority,
         linkedChecklistItemId: event.linkedChecklistItemId,
         beforePhotoUrls: event.beforePhotoUrls,
@@ -596,6 +620,8 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
             'defectTitle': event.defectTitle,
             if (event.defectDescription != null) 'defectDescription': event.defectDescription,
             if (event.trade != null) 'trade': event.trade,
+            if (event.vendorId != null) 'vendorId': event.vendorId,
+            if (event.vendorName != null) 'vendorName': event.vendorName,
             'priority': event.priority,
             if (event.linkedChecklistItemId != null) 'linkedChecklistItemId': event.linkedChecklistItemId,
             'beforePhotoUrls': event.beforePhotoUrls,
@@ -613,6 +639,8 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
           defectTitle: event.defectTitle,
           defectDescription: event.defectDescription,
           trade: event.trade,
+          vendorId: event.vendorId,
+          vendorName: event.vendorName,
           priority: event.priority,
           raisedAt: DateTime.now(),
           isPendingSync: true,
@@ -841,6 +869,36 @@ class SnagDesnagBloc extends Bloc<SnagDesnagEvent, SnagDesnagState> {
       // page pops on this state instead.
       _currentList = null;
       emit(const SnagUnitWasReset());
+    } catch (e) {
+      emit(SnagDesnagError(_friendlyError(e)));
+      if (_currentList != null) emit(SnagUnitDetailLoaded(_currentList!));
+    }
+  }
+
+  /// See [AdminResetSnagRoundToUnreadyEvent]'s doc comment. Uses a custom
+  /// handler rather than [_runMutation] because the response shape branches
+  /// on whether the whole list was deleted (round 1) or just rolled back
+  /// (later rounds) — [_runMutation]'s generic refetch-after-success can't
+  /// tell those apart.
+  Future<void> _onAdminResetToUnready(
+    AdminResetSnagRoundToUnreadyEvent event,
+    Emitter<SnagDesnagState> emit,
+  ) async {
+    final projectId = _projectId;
+    final list = _currentList;
+    if (projectId == null || list == null) return;
+    emit(SnagUnitActionInProgress(list));
+    try {
+      final data = await _api.adminResetSnagRoundToUnready(projectId, event.roundId, reason: event.reason);
+      if (data['deletedList'] == true) {
+        // Whole list gone — nothing left to show, same as ResetSnagReadyEvent.
+        _currentList = null;
+        emit(const SnagUnitWasReset());
+        return;
+      }
+      final refreshed = SnagList.fromJson(data);
+      _currentList = refreshed;
+      emit(SnagActionSuccess(message: 'Stage reset — unit is waiting for Maker readiness', list: refreshed));
     } catch (e) {
       emit(SnagDesnagError(_friendlyError(e)));
       if (_currentList != null) emit(SnagUnitDetailLoaded(_currentList!));

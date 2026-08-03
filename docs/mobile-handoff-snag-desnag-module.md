@@ -57,6 +57,63 @@ Use this updated state behavior in the mobile app:
   - `closedAt`
   - `lastNotSatisfactoryAt`
 
+## August 2026 Vendor And Admin Reset Update
+
+Snag points can now be linked to a contractor/vendor while the checker raises
+the point. Mobile must show vendor selection in the Raise Snag Point flow and
+send the selected vendor to backend.
+
+Vendor API:
+
+- `GET /api/snag/:projectId/vendors`
+- Requires snag read permission.
+- Response fields:
+  - `id`
+  - `name`
+  - `vendorCode`
+  - `contactPerson`
+  - `phone`
+  - `email`
+
+Raise snag payload update:
+
+- Endpoint remains `POST /api/snag/:projectId/lists/:listId/rounds/:roundNumber/items`.
+- Add optional fields:
+  - `vendorId`
+  - `vendorName`
+- Recommended mobile behavior:
+  - Load vendors when entering the project snag module.
+  - Show a searchable `Contractor / Vendor` picker in the raise snag form.
+  - Send `vendorId` from the selected vendor.
+  - Also send `vendorName` as the selected vendor name snapshot.
+  - Display stored `vendorName` on snag point cards, detail screens, and reports.
+  - If no vendor is selected, backend allows the snag point but stores vendor as empty.
+
+Snag item response now includes:
+
+- `vendorId`
+- `vendorName`
+- `vendor`
+
+Admin-only stage reset:
+
+- Add an Admin-only action in the unit/stage workspace:
+  - `Delete All Points and Reset Stage to Unready`
+- Endpoint:
+  - `POST /api/snag/:projectId/rounds/:roundId/admin-reset-to-unready`
+- Body:
+  - `reason` string, mandatory.
+- Backend behavior:
+  - Only `Admin` role can execute. Do not show for ordinary maker/checker users.
+  - Deletes all snag points, photos, release approvals, and level closure records for the selected stage.
+  - Resets the selected stage back to `ready_pending` internally, so Maker can start the stage again.
+  - Stage 1 reset deletes the whole snag list and the unit becomes `unready`.
+  - Later stage reset keeps previous stages completed and rolls current list to the previous released stage.
+  - Backend writes an app audit log action named `SNAG_ADMIN_RESET_STAGE_TO_UNREADY`.
+- Mobile response handling:
+  - If response is `{ "reset": true, "deletedList": true }`, clear local snag detail and reload unit list. Show the unit as `unready`.
+  - Otherwise treat response as refreshed `SnagListDetail`, reload the unit list, and show the selected stage as waiting for Maker readiness.
+
 ## Required Mobile Workflow Hierarchy
 
 The mobile Snag / De-snag screen must be process-step first, not unit-first.

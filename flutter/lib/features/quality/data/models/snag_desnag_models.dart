@@ -394,6 +394,38 @@ SnagStepUnitStatus computeSnagStepUnitStatus(SnagUnitSummary unit, int selectedW
   };
 }
 
+/// One contractor/vendor option from `GET /snag/:projectId/vendors` — used
+/// by the Raise Snag Point form's vendor picker (August 2026 handoff).
+class SnagVendor extends Equatable {
+  final int id;
+  final String name;
+  final String? vendorCode;
+  final String? contactPerson;
+  final String? phone;
+  final String? email;
+
+  const SnagVendor({
+    required this.id,
+    required this.name,
+    this.vendorCode,
+    this.contactPerson,
+    this.phone,
+    this.email,
+  });
+
+  factory SnagVendor.fromJson(Map<String, dynamic> j) => SnagVendor(
+    id: j['id'] as int? ?? 0,
+    name: j['name'] as String? ?? '',
+    vendorCode: j['vendorCode'] as String?,
+    contactPerson: j['contactPerson'] as String?,
+    phone: j['phone'] as String?,
+    email: j['email'] as String?,
+  );
+
+  @override
+  List<Object?> get props => [id, name, vendorCode, contactPerson, phone, email];
+}
+
 // ============================================================
 // UNIT WORKSPACE (snag list detail)
 // ============================================================
@@ -447,6 +479,13 @@ class SnagItem extends Equatable {
   final int verifierLevelOrder;
   final String? verifierLevelName;
 
+  /// Contractor/vendor linked at raise time (August 2026 handoff). [vendorId]
+  /// is only present when a real vendor record was selected; [vendorName] is
+  /// always the display snapshot — either the backend-resolved vendor's own
+  /// name or the free-text name sent without an id.
+  final int? vendorId;
+  final String? vendorName;
+
   /// True for an optimistic item/update applied locally while its mutation
   /// (raise/rectify/close) sits in the offline sync queue — never set by
   /// [fromJson], since anything the server returns is by definition synced.
@@ -477,6 +516,8 @@ class SnagItem extends Equatable {
     this.photos = const [],
     this.verifierLevelOrder = 1,
     this.verifierLevelName,
+    this.vendorId,
+    this.vendorName,
     this.isPendingSync = false,
   });
 
@@ -520,12 +561,15 @@ class SnagItem extends Equatable {
       photos: photos,
       verifierLevelOrder: verifierLevelOrder,
       verifierLevelName: verifierLevelName,
+      vendorId: vendorId,
+      vendorName: vendorName,
       isPendingSync: isPendingSync ?? this.isPendingSync,
     );
   }
 
   factory SnagItem.fromJson(Map<String, dynamic> j) {
     DateTime? dt(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
+    final vendorObj = j['vendor'] as Map<String, dynamic>?;
     return SnagItem(
       id: j['id'] as int? ?? 0,
       snagRoundId: j['snagRoundId'] as int? ?? 0,
@@ -552,13 +596,15 @@ class SnagItem extends Equatable {
           [],
       verifierLevelOrder: j['verifierLevelOrder'] as int? ?? 1,
       verifierLevelName: j['verifierLevelName'] as String?,
+      vendorId: j['vendorId'] as int?,
+      vendorName: j['vendorName'] as String? ?? vendorObj?['name'] as String?,
     );
   }
 
   @override
   List<Object?> get props => [
     id, snagRoundId, defectTitle, status, priority, photos, notSatisfactoryCount,
-    verifierLevelOrder, verifierLevelName, isPendingSync,
+    verifierLevelOrder, verifierLevelName, vendorId, vendorName, isPendingSync,
   ];
 }
 

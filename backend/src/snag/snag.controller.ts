@@ -179,6 +179,12 @@ export class SnagController {
     return this.service.getProjectAnalytics(projectId);
   }
 
+  @Get(':projectId/vendors')
+  @Permissions('QUALITY.SNAG.READ')
+  listVendors(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.service.listProjectVendors(projectId);
+  }
+
   @Post(':projectId/lists')
   @Permissions('QUALITY.SNAG.CREATE')
   createList(
@@ -427,6 +433,22 @@ export class SnagController {
     @Request() req: any,
   ) {
     return this.service.resetRound(projectId, roundId, dto, req.user?.id);
+  }
+
+  @Post(':projectId/rounds/:roundId/admin-reset-to-unready')
+  @Permissions('QUALITY.SNAG.DELETE')
+  adminResetRoundToUnready(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('roundId', ParseIntPipe) roundId: number,
+    @Body() dto: ResetSnagRoundDto,
+    @Request() req: any,
+  ) {
+    return this.service.adminResetRoundToUnready(
+      projectId,
+      roundId,
+      dto,
+      req.user?.id,
+    );
   }
 
   @Post(':projectId/approvals/:approvalId/advance')

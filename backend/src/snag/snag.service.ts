@@ -70,6 +70,8 @@ import { SnagProcessActivity } from './entities/snag-process-activity.entity';
 import { SnagCommonPoint } from './entities/snag-common-point.entity';
 import { SnagRoundLevelClosure } from './entities/snag-round-level-closure.entity';
 import { User } from '../users/user.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
 
 type SnagCarryForwardRepos = {
   snagRoundRepo: Repository<SnagRound>;
@@ -125,6 +127,10 @@ export class SnagService {
     private readonly projectProfileRepo: Repository<ProjectProfile>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Vendor)
+    private readonly vendorRepo: Repository<Vendor>,
+    @InjectRepository(WorkOrder)
+    private readonly workOrderRepo: Repository<WorkOrder>,
     private readonly releaseStrategyService: ReleaseStrategyService,
     private readonly milestoneService: CustomerMilestoneService,
     private readonly auditService: AuditService,
@@ -702,6 +708,34 @@ export class SnagService {
     });
   }
 
+  async listProjectVendors(projectId: number) {
+    const toVendorOption = (vendor: Vendor) => ({
+      id: vendor.id,
+      name: vendor.name,
+      vendorCode: vendor.vendorCode,
+      contactPerson: vendor.contactPerson,
+      phone: vendor.mobileNumber || vendor.contactPhone || vendor.telNo,
+      email: vendor.contactEmail,
+    });
+    const workOrders = await this.workOrderRepo.find({
+      where: { projectId },
+      relations: ['vendor'],
+    });
+    const vendorMap = new Map<number, Vendor>();
+    for (const workOrder of workOrders) {
+      if (workOrder.vendor && !vendorMap.has(workOrder.vendor.id)) {
+        vendorMap.set(workOrder.vendor.id, workOrder.vendor);
+      }
+    }
+    if (!vendorMap.size) {
+      const vendors = await this.vendorRepo.find({ order: { name: 'ASC' } });
+      return vendors.map(toVendorOption);
+    }
+    return [...vendorMap.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+    ).map(toVendorOption);
+  }
+
   async createOrGetList(
     projectId: number,
     dto: CreateSnagListDto,
@@ -942,6 +976,7 @@ export class SnagService {
         'rounds',
         'rounds.finalClosureSignedBy',
         'rounds.items',
+        'rounds.items.vendor',
         'rounds.items.photos',
         'rounds.levelClosures',
         'rounds.levelClosures.closedBy',
@@ -1053,6 +1088,13 @@ export class SnagService {
     );
 
     const room = await this.resolveRoomForList(snagList, dto.qualityRoomId);
+    const vendor = dto.vendorId
+      ? await this.vendorRepo.findOne({ where: { id: dto.vendorId } })
+      : null;
+    if (dto.vendorId && !vendor) {
+      throw new BadRequestException('Selected vendor was not found');
+    }
+    const vendorName = vendor?.name || dto.vendorName?.trim() || null;
     const item = await this.snagItemRepo.save(
       this.snagItemRepo.create({
         snagListId: snagList.id,
@@ -1062,6 +1104,8 @@ export class SnagService {
         defectTitle: dto.defectTitle,
         defectDescription: dto.defectDescription ?? null,
         trade: dto.trade ?? null,
+        vendorId: vendor?.id ?? null,
+        vendorName,
         priority: dto.priority ?? 'medium',
         verifierLevelOrder: activeStep.stepOrder,
         verifierLevelName: activeStep.stepName,
@@ -1945,6 +1989,119 @@ export class SnagService {
     return this.getListDetail(projectId, round.snagListId);
   }
 
+  async adminResetRoundToUnready(
+    projectId: number,
+    roundId: number,
+    dto: ResetSnagRoundDto,
+    userId: number,
+  ) {
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException('Reset reason is required');
+    }
+    if (!(await this.isAdminUser(userId))) {
+      throw new ForbiddenException('Only Admin can reset a snag stage to unready');
+    }
+
+    const round = await this.requireRoundById(projectId, roundId);
+    const snagList = round.snagList || (await this.requireList(projectId, round.snagListId));
+    const itemCount = await this.snagItemRepo.count({
+      where: { snagRoundId: round.id },
+    });
+
+    if (round.roundNumber <= 1) {
+      await this.snagListRepo.delete(snagList.id);
+      await this.logAdminSnagOverride(
+        userId,
+        projectId,
+        'RESET_STAGE_TO_UNREADY',
+        round.id,
+        {
+          snagListId: snagList.id,
+          qualityUnitId: snagList.qualityUnitId,
+          roundNumber: round.roundNumber,
+          deletedItemCount: itemCount,
+          deletedList: true,
+          reason,
+        },
+      );
+      return { reset: true, deletedList: true };
+    }
+
+    await this.snagListRepo.manager.transaction(async (manager) => {
+      const txListRepo = manager.getRepository(SnagList);
+      const txRoundRepo = manager.getRepository(SnagRound);
+      const txItemRepo = manager.getRepository(SnagItem);
+      const txApprovalRepo = manager.getRepository(SnagReleaseApproval);
+      const txClosureRepo = manager.getRepository(SnagRoundLevelClosure);
+
+      const txList = await txListRepo.findOne({
+        where: { id: snagList.id, projectId },
+      });
+      if (!txList) {
+        throw new NotFoundException('Snag list not found');
+      }
+
+      const itemsToDelete = await txItemRepo.find({
+        where: { snagRoundId: round.id },
+      });
+      this.clearChecklistLinksForDeletedItems(
+        txList,
+        new Set(itemsToDelete.map((item) => item.id)),
+        userId,
+      );
+
+      await txItemRepo.delete({ snagRoundId: round.id });
+      await txClosureRepo.delete({ snagRoundId: round.id });
+      await txApprovalRepo.delete({ snagRoundId: round.id });
+      await txRoundRepo.update(round.id, {
+        currentVerifierLevel: 1,
+        currentVerifierLevelName: null,
+        levelStatus: SnagRoundLevelStatus.READY_PENDING,
+        levelClosedAt: null,
+        levelClosedById: null,
+        levelClosureSignatureData: null,
+        snagPhaseStatus: SnagRoundSnagPhaseStatus.OPEN,
+        desnagPhaseStatus: SnagRoundDesnagPhaseStatus.LOCKED,
+        initiatedById: null,
+        snagSubmittedAt: null,
+        snagSubmittedById: null,
+        snagSubmittedComments: null,
+        desnagReleasedAt: null,
+        desnagReleaseComments: null,
+        finalClosureSignedAt: null,
+        finalClosureSignedById: null,
+        finalClosureSignatureData: null,
+        finalClosureRemarks: null,
+        isSkipped: false,
+        skippedAt: null,
+        skippedById: null,
+        skipReason: null,
+      });
+
+      txList.currentRound = round.roundNumber - 1;
+      txList.overallStatus = SnagListStatus.RELEASED;
+      await txListRepo.save(txList);
+    });
+
+    this.triggerMilestoneRefresh(projectId);
+    await this.logAdminSnagOverride(
+      userId,
+      projectId,
+      'RESET_STAGE_TO_UNREADY',
+      round.id,
+      {
+        snagListId: snagList.id,
+        qualityUnitId: snagList.qualityUnitId,
+        roundNumber: round.roundNumber,
+        deletedItemCount: itemCount,
+        deletedList: false,
+        reason,
+      },
+    );
+    return this.getListDetail(projectId, snagList.id);
+  }
+
   async advanceApproval(
     projectId: number,
     approvalId: number,
@@ -2029,6 +2186,7 @@ export class SnagService {
         'qualityUnit',
         'rounds',
         'rounds.items',
+        'rounds.items.vendor',
         'rounds.items.photos',
         'rounds.items.raisedBy',
         'rounds.items.rectifiedBy',
@@ -2343,10 +2501,13 @@ export class SnagService {
     const title = [
       item.roomLabel || 'Common Area',
       item.trade || 'General',
+      item.vendorName || item.vendor?.name
+        ? `Vendor: ${item.vendorName || item.vendor?.name}`
+        : null,
       item.defectDescription
         ? `${item.defectTitle} - ${item.defectDescription}`
         : item.defectTitle,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
     const textHeight = doc.heightOfString(title, { width: textWidth });
     const maxPhotos = Math.max(
       this.getItemPhotos(item, SnagPhotoType.BEFORE).length,
@@ -2383,12 +2544,18 @@ export class SnagService {
     doc.font('Helvetica').fontSize(6.5).text(item.trade || 'General', xs[1] + 4, y + 20, {
       width: widths[1] - 8,
     });
+    const defectTextY = item.vendorName || item.vendor?.name ? y + 48 : y + 34;
+    if (item.vendorName || item.vendor?.name) {
+      doc.font('Helvetica').fontSize(6.3).text(`Vendor: ${item.vendorName || item.vendor?.name}`, xs[1] + 4, y + 34, {
+        width: widths[1] - 8,
+      });
+    }
     doc.text(
       item.defectDescription
         ? `${item.defectTitle} - ${item.defectDescription}`
         : item.defectTitle,
       xs[1] + 4,
-      y + 34,
+      defectTextY,
       { width: widths[1] - 8 },
     );
 

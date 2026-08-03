@@ -114,6 +114,9 @@ export interface SnagItemDetail {
   defectTitle: string;
   defectDescription: string | null;
   trade: string | null;
+  vendorId?: number | null;
+  vendorName?: string | null;
+  vendor?: SnagVendor | null;
   priority: string;
   status: SnagItemStatus;
   holdReason: string | null;
@@ -257,6 +260,15 @@ export interface SnagVerifierLevel {
   };
 }
 
+export interface SnagVendor {
+  id: number;
+  name: string;
+  vendorCode?: string | null;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
 export const snagService = {
   listProcessSteps: async (projectId: number): Promise<SnagProcessStepConfig[]> =>
     (await api.get(`/snag/${projectId}/config/process-steps`)).data,
@@ -346,6 +358,9 @@ export const snagService = {
   listUnits: async (projectId: number): Promise<SnagUnitSummary[]> =>
     (await api.get(`/snag/${projectId}/units`)).data,
 
+  listVendors: async (projectId: number): Promise<SnagVendor[]> =>
+    (await api.get(`/snag/${projectId}/vendors`)).data,
+
   getAnalytics: async (projectId: number): Promise<SnagAnalytics> =>
     (await api.get(`/snag/${projectId}/analytics`)).data,
 
@@ -408,6 +423,8 @@ export const snagService = {
       defectTitle: string;
       defectDescription?: string;
       trade?: string;
+      vendorId?: number | null;
+      vendorName?: string;
       priority?: string;
       beforePhotoUrls?: string[];
       linkedChecklistItemId?: string;
@@ -562,6 +579,19 @@ export const snagService = {
       await api.post(`/snag/${projectId}/rounds/${roundId}/reset`, body, {
         timeout: 120000,
       })
+    ).data,
+
+  adminResetRoundToUnready: async (
+    projectId: number,
+    roundId: number,
+    body: { reason: string },
+  ): Promise<SnagListDetail | { reset: true; deletedList: true }> =>
+    (
+      await api.post(
+        `/snag/${projectId}/rounds/${roundId}/admin-reset-to-unready`,
+        body,
+        { timeout: 120000 },
+      )
     ).data,
 
   advanceApproval: async (

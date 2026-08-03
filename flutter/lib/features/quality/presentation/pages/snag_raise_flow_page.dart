@@ -29,11 +29,13 @@ import 'package:setu_mobile/injection_container.dart';
 /// queued and shown optimistically instead of failing outright — see
 /// [SnagDesnagBloc._runMutation]'s doc comment for how that queueing works.
 class SnagRaiseFlowPage extends StatefulWidget {
+  final int projectId;
   final List<SnagRoom> rooms;
   final SnagProcessStep? processStep;
 
   const SnagRaiseFlowPage({
     super.key,
+    required this.projectId,
     required this.rooms,
     required this.processStep,
   });
@@ -63,6 +65,30 @@ class _SnagRaiseFlowPageState extends State<SnagRaiseFlowPage> {
   final List<String> _photoUrls = [];
   bool _uploadingPhoto = false;
   bool _saving = false;
+
+  // Contractor/vendor selection — August 2026 handoff. Loaded once when the
+  // raise flow opens rather than plumbed through the overview bloc, since
+  // this is the only screen that needs it.
+  List<SnagVendor> _vendors = [];
+  SnagVendor? _selectedVendor;
+  bool _vendorLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVendors();
+  }
+
+  Future<void> _loadVendors() async {
+    try {
+      final raw = await sl<SetuApiClient>().getSnagVendors(widget.projectId);
+      final vendors = raw.map((e) => SnagVendor.fromJson(e as Map<String, dynamic>)).toList();
+      if (mounted) setState(() { _vendors = vendors; _vendorLoading = false; });
+    } catch (_) {
+      // Non-fatal — vendor is optional; the raise flow still works without it.
+      if (mounted) setState(() => _vendorLoading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -309,6 +335,13 @@ class _SnagRaiseFlowPageState extends State<SnagRaiseFlowPage> {
           ],
           onChanged: (v) => setState(() => _priority = v ?? 'medium'),
         ),
+        const SizedBox(height: 10),
+        _VendorPickerField(
+          vendors: _vendors,
+          loading: _vendorLoading,
+          selected: _selectedVendor,
+          onChanged: (v) => setState(() => _selectedVendor = v),
+        ),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -443,10 +476,165 @@ class _SnagRaiseFlowPageState extends State<SnagRaiseFlowPage> {
       defectTitle: title,
       defectDescription: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       trade: trade,
+      vendorId: _selectedVendor?.id,
+      vendorName: _selectedVendor?.name,
       priority: _priority,
       linkedChecklistItemId: _isCustomPoint ? null : _selectedPoint?.id.toString(),
       beforePhotoUrls: _photoUrls,
     ));
+  }
+}
+
+/// Compact trigger + search-and-select bottom sheet for the optional
+/// Contractor/Vendor field, matching `AssigneePicker`'s convention
+/// elsewhere in the app. Selection is never required — per the vendor
+/// handoff, the backend stores an empty vendor when none is picked.
+class _VendorPickerField extends StatelessWidget {
+  final List<SnagVendor> vendors;
+  final bool loading;
+  final SnagVendor? selected;
+  final ValueChanged<SnagVendor?> onChanged;
+
+  const _VendorPickerField({
+    required this.vendors,
+    required this.loading,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  Future<void> _showPicker(BuildContext context) async {
+    final result = await showModalBottomSheet<_VendorPickResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _VendorPickerSheet(vendors: vendors, selected: selected),
+    );
+    if (result != null) onChanged(result.vendor);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: loading || vendors.isEmpty ? null : () => _showPicker(context),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Contractor / Vendor (optional)',
+          border: const OutlineInputBorder(),
+          isDense: true,
+          suffixIcon: loading
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : const Icon(Icons.engineering_outlined, size: 18),
+        ),
+        child: Text(
+          loading
+              ? 'Loading vendors…'
+              : selected?.name ?? (vendors.isEmpty ? 'No vendors found for this project' : 'Select vendor'),
+          style: TextStyle(color: selected == null ? Colors.grey.shade500 : null, fontSize: 13),
+        ),
+      ),
+    );
+  }
+}
+
+class _VendorPickResult {
+  final SnagVendor? vendor;
+  const _VendorPickResult(this.vendor);
+}
+
+class _VendorPickerSheet extends StatefulWidget {
+  final List<SnagVendor> vendors;
+  final SnagVendor? selected;
+  const _VendorPickerSheet({required this.vendors, required this.selected});
+
+  @override
+  State<_VendorPickerSheet> createState() => _VendorPickerSheetState();
+}
+
+class _VendorPickerSheetState extends State<_VendorPickerSheet> {
+  final _searchCtrl = TextEditingController();
+  late List<SnagVendor> _filtered = widget.vendors;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(() {
+      final q = _searchCtrl.text.toLowerCase();
+      setState(() => _filtered = q.isEmpty
+          ? widget.vendors
+          : widget.vendors.where((v) =>
+              v.name.toLowerCase().contains(q) ||
+              (v.vendorCode?.toLowerCase().contains(q) ?? false) ||
+              (v.contactPerson?.toLowerCase().contains(q) ?? false)).toList());
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search vendor…',
+                  prefixIcon: Icon(Icons.search, size: 20),
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  if (widget.selected != null)
+                    ListTile(
+                      leading: const Icon(Icons.clear, color: Colors.grey),
+                      title: const Text('Clear selection'),
+                      onTap: () => Navigator.of(context).pop(const _VendorPickResult(null)),
+                    ),
+                  for (final vendor in _filtered)
+                    ListTile(
+                      leading: Icon(
+                        Icons.engineering_outlined,
+                        color: widget.selected?.id == vendor.id ? Colors.indigo : Colors.grey,
+                      ),
+                      title: Text(vendor.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: (vendor.vendorCode != null || vendor.contactPerson != null)
+                          ? Text(
+                              [if (vendor.vendorCode != null) vendor.vendorCode!, if (vendor.contactPerson != null) vendor.contactPerson!].join(' • '),
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            )
+                          : null,
+                      selected: widget.selected?.id == vendor.id,
+                      onTap: () => Navigator.of(context).pop(_VendorPickResult(vendor)),
+                    ),
+                  if (_filtered.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: Text('No matching vendors', style: TextStyle(color: Colors.grey))),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

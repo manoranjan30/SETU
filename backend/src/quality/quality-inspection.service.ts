@@ -1845,6 +1845,7 @@ export class QualityInspectionService {
 
     return {
       requiresPourCard,
+      requiresPourClearanceCard: requiresPrePourClearance,
       requiresPrePourClearance,
       pourCardStatus: pourCard?.status || null,
       pourCardSubmitted,
@@ -3787,6 +3788,13 @@ export class QualityInspectionService {
         ...inspection,
         pendingObservationCount:
           observationCountByInspectionId.get(inspection.id) || 0,
+        requiresPourCard: cardGateSummary.requiresPourCard,
+        requiresPourClearanceCard:
+          cardGateSummary.requiresPourClearanceCard,
+        requiresPrePourClearance:
+          cardGateSummary.requiresPrePourClearance,
+        pourCardActive: cardGateSummary.pourCardActive,
+        prePourClearanceActive: cardGateSummary.prePourClearanceActive,
         legacyActivityObservationCount:
           legacyObservationCountByActivityId.get(
             (inspection as any).activityId,

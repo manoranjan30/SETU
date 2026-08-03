@@ -19,6 +19,8 @@ import { SnagProcessStep } from './entities/snag-process-step.entity';
 import { SnagProcessActivity } from './entities/snag-process-activity.entity';
 import { SnagCommonPoint } from './entities/snag-common-point.entity';
 import { SnagRoundLevelClosure } from './entities/snag-round-level-closure.entity';
+import { Vendor } from '../workdoc/entities/vendor.entity';
+import { WorkOrder } from '../workdoc/entities/work-order.entity';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { SnagRoundLevelClosure } from './entities/snag-round-level-closure.entit
       QualityRoom,
       ProjectProfile,
       User,
+      Vendor,
+      WorkOrder,
     ]),
     PlanningModule,
     MilestoneModule,

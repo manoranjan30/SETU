@@ -55,6 +55,7 @@ import {
   type SnagProcessStepConfig,
   type SnagRoundDetail,
   type SnagUnitSummary,
+  type SnagVendor,
 } from "../../services/snag.service";
 
 type ExplorerFloor = {
@@ -92,6 +93,7 @@ type SkipDialogState = {
 
 type ResetRoundDialogState = {
   roundId: number;
+  roundNumber: number;
   currentLabel: string;
   currentDesnagLabel: string;
   laterCycleCount: number;
@@ -131,6 +133,8 @@ type SnagFormState = {
   defectTitle: string;
   defectDescription: string;
   trade: string;
+  vendorId: number | "";
+  vendorName: string;
   priority: string;
   beforeFiles: FileList | null;
   linkedChecklistItemId: string | null;
@@ -150,6 +154,8 @@ const DEFAULT_SNAG_FORM: SnagFormState = {
   defectTitle: "",
   defectDescription: "",
   trade: "",
+  vendorId: "",
+  vendorName: "",
   priority: "medium",
   beforeFiles: null,
   linkedChecklistItemId: null,
@@ -842,6 +848,7 @@ export default function SnagManagementPage() {
       (user.roles.includes("Admin") ||
         user.permissions.includes(PermissionCode.QUALITY_SNAG_APPROVE)),
   );
+  const isAdminUser = Boolean(user?.roles.includes("Admin"));
   const canDeleteSnag = Boolean(
     user &&
       (user.roles.includes("Admin") ||
@@ -857,6 +864,7 @@ export default function SnagManagementPage() {
   const [selectedTowerKey, setSelectedTowerKey] = useState<string | null>(null);
   const [selectedFloorKey, setSelectedFloorKey] = useState<string | null>(null);
   const [processSteps, setProcessSteps] = useState<SnagProcessStepConfig[]>([]);
+  const [vendors, setVendors] = useState<SnagVendor[]>([]);
   const [selectedWorkflowRound, setSelectedWorkflowRound] = useState(1);
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [unitsError, setUnitsError] = useState<string | null>(null);
@@ -897,13 +905,15 @@ export default function SnagManagementPage() {
     if (!pId || !canReadSnag) return;
     setLoadingUnits(true);
     try {
-      const [data, configuredSteps] = await Promise.all([
+      const [data, configuredSteps, projectVendors] = await Promise.all([
         snagService.listUnits(pId),
         snagService.listProcessSteps(pId).catch(() => []),
+        snagService.listVendors(pId).catch(() => []),
       ]);
       setUnitsError(null);
       setUnits(data);
       setProcessSteps(configuredSteps);
+      setVendors(projectVendors);
     } catch (error) {
       console.error(error);
       setUnitsError(
@@ -1196,7 +1206,7 @@ export default function SnagManagementPage() {
       currentRound.desnagPhaseStatus === "locked" &&
       currentRoundSummary.total === 0,
   );
-  const canResetSelectedCycle = Boolean(currentRound && canDeleteSnag);
+  const canResetSelectedCycle = Boolean(currentRound && isAdminUser);
   const canFinalCloseSelectedCycle = Boolean(
     currentRound &&
     canApproveSnagRelease &&
@@ -1423,6 +1433,9 @@ export default function SnagManagementPage() {
         defectTitle: snagForm.defectTitle.trim(),
         defectDescription: snagForm.defectDescription.trim() || undefined,
         trade: snagForm.trade.trim() || undefined,
+        vendorId:
+          snagForm.vendorId === "" ? undefined : Number(snagForm.vendorId),
+        vendorName: snagForm.vendorName.trim() || undefined,
         priority: snagForm.priority,
         beforePhotoUrls,
         linkedChecklistItemId: snagForm.linkedChecklistItemId || undefined,
@@ -1644,6 +1657,7 @@ export default function SnagManagementPage() {
     setResetRoundReason("");
     setResetRoundDialog({
       roundId: currentRound.id,
+      roundNumber: currentRound.roundNumber,
       currentLabel: getSnagCycleLabel(currentRound.roundNumber),
       currentDesnagLabel: getDesnagCycleLabel(currentRound.roundNumber),
       laterCycleCount: detailRounds.filter(
@@ -1682,11 +1696,31 @@ export default function SnagManagementPage() {
 
     setBusy(true);
     try {
-      const data = await snagService.resetRound(pId, resetRoundDialog.roundId, {
-        reason: resetRoundReason.trim(),
-      });
-      setDetail(data);
-      setRoundNumber(data.currentRound || 1);
+      const data = await snagService.adminResetRoundToUnready(
+        pId,
+        resetRoundDialog.roundId,
+        {
+          reason: resetRoundReason.trim(),
+        },
+      );
+      const deletedList = "deletedList" in data && data.deletedList === true;
+      if (deletedList) {
+        setDetail(null);
+        setSelectedUnit((current) =>
+          current
+            ? {
+                ...current,
+                snagListId: null,
+                currentRound: 1,
+                overallStatus: "unready",
+              }
+            : current,
+        );
+        setRoundNumber(1);
+      } else {
+        setDetail(data as SnagListDetail);
+        setRoundNumber(resetRoundDialog.roundNumber);
+      }
       setResetRoundDialog(null);
       setResetRoundReason("");
       await loadUnits();
@@ -2587,14 +2621,13 @@ export default function SnagManagementPage() {
                               disabled={!canResetSelectedCycle || busy}
                               className="rounded-xl border border-error/20 px-3 py-2 text-sm text-error hover:bg-error-muted disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              {canDeleteSnag
-                                ? `Delete ${currentCycleLabel} and ${currentDesnagLabel}`
-                                : `Delete ${currentCycleLabel} and ${currentDesnagLabel} (Admin only)`}
+                              {isAdminUser
+                                ? `Delete Points and Reset ${currentCycleLabel} to Unready`
+                                : `Reset ${currentCycleLabel} to Unready (Admin only)`}
                             </button>
-                            {!canDeleteSnag && (
+                            {!isAdminUser && (
                               <div className="rounded-xl border border-border-default bg-surface-base/70 px-3 py-2 text-xs text-text-muted">
-                                Cycle reset is available only to users with
-                                snag delete permission.
+                                Stage reset is available only for Admin users.
                               </div>
                             )}
                             {canApproveSnagRelease &&
@@ -2902,6 +2935,13 @@ export default function SnagManagementPage() {
                                       <div className="mt-1 text-xs text-text-muted">
                                         {item.roomLabel || "Common area"} |{" "}
                                         {item.trade || "General"}
+                                        {(item.vendorName || item.vendor?.name) && (
+                                          <>
+                                            {" "}
+                                            | Vendor:{" "}
+                                            {item.vendorName || item.vendor?.name}
+                                          </>
+                                        )}
                                       </div>
                                       {item.defectDescription && (
                                         <p className="mt-2 text-sm text-text-secondary">
@@ -3136,6 +3176,37 @@ export default function SnagManagementPage() {
                     </select>
                   </label>
                 </div>
+
+                <label className="space-y-1 text-xs font-medium text-text-muted">
+                  Contractor / Vendor
+                  <select
+                    value={snagForm.vendorId}
+                    disabled={!canCheckerRaiseInSelectedCycle}
+                    onChange={(event) => {
+                      const vendorId = event.target.value
+                        ? Number(event.target.value)
+                        : "";
+                      const vendor =
+                        vendorId === ""
+                          ? null
+                          : vendors.find((item) => item.id === vendorId) || null;
+                      updateSnagForm({
+                        vendorId,
+                        vendorName: vendor?.name || "",
+                      });
+                    }}
+                    className="w-full rounded-xl border border-border-default bg-surface-base px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">No vendor selected</option>
+                    {vendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>
+                        {vendor.vendorCode
+                          ? `${vendor.name} (${vendor.vendorCode})`
+                          : vendor.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 <label className="space-y-1 text-xs font-medium text-text-muted">
                   Snag Point
@@ -3447,12 +3518,11 @@ export default function SnagManagementPage() {
               <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
                 <div>
                   <h3 className="text-lg font-semibold text-text-primary">
-                    Delete {resetRoundDialog.currentLabel} /{" "}
-                    {resetRoundDialog.currentDesnagLabel}
+                    Reset {resetRoundDialog.currentLabel} to Unready
                   </h3>
                   <p className="text-sm text-text-muted">
-                    This permanently deletes the selected snag cycle and reopens
-                    it from scratch.
+                    Admin only action. This deletes every snag point in this
+                    stage and returns it to the Maker ready request state.
                   </p>
                 </div>
                 <button
@@ -3464,11 +3534,12 @@ export default function SnagManagementPage() {
               </div>
               <div className="space-y-4 px-5 py-5">
                 <div className="rounded-2xl border border-error/20 bg-error-muted/40 px-4 py-3 text-sm text-error">
-                  This is a permanent hard delete.{" "}
-                  {resetRoundDialog.laterCycleCount > 0
-                    ? `${resetRoundDialog.currentLabel} and ${resetRoundDialog.laterCycleCount} later cycle(s) will be removed.`
-                    : "Only this selected cycle will be removed."}{" "}
-                  The unit will reopen at {resetRoundDialog.currentLabel}.
+                  This permanently deletes all snag points, evidence,
+                  approvals, and level closures for{" "}
+                  {resetRoundDialog.currentLabel} /{" "}
+                  {resetRoundDialog.currentDesnagLabel}. The stage will become
+                  unready so the process can start again from Maker marking the
+                  unit ready.
                   {resetRoundDialog.rollsBackHandover
                     ? " Final handover release will also be rolled back."
                     : ""}
@@ -3477,7 +3548,7 @@ export default function SnagManagementPage() {
                   value={resetRoundReason}
                   onChange={(event) => setResetRoundReason(event.target.value)}
                   rows={4}
-                  placeholder="Reason for deleting and reopening this snag cycle"
+                  placeholder="Reason for deleting points and resetting this stage"
                   className="w-full rounded-2xl border border-border-default bg-surface-base px-4 py-3 text-sm outline-none focus:border-primary"
                 />
                 <button
@@ -3485,7 +3556,7 @@ export default function SnagManagementPage() {
                   disabled={busy || !resetRoundReason.trim()}
                   className="w-full rounded-2xl bg-error px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Permanently Delete This Cycle
+                  Delete All Points and Reset to Unready
                 </button>
               </div>
             </div>
