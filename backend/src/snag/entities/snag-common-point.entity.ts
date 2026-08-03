@@ -27,12 +27,12 @@ export class SnagCommonPoint {
   @JoinColumn({ name: 'process_activity_id' })
   processActivity: SnagProcessActivity;
 
-  @Column({ name: 'activity_id' })
-  activityId: number;
+  @Column({ name: 'activity_id', type: 'int', nullable: true })
+  activityId: number | null;
 
-  @ManyToOne(() => QualityActivity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => QualityActivity, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'activity_id' })
-  activity: QualityActivity;
+  activity: QualityActivity | null;
 
   @Column({ length: 255 })
   title: string;

@@ -682,7 +682,9 @@ class SyncService {
               t.entityType.equals('snag_item_rectify') |
               t.entityType.equals('snag_item_bulk_rectify') |
               t.entityType.equals('snag_item_close') |
-              t.entityType.equals('snag_item_bulk_close'))
+              t.entityType.equals('snag_item_bulk_close') |
+              t.entityType.equals('snag_item_hold') |
+              t.entityType.equals('snag_item_reject_rectification'))
           ..orderBy([
             (t) => OrderingTerm.desc(t.priority),  // Highest priority first
             (t) => OrderingTerm.asc(t.createdAt),  // FIFO within same priority
@@ -961,6 +963,23 @@ class SyncService {
               itemIds: (payload['itemIds'] as List).cast<int>(),
               remarks: payload['remarks'] as String?,
               closurePhotoUrls: rBulkClosurePhotos.isEmpty ? null : rBulkClosurePhotos,
+            );
+            break;
+
+          case 'snag_item_hold':
+            // No photos on hold — just a reason string.
+            await _apiClient.holdSnagItem(
+              payload['projectId'] as int,
+              payload['itemId'] as int,
+              holdReason: payload['holdReason'] as String,
+            );
+            break;
+
+          case 'snag_item_reject_rectification':
+            await _apiClient.rejectSnagRectification(
+              payload['projectId'] as int,
+              payload['itemId'] as int,
+              remarks: payload['remarks'] as String?,
             );
             break;
 

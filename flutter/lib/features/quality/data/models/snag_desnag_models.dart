@@ -404,6 +404,14 @@ class SnagVendor extends Equatable {
   final String? phone;
   final String? email;
 
+  /// Aggregate work-order value for this vendor on the project, used to
+  /// pre-select the largest-value vendor as the default in the Raise Snag
+  /// form. `null`/absent means the backend doesn't (yet) return this — see
+  /// `_SnagRaiseFlowPageState._defaultVendor`'s doc comment: as of this
+  /// writing `GET /snag/:projectId/vendors` does not send it, so this stays
+  /// null and no vendor is auto-selected until that's added server-side.
+  final num? totalWorkOrderValue;
+
   const SnagVendor({
     required this.id,
     required this.name,
@@ -411,6 +419,7 @@ class SnagVendor extends Equatable {
     this.contactPerson,
     this.phone,
     this.email,
+    this.totalWorkOrderValue,
   });
 
   factory SnagVendor.fromJson(Map<String, dynamic> j) => SnagVendor(
@@ -420,10 +429,11 @@ class SnagVendor extends Equatable {
     contactPerson: j['contactPerson'] as String?,
     phone: j['phone'] as String?,
     email: j['email'] as String?,
+    totalWorkOrderValue: (j['totalWorkOrderValue'] ?? j['totalOrderValue'] ?? j['woValue']) as num?,
   );
 
   @override
-  List<Object?> get props => [id, name, vendorCode, contactPerson, phone, email];
+  List<Object?> get props => [id, name, vendorCode, contactPerson, phone, email, totalWorkOrderValue];
 }
 
 // ============================================================
@@ -531,8 +541,12 @@ class SnagItem extends Equatable {
 
   SnagItem copyWith({
     SnagItemStatus? status,
+    String? holdReason,
     String? rectificationNotes,
     String? closureRemarks,
+    int? notSatisfactoryCount,
+    String? lastNotSatisfactoryRemarks,
+    DateTime? lastNotSatisfactoryAt,
     DateTime? raisedAt,
     DateTime? rectifiedAt,
     DateTime? closedAt,
@@ -548,12 +562,12 @@ class SnagItem extends Equatable {
       trade: trade,
       priority: priority,
       status: status ?? this.status,
-      holdReason: holdReason,
+      holdReason: holdReason ?? this.holdReason,
       rectificationNotes: rectificationNotes ?? this.rectificationNotes,
       closureRemarks: closureRemarks ?? this.closureRemarks,
-      notSatisfactoryCount: notSatisfactoryCount,
-      lastNotSatisfactoryRemarks: lastNotSatisfactoryRemarks,
-      lastNotSatisfactoryAt: lastNotSatisfactoryAt,
+      notSatisfactoryCount: notSatisfactoryCount ?? this.notSatisfactoryCount,
+      lastNotSatisfactoryRemarks: lastNotSatisfactoryRemarks ?? this.lastNotSatisfactoryRemarks,
+      lastNotSatisfactoryAt: lastNotSatisfactoryAt ?? this.lastNotSatisfactoryAt,
       lastNotSatisfactoryByUserId: lastNotSatisfactoryByUserId,
       raisedAt: raisedAt ?? this.raisedAt,
       rectifiedAt: rectifiedAt ?? this.rectifiedAt,

@@ -51,6 +51,7 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
   const [selectedMappingId, setSelectedMappingId] = useState<number | null>(null);
   const [stepDialog, setStepDialog] = useState<StepDialogState | null>(null);
   const [activityId, setActivityId] = useState("");
+  const [customActivityName, setCustomActivityName] = useState("");
   const [activityDialogOpen, setActivityDialogOpen] = useState(false);
   const [pointDialog, setPointDialog] = useState<PointDialogState | null>(null);
   const [draggedMappingId, setDraggedMappingId] = useState<number | null>(null);
@@ -154,16 +155,20 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
   };
 
   const addActivity = async () => {
-    if (!selectedStep?.id || !activityId) return;
+    if (!selectedStep?.id) return;
+    const customName = customActivityName.trim();
+    if (!activityId && !customName) return;
     setSaving(true);
     try {
       const data = await snagService.addProcessActivity(projectId, {
         processStepId: selectedStep.id,
-        activityId: Number(activityId),
+        activityId: activityId ? Number(activityId) : undefined,
+        customActivityName: customName || undefined,
         sortOrder: selectedStep.activities?.length || 0,
       });
       setSteps(data);
       setActivityId("");
+      setCustomActivityName("");
       setActivityDialogOpen(false);
     } finally {
       setSaving(false);
@@ -209,6 +214,13 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
 
   const activityLabel = (activity?: QualityActivityOption | null) =>
     activity?.activityName || activity?.name || `Activity #${activity?.id || ""}`;
+
+  const mappingActivityLabel = (mapping: {
+    customActivityName?: string | null;
+    activity?: QualityActivityOption | null;
+  }) =>
+    mapping.customActivityName?.trim() ||
+    activityLabel(mapping.activity || null);
 
   return (
     <div className="space-y-4 p-4">
@@ -334,7 +346,7 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
                   >
                     <GripVertical className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                       <span className="min-w-0 flex-1 truncate">
-                        {activityLabel(mapping.activity)}
+                        {mappingActivityLabel(mapping)}
                       </span>
                     {canManage && (
                       <button
@@ -371,7 +383,7 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
                 </h3>
                 <p className="mt-1 text-xs text-text-muted">
                   {selectedMapping
-                    ? activityLabel(selectedMapping.activity)
+                    ? mappingActivityLabel(selectedMapping)
                     : "Select a mapped activity to maintain its points."}
                 </p>
               </div>
@@ -631,7 +643,11 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setActivityDialogOpen(false)}
+                  onClick={() => {
+                    setActivityDialogOpen(false);
+                    setActivityId("");
+                    setCustomActivityName("");
+                  }}
                   className="rounded-lg border border-border-default p-2 text-text-secondary"
                 >
                   <X className="h-4 w-4" />
@@ -640,7 +656,10 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
               <div className="space-y-3 p-5">
                 <select
                   value={activityId}
-                  onChange={(event) => setActivityId(event.target.value)}
+                  onChange={(event) => {
+                    setActivityId(event.target.value);
+                    if (event.target.value) setCustomActivityName("");
+                  }}
                   disabled={!canManage || !selectedStep?.id}
                   className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
                 >
@@ -651,10 +670,30 @@ export default function SnagDesnagConfigPage({ projectId }: Props) {
                     </option>
                   ))}
                 </select>
+                <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  <span className="h-px flex-1 bg-border-subtle" />
+                  Or
+                  <span className="h-px flex-1 bg-border-subtle" />
+                </div>
+                <input
+                  value={customActivityName}
+                  onChange={(event) => {
+                    setCustomActivityName(event.target.value);
+                    if (event.target.value.trim()) setActivityId("");
+                  }}
+                  disabled={!canManage || !selectedStep?.id}
+                  placeholder="Enter custom activity name"
+                  className="w-full rounded-lg border border-border-default bg-surface-base px-3 py-2 text-sm"
+                />
                 <button
                   type="button"
                   onClick={() => void addActivity()}
-                  disabled={saving || !canManage || !activityId || !selectedStep?.id}
+                  disabled={
+                    saving ||
+                    !canManage ||
+                    !selectedStep?.id ||
+                    (!activityId && !customActivityName.trim())
+                  }
                   className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   Add Activity

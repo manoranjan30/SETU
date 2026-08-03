@@ -260,6 +260,7 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
             return const LoadingView();
           }
 
+          final isFromCache = state is SnagUnitDetailLoaded && state.isFromCache;
           final round = list.activeRound;
           final step = list.processSteps.where((s) => s.workflowSerialNo == list.currentRound).firstOrNull;
           // Raising is a Checker action per the current backend contract
@@ -288,6 +289,24 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(16, 16, 16, _bulkMode && _selectedItemIds.isNotEmpty ? 90 : 16),
                   children: [
+                    if (isFromCache)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_off_outlined, size: 16, color: Colors.orange.shade800),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Offline — showing the last saved data. Pull to refresh once back online.',
+                                style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     _HeaderCard(list: list, step: step),
                     if (canStartNextCycle) ...[
                       const SizedBox(height: 12),
@@ -331,6 +350,11 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                           selected: _selectedItemIds.contains(item.id),
                           onToggleSelect: () => _toggleSelect(item.id),
                           onTap: !_bulkMode ? () => _showItemActions(context, item, ps, step, round) : null,
+                          gates: _computeItemGates(item, ps, round),
+                          onView: () => _showItemEvidence(context, item),
+                          onRectify: () => _performItemAction(context, item, step, 'rectify'),
+                          onConfirm: () => _performItemAction(context, item, step, 'close'),
+                          onReject: () => _performItemAction(context, item, step, 'reject'),
                         ),
                     if (round != null && !round.isSkipped) ...[
                       const SizedBox(height: 16),
@@ -461,23 +485,36 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
     context.read<SnagDesnagBloc>().add(AdminResetSnagRoundToUnreadyEvent(roundId, reason));
   }
 
+  /// Per-item action gates shared by [_showItemActions]'s bottom sheet and
+  /// the inline icons on [_SnagItemTile] — computed once here so both entry
+  /// points can never disagree about what's currently allowed.
+  ///
+  /// The item's own level must match the round's currently-active level —
+  /// an item raised at a level that's already closed (or not yet reached)
+  /// can't be acted on, matching closeItem/rejectRectification's own
+  /// server-side check (snag.service.ts). Backend-computed round gates
+  /// (`canRectify`/`canConfirmDesnag`), per the multi-level handoff, drive
+  /// this rather than locally re-derived status/permission checks alone.
+  _ItemGates _computeItemGates(SnagItem item, PermissionService ps, SnagRound round) {
+    final isActiveLevel = item.verifierLevelOrder ==
+        (round.activeVerifierLevel?.levelOrder ?? round.currentVerifierLevel);
+    return _ItemGates(
+      canRectify: item.status == SnagItemStatus.open && ps.canUpdateSnag && round.canRectify,
+      canHold: item.status == SnagItemStatus.open && ps.canUpdateSnag,
+      canConfirm: item.status == SnagItemStatus.rectified &&
+          ps.canApproveSnag &&
+          round.canConfirmDesnag &&
+          isActiveLevel,
+    );
+  }
+
   Future<void> _showItemActions(
     BuildContext context, SnagItem item, PermissionService ps, SnagProcessStep? step, SnagRound round,
   ) async {
-    // The item's own level must match the round's currently-active level —
-    // an item raised at a level that's already closed (or not yet reached)
-    // can't be acted on, matching closeItem/rejectRectification's own
-    // server-side check (snag.service.ts).
-    final isActiveLevel = item.verifierLevelOrder ==
-        (round.activeVerifierLevel?.levelOrder ?? round.currentVerifierLevel);
-    // Backend-computed round gates, per the multi-level handoff — not
-    // locally re-derived from status/permission alone.
-    final canRectifyThis = item.status == SnagItemStatus.open && ps.canUpdateSnag && round.canRectify;
-    final canHoldThis = item.status == SnagItemStatus.open && ps.canUpdateSnag;
-    final canConfirmThis = item.status == SnagItemStatus.rectified &&
-        ps.canApproveSnag &&
-        round.canConfirmDesnag &&
-        isActiveLevel;
+    final gates = _computeItemGates(item, ps, round);
+    final canRectifyThis = gates.canRectify;
+    final canHoldThis = gates.canHold;
+    final canConfirmThis = gates.canConfirm;
 
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -520,7 +557,15 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
       ),
     );
     if (action == null || !context.mounted) return;
+    await _performItemAction(context, item, step, action);
+  }
 
+  /// The actual per-action logic (photo/notes sheet, then bloc dispatch) —
+  /// shared by [_showItemActions]'s bottom sheet and the inline action icons
+  /// on [_SnagItemTile], so both entry points behave identically.
+  Future<void> _performItemAction(
+    BuildContext context, SnagItem item, SnagProcessStep? step, String action,
+  ) async {
     switch (action) {
       case 'view':
         await _showItemEvidence(context, item);
@@ -890,6 +935,22 @@ class _HeaderCard extends StatelessWidget {
   final SnagProcessStep? step;
   const _HeaderCard({required this.list, required this.step});
 
+  /// Per the "update snag/de-snag mobile labels only" handoff: while the
+  /// round is `ready_for_snag`, a multi-level round whose active verifier
+  /// level isn't the last configured one shows which level is waiting
+  /// ("Ready for L2 Snagging") rather than the generic status label — the
+  /// backend made no API change for this, it's purely a label read off the
+  /// existing `activeVerifierLevel`/`verifierLevels` fields.
+  String get _statusLabel {
+    if (list.overallStatus != SnagListStatus.readyForSnag) return list.overallStatus.label;
+    final round = list.activeRound;
+    final levels = round?.verifierLevels ?? const [];
+    if (levels.length <= 1) return 'Ready for Snagging';
+    final levelOrder = round?.activeVerifierLevel?.levelOrder ?? round?.currentVerifierLevel ?? 1;
+    final lastLevelOrder = levels.last.levelOrder;
+    return levelOrder != lastLevelOrder ? 'Ready for L$levelOrder Snagging' : 'Ready for Snagging';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -913,7 +974,7 @@ class _HeaderCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(color: Colors.indigo.shade100, borderRadius: BorderRadius.circular(6)),
-                child: Text(list.overallStatus.label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                child: Text(_statusLabel, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
@@ -957,6 +1018,11 @@ class _SnagItemTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onToggleSelect;
   final VoidCallback? onTap;
+  final _ItemGates gates;
+  final VoidCallback onView;
+  final VoidCallback onRectify;
+  final VoidCallback onConfirm;
+  final VoidCallback onReject;
 
   const _SnagItemTile({
     required this.item,
@@ -964,6 +1030,11 @@ class _SnagItemTile extends StatelessWidget {
     required this.selected,
     required this.onToggleSelect,
     required this.onTap,
+    required this.gates,
+    required this.onView,
+    required this.onRectify,
+    required this.onConfirm,
+    required this.onReject,
   });
 
   Color get _color => switch (item.status) {
@@ -1095,7 +1166,10 @@ class _SnagItemTile extends StatelessWidget {
                               style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                             ),
                           if (item.vendorName != null && item.vendorName!.isNotEmpty)
-                            _badge(item.vendorName!, Colors.teal),
+                            Tooltip(
+                              message: item.vendorName!,
+                              child: _badge(_vendorInitials(item.vendorName!), Colors.teal),
+                            ),
                           if (item.notSatisfactoryCount > 0)
                             _badge('Rejected ${item.notSatisfactoryCount}x', Colors.red),
                         ],
@@ -1104,6 +1178,21 @@ class _SnagItemTile extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(_timelineLabel!, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                        ),
+                      if (!bulkMode && !item.isPendingSync)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              _ActionIcon(icon: Icons.photo_library_outlined, color: Colors.indigo, tooltip: 'View Evidence', onTap: onView),
+                              if (gates.canRectify)
+                                _ActionIcon(icon: Icons.check_circle_outline, color: Colors.blue, tooltip: 'Mark Rectified', onTap: onRectify),
+                              if (gates.canConfirm) ...[
+                                _ActionIcon(icon: Icons.task_alt, color: Colors.green, tooltip: 'De-snag Confirmed', onTap: onConfirm),
+                                _ActionIcon(icon: Icons.thumb_down_outlined, color: Colors.red, tooltip: 'Not Satisfactory', onTap: onReject),
+                              ],
+                            ],
+                          ),
                         ),
                     ],
                   ),
@@ -1115,4 +1204,53 @@ class _SnagItemTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Compact icon-only action button for [_SnagItemTile]'s inline action row —
+/// small enough that up to four fit on one line without pushing the card's
+/// height up, unlike a full [IconButton] with its default 48dp tap target.
+class _ActionIcon extends StatelessWidget {
+  final IconData icon;
+  final MaterialColor color;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _ActionIcon({required this.icon, required this.color, required this.tooltip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: Icon(icon, size: 17, color: color.shade700),
+        ),
+      ),
+    );
+  }
+}
+
+/// Gating flags for a single snag item's actions — see
+/// `_WorkspaceViewState._computeItemGates`'s doc comment for how these are
+/// derived and why they're computed in one shared place.
+class _ItemGates {
+  final bool canRectify;
+  final bool canHold;
+  final bool canConfirm;
+  const _ItemGates({required this.canRectify, required this.canHold, required this.canConfirm});
+}
+
+/// Short form of a vendor's name for the card badge — first letter of each
+/// word, capped to 4 characters (e.g. "ABC Constructions Pvt Ltd" → "ACPL").
+/// The full name is still available via the badge's [Tooltip].
+String _vendorInitials(String name) {
+  final letters = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase())
+      .join();
+  return letters.length > 4 ? letters.substring(0, 4) : letters;
 }
