@@ -1011,9 +1011,10 @@ export default function SnagManagementPage() {
     setSelectedItemIds([]);
   }, [roundNumber, detail?.id]);
 
+  const detailRounds = useMemo(() => detail?.rounds || [], [detail?.rounds]);
   const currentRound = useMemo<SnagRoundDetail | undefined>(
-    () => detail?.rounds?.find((round) => round.roundNumber === roundNumber),
-    [detail, roundNumber],
+    () => detailRounds.find((round) => round.roundNumber === roundNumber),
+    [detailRounds, roundNumber],
   );
   const verifierLevels = currentRound?.verifierLevels || [];
   const activeVerifierLevel = currentRound?.activeVerifierLevel || null;
@@ -1210,7 +1211,7 @@ export default function SnagManagementPage() {
 
   const workflowSteps = useMemo(() => {
     const roundsByNumber = new Map(
-      (detail?.rounds || []).map((round) => [round.roundNumber, round]),
+      detailRounds.map((round) => [round.roundNumber, round]),
     );
 
     const roundSteps = Array.from({ length: maxSnagCycles }, (_, index) => {
@@ -1260,7 +1261,7 @@ export default function SnagManagementPage() {
     });
 
     return roundSteps;
-  }, [detail, maxSnagCycles]);
+  }, [detail, detailRounds, maxSnagCycles]);
 
   const pendingQueue = useMemo(
     () =>
@@ -1645,7 +1646,7 @@ export default function SnagManagementPage() {
       roundId: currentRound.id,
       currentLabel: getSnagCycleLabel(currentRound.roundNumber),
       currentDesnagLabel: getDesnagCycleLabel(currentRound.roundNumber),
-      laterCycleCount: detail.rounds.filter(
+      laterCycleCount: detailRounds.filter(
         (round) => round.roundNumber > currentRound.roundNumber,
       ).length,
       rollsBackHandover: detail.overallStatus === "handover_ready",
@@ -2315,7 +2316,7 @@ export default function SnagManagementPage() {
                 <>
                   <div className="border-b border-border-subtle px-6 py-3">
                     <div className="flex flex-wrap gap-2">
-                      {detail.rounds.map((round) => (
+                      {detailRounds.map((round) => (
                         <button
                           key={round.id}
                           onClick={() => setRoundNumber(round.roundNumber)}
@@ -2455,11 +2456,11 @@ export default function SnagManagementPage() {
                                       </span>
                                     </div>
                                     <div className="mt-2 grid grid-cols-5 gap-1 text-center text-[10px] text-text-muted">
-                                      <span>{level.counts.raised} raised</span>
-                                      <span>{level.counts.open} open</span>
-                                      <span>{level.counts.rectifiedPendingDesnag} rectified</span>
-                                      <span>{level.counts.desnagConfirmed} closed</span>
-                                      <span>{level.counts.notSatisfactory} reject</span>
+                                      <span>{level.counts?.raised ?? 0} raised</span>
+                                      <span>{level.counts?.open ?? 0} open</span>
+                                      <span>{level.counts?.rectifiedPendingDesnag ?? 0} rectified</span>
+                                      <span>{level.counts?.desnagConfirmed ?? 0} closed</span>
+                                      <span>{level.counts?.notSatisfactory ?? 0} reject</span>
                                     </div>
                                   </div>
                                 ))}

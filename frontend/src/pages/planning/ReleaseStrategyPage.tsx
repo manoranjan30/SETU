@@ -90,24 +90,26 @@ const normalizeStrategyForProcess = (
     return strategy;
   }
 
-  const firstStep = strategy.steps?.[0] || createDefaultApprovalStep(0);
-  const normalizedStepName = firstStep.stepName?.trim();
+  const steps = strategy.steps?.length
+    ? strategy.steps
+    : [createDefaultApprovalStep(0)];
 
   return {
     ...strategy,
     moduleCode: "QUALITY",
     documentType: SNAG_RELEASE_DOCUMENT_TYPE,
-    steps: [
-      {
-        ...firstStep,
+    steps: steps.map((step, index) => {
+      const normalizedStepName = step.stepName?.trim();
+      return {
+        ...step,
         stepName:
           !normalizedStepName || /^Level\s+\d+\s+Approval$/i.test(normalizedStepName)
-            ? "De-snag Release Approval"
+            ? `Snag Verifier Level ${index + 1}`
             : normalizedStepName,
-        levelNo: 1,
-        sequence: 1,
-      },
-    ],
+        levelNo: index + 1,
+        sequence: index + 1,
+      };
+    }),
   };
 };
 
@@ -350,10 +352,10 @@ export default function ReleaseStrategyPage() {
       { label: "Strategy name entered", ok: !!form.name.trim() },
       { label: "At least one approval level", ok: !!form.steps?.length },
       {
-        label: "Snag release uses exactly one approval level",
+        label: "Snag release supports one or more verifier levels",
         ok:
           form.processCode !== SNAG_RELEASE_PROCESS_CODE ||
-          (form.steps || []).length === 1,
+          (form.steps || []).length >= 1,
       },
       {
         label: "All steps have assignee definitions",
@@ -808,7 +810,7 @@ export default function ReleaseStrategyPage() {
         <div className="rounded-2xl border border-border-default bg-surface-card p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-base font-bold text-text-primary">Approval Levels</h3>
-            {canWrite && !isSnagReleaseProcess && (
+            {canWrite && (
               <button
                 onClick={() =>
                   setForm((prev) => ({
@@ -827,7 +829,7 @@ export default function ReleaseStrategyPage() {
           </div>
           {isSnagReleaseProcess && (
             <div className="mb-3 rounded-xl border border-secondary/20 bg-secondary-muted px-3 py-2 text-sm text-text-secondary">
-              De-snag release is intentionally single-level only. Once that one approval is completed, the unit moves to the next snag cycle or the final handover release.
+              Add one verifier level for each checker layer inside every snag stage. Example: Level 1 Contractor QC, Level 2 Client Engineer / PL / PHL Engineer. The snag module opens the next level only after the current level is closed with signature.
             </div>
           )}
           <div className="space-y-3">
@@ -858,7 +860,7 @@ export default function ReleaseStrategyPage() {
                           ),
                         }))
                       }
-                      disabled={isSnagReleaseProcess && (form.steps || []).length <= 1}
+                      disabled={(form.steps || []).length <= 1}
                       className="text-sm text-error"
                     >
                       Remove
