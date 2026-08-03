@@ -1620,25 +1620,18 @@ export class QualityInspectionService {
     triggerApprovalLevel?: number | string | null,
   ) {
     const normalizedTriggerId = Number(triggerStageTemplateId);
-    const normalizedApprovalLevel =
-      this.normalizeTriggerApprovalLevel(triggerApprovalLevel);
     if (!Number.isFinite(normalizedTriggerId) || normalizedTriggerId <= 0) {
-      const approvedByAnyStageLevel =
-        normalizedApprovalLevel != null &&
-        (stages || []).some((stage: any) =>
-          this.isStageApprovalLevelApproved(stage, normalizedApprovalLevel),
-        );
       return {
         stage: null as any,
         sequence: null as number | null,
-        approved: normalizedApprovalLevel ? approvedByAnyStageLevel : true,
+        approved: true,
         name: null as string | null,
-        approvalLevel: normalizedApprovalLevel,
-        approvalLevelName: normalizedApprovalLevel
-          ? `Level ${normalizedApprovalLevel}`
-          : null,
+        approvalLevel: null as number | null,
+        approvalLevelName: null as string | null,
       };
     }
+    const normalizedApprovalLevel =
+      this.normalizeTriggerApprovalLevel(triggerApprovalLevel);
 
     const sortedStages = [...(stages || [])].sort(
       (a, b) => this.getStageSequence(a, 0) - this.getStageSequence(b, 0),
@@ -1818,6 +1811,7 @@ export class QualityInspectionService {
       currentStage &&
       isLastStage &&
       requiresPourCard &&
+      pourCardActive &&
       !pourCardApproved
     ) {
       stageApprovalBlockers.push(

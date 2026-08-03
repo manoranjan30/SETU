@@ -1247,8 +1247,9 @@ export class QualityPourCardService {
     const normalizedStageTemplateId = this.normalizeTriggerApprovalLevel(
       triggerStageTemplateId,
     );
-    const normalizedApprovalLevel =
-      this.normalizeTriggerApprovalLevel(triggerApprovalLevel);
+    const normalizedApprovalLevel = normalizedStageTemplateId
+      ? this.normalizeTriggerApprovalLevel(triggerApprovalLevel)
+      : null;
     const triggerStage: any = triggerStageTemplateId
       ? (inspection.stages || []).find(
           (stage: any) =>
