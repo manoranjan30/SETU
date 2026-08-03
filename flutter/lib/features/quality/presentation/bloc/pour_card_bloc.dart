@@ -200,7 +200,8 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
   /// Commits [event.entry] into the entry list, recomputes the running
   /// cumulative-quantity column, and immediately persists the card as a
   /// draft — one entry save always doubles as an autosave of the whole card.
-  Future<void> _onSaveEntry(SavePourEntry event, Emitter<PourCardState> emit) async {
+  Future<void> _onSaveEntry(
+      SavePourEntry event, Emitter<PourCardState> emit) async {
     if (_currentCard == null) return;
     final entries = List<PourCardEntry>.from(_currentCard!.entries);
     if (event.index >= 0 && event.index < entries.length) {
@@ -238,7 +239,8 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     return result;
   }
 
-  void _onUpdateHeader(UpdatePourCardHeader event, Emitter<PourCardState> emit) {
+  void _onUpdateHeader(
+      UpdatePourCardHeader event, Emitter<PourCardState> emit) {
     if (_currentCard == null) return;
     _currentCard = _currentCard!.copyWith(
       elementName: event.elementName ?? _currentCard!.elementName,
@@ -266,7 +268,8 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     }
   }
 
-  Future<void> _onSubmit(SubmitPourCard event, Emitter<PourCardState> emit) async {
+  Future<void> _onSubmit(
+      SubmitPourCard event, Emitter<PourCardState> emit) async {
     if (_currentCard == null) return;
     emit(PourCardSaving(_currentCard!));
     try {
@@ -281,7 +284,8 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     }
   }
 
-  Future<void> _onApprove(ApprovePourCard event, Emitter<PourCardState> emit) async {
+  Future<void> _onApprove(
+      ApprovePourCard event, Emitter<PourCardState> emit) async {
     if (_currentCard == null) return;
     emit(PourCardSaving(_currentCard!));
     try {
@@ -299,7 +303,8 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
     }
   }
 
-  Future<void> _onReject(RejectPourCard event, Emitter<PourCardState> emit) async {
+  Future<void> _onReject(
+      RejectPourCard event, Emitter<PourCardState> emit) async {
     if (_currentCard == null) return;
     emit(PourCardSaving(_currentCard!));
     try {
@@ -322,17 +327,26 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
   /// those messages are already written for end users. See
   /// docs/mobile-handoff-quality-card-approval-release-strategy.md.
   String _friendlyError(Object e) {
-    if (e is UnauthorizedException) return 'Session expired. Please log in again.';
+    if (e is UnauthorizedException) {
+      return 'Session expired. Please log in again.';
+    }
     if (e is NotFoundException) return 'Pour card not found.';
-    if (e is NetworkException) return 'No connection. Check your network and try again.';
+    if (e is NetworkException) {
+      return 'No connection. Check your network and try again.';
+    }
     if (e is ForbiddenException) {
       return e.message == 'Forbidden'
           ? 'You are not assigned as an approver for this card.'
           : e.message;
     }
     if (e is BadRequestException) return e.message;
+    if (e is TypeError || e is FormatException) {
+      return 'Pour card data could not be read by the mobile app. Please retry after updating the app.';
+    }
     final msg = e.toString().toLowerCase();
-    if (msg.contains('connection') || msg.contains('socket')) return 'No connection. Check your network and try again.';
+    if (msg.contains('connection') || msg.contains('socket')) {
+      return 'No connection. Check your network and try again.';
+    }
     return 'An error occurred. Please try again.';
   }
 }

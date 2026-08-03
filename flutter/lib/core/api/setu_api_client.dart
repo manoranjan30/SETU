@@ -2039,6 +2039,11 @@ class SetuApiClient {
   /// Raises a new snag point. [beforePhotoUrls] must be non-empty — the
   /// backend rejects the request with 400 otherwise (photos are mandatory
   /// when raising a snag, not optional).
+  ///
+  /// [vendorId]/[vendorName] are optional per the August 2026 vendor
+  /// handoff update (`CreateSnagItemDto.vendorId`/`vendorName`) — the
+  /// backend resolves [vendorName] from the vendor record when [vendorId]
+  /// is sent, so [vendorName] alone is just a snapshot fallback.
   Future<Map<String, dynamic>> addSnagItem(
     int projectId,
     int listId,
@@ -2048,6 +2053,8 @@ class SetuApiClient {
     required String defectTitle,
     String? defectDescription,
     String? trade,
+    int? vendorId,
+    String? vendorName,
     String priority = 'medium',
     String? linkedChecklistItemId,
     required List<String> beforePhotoUrls,
@@ -2060,6 +2067,8 @@ class SetuApiClient {
         'defectTitle': defectTitle,
         if (defectDescription != null) 'defectDescription': defectDescription,
         if (trade != null) 'trade': trade,
+        if (vendorId != null) 'vendorId': vendorId,
+        if (vendorName != null) 'vendorName': vendorName,
         'priority': priority,
         if (linkedChecklistItemId != null) 'linkedChecklistItemId': linkedChecklistItemId,
         'beforePhotoUrls': beforePhotoUrls,
@@ -2197,6 +2206,16 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Contractor/vendor options for the Raise Snag Point form. Per
+  /// `snag.service.ts:listProjectVendors`, this is scoped to vendors who
+  /// have a work order on the project when any exist, falling back to every
+  /// vendor in the system otherwise.
+  Future<List<dynamic>> getSnagVendors(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.snagVendors(projectId));
+    final data = response.data;
+    return data is List ? data : [];
+  }
+
   /// Checker reverts a ready-for-snag unit (with zero raised points) back
   /// to unready — this deletes the underlying snag list row entirely, per
   /// `snag.service.ts:resetReadyForSnag`.
@@ -2255,6 +2274,25 @@ class SetuApiClient {
         if (remarks != null) 'remarks': remarks,
         if (signatureData != null) 'signatureData': signatureData,
       },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Admin-only destructive reset — deletes every point/photo/approval/level
+  /// closure for [roundId] and rolls the stage back to unready (or deletes
+  /// the whole list if this is round 1, in which case the response is
+  /// `{reset: true, deletedList: true}` instead of a refreshed list body).
+  /// Backend enforces the Admin-role check itself
+  /// (`snag.service.ts:adminResetRoundToUnready`) independent of the
+  /// `QUALITY.SNAG.DELETE` permission grant.
+  Future<Map<String, dynamic>> adminResetSnagRoundToUnready(
+    int projectId,
+    int roundId, {
+    required String reason,
+  }) async {
+    final response = await _dio.post(
+      ApiEndpoints.snagAdminResetToUnready(projectId, roundId),
+      data: {'reason': reason},
     );
     return response.data as Map<String, dynamic>;
   }

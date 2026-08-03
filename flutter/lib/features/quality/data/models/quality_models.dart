@@ -395,7 +395,8 @@ class QualityActivity extends Equatable {
           [],
       applicabilityLevel: json['applicabilityLevel'] as String?,
       requiresPourCard: json['requiresPourCard'] as bool? ?? false,
-      requiresPourClearanceCard: json['requiresPourClearanceCard'] as bool? ?? false,
+      requiresPourClearanceCard:
+          json['requiresPourClearanceCard'] as bool? ?? false,
     );
   }
 
@@ -511,14 +512,15 @@ class QualityInspection extends Equatable {
   final bool requiresPourClearanceCard;
 
   // Card document statuses (from cardSummary in API response)
-  final String? pourCardStatus;           // DRAFT | SUBMITTED | APPROVED | REJECTED | LOCKED
+  final String?
+      pourCardStatus; // DRAFT | SUBMITTED | APPROVED | REJECTED | LOCKED
   final bool pourCardApproved;
-  final String? prePourClearanceStatus;   // same enum values
+  final String? prePourClearanceStatus; // same enum values
   final bool prePourClearanceApproved;
 
   // Gate fields from cardSummary — control visibility and enable/disable of card buttons
   final bool pourCardActive;
-  final String? pourCardActivationMode;         // IMMEDIATE | AFTER_STAGE
+  final String? pourCardActivationMode; // IMMEDIATE | AFTER_STAGE
   final bool prePourClearanceActive;
   final List<String> finalApprovalBlockers;
   final Map<String, List<String>> approvalBlockersByStageId;
@@ -696,33 +698,55 @@ class QualityInspection extends Equatable {
       pendingApprovalDisplay: json['pendingApprovalDisplay'] as String?,
       pendingApprovalLabel: json['pendingApprovalLabel'] as String?,
       requiresPourCard: activity?['requiresPourCard'] as bool? ?? false,
-      requiresPourClearanceCard: activity?['requiresPourClearanceCard'] as bool? ?? false,
-      pourCardStatus: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardStatus'] as String?,
-      pourCardApproved: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardApproved'] as bool? ?? false,
-      prePourClearanceStatus: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceStatus'] as String?,
-      prePourClearanceApproved: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceApproved'] as bool? ?? false,
-      pourCardActive: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardActive'] as bool? ?? false,
-      pourCardActivationMode: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardActivationMode'] as String?,
-      prePourClearanceActive: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceActive'] as bool? ?? false,
-      finalApprovalBlockers: ((json['cardSummary'] as Map<String, dynamic>?)?['finalApprovalBlockers'] as List<dynamic>?)
-              ?.whereType<String>().toList() ?? const [],
-      approvalBlockersByStageId: _parseBlockersByStageId((json['cardSummary'] as Map<String, dynamic>?)?['approvalBlockersByStageId']),
-      pourCardTriggerStageName: (json['cardSummary'] as Map<String, dynamic>?)?['pourCardTriggerStageName'] as String?,
-      prePourClearanceTriggerStageName: (json['cardSummary'] as Map<String, dynamic>?)?['prePourClearanceTriggerStageName'] as String?,
+      requiresPourClearanceCard:
+          activity?['requiresPourClearanceCard'] as bool? ?? false,
+      pourCardStatus: (json['cardSummary']
+          as Map<String, dynamic>?)?['pourCardStatus'] as String?,
+      pourCardApproved: (json['cardSummary']
+              as Map<String, dynamic>?)?['pourCardApproved'] as bool? ??
+          false,
+      prePourClearanceStatus: (json['cardSummary']
+          as Map<String, dynamic>?)?['prePourClearanceStatus'] as String?,
+      prePourClearanceApproved: (json['cardSummary']
+              as Map<String, dynamic>?)?['prePourClearanceApproved'] as bool? ??
+          false,
+      pourCardActive: (json['cardSummary']
+              as Map<String, dynamic>?)?['pourCardActive'] as bool? ??
+          false,
+      pourCardActivationMode: (json['cardSummary']
+          as Map<String, dynamic>?)?['pourCardActivationMode'] as String?,
+      prePourClearanceActive: (json['cardSummary']
+              as Map<String, dynamic>?)?['prePourClearanceActive'] as bool? ??
+          false,
+      finalApprovalBlockers: ((json['cardSummary']
+                      as Map<String, dynamic>?)?['finalApprovalBlockers']
+                  as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const [],
+      approvalBlockersByStageId: _parseBlockersByStageId((json['cardSummary']
+          as Map<String, dynamic>?)?['approvalBlockersByStageId']),
+      pourCardTriggerStageName: (json['cardSummary']
+          as Map<String, dynamic>?)?['pourCardTriggerStageName'] as String?,
+      prePourClearanceTriggerStageName: (json['cardSummary']
+              as Map<String, dynamic>?)?['prePourClearanceTriggerStageName']
+          as String?,
       goNo: json['goNo'] as int?,
       goLabel: json['goLabel'] as String?,
       goDetails: json['goDetails'] as String?,
       drawingNo: json['drawingNo'] as String?,
       elementName: json['elementName'] as String?,
-      relatedChecklistInspectionIds: (json['relatedChecklistInspectionIds'] as List<dynamic>?)
-              ?.whereType<int>()
-              .toList() ??
-          [],
-      relatedChecklistInspections: (json['relatedChecklistInspections'] as List<dynamic>?)
-              ?.whereType<Map<String, dynamic>>()
-              .map(RelatedChecklistSummary.fromJson)
-              .toList() ??
-          const [],
+      relatedChecklistInspectionIds:
+          (json['relatedChecklistInspectionIds'] as List<dynamic>?)
+                  ?.whereType<int>()
+                  .toList() ??
+              [],
+      relatedChecklistInspections:
+          (json['relatedChecklistInspections'] as List<dynamic>?)
+                  ?.whereType<Map<String, dynamic>>()
+                  .map(RelatedChecklistSummary.fromJson)
+                  .toList() ??
+              const [],
       attachments: (json['attachments'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(RfiAttachment.fromJson)
@@ -735,8 +759,9 @@ class QualityInspection extends Equatable {
   bool get isMultiPart => totalParts > 1;
 
   /// Display label for multi-part RFI, e.g. "Part 1 of 3" or a custom label.
-  String get partDisplay =>
-      partLabel?.isNotEmpty == true ? partLabel! : 'Part $partNo of $totalParts';
+  String get partDisplay => partLabel?.isNotEmpty == true
+      ? partLabel!
+      : 'Part $partNo of $totalParts';
 
   bool get isPending => status == InspectionStatus.pending;
   DateTime? get requestDateTime =>
@@ -831,10 +856,8 @@ class QualityInspection extends Equatable {
     if (raw is! Map<dynamic, dynamic>) return const {};
     return {
       for (final entry in raw.entries)
-        entry.key.toString(): (entry.value as List<dynamic>?)
-                ?.whereType<String>()
-                .toList() ??
-            [],
+        entry.key.toString():
+            (entry.value as List<dynamic>?)?.whereType<String>().toList() ?? [],
     };
   }
 }
@@ -905,8 +928,7 @@ class InspectionStage extends Equatable {
   bool get isFullyApproved => stageApproval?.fullyApproved == true;
 
   /// True when items are all evaluated, no open observations, and not yet approved.
-  bool get canApprove =>
-      allOk && openObservationCount == 0 && !isFullyApproved;
+  bool get canApprove => allOk && openObservationCount == 0 && !isFullyApproved;
 
   /// Returns a new [InspectionStage] with the given items, preserving other fields.
   InspectionStage copyWithItems(List<ChecklistItem> newItems) {
@@ -922,8 +944,15 @@ class InspectionStage extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [id, stageName, status, items, stageApproval, openObservationCount, sequence];
+  List<Object?> get props => [
+        id,
+        stageName,
+        status,
+        items,
+        stageApproval,
+        openObservationCount,
+        sequence
+      ];
 }
 
 /// A single checklist item within an [InspectionStage].
@@ -1163,8 +1192,14 @@ class StageApprovalLevel extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [stepOrder, stepName, approved, autoInherited, signerDisplayName, approvedAt];
+  List<Object?> get props => [
+        stepOrder,
+        stepName,
+        approved,
+        autoInherited,
+        signerDisplayName,
+        approvedAt
+      ];
 }
 
 /// Aggregated approval state for a single checklist stage.
@@ -1191,11 +1226,13 @@ class StageApproval extends Equatable {
   factory StageApproval.fromJson(Map<String, dynamic> json) {
     return StageApproval(
       levels: (json['levels'] as List<dynamic>?)
-              ?.map((e) => StageApprovalLevel.fromJson(e as Map<String, dynamic>))
+              ?.map(
+                  (e) => StageApprovalLevel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       pendingLevels: (json['pendingLevels'] as List<dynamic>?)
-              ?.map((e) => StageApprovalLevel.fromJson(e as Map<String, dynamic>))
+              ?.map(
+                  (e) => StageApprovalLevel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       approvedLevelCount: json['approvedLevelCount'] as int? ?? 0,
@@ -1473,9 +1510,15 @@ class ActivityRow extends Equatable {
   });
 
   @override
-  List<Object?> get props =>
-      [activity, inspection, displayStatus, predecessorDone, observations,
-       allInspections, floorUnits];
+  List<Object?> get props => [
+        activity,
+        inspection,
+        displayStatus,
+        predecessorDone,
+        observations,
+        allInspections,
+        floorUnits
+      ];
 }
 
 // ==================== QUALITY SITE OBSERVATION ====================
@@ -1677,7 +1720,12 @@ class QualitySiteObservation extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, projectId, description, severity, status, createdAt,
+        id,
+        projectId,
+        description,
+        severity,
+        status,
+        createdAt,
       ];
 }
 
@@ -1685,34 +1733,83 @@ class QualitySiteObservation extends Equatable {
 // POUR CARD MODELS
 // ============================================================
 
+String? _jsonString(dynamic value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
+}
+
+int? _jsonInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString().trim());
+}
+
+double? _jsonDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString().trim());
+}
+
+bool _jsonBool(dynamic value, {bool defaultValue = false}) {
+  if (value == null) return defaultValue;
+  if (value is bool) return value;
+  final text = value.toString().trim().toLowerCase();
+  if (text == 'true' || text == '1' || text == 'yes') return true;
+  if (text == 'false' || text == '0' || text == 'no') return false;
+  return defaultValue;
+}
+
+Map<String, dynamic> _jsonMap(dynamic value) =>
+    value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+
+List<dynamic> _jsonList(dynamic value) =>
+    value is List ? value : const <dynamic>[];
+
+List<String> _jsonStringList(dynamic value) =>
+    _jsonList(value).map(_jsonString).whereType<String>().toList();
+
+DateTime? _jsonDateTime(dynamic value) =>
+    value == null ? null : DateTime.tryParse(value.toString());
+
 enum QualityCardStatus {
-  draft, submitted, approved, rejected, locked;
+  draft,
+  submitted,
+  approved,
+  rejected,
+  locked;
 
   static QualityCardStatus fromString(String s) {
     switch (s.toUpperCase()) {
-      case 'SUBMITTED': return QualityCardStatus.submitted;
-      case 'APPROVED':  return QualityCardStatus.approved;
-      case 'REJECTED':  return QualityCardStatus.rejected;
-      case 'LOCKED':    return QualityCardStatus.locked;
-      default:          return QualityCardStatus.draft;
+      case 'SUBMITTED':
+        return QualityCardStatus.submitted;
+      case 'APPROVED':
+        return QualityCardStatus.approved;
+      case 'REJECTED':
+        return QualityCardStatus.rejected;
+      case 'LOCKED':
+        return QualityCardStatus.locked;
+      default:
+        return QualityCardStatus.draft;
     }
   }
 
   String get label => switch (this) {
-    QualityCardStatus.draft     => 'Draft',
-    QualityCardStatus.submitted => 'Submitted',
-    QualityCardStatus.approved  => 'Approved',
-    QualityCardStatus.rejected  => 'Rejected',
-    QualityCardStatus.locked    => 'Locked',
-  };
+        QualityCardStatus.draft => 'Draft',
+        QualityCardStatus.submitted => 'Submitted',
+        QualityCardStatus.approved => 'Approved',
+        QualityCardStatus.rejected => 'Rejected',
+        QualityCardStatus.locked => 'Locked',
+      };
 
   Color get color => switch (this) {
-    QualityCardStatus.draft     => const Color(0xFF6B7280),
-    QualityCardStatus.submitted => const Color(0xFF1D4ED8),
-    QualityCardStatus.approved  => const Color(0xFF15803D),
-    QualityCardStatus.rejected  => const Color(0xFFDC2626),
-    QualityCardStatus.locked    => const Color(0xFF7C3AED),
-  };
+        QualityCardStatus.draft => const Color(0xFF6B7280),
+        QualityCardStatus.submitted => const Color(0xFF1D4ED8),
+        QualityCardStatus.approved => const Color(0xFF15803D),
+        QualityCardStatus.rejected => const Color(0xFFDC2626),
+        QualityCardStatus.locked => const Color(0xFF7C3AED),
+      };
 
   bool get isEditable =>
       this == QualityCardStatus.draft || this == QualityCardStatus.rejected;
@@ -1764,57 +1861,52 @@ class PourCardEntry extends Equatable {
   });
 
   factory PourCardEntry.fromJson(Map<String, dynamic> j) {
-    double? d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
-    int? i(dynamic v) => v == null ? null : (v is int ? v : int.tryParse(v.toString()));
     return PourCardEntry(
-      slNo: i(j['slNo']),
-      pourDate: j['pourDate'] as String?,
-      supplierName: j['supplierName'] as String?,
-      truckNo: j['truckNo'] as String?,
-      deliveryChallanNo: j['deliveryChallanNo'] as String?,
-      mixIdOrGrade: j['mixIdOrGrade'] as String?,
-      quantityM3: d(j['quantityM3']),
-      cumulativeQtyM3: d(j['cumulativeQtyM3']),
-      arrivalTimeAtSite: j['arrivalTimeAtSite'] as String?,
-      batchStartTime: j['batchStartTime'] as String?,
-      finishingTime: j['finishingTime'] as String?,
-      timeTakenMinutes: i(j['timeTakenMinutes']),
-      slumpMm: d(j['slumpMm']),
-      concreteTemperature: d(j['concreteTemperature']),
-      noOfCubesTaken: i(j['noOfCubesTaken']),
-      cubeIds: (j['cubeIds'] as List<dynamic>?)
-              ?.whereType<String>()
-              .toList() ??
-          [],
-      supplierRepresentative: j['supplierRepresentative'] as String?,
-      contractorRepresentative: j['contractorRepresentative'] as String?,
-      clientRepresentative: j['clientRepresentative'] as String?,
-      remarks: j['remarks'] as String?,
+      slNo: _jsonInt(j['slNo']),
+      pourDate: _jsonString(j['pourDate']),
+      supplierName: _jsonString(j['supplierName']),
+      truckNo: _jsonString(j['truckNo']),
+      deliveryChallanNo: _jsonString(j['deliveryChallanNo']),
+      mixIdOrGrade: _jsonString(j['mixIdOrGrade']),
+      quantityM3: _jsonDouble(j['quantityM3']),
+      cumulativeQtyM3: _jsonDouble(j['cumulativeQtyM3']),
+      arrivalTimeAtSite: _jsonString(j['arrivalTimeAtSite']),
+      batchStartTime: _jsonString(j['batchStartTime']),
+      finishingTime: _jsonString(j['finishingTime']),
+      timeTakenMinutes: _jsonInt(j['timeTakenMinutes']),
+      slumpMm: _jsonDouble(j['slumpMm']),
+      concreteTemperature: _jsonDouble(j['concreteTemperature']),
+      noOfCubesTaken: _jsonInt(j['noOfCubesTaken']),
+      cubeIds: _jsonStringList(j['cubeIds']),
+      supplierRepresentative: _jsonString(j['supplierRepresentative']),
+      contractorRepresentative: _jsonString(j['contractorRepresentative']),
+      clientRepresentative: _jsonString(j['clientRepresentative']),
+      remarks: _jsonString(j['remarks']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    if (slNo != null) 'slNo': slNo,
-    'pourDate': pourDate,
-    'supplierName': supplierName,
-    'truckNo': truckNo,
-    'deliveryChallanNo': deliveryChallanNo,
-    'mixIdOrGrade': mixIdOrGrade,
-    'quantityM3': quantityM3,
-    'cumulativeQtyM3': cumulativeQtyM3,
-    'arrivalTimeAtSite': arrivalTimeAtSite,
-    'batchStartTime': batchStartTime,
-    'finishingTime': finishingTime,
-    'timeTakenMinutes': timeTakenMinutes,
-    'slumpMm': slumpMm,
-    'concreteTemperature': concreteTemperature,
-    'noOfCubesTaken': noOfCubesTaken,
-    if (cubeIds.isNotEmpty) 'cubeIds': cubeIds,
-    'supplierRepresentative': supplierRepresentative,
-    'contractorRepresentative': contractorRepresentative,
-    'clientRepresentative': clientRepresentative,
-    'remarks': remarks,
-  };
+        if (slNo != null) 'slNo': slNo,
+        'pourDate': pourDate,
+        'supplierName': supplierName,
+        'truckNo': truckNo,
+        'deliveryChallanNo': deliveryChallanNo,
+        'mixIdOrGrade': mixIdOrGrade,
+        'quantityM3': quantityM3,
+        'cumulativeQtyM3': cumulativeQtyM3,
+        'arrivalTimeAtSite': arrivalTimeAtSite,
+        'batchStartTime': batchStartTime,
+        'finishingTime': finishingTime,
+        'timeTakenMinutes': timeTakenMinutes,
+        'slumpMm': slumpMm,
+        'concreteTemperature': concreteTemperature,
+        'noOfCubesTaken': noOfCubesTaken,
+        if (cubeIds.isNotEmpty) 'cubeIds': cubeIds,
+        'supplierRepresentative': supplierRepresentative,
+        'contractorRepresentative': contractorRepresentative,
+        'clientRepresentative': clientRepresentative,
+        'remarks': remarks,
+      };
 
   /// `null` clears a field back to empty (unlike the usual `??` copyWith
   /// pattern) — the pour entry detail form needs to be able to blank out a
@@ -1841,37 +1933,82 @@ class PourCardEntry extends Equatable {
     Object? contractorRepresentative = _unset,
     Object? clientRepresentative = _unset,
     Object? remarks = _unset,
-  }) => PourCardEntry(
-    slNo: slNo ?? this.slNo,
-    pourDate: identical(pourDate, _unset) ? this.pourDate : pourDate as String?,
-    supplierName: identical(supplierName, _unset) ? this.supplierName : supplierName as String?,
-    truckNo: identical(truckNo, _unset) ? this.truckNo : truckNo as String?,
-    deliveryChallanNo: identical(deliveryChallanNo, _unset) ? this.deliveryChallanNo : deliveryChallanNo as String?,
-    mixIdOrGrade: identical(mixIdOrGrade, _unset) ? this.mixIdOrGrade : mixIdOrGrade as String?,
-    quantityM3: identical(quantityM3, _unset) ? this.quantityM3 : quantityM3 as double?,
-    cumulativeQtyM3: identical(cumulativeQtyM3, _unset) ? this.cumulativeQtyM3 : cumulativeQtyM3 as double?,
-    arrivalTimeAtSite: identical(arrivalTimeAtSite, _unset) ? this.arrivalTimeAtSite : arrivalTimeAtSite as String?,
-    batchStartTime: identical(batchStartTime, _unset) ? this.batchStartTime : batchStartTime as String?,
-    finishingTime: identical(finishingTime, _unset) ? this.finishingTime : finishingTime as String?,
-    timeTakenMinutes: identical(timeTakenMinutes, _unset) ? this.timeTakenMinutes : timeTakenMinutes as int?,
-    slumpMm: identical(slumpMm, _unset) ? this.slumpMm : slumpMm as double?,
-    concreteTemperature: identical(concreteTemperature, _unset) ? this.concreteTemperature : concreteTemperature as double?,
-    noOfCubesTaken: identical(noOfCubesTaken, _unset) ? this.noOfCubesTaken : noOfCubesTaken as int?,
-    cubeIds: cubeIds ?? this.cubeIds,
-    supplierRepresentative: identical(supplierRepresentative, _unset) ? this.supplierRepresentative : supplierRepresentative as String?,
-    contractorRepresentative: identical(contractorRepresentative, _unset) ? this.contractorRepresentative : contractorRepresentative as String?,
-    clientRepresentative: identical(clientRepresentative, _unset) ? this.clientRepresentative : clientRepresentative as String?,
-    remarks: identical(remarks, _unset) ? this.remarks : remarks as String?,
-  );
+  }) =>
+      PourCardEntry(
+        slNo: slNo ?? this.slNo,
+        pourDate:
+            identical(pourDate, _unset) ? this.pourDate : pourDate as String?,
+        supplierName: identical(supplierName, _unset)
+            ? this.supplierName
+            : supplierName as String?,
+        truckNo: identical(truckNo, _unset) ? this.truckNo : truckNo as String?,
+        deliveryChallanNo: identical(deliveryChallanNo, _unset)
+            ? this.deliveryChallanNo
+            : deliveryChallanNo as String?,
+        mixIdOrGrade: identical(mixIdOrGrade, _unset)
+            ? this.mixIdOrGrade
+            : mixIdOrGrade as String?,
+        quantityM3: identical(quantityM3, _unset)
+            ? this.quantityM3
+            : quantityM3 as double?,
+        cumulativeQtyM3: identical(cumulativeQtyM3, _unset)
+            ? this.cumulativeQtyM3
+            : cumulativeQtyM3 as double?,
+        arrivalTimeAtSite: identical(arrivalTimeAtSite, _unset)
+            ? this.arrivalTimeAtSite
+            : arrivalTimeAtSite as String?,
+        batchStartTime: identical(batchStartTime, _unset)
+            ? this.batchStartTime
+            : batchStartTime as String?,
+        finishingTime: identical(finishingTime, _unset)
+            ? this.finishingTime
+            : finishingTime as String?,
+        timeTakenMinutes: identical(timeTakenMinutes, _unset)
+            ? this.timeTakenMinutes
+            : timeTakenMinutes as int?,
+        slumpMm: identical(slumpMm, _unset) ? this.slumpMm : slumpMm as double?,
+        concreteTemperature: identical(concreteTemperature, _unset)
+            ? this.concreteTemperature
+            : concreteTemperature as double?,
+        noOfCubesTaken: identical(noOfCubesTaken, _unset)
+            ? this.noOfCubesTaken
+            : noOfCubesTaken as int?,
+        cubeIds: cubeIds ?? this.cubeIds,
+        supplierRepresentative: identical(supplierRepresentative, _unset)
+            ? this.supplierRepresentative
+            : supplierRepresentative as String?,
+        contractorRepresentative: identical(contractorRepresentative, _unset)
+            ? this.contractorRepresentative
+            : contractorRepresentative as String?,
+        clientRepresentative: identical(clientRepresentative, _unset)
+            ? this.clientRepresentative
+            : clientRepresentative as String?,
+        remarks: identical(remarks, _unset) ? this.remarks : remarks as String?,
+      );
 
   @override
   List<Object?> get props => [
-    slNo, pourDate, supplierName, truckNo, deliveryChallanNo, mixIdOrGrade,
-    quantityM3, cumulativeQtyM3, arrivalTimeAtSite, batchStartTime,
-    finishingTime, timeTakenMinutes, slumpMm, concreteTemperature,
-    noOfCubesTaken, cubeIds, supplierRepresentative,
-    contractorRepresentative, clientRepresentative, remarks,
-  ];
+        slNo,
+        pourDate,
+        supplierName,
+        truckNo,
+        deliveryChallanNo,
+        mixIdOrGrade,
+        quantityM3,
+        cumulativeQtyM3,
+        arrivalTimeAtSite,
+        batchStartTime,
+        finishingTime,
+        timeTakenMinutes,
+        slumpMm,
+        concreteTemperature,
+        noOfCubesTaken,
+        cubeIds,
+        supplierRepresentative,
+        contractorRepresentative,
+        clientRepresentative,
+        remarks,
+      ];
 }
 
 /// Sentinel used by [PourCardEntry.copyWith] to distinguish "argument not
@@ -1922,70 +2059,81 @@ class QualityPourCard extends Equatable {
   });
 
   factory QualityPourCard.fromJson(Map<String, dynamic> j) {
-    DateTime? dt(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
     return QualityPourCard(
-      id: j['id'] as int? ?? 0,
-      inspectionId: j['inspectionId'] as int? ?? 0,
-      status: QualityCardStatus.fromString(j['status'] as String? ?? 'DRAFT'),
-      elementName: j['elementName'] as String?,
-      locationText: j['locationText'] as String?,
-      projectNameSnapshot: j['projectNameSnapshot'] as String?,
-      clientName: j['clientName'] as String?,
-      consultantName: j['consultantName'] as String?,
-      contractorName: j['contractorName'] as String?,
-      approvedByName: j['approvedByName'] as String?,
-      formatNo: j['formatNo'] as String? ?? 'F/QA/16',
-      revisionNo: j['revisionNo'] as String?,
-      entries: (j['entries'] as List<dynamic>?)
-              ?.map((e) => PourCardEntry.fromJson(e as Map<String, dynamic>))
-              .toList() ?? [],
-      remarks: j['remarks'] as String?,
-      approvalRemarks: j['approvalRemarks'] as String?,
-      rejectionRemarks: j['rejectionRemarks'] as String?,
-      submittedAt: dt(j['submittedAt']),
-      approvedAt: dt(j['approvedAt']),
-      rejectedAt: dt(j['rejectedAt']),
+      id: _jsonInt(j['id']) ?? 0,
+      inspectionId: _jsonInt(j['inspectionId']) ?? 0,
+      status: QualityCardStatus.fromString(_jsonString(j['status']) ?? 'DRAFT'),
+      elementName: _jsonString(j['elementName']),
+      locationText: _jsonString(j['locationText']),
+      projectNameSnapshot: _jsonString(j['projectNameSnapshot']),
+      clientName: _jsonString(j['clientName']),
+      consultantName: _jsonString(j['consultantName']),
+      contractorName: _jsonString(j['contractorName']),
+      approvedByName: _jsonString(j['approvedByName']),
+      formatNo: _jsonString(j['formatNo']) ?? 'F/QA/16',
+      revisionNo: _jsonString(j['revisionNo']),
+      entries: _jsonList(j['entries'])
+          .whereType<Map>()
+          .map((e) => PourCardEntry.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      remarks: _jsonString(j['remarks']),
+      approvalRemarks: _jsonString(j['approvalRemarks']),
+      rejectionRemarks: _jsonString(j['rejectionRemarks']),
+      submittedAt: _jsonDateTime(j['submittedAt']),
+      approvedAt: _jsonDateTime(j['approvedAt']),
+      rejectedAt: _jsonDateTime(j['rejectedAt']),
     );
   }
 
   Map<String, dynamic> toSaveJson() => {
-    'elementName': elementName,
-    'locationText': locationText,
-    'projectNameSnapshot': projectNameSnapshot,
-    'clientName': clientName,
-    'consultantName': consultantName,
-    'contractorName': contractorName,
-    'approvedByName': approvedByName,
-    'formatNo': formatNo,
-    'revisionNo': revisionNo,
-    'entries': entries.map((e) => e.toJson()).toList(),
-    'remarks': remarks,
-  };
+        'elementName': elementName,
+        'locationText': locationText,
+        'projectNameSnapshot': projectNameSnapshot,
+        'clientName': clientName,
+        'consultantName': consultantName,
+        'contractorName': contractorName,
+        'approvedByName': approvedByName,
+        'formatNo': formatNo,
+        'revisionNo': revisionNo,
+        'entries': entries.map((e) => e.toJson()).toList(),
+        'remarks': remarks,
+      };
 
   QualityPourCard copyWith({
     QualityCardStatus? status,
-    String? elementName, String? locationText, String? projectNameSnapshot,
-    String? clientName, String? consultantName, String? contractorName,
-    String? approvedByName, String? formatNo, String? revisionNo,
-    List<PourCardEntry>? entries, String? remarks,
-  }) => QualityPourCard(
-    id: id, inspectionId: inspectionId,
-    status: status ?? this.status,
-    elementName: elementName ?? this.elementName,
-    locationText: locationText ?? this.locationText,
-    projectNameSnapshot: projectNameSnapshot ?? this.projectNameSnapshot,
-    clientName: clientName ?? this.clientName,
-    consultantName: consultantName ?? this.consultantName,
-    contractorName: contractorName ?? this.contractorName,
-    approvedByName: approvedByName ?? this.approvedByName,
-    formatNo: formatNo ?? this.formatNo,
-    revisionNo: revisionNo ?? this.revisionNo,
-    entries: entries ?? this.entries,
-    remarks: remarks ?? this.remarks,
-    approvalRemarks: approvalRemarks,
-    rejectionRemarks: rejectionRemarks,
-    submittedAt: submittedAt, approvedAt: approvedAt, rejectedAt: rejectedAt,
-  );
+    String? elementName,
+    String? locationText,
+    String? projectNameSnapshot,
+    String? clientName,
+    String? consultantName,
+    String? contractorName,
+    String? approvedByName,
+    String? formatNo,
+    String? revisionNo,
+    List<PourCardEntry>? entries,
+    String? remarks,
+  }) =>
+      QualityPourCard(
+        id: id,
+        inspectionId: inspectionId,
+        status: status ?? this.status,
+        elementName: elementName ?? this.elementName,
+        locationText: locationText ?? this.locationText,
+        projectNameSnapshot: projectNameSnapshot ?? this.projectNameSnapshot,
+        clientName: clientName ?? this.clientName,
+        consultantName: consultantName ?? this.consultantName,
+        contractorName: contractorName ?? this.contractorName,
+        approvedByName: approvedByName ?? this.approvedByName,
+        formatNo: formatNo ?? this.formatNo,
+        revisionNo: revisionNo ?? this.revisionNo,
+        entries: entries ?? this.entries,
+        remarks: remarks ?? this.remarks,
+        approvalRemarks: approvalRemarks,
+        rejectionRemarks: rejectionRemarks,
+        submittedAt: submittedAt,
+        approvedAt: approvedAt,
+        rejectedAt: rejectedAt,
+      );
 
   @override
   List<Object?> get props => [id, inspectionId, status, entries];
@@ -1996,24 +2144,31 @@ class QualityPourCard extends Equatable {
 // ============================================================
 
 enum ClearanceSignoffStatus {
-  pending, signed, waived;
+  pending,
+  signed,
+  waived;
+
   static ClearanceSignoffStatus fromString(String s) {
     switch (s.toUpperCase()) {
-      case 'SIGNED': return ClearanceSignoffStatus.signed;
-      case 'WAIVED': return ClearanceSignoffStatus.waived;
-      default: return ClearanceSignoffStatus.pending;
+      case 'SIGNED':
+        return ClearanceSignoffStatus.signed;
+      case 'WAIVED':
+        return ClearanceSignoffStatus.waived;
+      default:
+        return ClearanceSignoffStatus.pending;
     }
   }
+
   String get label => switch (this) {
-    ClearanceSignoffStatus.pending => 'Pending',
-    ClearanceSignoffStatus.signed  => 'Signed',
-    ClearanceSignoffStatus.waived  => 'Waived',
-  };
+        ClearanceSignoffStatus.pending => 'Pending',
+        ClearanceSignoffStatus.signed => 'Signed',
+        ClearanceSignoffStatus.waived => 'Waived',
+      };
   Color get color => switch (this) {
-    ClearanceSignoffStatus.pending => const Color(0xFFF59E0B),
-    ClearanceSignoffStatus.signed  => const Color(0xFF15803D),
-    ClearanceSignoffStatus.waived  => const Color(0xFF6B7280),
-  };
+        ClearanceSignoffStatus.pending => const Color(0xFFF59E0B),
+        ClearanceSignoffStatus.signed => const Color(0xFF15803D),
+        ClearanceSignoffStatus.waived => const Color(0xFF6B7280),
+      };
 }
 
 class ClearanceSignoff extends Equatable {
@@ -2025,8 +2180,8 @@ class ClearanceSignoff extends Equatable {
   final String? signedDate;
   final ClearanceSignoffStatus status;
   // Digital signature fields
-  final String? signatureData;   // base64 PNG data URI
-  final String? signatureMode;   // DRAWN_NOW | SAVED_PROFILE
+  final String? signatureData; // base64 PNG data URI
+  final String? signatureMode; // DRAWN_NOW | SAVED_PROFILE
   final String? signedByName;
   final int? signedByUserId;
 
@@ -2045,51 +2200,60 @@ class ClearanceSignoff extends Equatable {
   });
 
   factory ClearanceSignoff.fromJson(Map<String, dynamic> j) => ClearanceSignoff(
-    id: j['id'] as String?,
-    department: j['department'] as String? ?? '',
-    designation: j['designation'] as String?,
-    isActive: j['isActive'] as bool? ?? true,
-    personName: j['personName'] as String?,
-    signedDate: j['signedDate'] as String?,
-    status: ClearanceSignoffStatus.fromString(j['status'] as String? ?? 'PENDING'),
-    signatureData: j['signatureData'] as String?,
-    signatureMode: j['signatureMode'] as String?,
-    signedByName: j['signedByName'] as String? ?? j['signerDisplayName'] as String?,
-    signedByUserId: j['signedByUserId'] as int?,
-  );
+        id: _jsonString(j['id']),
+        department: _jsonString(j['department']) ?? '',
+        designation: _jsonString(j['designation']),
+        isActive: _jsonBool(j['isActive'], defaultValue: true),
+        personName: _jsonString(j['personName']),
+        signedDate: _jsonString(j['signedDate'] ?? j['signedAt']),
+        status: ClearanceSignoffStatus.fromString(
+            _jsonString(j['status']) ?? 'PENDING'),
+        signatureData: _jsonString(j['signatureData']),
+        signatureMode: _jsonString(j['signatureMode']),
+        signedByName: _jsonString(j['signedByName']) ??
+            _jsonString(j['signerDisplayName']),
+        signedByUserId: _jsonInt(j['signedByUserId']),
+      );
 
   Map<String, dynamic> toJson() => {
-    if (id != null) 'id': id,
-    'department': department,
-    'designation': designation,
-    'isActive': isActive,
-    'personName': personName,
-    'signedDate': signedDate,
-    'status': status.name.toUpperCase(),
-    if (signatureData != null) 'signatureData': signatureData,
-    if (signatureMode != null) 'signatureMode': signatureMode,
-    if (signedByName != null) 'signedByName': signedByName,
-    if (signedByUserId != null) 'signedByUserId': signedByUserId,
-  };
+        if (id != null) 'id': id,
+        'department': department,
+        'designation': designation,
+        'isActive': isActive,
+        'personName': personName,
+        'signedDate': signedDate,
+        'status': status.name.toUpperCase(),
+        if (signatureData != null) 'signatureData': signatureData,
+        if (signatureMode != null) 'signatureMode': signatureMode,
+        if (signedByName != null) 'signedByName': signedByName,
+        if (signedByUserId != null) 'signedByUserId': signedByUserId,
+      };
 
   ClearanceSignoff copyWith({
-    String? department, String? designation, bool? isActive,
-    String? personName, String? signedDate, ClearanceSignoffStatus? status,
-    String? signatureData, String? signatureMode,
-    String? signedByName, int? signedByUserId,
-  }) => ClearanceSignoff(
-    id: id,
-    department: department ?? this.department,
-    designation: designation ?? this.designation,
-    isActive: isActive ?? this.isActive,
-    personName: personName ?? this.personName,
-    signedDate: signedDate ?? this.signedDate,
-    status: status ?? this.status,
-    signatureData: signatureData ?? this.signatureData,
-    signatureMode: signatureMode ?? this.signatureMode,
-    signedByName: signedByName ?? this.signedByName,
-    signedByUserId: signedByUserId ?? this.signedByUserId,
-  );
+    String? department,
+    String? designation,
+    bool? isActive,
+    String? personName,
+    String? signedDate,
+    ClearanceSignoffStatus? status,
+    String? signatureData,
+    String? signatureMode,
+    String? signedByName,
+    int? signedByUserId,
+  }) =>
+      ClearanceSignoff(
+        id: id,
+        department: department ?? this.department,
+        designation: designation ?? this.designation,
+        isActive: isActive ?? this.isActive,
+        personName: personName ?? this.personName,
+        signedDate: signedDate ?? this.signedDate,
+        status: status ?? this.status,
+        signatureData: signatureData ?? this.signatureData,
+        signatureMode: signatureMode ?? this.signatureMode,
+        signedByName: signedByName ?? this.signedByName,
+        signedByUserId: signedByUserId ?? this.signedByUserId,
+      );
 
   @override
   List<Object?> get props => [id, department, isActive, status, signatureData];
@@ -2120,14 +2284,14 @@ class ClearanceAttachmentDocument extends Equatable {
 
   factory ClearanceAttachmentDocument.fromJson(Map<String, dynamic> j) =>
       ClearanceAttachmentDocument(
-        id: j['id']?.toString() ?? '',
-        originalName: j['originalName'] as String? ?? '',
-        storedName: j['storedName'] as String? ?? '',
-        url: j['url'] as String? ?? '',
-        mimeType: j['mimeType'] as String? ?? 'application/octet-stream',
-        size: (j['size'] as num?)?.toInt() ?? 0,
-        uploadedAt: j['uploadedAt'] as String? ?? '',
-        uploadedByUserId: j['uploadedByUserId'] as int?,
+        id: _jsonString(j['id']) ?? '',
+        originalName: _jsonString(j['originalName']) ?? '',
+        storedName: _jsonString(j['storedName']) ?? '',
+        url: _jsonString(j['url']) ?? '',
+        mimeType: _jsonString(j['mimeType']) ?? 'application/octet-stream',
+        size: _jsonInt(j['size']) ?? 0,
+        uploadedAt: _jsonString(j['uploadedAt']) ?? '',
+        uploadedByUserId: _jsonInt(j['uploadedByUserId']),
       );
 
   bool get isImage =>
@@ -2222,137 +2386,163 @@ class QualityPrePourClearanceCard extends Equatable {
   });
 
   factory QualityPrePourClearanceCard.fromJson(Map<String, dynamic> j) {
-    DateTime? dt(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
-    double? d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
-    int? i(dynamic v) => v == null ? null : (v is int ? v : int.tryParse(v.toString()));
-
-    final rawAttachments = j['attachments'] as Map<String, dynamic>? ?? {};
-    final attachments = rawAttachments.map((k, v) => MapEntry(k, v?.toString() ?? 'NO'));
+    final rawAttachments = _jsonMap(j['attachments']);
+    final attachments =
+        rawAttachments.map((k, v) => MapEntry(k, v?.toString() ?? 'NO'));
 
     return QualityPrePourClearanceCard(
-      id: j['id'] as int? ?? 0,
-      inspectionId: j['inspectionId'] as int? ?? 0,
-      status: QualityCardStatus.fromString(j['status'] as String? ?? 'DRAFT'),
-      isActivated: j['isActivated'] as bool? ?? false,
-      activationStageName: j['activationStageName'] as String?,
-      elementName: j['elementName'] as String?,
-      locationText: j['locationText'] as String?,
-      activityLabel: j['activityLabel'] as String?,
-      projectNameSnapshot: j['projectNameSnapshot'] as String?,
-      contractorName: j['contractorName'] as String?,
-      cardDate: j['cardDate'] as String?,
-      pourStartTime: j['pourStartTime'] as String?,
-      pourEndTime: j['pourEndTime'] as String?,
-      pourLocation: j['pourLocation'] as String?,
-      pourNo: j['pourNo'] as String?,
-      gradeOfConcrete: j['gradeOfConcrete'] as String?,
-      placementMethod: j['placementMethod'] as String?,
-      concreteSupplier: j['concreteSupplier'] as String?,
-      estimatedConcreteQty: d(j['estimatedConcreteQty']),
-      actualConcreteQty: d(j['actualConcreteQty']),
-      cubeMouldCount: i(j['cubeMouldCount']),
-      targetSlump: j['targetSlump'] as String?,
-      vibratorCount: i(j['vibratorCount']),
-      formatNo: j['formatNo'] as String? ?? 'F/QA/20',
-      revisionNo: j['revisionNo'] as String?,
+      id: _jsonInt(j['id']) ?? 0,
+      inspectionId: _jsonInt(j['inspectionId']) ?? 0,
+      status: QualityCardStatus.fromString(_jsonString(j['status']) ?? 'DRAFT'),
+      isActivated: _jsonBool(j['isActivated']),
+      activationStageName: _jsonString(j['activationStageName']),
+      elementName: _jsonString(j['elementName']),
+      locationText: _jsonString(j['locationText']),
+      activityLabel: _jsonString(j['activityLabel']),
+      projectNameSnapshot: _jsonString(j['projectNameSnapshot']),
+      contractorName: _jsonString(j['contractorName']),
+      cardDate: _jsonString(j['cardDate']),
+      pourStartTime: _jsonString(j['pourStartTime']),
+      pourEndTime: _jsonString(j['pourEndTime']),
+      pourLocation: _jsonString(j['pourLocation']),
+      pourNo: _jsonString(j['pourNo']),
+      gradeOfConcrete: _jsonString(j['gradeOfConcrete']),
+      placementMethod: _jsonString(j['placementMethod']),
+      concreteSupplier: _jsonString(j['concreteSupplier']),
+      estimatedConcreteQty: _jsonDouble(j['estimatedConcreteQty']),
+      actualConcreteQty: _jsonDouble(j['actualConcreteQty']),
+      cubeMouldCount: _jsonInt(j['cubeMouldCount']),
+      targetSlump: _jsonString(j['targetSlump']),
+      vibratorCount: _jsonInt(j['vibratorCount']),
+      formatNo: _jsonString(j['formatNo']) ?? 'F/QA/20',
+      revisionNo: _jsonString(j['revisionNo']),
       attachments: attachments,
       attachmentChecklistSelections: (() {
-        final raw = j['attachmentChecklistSelections'] as Map<String, dynamic>? ?? {};
+        final raw = _jsonMap(j['attachmentChecklistSelections']);
         return raw.map((k, v) => MapEntry(
-          k,
-          (v as List<dynamic>? ?? []).whereType<int>().toList(),
-        ));
+              k,
+              _jsonList(v).map(_jsonInt).whereType<int>().toList(),
+            ));
       })(),
       attachmentDocuments: (() {
-        final raw = j['attachmentDocuments'] as Map<String, dynamic>? ?? {};
+        final raw = _jsonMap(j['attachmentDocuments']);
         return raw.map((k, v) => MapEntry(
-          k,
-          (v as List<dynamic>? ?? [])
-              .whereType<Map<String, dynamic>>()
-              .map(ClearanceAttachmentDocument.fromJson)
-              .toList(),
-        ));
+              k,
+              _jsonList(v)
+                  .whereType<Map>()
+                  .map((e) => ClearanceAttachmentDocument.fromJson(
+                      Map<String, dynamic>.from(e)))
+                  .toList(),
+            ));
       })(),
-      signoffs: (j['signoffs'] as List<dynamic>?)
-              ?.map((e) => ClearanceSignoff.fromJson(e as Map<String, dynamic>))
-              .toList() ?? [],
-      approvalRemarks: j['approvalRemarks'] as String?,
-      rejectionRemarks: j['rejectionRemarks'] as String?,
-      submittedAt: dt(j['submittedAt']),
-      approvedAt: dt(j['approvedAt']),
-      rejectedAt: dt(j['rejectedAt']),
+      signoffs: _jsonList(j['signoffs'])
+          .whereType<Map>()
+          .map((e) => ClearanceSignoff.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      approvalRemarks: _jsonString(j['approvalRemarks']),
+      rejectionRemarks: _jsonString(j['rejectionRemarks']),
+      submittedAt: _jsonDateTime(j['submittedAt']),
+      approvedAt: _jsonDateTime(j['approvedAt']),
+      rejectedAt: _jsonDateTime(j['rejectedAt']),
     );
   }
 
   Map<String, dynamic> toSaveJson() => {
-    'elementName': elementName,
-    'locationText': locationText,
-    'projectNameSnapshot': projectNameSnapshot,
-    'contractorName': contractorName,
-    'cardDate': cardDate,
-    'pourStartTime': pourStartTime,
-    'pourEndTime': pourEndTime,
-    'pourLocation': pourLocation,
-    'pourNo': pourNo,
-    'gradeOfConcrete': gradeOfConcrete,
-    'placementMethod': placementMethod,
-    'concreteSupplier': concreteSupplier,
-    'estimatedConcreteQty': estimatedConcreteQty,
-    'actualConcreteQty': actualConcreteQty,
-    'cubeMouldCount': cubeMouldCount,
-    'targetSlump': targetSlump,
-    'vibratorCount': vibratorCount,
-    'formatNo': formatNo,
-    'revisionNo': revisionNo,
-    'attachments': attachments,
-    'attachmentChecklistSelections': attachmentChecklistSelections,
-    'signoffs': signoffs.map((s) => s.toJson()).toList(),
-  };
+        'elementName': elementName,
+        'locationText': locationText,
+        'projectNameSnapshot': projectNameSnapshot,
+        'contractorName': contractorName,
+        'cardDate': cardDate,
+        'pourStartTime': pourStartTime,
+        'pourEndTime': pourEndTime,
+        'pourLocation': pourLocation,
+        'pourNo': pourNo,
+        'gradeOfConcrete': gradeOfConcrete,
+        'placementMethod': placementMethod,
+        'concreteSupplier': concreteSupplier,
+        'estimatedConcreteQty': estimatedConcreteQty,
+        'actualConcreteQty': actualConcreteQty,
+        'cubeMouldCount': cubeMouldCount,
+        'targetSlump': targetSlump,
+        'vibratorCount': vibratorCount,
+        'formatNo': formatNo,
+        'revisionNo': revisionNo,
+        'attachments': attachments,
+        'attachmentChecklistSelections': attachmentChecklistSelections,
+        'signoffs': signoffs.map((s) => s.toJson()).toList(),
+      };
 
   QualityPrePourClearanceCard copyWith({
     QualityCardStatus? status,
-    String? elementName, String? locationText, String? projectNameSnapshot,
-    String? contractorName, String? cardDate, String? pourStartTime,
-    String? pourEndTime, String? pourLocation, String? pourNo,
-    String? gradeOfConcrete, String? placementMethod, String? concreteSupplier,
-    double? estimatedConcreteQty, double? actualConcreteQty,
-    int? cubeMouldCount, String? targetSlump, int? vibratorCount,
+    String? elementName,
+    String? locationText,
+    String? projectNameSnapshot,
+    String? contractorName,
+    String? cardDate,
+    String? pourStartTime,
+    String? pourEndTime,
+    String? pourLocation,
+    String? pourNo,
+    String? gradeOfConcrete,
+    String? placementMethod,
+    String? concreteSupplier,
+    double? estimatedConcreteQty,
+    double? actualConcreteQty,
+    int? cubeMouldCount,
+    String? targetSlump,
+    int? vibratorCount,
     Map<String, String>? attachments,
     Map<String, List<int>>? attachmentChecklistSelections,
     Map<String, List<ClearanceAttachmentDocument>>? attachmentDocuments,
     List<ClearanceSignoff>? signoffs,
-  }) => QualityPrePourClearanceCard(
-    id: id, inspectionId: inspectionId,
-    status: status ?? this.status,
-    isActivated: isActivated, activationStageName: activationStageName,
-    elementName: elementName ?? this.elementName,
-    locationText: locationText ?? this.locationText,
-    activityLabel: activityLabel,
-    projectNameSnapshot: projectNameSnapshot ?? this.projectNameSnapshot,
-    contractorName: contractorName ?? this.contractorName,
-    cardDate: cardDate ?? this.cardDate,
-    pourStartTime: pourStartTime ?? this.pourStartTime,
-    pourEndTime: pourEndTime ?? this.pourEndTime,
-    pourLocation: pourLocation ?? this.pourLocation,
-    pourNo: pourNo ?? this.pourNo,
-    gradeOfConcrete: gradeOfConcrete ?? this.gradeOfConcrete,
-    placementMethod: placementMethod ?? this.placementMethod,
-    concreteSupplier: concreteSupplier ?? this.concreteSupplier,
-    estimatedConcreteQty: estimatedConcreteQty ?? this.estimatedConcreteQty,
-    actualConcreteQty: actualConcreteQty ?? this.actualConcreteQty,
-    cubeMouldCount: cubeMouldCount ?? this.cubeMouldCount,
-    targetSlump: targetSlump ?? this.targetSlump,
-    vibratorCount: vibratorCount ?? this.vibratorCount,
-    formatNo: formatNo, revisionNo: revisionNo,
-    attachments: attachments ?? this.attachments,
-    attachmentChecklistSelections: attachmentChecklistSelections ?? this.attachmentChecklistSelections,
-    attachmentDocuments: attachmentDocuments ?? this.attachmentDocuments,
-    signoffs: signoffs ?? this.signoffs,
-    approvalRemarks: approvalRemarks, rejectionRemarks: rejectionRemarks,
-    submittedAt: submittedAt, approvedAt: approvedAt, rejectedAt: rejectedAt,
-  );
+  }) =>
+      QualityPrePourClearanceCard(
+        id: id,
+        inspectionId: inspectionId,
+        status: status ?? this.status,
+        isActivated: isActivated,
+        activationStageName: activationStageName,
+        elementName: elementName ?? this.elementName,
+        locationText: locationText ?? this.locationText,
+        activityLabel: activityLabel,
+        projectNameSnapshot: projectNameSnapshot ?? this.projectNameSnapshot,
+        contractorName: contractorName ?? this.contractorName,
+        cardDate: cardDate ?? this.cardDate,
+        pourStartTime: pourStartTime ?? this.pourStartTime,
+        pourEndTime: pourEndTime ?? this.pourEndTime,
+        pourLocation: pourLocation ?? this.pourLocation,
+        pourNo: pourNo ?? this.pourNo,
+        gradeOfConcrete: gradeOfConcrete ?? this.gradeOfConcrete,
+        placementMethod: placementMethod ?? this.placementMethod,
+        concreteSupplier: concreteSupplier ?? this.concreteSupplier,
+        estimatedConcreteQty: estimatedConcreteQty ?? this.estimatedConcreteQty,
+        actualConcreteQty: actualConcreteQty ?? this.actualConcreteQty,
+        cubeMouldCount: cubeMouldCount ?? this.cubeMouldCount,
+        targetSlump: targetSlump ?? this.targetSlump,
+        vibratorCount: vibratorCount ?? this.vibratorCount,
+        formatNo: formatNo,
+        revisionNo: revisionNo,
+        attachments: attachments ?? this.attachments,
+        attachmentChecklistSelections:
+            attachmentChecklistSelections ?? this.attachmentChecklistSelections,
+        attachmentDocuments: attachmentDocuments ?? this.attachmentDocuments,
+        signoffs: signoffs ?? this.signoffs,
+        approvalRemarks: approvalRemarks,
+        rejectionRemarks: rejectionRemarks,
+        submittedAt: submittedAt,
+        approvedAt: approvedAt,
+        rejectedAt: rejectedAt,
+      );
 
   @override
-  List<Object?> get props => [id, inspectionId, status, isActivated, attachments, attachmentChecklistSelections, attachmentDocuments, signoffs];
+  List<Object?> get props => [
+        id,
+        inspectionId,
+        status,
+        isActivated,
+        attachments,
+        attachmentChecklistSelections,
+        attachmentDocuments,
+        signoffs
+      ];
 }
-

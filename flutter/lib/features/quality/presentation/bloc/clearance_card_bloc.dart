@@ -71,7 +71,8 @@ class AddSignoff extends ClearanceCardEvent {
   final String department;
   final String? designation;
   final String? personName;
-  const AddSignoff({required this.department, this.designation, this.personName});
+  const AddSignoff(
+      {required this.department, this.designation, this.personName});
   @override
   List<Object?> get props => [department, designation, personName];
 }
@@ -204,7 +205,8 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     on<LoadClearanceCard>(_onLoad);
     on<UpdateClearanceHeader>(_onUpdateHeader);
     on<UpdateAttachment>(_onUpdateAttachment);
-    on<UpdateAttachmentChecklistSelection>(_onUpdateAttachmentChecklistSelection);
+    on<UpdateAttachmentChecklistSelection>(
+        _onUpdateAttachmentChecklistSelection);
     on<AddSignoff>(_onAddSignoff);
     on<UpdateSignoffPerson>(_onUpdateSignoffPerson);
     on<MarkSignoffSigned>(_onMarkSigned);
@@ -220,7 +222,8 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
 
   QualityPrePourClearanceCard? _card;
 
-  Future<void> _onLoad(LoadClearanceCard event, Emitter<ClearanceCardState> emit) async {
+  Future<void> _onLoad(
+      LoadClearanceCard event, Emitter<ClearanceCardState> emit) async {
     emit(const ClearanceCardLoading());
     try {
       final data = await _api.getClearanceCard(event.inspectionId);
@@ -231,7 +234,8 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     }
   }
 
-  void _onUpdateHeader(UpdateClearanceHeader event, Emitter<ClearanceCardState> emit) {
+  void _onUpdateHeader(
+      UpdateClearanceHeader event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     _card = _card!.copyWith(
       pourLocation: event.pourLocation ?? _card!.pourLocation,
@@ -243,14 +247,16 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       cardDate: event.cardDate ?? _card!.cardDate,
       pourStartTime: event.pourStartTime ?? _card!.pourStartTime,
       pourEndTime: event.pourEndTime ?? _card!.pourEndTime,
-      estimatedConcreteQty: event.estimatedConcreteQty ?? _card!.estimatedConcreteQty,
+      estimatedConcreteQty:
+          event.estimatedConcreteQty ?? _card!.estimatedConcreteQty,
       cubeMouldCount: event.cubeMouldCount ?? _card!.cubeMouldCount,
       vibratorCount: event.vibratorCount ?? _card!.vibratorCount,
     );
     emit(ClearanceCardLoaded(_card!));
   }
 
-  void _onUpdateAttachment(UpdateAttachment event, Emitter<ClearanceCardState> emit) {
+  void _onUpdateAttachment(
+      UpdateAttachment event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     final attachments = Map<String, String>.from(_card!.attachments)
       ..[event.key] = event.value;
@@ -259,10 +265,12 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
   }
 
   void _onUpdateAttachmentChecklistSelection(
-      UpdateAttachmentChecklistSelection event, Emitter<ClearanceCardState> emit) {
+      UpdateAttachmentChecklistSelection event,
+      Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
-    final selections = Map<String, List<int>>.from(_card!.attachmentChecklistSelections)
-      ..[event.key] = List<int>.from(event.selectedIds);
+    final selections =
+        Map<String, List<int>>.from(_card!.attachmentChecklistSelections)
+          ..[event.key] = List<int>.from(event.selectedIds);
     _card = _card!.copyWith(attachmentChecklistSelections: selections);
     emit(ClearanceCardLoaded(_card!));
   }
@@ -281,17 +289,20 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     emit(ClearanceCardLoaded(_card!));
   }
 
-  void _onUpdateSignoffPerson(UpdateSignoffPerson event, Emitter<ClearanceCardState> emit) {
+  void _onUpdateSignoffPerson(
+      UpdateSignoffPerson event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     final signoffs = List<ClearanceSignoff>.from(_card!.signoffs);
     if (event.index >= 0 && event.index < signoffs.length) {
-      signoffs[event.index] = signoffs[event.index].copyWith(personName: event.personName);
+      signoffs[event.index] =
+          signoffs[event.index].copyWith(personName: event.personName);
     }
     _card = _card!.copyWith(signoffs: signoffs);
     emit(ClearanceCardLoaded(_card!));
   }
 
-  void _onMarkSigned(MarkSignoffSigned event, Emitter<ClearanceCardState> emit) {
+  void _onMarkSigned(
+      MarkSignoffSigned event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     final signoffs = List<ClearanceSignoff>.from(_card!.signoffs);
     if (event.index >= 0 && event.index < signoffs.length) {
@@ -307,7 +318,8 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     emit(ClearanceCardLoaded(_card!));
   }
 
-  void _onMarkWaived(MarkSignoffWaived event, Emitter<ClearanceCardState> emit) {
+  void _onMarkWaived(
+      MarkSignoffWaived event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     final signoffs = List<ClearanceSignoff>.from(_card!.signoffs);
     if (event.index >= 0 && event.index < signoffs.length) {
@@ -329,13 +341,15 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
     emit(ClearanceCardLoaded(_card!));
   }
 
-  Future<void> _onSave(SaveClearanceCard event, Emitter<ClearanceCardState> emit) async {
+  Future<void> _onSave(
+      SaveClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
     // Snapshot attachment state before the API call — restored if the backend
     // save response omits the attachments map (returns {}).
     final savedAttachments = Map<String, String>.from(_card!.attachments);
     final savedSelections = Map<String, List<int>>.from(
-      _card!.attachmentChecklistSelections.map((k, v) => MapEntry(k, List<int>.from(v))),
+      _card!.attachmentChecklistSelections
+          .map((k, v) => MapEntry(k, List<int>.from(v))),
     );
     emit(ClearanceCardSaving(_card!));
     try {
@@ -350,25 +364,29 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
         attachments: savedAttachments,
         attachmentChecklistSelections: savedSelections,
       );
-      emit(ClearanceCardActionSuccess(message: 'Clearance card saved', card: _card!));
+      emit(ClearanceCardActionSuccess(
+          message: 'Clearance card saved', card: _card!));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
     }
   }
 
-  Future<void> _onSubmit(SubmitClearanceCard event, Emitter<ClearanceCardState> emit) async {
+  Future<void> _onSubmit(
+      SubmitClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
     emit(ClearanceCardSaving(_card!));
     try {
       final data = await _api.submitClearanceCard(_card!.inspectionId);
       _card = QualityPrePourClearanceCard.fromJson(data);
-      emit(ClearanceCardActionSuccess(message: 'Clearance card submitted for approval', card: _card!));
+      emit(ClearanceCardActionSuccess(
+          message: 'Clearance card submitted for approval', card: _card!));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
     }
   }
 
-  Future<void> _onApprove(ApproveClearanceCard event, Emitter<ClearanceCardState> emit) async {
+  Future<void> _onApprove(
+      ApproveClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
     emit(ClearanceCardSaving(_card!));
     try {
@@ -377,13 +395,15 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
         remarks: event.remarks,
       );
       _card = QualityPrePourClearanceCard.fromJson(data);
-      emit(ClearanceCardActionSuccess(message: 'Clearance card approved', card: _card!));
+      emit(ClearanceCardActionSuccess(
+          message: 'Clearance card approved', card: _card!));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
     }
   }
 
-  Future<void> _onReject(RejectClearanceCard event, Emitter<ClearanceCardState> emit) async {
+  Future<void> _onReject(
+      RejectClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
     emit(ClearanceCardSaving(_card!));
     try {
@@ -392,13 +412,15 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
         remarks: event.reason,
       );
       _card = QualityPrePourClearanceCard.fromJson(data);
-      emit(ClearanceCardActionSuccess(message: 'Clearance card rejected', card: _card!));
+      emit(ClearanceCardActionSuccess(
+          message: 'Clearance card rejected', card: _card!));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
     }
   }
 
-  void _onAddDocument(AddClearanceDocument event, Emitter<ClearanceCardState> emit) {
+  void _onAddDocument(
+      AddClearanceDocument event, Emitter<ClearanceCardState> emit) {
     if (_card == null) return;
     final current = List<ClearanceAttachmentDocument>.from(
       _card!.attachmentDocuments[event.lineKey] ?? [],
@@ -438,16 +460,25 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
   /// those messages are already written for end users. See
   /// docs/mobile-handoff-quality-card-approval-release-strategy.md.
   String _friendlyError(Object e) {
-    if (e is UnauthorizedException) return 'Session expired. Please log in again.';
-    if (e is NetworkException) return 'No connection. Check your network and try again.';
+    if (e is UnauthorizedException) {
+      return 'Session expired. Please log in again.';
+    }
+    if (e is NetworkException) {
+      return 'No connection. Check your network and try again.';
+    }
     if (e is ForbiddenException) {
       return e.message == 'Forbidden'
           ? 'You are not assigned as an approver for this card.'
           : e.message;
     }
     if (e is BadRequestException) return e.message;
+    if (e is TypeError || e is FormatException) {
+      return 'Clearance card data could not be read by the mobile app. Please retry after updating the app.';
+    }
     final msg = e.toString().toLowerCase();
-    if (msg.contains('connection') || msg.contains('socket')) return 'No connection. Check your network and try again.';
+    if (msg.contains('connection') || msg.contains('socket')) {
+      return 'No connection. Check your network and try again.';
+    }
     return 'An error occurred. Please try again.';
   }
 }

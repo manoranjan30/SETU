@@ -13,6 +13,7 @@ import { User } from '../../users/user.entity';
 import { SnagList } from './snag-list.entity';
 import { SnagRound } from './snag-round.entity';
 import { SnagPhoto } from './snag-photo.entity';
+import { Vendor } from '../../workdoc/entities/vendor.entity';
 
 export enum SnagItemStatus {
   OPEN = 'open',
@@ -58,6 +59,16 @@ export class SnagItem {
 
   @Column({ name: 'trade', type: 'varchar', length: 120, nullable: true })
   trade: string | null;
+
+  @Column({ name: 'vendor_id', type: 'int', nullable: true })
+  vendorId: number | null;
+
+  @ManyToOne(() => Vendor, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'vendor_id' })
+  vendor: Vendor | null;
+
+  @Column({ name: 'vendor_name', type: 'varchar', length: 255, nullable: true })
+  vendorName: string | null;
 
   @Column({ name: 'priority', type: 'varchar', length: 40, default: 'medium' })
   priority: string;

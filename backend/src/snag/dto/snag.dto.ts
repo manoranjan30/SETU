@@ -44,6 +44,14 @@ export class CreateSnagItemDto {
   trade?: string;
 
   @IsOptional()
+  @IsInt()
+  vendorId?: number;
+
+  @IsOptional()
+  @IsString()
+  vendorName?: string;
+
+  @IsOptional()
   @IsString()
   priority?: string;
 

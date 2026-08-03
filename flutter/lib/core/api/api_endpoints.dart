@@ -752,6 +752,10 @@ class ApiEndpoints {
   /// GET /snag/:projectId/analytics
   static String snagAnalytics(int projectId) => '/snag/$projectId/analytics';
 
+  /// GET /snag/:projectId/vendors — contractor/vendor options for the Raise
+  /// Snag Point form, per the August 2026 vendor handoff update.
+  static String snagVendors(int projectId) => '/snag/$projectId/vendors';
+
   /// POST /snag/:projectId/lists/:listId/reset-ready — Checker reverts a
   /// ready-for-snag unit (with zero raised points) back to unready.
   static String snagResetReady(int projectId, int listId) =>
@@ -787,6 +791,15 @@ class ApiEndpoints {
   /// GET /snag/:projectId/lists/:listId/rounds/:roundNumber/status-report.pdf
   static String snagStatusReportPdf(int projectId, int listId, int roundNumber) =>
       '/snag/$projectId/lists/$listId/rounds/$roundNumber/status-report.pdf';
+
+  /// POST /snag/:projectId/rounds/:roundId/admin-reset-to-unready — body
+  /// { reason }. Admin-only (backend also enforces this server-side
+  /// regardless of the `QUALITY.SNAG.DELETE` grant, per
+  /// `snag.service.ts:adminResetRoundToUnready`): deletes every point,
+  /// photo, release approval, and level closure for the round and rolls the
+  /// stage back to unready (or deletes the whole list if it's round 1).
+  static String snagAdminResetToUnready(int projectId, int roundId) =>
+      '/snag/$projectId/rounds/$roundId/admin-reset-to-unready';
 
   // ==================== EHS INCIDENT ENDPOINTS ====================
 

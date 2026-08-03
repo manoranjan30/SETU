@@ -8,6 +8,7 @@ import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/media/photo_thumbnail_strip.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
+import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/features/quality/data/models/snag_desnag_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/snag_desnag_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/snag_item_action_sheets.dart';
@@ -137,6 +138,13 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
   @override
   Widget build(BuildContext context) {
     final ps = PermissionService.of(context);
+    // Admin-only destructive override (August 2026 handoff) — the backend
+    // enforces this role check itself regardless of permission grants, but
+    // mobile still hides the button for everyone else so it isn't offered
+    // as a substitute for the ordinary Checker/Maker flow. `hasRole('Admin')`
+    // mirrors `snag.service.ts:isAdminUser`'s `role.name === 'Admin'` check.
+    final authState = context.read<AuthBloc>().state;
+    final isAdmin = authState is AuthAuthenticated && authState.user.hasRole('Admin');
 
     return Scaffold(
       appBar: AppBar(
@@ -177,6 +185,19 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                 return TextButton(
                   onPressed: _toggleBulkMode,
                   child: Text(_bulkMode ? 'Cancel' : 'Select', style: const TextStyle(color: Colors.white)),
+                );
+              },
+            ),
+          if (isAdmin && ps.canDeleteSnag)
+            BlocBuilder<SnagDesnagBloc, SnagDesnagState>(
+              builder: (context, state) {
+                final list = _listFrom(state);
+                final round = list?.activeRound;
+                if (list == null || round == null) return const SizedBox.shrink();
+                return IconButton(
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  tooltip: 'Admin: Delete All Points and Reset Stage',
+                  onPressed: () => _confirmAdminReset(context, round.id),
                 );
               },
             ),
@@ -358,6 +379,7 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
                       builder: (_) => BlocProvider.value(
                         value: bloc,
                         child: SnagRaiseFlowPage(
+                          projectId: widget.projectId,
                           rooms: list.rooms,
                           processStep: list.processSteps.where((s) => s.workflowSerialNo == list.currentRound).firstOrNull,
                         ),
@@ -392,6 +414,51 @@ class _WorkspaceViewState extends State<_WorkspaceView> {
         ],
       ),
     );
+  }
+
+  /// Admin-only destructive override — see [AdminResetSnagRoundToUnreadyEvent]'s
+  /// doc comment. [reason] is mandatory server-side (`ResetSnagRoundDto`),
+  /// so the confirm button stays disabled until non-empty, matching the
+  /// hold-reason dialog's convention in `snag_item_action_sheets.dart`.
+  Future<void> _confirmAdminReset(BuildContext context, int roundId) async {
+    final reasonCtrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Delete All Points and Reset Stage'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This permanently deletes every snag point, photo, approval, and level closure for this stage and rolls it back to unready. This cannot be undone.',
+                style: TextStyle(color: Colors.red.shade700, fontSize: 12.5),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: reasonCtrl,
+                autofocus: true,
+                maxLines: 2,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: 'Reason *', border: OutlineInputBorder(), isDense: true),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: reasonCtrl.text.trim().isEmpty ? null : () => Navigator.of(ctx).pop(reasonCtrl.text.trim()),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+              child: const Text('Delete & Reset'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (reason == null || reason.isEmpty || !context.mounted) return;
+    context.read<SnagDesnagBloc>().add(AdminResetSnagRoundToUnreadyEvent(roundId, reason));
   }
 
   Future<void> _showItemActions(
@@ -920,13 +987,32 @@ class _SnagItemTile extends StatelessWidget {
     return null;
   }
 
+  /// Small `label: value`-style badge shared by every meta chip on the
+  /// card — kept to one consistent visual weight so a dense row of them
+  /// still scans quickly rather than looking noisy.
+  Widget _badge(String text, MaterialColor color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(color: color.shade50, borderRadius: BorderRadius.circular(4)),
+    child: Text(text, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color.shade700)),
+  );
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
-      child: ListTile(
+    // Slim, custom-laid-out row instead of Card+ListTile — ListTile's
+    // built-in content padding/min-height makes each point take up roughly
+    // twice the vertical space this needs, and with 10-50+ points per round
+    // being able to see several at once while scanning matters more than
+    // per-tile whitespace. The left status stripe keeps the same "scan by
+    // color" affordance the old trailing chip gave, just cheaper on space.
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: selected ? Colors.indigo.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: selected ? Colors.indigo.shade200 : Colors.grey.shade200),
+      ),
+      child: InkWell(
         // A pending-sync item's id is a local placeholder, not a real server
         // id — rectify/close/bulk actions against it would 404. Block
         // interaction until the queued raise has synced and this tile is
@@ -936,69 +1022,95 @@ class _SnagItemTile extends StatelessWidget {
                   content: Text("This snag point hasn't synced yet — actions will be available once it syncs."),
                 ))
             : (bulkMode ? onToggleSelect : onTap),
-        title: Text(item.defectTitle, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(4)),
-                  child: Text(
-                    'L${item.verifierLevelOrder}${item.verifierLevelName != null ? ' ${item.verifierLevelName}' : ''}',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.indigo.shade700),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: _color),
+              if (bulkMode)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Checkbox(
+                    value: selected,
+                    onChanged: item.isPendingSync ? null : (_) => onToggleSelect(),
+                    visualDensity: VisualDensity.compact,
                   ),
                 ),
-                Expanded(
-                  child: Text(
-                    [if (item.roomLabel != null) item.roomLabel!, if (item.trade != null) item.trade!].join(' • '),
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.defectTitle,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.2),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (item.isPendingSync)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Tooltip(
+                                message: 'Saved offline — will sync when back online',
+                                child: Icon(Icons.sync_problem_outlined, size: 14, color: Colors.orange.shade700),
+                              ),
+                            ),
+                          if (item.photos.isEmpty)
+                            Icon(Icons.image_not_supported_outlined, size: 14, color: Colors.grey.shade400)
+                          else
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.photo_outlined, size: 14, color: Colors.grey.shade500),
+                                const SizedBox(width: 2),
+                                Text('${item.photos.length}', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                              ],
+                            ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(color: _color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+                            child: Text(item.status.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _color)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 3,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _badge('L${item.verifierLevelOrder}${item.verifierLevelName != null ? ' ${item.verifierLevelName}' : ''}', Colors.indigo),
+                          if (item.roomLabel != null || item.trade != null)
+                            Text(
+                              [if (item.roomLabel != null) item.roomLabel!, if (item.trade != null) item.trade!].join(' • '),
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            ),
+                          if (item.vendorName != null && item.vendorName!.isNotEmpty)
+                            _badge(item.vendorName!, Colors.teal),
+                          if (item.notSatisfactoryCount > 0)
+                            _badge('Rejected ${item.notSatisfactoryCount}x', Colors.red),
+                        ],
+                      ),
+                      if (_timelineLabel != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(_timelineLabel!, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                        ),
+                    ],
                   ),
                 ),
-                if (item.notSatisfactoryCount > 0)
-                  Container(
-                    margin: const EdgeInsets.only(left: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
-                    child: Text(
-                      'Rejected ${item.notSatisfactoryCount}x',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.red.shade700),
-                    ),
-                  ),
-              ],
-            ),
-            if (_timelineLabel != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(_timelineLabel!, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
               ),
-          ],
-        ),
-        leading: bulkMode
-            ? Checkbox(value: selected, onChanged: item.isPendingSync ? null : (_) => onToggleSelect())
-            : (item.photos.isNotEmpty
-                ? const Icon(Icons.photo_outlined, color: Colors.grey)
-                : const Icon(Icons.image_not_supported_outlined, color: Colors.grey)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (item.isPendingSync)
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Tooltip(
-                  message: 'Saved offline — will sync when back online',
-                  child: Icon(Icons.sync_problem_outlined, size: 16, color: Colors.orange.shade700),
-                ),
-              ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: _color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-              child: Text(item.status.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _color)),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
