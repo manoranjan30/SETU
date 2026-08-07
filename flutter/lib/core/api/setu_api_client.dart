@@ -817,6 +817,15 @@ class SetuApiClient {
     return response.data;
   }
 
+  /// The project's `ProjectProfile` — company/project logos, owning company,
+  /// type, location, budget, schedule. Used by the dashboard's project
+  /// identity card. Not every project has a profile filled in yet, so
+  /// callers should treat every field as optional.
+  Future<Map<String, dynamic>> getProjectProfile(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.projectProfile(projectId));
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Returns QC activity lists scoped to a project, optionally filtered to
   /// a specific EPS node (e.g., a particular floor).
   Future<List<dynamic>> getQualityActivityLists({

@@ -324,6 +324,13 @@ class ApiEndpoints {
   /// the location picker in the quality inspection form.
   static String epsTree(int projectId) => '/eps/$projectId/tree';
 
+  /// GET /eps/:projectId/profile
+  /// Returns the project's `ProjectProfile` record — company/project logos,
+  /// owning company, type, location, budget, schedule, etc. Verified against
+  /// `backend/src/eps/eps.controller.ts:getProfile` and
+  /// `eps/project-profile.entity.ts`.
+  static String projectProfile(int projectId) => '/eps/$projectId/profile';
+
   /// GET /quality/activity-lists?projectId=X&epsNodeId=Y
   /// Returns QC activity lists (checklists) scoped to a project and optionally
   /// a specific EPS node (e.g., filter to a particular floor).
