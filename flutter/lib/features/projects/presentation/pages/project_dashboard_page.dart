@@ -1,5 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/api/api_endpoints.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/database/app_database.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
@@ -70,6 +72,14 @@ class _DashboardView extends StatefulWidget {
 }
 
 class _DashboardViewState extends State<_DashboardView> {
+  // Company/project logos for the identity card — loaded lazily and
+  // non-blocking; the dashboard renders immediately with icon fallbacks and
+  // the card just swaps in the real logo once (if) this resolves. Not every
+  // project has a profile filled in, so a failure here is silent.
+  String? _companyLogoUrl;
+  String? _projectLogoUrl;
+  String? _owningCompany;
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +91,24 @@ class _DashboardViewState extends State<_DashboardView> {
         if (!mounted) return;
         _navigateToModule(widget.pendingModule!);
       });
+    }
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await sl<SetuApiClient>().getProjectProfile(widget.project.id);
+      final companyLogo = profile['companyLogoUrl'] as String?;
+      final projectLogo = profile['projectLogoUrl'] as String?;
+      if (!mounted) return;
+      setState(() {
+        _companyLogoUrl = (companyLogo != null && companyLogo.isNotEmpty) ? ApiEndpoints.resolveUrl(companyLogo) : null;
+        _projectLogoUrl = (projectLogo != null && projectLogo.isNotEmpty) ? ApiEndpoints.resolveUrl(projectLogo) : null;
+        _owningCompany = profile['owningCompany'] as String?;
+      });
+    } catch (_) {
+      // No profile yet, or offline — the identity card just shows icon
+      // fallbacks instead of real logos, nothing breaks.
     }
   }
 
@@ -206,8 +234,14 @@ class _DashboardViewState extends State<_DashboardView> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              // ── Time-based greeting card with progress ring ──────────────
-              _GreetingCard(userName: userName, project: project),
+              // ── Colourful project identity card: logos, name, progress ───
+              _ProjectIdentityCard(
+                userName: userName,
+                project: project,
+                companyLogoUrl: _companyLogoUrl,
+                projectLogoUrl: _projectLogoUrl,
+                owningCompany: _owningCompany,
+              ),
               const SizedBox(height: 16),
 
               // ── Action stat cards (pending items the user must act on) ───
@@ -226,19 +260,31 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 }
 
-// ─── Greeting ────────────────────────────────────────────────────────────────
+// ─── Project identity card ─────────────────────────────────────────────────
 
-/// Top banner card with a time-aware greeting and an optional circular
-/// progress ring showing the project's overall completion percentage.
-class _GreetingCard extends StatelessWidget {
+/// Colourful "hero" card at the top of the dashboard — company logo, project
+/// logo, project name/code, overall progress ring, and a time-aware
+/// greeting, over a rich multi-stop gradient with soft decorative circles.
+/// Logos come from the project's `ProjectProfile` (`GET /eps/:id/profile`);
+/// either one may be unset, in which case [_LogoAvatar] falls back to a
+/// gold initial-letter badge rather than leaving a blank space.
+class _ProjectIdentityCard extends StatelessWidget {
   final String userName;
   final Project project;
+  final String? companyLogoUrl;
+  final String? projectLogoUrl;
+  final String? owningCompany;
 
-  const _GreetingCard({required this.userName, required this.project});
+  const _ProjectIdentityCard({
+    required this.userName,
+    required this.project,
+    this.companyLogoUrl,
+    this.projectLogoUrl,
+    this.owningCompany,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Derive the appropriate greeting based on current hour
     final hour = DateTime.now().hour;
     final greeting = hour < 12
         ? 'Good morning'
@@ -247,50 +293,175 @@ class _GreetingCard extends StatelessWidget {
             : 'Good evening';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        // Dark blue gradient matching the Puravankara brand palette
+        // Richer three-stop brand gradient (navy → teal-blue → deep teal)
+        // instead of the old flat two-tone — reads as more "alive" while
+        // staying within the Puravankara palette.
         gradient: const LinearGradient(
-          colors: [Color(0xFF0F3460), Color(0xFF1A5276)],
+          colors: [Color(0xFF0F3460), Color(0xFF1B5E82), Color(0xFF10685A)],
+          stops: [0.0, 0.55, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F3460).withValues(alpha: 0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Expanded(
+          // Decorative translucent circles for depth — purely cosmetic,
+          // clipped by the parent Container's borderRadius.
+          Positioned(right: -30, top: -34, child: _decorCircle(96, 0.10)),
+          Positioned(right: 36, bottom: -46, child: _decorCircle(72, 0.08)),
+          Positioned(left: -24, bottom: -50, child: _decorCircle(100, 0.06)),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _LogoAvatar(url: projectLogoUrl, fallbackText: project.name, size: 52),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            project.name,
+                            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, height: 1.15),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (project.code != null) ...[
+                            const SizedBox(height: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(project.code!, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (project.progress != null) ...[
+                      const SizedBox(width: 10),
+                      _ProgressRing(progress: project.progress!),
+                    ],
+                  ],
+                ),
+                // Only render this row at all when there's something real to
+                // show — never invent a company name/logo. `owningCompany`
+                // comes straight from ProjectProfile.owningCompany; it's
+                // frequently unset (as it is here), and this project's own
+                // logo may belong to a different brand within the group, so
+                // guessing a name would actively mislead rather than help.
+                if (companyLogoUrl != null || (owningCompany?.isNotEmpty ?? false)) ...[
+                  const SizedBox(height: 14),
+                  Divider(color: Colors.white.withValues(alpha: 0.14), height: 1),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _LogoAvatar(url: companyLogoUrl, fallbackText: owningCompany, fallbackIcon: Icons.apartment_rounded, size: 22),
+                      if (owningCompany?.isNotEmpty ?? false) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            owningCompany!,
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 10),
                 Text(
                   '$greeting, $userName 👋',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Select a module below to get started',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
           ),
-          // Show progress ring only when project.progress is available
-          if (project.progress != null) ...[
-            const SizedBox(width: 12),
-            _ProgressRing(progress: project.progress!),
-          ],
         ],
       ),
     );
   }
+
+  Widget _decorCircle(double size, double alpha) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: alpha)),
+  );
+}
+
+/// Circular logo badge — shows [url] via [CachedNetworkImage] when present,
+/// otherwise a gold initial-letter avatar derived from [fallbackText] so
+/// there's never a blank circle even before a project's logos are set up.
+class _LogoAvatar extends StatelessWidget {
+  final String? url;
+
+  /// When present (and non-empty), the fallback shows this text's first
+  /// letter. When null/empty, [fallbackIcon] is shown instead — an initial
+  /// letter should only ever come from real data (e.g. the project's own
+  /// name), never a guessed/hardcoded label.
+  final String? fallbackText;
+  final IconData fallbackIcon;
+  final double size;
+
+  const _LogoAvatar({
+    required this.url,
+    this.fallbackText,
+    this.fallbackIcon = Icons.business_rounded,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.1),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: ClipOval(
+        child: (url == null || url!.isEmpty)
+            ? _initial()
+            : CachedNetworkImage(
+                imageUrl: url!,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const SizedBox.shrink(),
+                errorWidget: (_, __, ___) => _initial(),
+              ),
+      ),
+    );
+  }
+
+  Widget _initial() => Container(
+    color: const Color(0xFFC9912A),
+    alignment: Alignment.center,
+    child: (fallbackText != null && fallbackText!.isNotEmpty)
+        ? Text(
+            fallbackText![0].toUpperCase(),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.42),
+          )
+        : Icon(fallbackIcon, color: Colors.white, size: size * 0.5),
+  );
 }
 
 /// Circular progress indicator overlaid with the completion percentage text.
@@ -414,6 +585,10 @@ class _StatCardsSection extends StatelessWidget {
               itemCount: cards.length,
               itemBuilder: (_, i) => _ActionStatCard(def: cards[i]),
             ),
+            if (loaded != null && cards.length > 1) ...[
+              const SizedBox(height: 14),
+              _InsightsBarChart(cards: cards),
+            ],
           ],
         );
       },
@@ -478,6 +653,114 @@ class _StatCardsSection extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Compact horizontal bar-chart card comparing the same counts already
+/// shown in the stat card grid above — turns the raw numbers into an
+/// at-a-glance "where's the load concentrated" view without any extra
+/// network calls (reuses [DashboardCubit]'s already-loaded state) or new
+/// charting dependency (plain animated Containers, cheap to build/animate).
+class _InsightsBarChart extends StatelessWidget {
+  final List<_CardDef> cards;
+  const _InsightsBarChart({required this.cards});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxCount = cards.map((c) => c.count ?? 0).fold(0, (a, b) => a > b ? a : b);
+    final total = cards.fold(0, (sum, c) => sum + (c.count ?? 0));
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.insights_rounded, size: 15, color: Color(0xFF6B7280)),
+              const SizedBox(width: 6),
+              const Text('Insights', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151))),
+              const Spacer(),
+              Text(
+                total == 0 ? 'Nothing pending' : '$total total',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (final card in cards) ...[
+            _InsightBarRow(def: card, maxCount: maxCount == 0 ? 1 : maxCount),
+            if (card != cards.last) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One labelled, animated bar within [_InsightsBarChart] — width is
+/// proportional to [def.count] relative to [maxCount] across all cards.
+class _InsightBarRow extends StatelessWidget {
+  final _CardDef def;
+  final int maxCount;
+  const _InsightBarRow({required this.def, required this.maxCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final count = def.count ?? 0;
+    final fraction = (count / maxCount).clamp(0.0, 1.0);
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 84,
+          child: Text(
+            def.label.replaceAll('\n', ' '),
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF4B5563)),
+            maxLines: 2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: Container(
+              height: 9,
+              color: const Color(0xFFF3F4F6),
+              alignment: Alignment.centerLeft,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: fraction),
+                duration: const Duration(milliseconds: 700),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, __) => FractionallySizedBox(
+                  widthFactor: value,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [def.color.withValues(alpha: 0.7), def.color]),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 20,
+          child: Text(
+            '$count',
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: count > 0 ? def.color : const Color(0xFF9CA3AF)),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -652,61 +935,78 @@ class _ModuleGrid extends StatelessWidget {
         ps.hasAnyEhsIncidentAccess ||
         ps.canReadEhsDashboard;
 
-    final modules = <_ModuleDef>[
-      // Progress — reporting, approvals, planning, 3D tower progress, labor.
-      // Always shown: Planning/3D Tower Progress require no permission.
-      _ModuleDef(
-        icon: Icons.timeline_rounded,
-        label: 'Progress',
-        color: AppColors.moduleProgress,
-        onTap: () => Navigator.push(context, FadeSlideRoute(
-          child: ProgressHubPage(project: project),
-        )),
-      ),
-      // Quality — request, approvals, checklist progress, observations,
-      // materials testing, snag/desnag.
-      if (showQuality)
-        _ModuleDef(
-          icon: Icons.verified_rounded,
-          label: 'Quality',
-          color: AppColors.moduleQuality,
-          onTap: () => Navigator.push(context, FadeSlideRoute(
-            child: QualityHubPage(projectId: project.id, projectName: project.name),
-          )),
-        ),
-      // EHS — observations, incidents, EHS hub dashboard.
-      if (showEhs)
-        _ModuleDef(
-          icon: Icons.health_and_safety_outlined,
-          label: 'EHS',
-          color: AppColors.moduleEhs,
-          onTap: () => Navigator.push(context, FadeSlideRoute(
-            child: EhsMainHubPage(projectId: project.id, projectName: project.name),
-          )),
-        ),
-      // Design — drawing register. Always shown (available to all users).
-      _ModuleDef(
-        icon: Icons.architecture_outlined,
-        label: 'Design',
-        color: AppColors.moduleDesign,
-        onTap: () => Navigator.push(context, FadeSlideRoute(
-          child: DesignHubPage(projectId: project.id, projectName: project.name),
-        )),
-      ),
-    ];
+    // Pull live counts from the already-loaded DashboardCubit so each
+    // module tile can surface its own "insight" badge — e.g. Quality shows
+    // how many inspections/observations need attention right now — without
+    // any extra network calls.
+    return BlocBuilder<DashboardCubit, DashboardState>(
+      builder: (context, state) {
+        final loaded = state is DashboardLoaded ? state : null;
 
-    return GridView.builder(
-      shrinkWrap: true,
-      // Prevent independent scrolling — the parent ListView handles scrolling
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.4,
-      ),
-      itemCount: modules.length,
-      itemBuilder: (_, i) => _ModuleGridItem(def: modules[i]),
+        final modules = <_ModuleDef>[
+          // Progress — reporting, approvals, planning, 3D tower progress, labor.
+          // Always shown: Planning/3D Tower Progress require no permission.
+          _ModuleDef(
+            icon: Icons.timeline_rounded,
+            label: 'Progress',
+            color: AppColors.moduleProgress,
+            count: loaded?.pendingProgressApprovals,
+            countLabel: 'pending',
+            onTap: () => Navigator.push(context, FadeSlideRoute(
+              child: ProgressHubPage(project: project),
+            )),
+          ),
+          // Quality — request, approvals, checklist progress, observations,
+          // materials testing, snag/desnag.
+          if (showQuality)
+            _ModuleDef(
+              icon: Icons.verified_rounded,
+              label: 'Quality',
+              color: AppColors.moduleQuality,
+              count: loaded == null ? null : loaded.pendingInspections + loaded.openQualityObs,
+              countLabel: 'open',
+              onTap: () => Navigator.push(context, FadeSlideRoute(
+                child: QualityHubPage(projectId: project.id, projectName: project.name),
+              )),
+            ),
+          // EHS — observations, incidents, EHS hub dashboard.
+          if (showEhs)
+            _ModuleDef(
+              icon: Icons.health_and_safety_outlined,
+              label: 'EHS',
+              color: AppColors.moduleEhs,
+              count: loaded?.openEhsObs,
+              countLabel: 'open',
+              onTap: () => Navigator.push(context, FadeSlideRoute(
+                child: EhsMainHubPage(projectId: project.id, projectName: project.name),
+              )),
+            ),
+          // Design — drawing register. Always shown (available to all users).
+          // No live count source for this module — badge stays hidden.
+          _ModuleDef(
+            icon: Icons.architecture_outlined,
+            label: 'Design',
+            color: AppColors.moduleDesign,
+            onTap: () => Navigator.push(context, FadeSlideRoute(
+              child: DesignHubPage(projectId: project.id, projectName: project.name),
+            )),
+          ),
+        ];
+
+        return GridView.builder(
+          shrinkWrap: true,
+          // Prevent independent scrolling — the parent ListView handles scrolling
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.25,
+          ),
+          itemCount: modules.length,
+          itemBuilder: (_, i) => _ModuleGridItem(def: modules[i]),
+        );
+      },
     );
   }
 }
@@ -718,65 +1018,116 @@ class _ModuleDef {
   final Color color;
   final VoidCallback onTap;
 
+  /// Live "items needing attention" count for this module, when available —
+  /// null hides the badge entirely (loading, or no data source for this
+  /// module) rather than showing a misleading 0.
+  final int? count;
+  final String countLabel;
+
   const _ModuleDef({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
+    this.count,
+    this.countLabel = '',
   });
 }
 
-/// Renders a single module tile: a coloured icon box above a two-line label.
-/// The card border uses a tinted version of the module's accent colour.
+/// Renders a single module tile as a vivid gradient card in the module's own
+/// accent colour, with a large translucent icon watermark for depth and an
+/// optional live count badge — a deliberately bolder look than the old
+/// white-card-with-tinted-icon style, so the four modules read as distinct,
+/// colourful destinations rather than a plain settings-style menu.
 class _ModuleGridItem extends StatelessWidget {
   final _ModuleDef def;
   const _ModuleGridItem({required this.def});
 
   @override
   Widget build(BuildContext context) {
+    final hasCount = (def.count ?? 0) > 0;
+    final darker = Color.lerp(def.color, Colors.black, 0.25)!;
+
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: def.onTap,
         child: Container(
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              // Subtle tinted border matches the module's colour identity
-              color: def.color.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [def.color, darker],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
+              // Coloured "glow" shadow matching the tile's own accent,
+              // rather than a generic grey shadow — reinforces the colour
+              // identity even before the eye reaches the tile itself.
+              BoxShadow(color: def.color.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
             children: [
-              // Icon in a soft-tinted rounded container
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: def.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(def.icon, color: def.color, size: 22),
+              // Oversized, mostly-transparent icon watermark bleeding off
+              // the bottom-right corner — purely decorative texture.
+              Positioned(
+                right: -14,
+                bottom: -14,
+                child: Icon(def.icon, size: 84, color: Colors.white.withValues(alpha: 0.14)),
               ),
-              const SizedBox(height: 8),
-              Text(
-                def.label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF374151),
-                  height: 1.3,
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(def.icon, color: Colors.white, size: 20),
+                        ),
+                        if (def.count != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: hasCount ? Colors.white : Colors.white.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '${def.count}',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: hasCount ? darker : Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          def.label,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                        if (def.count != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            hasCount ? '${def.count} ${def.countLabel}' : 'All clear',
+                            style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.85), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
