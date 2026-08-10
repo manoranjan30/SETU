@@ -92,6 +92,8 @@ import { QualityMaterialApprovalRun } from './entities/quality-material-approval
 import { QualityMaterialApprovalStep } from './entities/quality-material-approval-step.entity';
 import { QualityPourCard } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
+import { QualityCardApprovalRun } from './entities/quality-card-approval-run.entity';
+import { QualityCardApprovalStep } from './entities/quality-card-approval-step.entity';
 import { QualityCubeTestRegister } from './entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './entities/quality-concrete-grade.entity';
 import { QualityBatchSlipFieldSynonym } from './entities/quality-batch-slip-field-synonym.entity';
@@ -159,6 +161,8 @@ import { QualityNcrSyncService } from './quality-ncr-sync.service';
       QualityMaterialApprovalStep,
       QualityPourCard,
       QualityPrePourClearanceCard,
+      QualityCardApprovalRun,
+      QualityCardApprovalStep,
       QualityCubeTestRegister,
       QualityConcreteGrade,
       QualityBatchSlipFieldSynonym,

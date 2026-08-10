@@ -97,10 +97,30 @@ export class QualityPourCardController {
     );
   }
 
+  @Get('card-approvals/pending')
+  @Permissions('QUALITY.POUR_CARD.APPROVE', 'QUALITY.POUR_CLEARANCE.APPROVE')
+  listPendingCardApprovals(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @Request() req,
+  ) {
+    return this.service.listPendingCardApprovals(
+      projectId,
+      req.user?.userId || req.user?.id,
+      this.isAdminRequest(req),
+    );
+  }
+
   @Get(':inspectionId/pour-card')
   @Permissions('QUALITY.POUR_CARD.READ')
-  getPourCard(@Param('inspectionId', ParseIntPipe) inspectionId: number) {
-    return this.service.getPourCard(inspectionId);
+  getPourCard(
+    @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Request() req,
+  ) {
+    return this.service.getPourCard(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      this.isAdminRequest(req),
+    );
   }
 
   @Put(':inspectionId/pour-card')
@@ -178,8 +198,13 @@ export class QualityPourCardController {
   @Permissions('QUALITY.POUR_CLEARANCE.READ')
   getPrePourClearance(
     @Param('inspectionId', ParseIntPipe) inspectionId: number,
+    @Request() req,
   ) {
-    return this.service.getPrePourClearanceCard(inspectionId);
+    return this.service.getPrePourClearanceCard(
+      inspectionId,
+      req.user?.userId || req.user?.id,
+      this.isAdminRequest(req),
+    );
   }
 
   @Put(':inspectionId/pre-pour-clearance')

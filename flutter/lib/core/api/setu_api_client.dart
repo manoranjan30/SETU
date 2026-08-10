@@ -1826,6 +1826,16 @@ class SetuApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Pour card / pre-pour clearance card approvals currently actionable by
+  /// the logged-in user — powers the "Card Approvals" list page.
+  Future<List<dynamic>> getPendingCardApprovals(int projectId) async {
+    final response = await _dio.get(ApiEndpoints.cardApprovalsPending(projectId));
+    final data = response.data;
+    // Service returns { data: [...], total: N }.
+    if (data is Map<String, dynamic>) return data['data'] as List<dynamic>? ?? [];
+    return data is List ? data : [];
+  }
+
   Future<void> downloadPourCardPdf(int inspectionId, String savePath) async {
     await _dio.download(ApiEndpoints.pourCardPdf(inspectionId), savePath);
   }

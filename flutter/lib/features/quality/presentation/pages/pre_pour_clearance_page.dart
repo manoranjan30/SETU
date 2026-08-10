@@ -15,6 +15,7 @@ import 'package:setu_mobile/core/sync/sync_service.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/clearance_card_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/card_approval_levels_section.dart';
 import 'package:setu_mobile/features/quality/presentation/widgets/signature_approval_sheet.dart';
 
 /// The 7 attachment keys — must match the backend's CLEARANCE_ATTACHMENT_KEYS.
@@ -317,7 +318,11 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
     // submit a card without being allowed to change its field values.
     final canSubmit = card.status.isEditable && card.isActivated && ps.canSubmitPourClearance;
     final canSign = card.status.isEditable && card.isActivated && ps.canSignPourClearance;
-    final canApprove = ps.canApprovePourClearance;
+    // RBAC alone only proves this user's role category can approve
+    // clearance cards in general — approvalWorkflow.canApprove is the
+    // finer-grained "is it actually this user's turn on the active level"
+    // check, matching the multi-level verifier pattern used for Snag/Desnag.
+    final canApprove = ps.canApprovePourClearance && (card.approvalWorkflow?.canApprove ?? false);
     final theme = Theme.of(context);
 
     return Column(
@@ -447,6 +452,13 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
                         ],
                       ),
               ),
+
+              // Multi-level approval progress — only present once the card
+              // has been submitted at least once.
+              if (card.approvalWorkflow != null) ...[
+                const SizedBox(height: 12),
+                CardApprovalLevelsSection(workflow: card.approvalWorkflow!),
+              ],
 
               if (card.approvalRemarks != null || card.rejectionRemarks != null) ...[
                 const SizedBox(height: 12),

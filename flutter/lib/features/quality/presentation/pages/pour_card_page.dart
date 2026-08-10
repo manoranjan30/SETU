@@ -9,6 +9,7 @@ import 'package:setu_mobile/features/quality/data/models/cube_register_models.da
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/pour_card_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/pour_card_entry_detail_page.dart';
+import 'package:setu_mobile/features/quality/presentation/widgets/card_approval_levels_section.dart';
 
 class PourCardPage extends StatelessWidget {
   final int inspectionId;
@@ -268,7 +269,13 @@ class _PourCardBodyState extends State<_PourCardBody> {
     // Submit is independent of edit rights — a user may be allowed to
     // submit a card without being allowed to change its field values.
     final canSubmit = card.status.isEditable && ps.canSubmitPourCard;
-    final canApprove = ps.canApprovePourCard;
+    // RBAC alone only proves this user's role *category* can approve pour
+    // cards in general — the backend's approvalWorkflow.canApprove is the
+    // finer-grained "is it actually this user's turn on the active level"
+    // check (assigned user/role for that specific level, or admin). Both
+    // must be true, matching the multi-level verifier pattern already used
+    // for Snag/Desnag approvals in this app.
+    final canApprove = ps.canApprovePourCard && (card.approvalWorkflow?.canApprove ?? false);
     final theme = Theme.of(context);
 
     return Column(
@@ -367,6 +374,14 @@ class _PourCardBodyState extends State<_PourCardBody> {
                   ],
                 ),
               ),
+
+              // Multi-level approval progress — only present once the card
+              // has been submitted at least once (see CardApprovalWorkflow's
+              // doc comment on why this can be null).
+              if (card.approvalWorkflow != null) ...[
+                const SizedBox(height: 16),
+                CardApprovalLevelsSection(workflow: card.approvalWorkflow!),
+              ],
 
               // Approval info (if approved/rejected)
               if (card.approvedByName != null || card.rejectionRemarks != null) ...[

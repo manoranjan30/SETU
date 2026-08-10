@@ -287,15 +287,22 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
   Future<void> _onApprove(
       ApprovePourCard event, Emitter<PourCardState> emit) async {
     if (_currentCard == null) return;
+    final inspectionId = _currentCard!.inspectionId;
     emit(PourCardSaving(_currentCard!));
     try {
-      final data = await _api.approvePourCard(
-        _currentCard!.inspectionId,
-        remarks: event.remarks,
-      );
+      await _api.approvePourCard(inspectionId, remarks: event.remarks);
+      // Re-fetch rather than trust the approve response's own shape — with
+      // a multi-level workflow this call may have only advanced to the next
+      // level (card still SUBMITTED) rather than fully approved it, and the
+      // GET endpoint is the one guaranteed to return the fresh
+      // approvalWorkflow (active level, levels[]) either way.
+      final data = await _api.getPourCard(inspectionId);
       _currentCard = QualityPourCard.fromJson(data);
+      final isFinal = _currentCard!.status == QualityCardStatus.approved;
       emit(PourCardActionSuccess(
-        message: 'Pour card approved',
+        message: isFinal
+            ? 'Pour card approved'
+            : 'Level approved — next level is now active',
         card: _currentCard!,
       ));
     } catch (e) {
@@ -306,12 +313,11 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
   Future<void> _onReject(
       RejectPourCard event, Emitter<PourCardState> emit) async {
     if (_currentCard == null) return;
+    final inspectionId = _currentCard!.inspectionId;
     emit(PourCardSaving(_currentCard!));
     try {
-      final data = await _api.rejectPourCard(
-        _currentCard!.inspectionId,
-        remarks: event.reason,
-      );
+      await _api.rejectPourCard(inspectionId, remarks: event.reason);
+      final data = await _api.getPourCard(inspectionId);
       _currentCard = QualityPourCard.fromJson(data);
       emit(PourCardActionSuccess(
         message: 'Pour card rejected',

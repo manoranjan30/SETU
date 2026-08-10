@@ -595,25 +595,34 @@ class _PourCardPanel extends StatelessWidget {
                   if (inspection.requiresPourCard) ...[
                     Expanded(
                       child: inspection.pourCardActive
-                          ? OutlinedButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PourCardPage(
-                                    inspectionId: inspection.id,
-                                    projectId: inspection.projectId,
-                                    activityName: inspection.activityName,
-                                    locationLabel: inspection.locationDisplay,
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PourCardPage(
+                                        inspectionId: inspection.id,
+                                        projectId: inspection.projectId,
+                                        activityName: inspection.activityName,
+                                        locationLabel: inspection.locationDisplay,
+                                      ),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.assignment_outlined, size: 14),
+                                  label: const Text('Pour Card'),
+                                  style: OutlinedButton.styleFrom(
+                                    textStyle: const TextStyle(fontSize: 12),
+                                    foregroundColor: Colors.blue.shade700,
+                                    side: BorderSide(color: Colors.blue.shade300),
                                   ),
                                 ),
-                              ),
-                              icon: const Icon(Icons.assignment_outlined, size: 14),
-                              label: const Text('Pour Card'),
-                              style: OutlinedButton.styleFrom(
-                                textStyle: const TextStyle(fontSize: 12),
-                                foregroundColor: Colors.blue.shade700,
-                                side: BorderSide(color: Colors.blue.shade300),
-                              ),
+                                if (inspection.pourCardStatus != null) ...[
+                                  const SizedBox(height: 4),
+                                  Center(child: _CardStatusChip(status: inspection.pourCardStatus!)),
+                                ],
+                              ],
                             )
                           : _LockedCardHint(
                               label: 'Pour Card',
@@ -626,26 +635,35 @@ class _PourCardPanel extends StatelessWidget {
                   if (inspection.requiresPourClearanceCard) ...[
                     Expanded(
                       child: inspection.prePourClearanceActive
-                          ? OutlinedButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PrePourClearancePage(
-                                    inspectionId: inspection.id,
-                                    activityName: inspection.activityName,
-                                    locationLabel: inspection.locationDisplay,
-                                    projectId: inspection.projectId,
-                                    epsNodeId: inspection.epsNodeId,
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PrePourClearancePage(
+                                        inspectionId: inspection.id,
+                                        activityName: inspection.activityName,
+                                        locationLabel: inspection.locationDisplay,
+                                        projectId: inspection.projectId,
+                                        epsNodeId: inspection.epsNodeId,
+                                      ),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.checklist_outlined, size: 14),
+                                  label: const Text('Clearance'),
+                                  style: OutlinedButton.styleFrom(
+                                    textStyle: const TextStyle(fontSize: 12),
+                                    foregroundColor: Colors.teal.shade700,
+                                    side: BorderSide(color: Colors.teal.shade300),
                                   ),
                                 ),
-                              ),
-                              icon: const Icon(Icons.checklist_outlined, size: 14),
-                              label: const Text('Clearance'),
-                              style: OutlinedButton.styleFrom(
-                                textStyle: const TextStyle(fontSize: 12),
-                                foregroundColor: Colors.teal.shade700,
-                                side: BorderSide(color: Colors.teal.shade300),
-                              ),
+                                if (inspection.prePourClearanceStatus != null) ...[
+                                  const SizedBox(height: 4),
+                                  Center(child: _CardStatusChip(status: inspection.prePourClearanceStatus!)),
+                                ],
+                              ],
                             )
                           : _LockedCardHint(
                               label: 'Pre-Pour Clearance',
@@ -683,6 +701,36 @@ class _PourCardPanel extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Card Status Chip
+// ---------------------------------------------------------------------------
+
+/// Small status pill for a pour card / pre-pour clearance card, shown under
+/// its "open" button on the RFI detail screen — per the card-approval
+/// handoff, mobile must inspect `cardSummary.pourCardStatus`/
+/// `prePourClearanceStatus`; this is where that value is actually surfaced
+/// to the user rather than just parsed into the model unused.
+class _CardStatusChip extends StatelessWidget {
+  final String status;
+  const _CardStatusChip({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = QualityCardStatus.fromString(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: parsed.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        parsed.label,
+        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: parsed.color),
       ),
     );
   }

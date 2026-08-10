@@ -253,6 +253,13 @@ function KpiChip({ metric, onClick }: { metric: ExecutiveMetric; onClick?: () =>
         </div>
       )}
 
+      {visualPct === null && metric.visualLabel && (
+        <div className="text-[10px] leading-4"
+          style={{ color: "var(--color-text-muted)" }}>
+          {metric.visualLabel}
+        </div>
+      )}
+
       {metric.helper && (
         <div className="text-[10px] leading-4"
           style={{ color: "var(--color-text-muted)" }}>
@@ -477,9 +484,9 @@ function MetricMiniCard({ metric, pillarKey, onClick }: {
           )}
         </div>
       ) : (
-        metric.helper && (
+        (metric.visualLabel || metric.helper) && (
           <div className="mt-2 text-[9px] leading-4" style={{ color: "var(--color-text-muted)" }}>
-            {metric.helper}
+            {metric.visualLabel || metric.helper}
           </div>
         )
       )}
@@ -639,10 +646,10 @@ function MetricDetailCard({ metric, pillarKey, onClick }: {
         </div>
       )}
 
-      {metric.helper && !visualPct && (
+      {visualPct === null && (metric.visualLabel || metric.helper) && (
         <div className="mt-2 text-[10px] leading-4"
           style={{ color: "var(--color-text-muted)" }}>
-          {metric.helper}
+          {metric.visualLabel || metric.helper}
         </div>
       )}
     </button>
