@@ -6,6 +6,7 @@ import 'package:setu_mobile/features/quality/presentation/bloc/quality_dashboard
     hide DashboardLoaded, DashboardLoading, DashboardInitial, DashboardError;
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_request_bloc.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/quality_site_obs_bloc.dart';
+import 'package:setu_mobile/features/quality/presentation/pages/card_approvals_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/materials_testing_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_approvals_page.dart';
 import 'package:setu_mobile/features/quality/presentation/pages/quality_dashboard_page.dart';
@@ -97,6 +98,16 @@ class QualityHubPage extends StatelessWidget {
           subtitle: 'Concrete cube test register',
           onTap: () => Navigator.push(context, MaterialPageRoute(
             builder: (_) => MaterialsTestingPage(projectId: projectId, projectName: projectName),
+          )),
+        ),
+      if (ps.canApprovePourCard || ps.canApprovePourClearance)
+        _HubTile(
+          icon: Icons.fact_check_outlined,
+          color: const Color(0xFF0369A1),
+          title: 'Card Approvals',
+          subtitle: 'Pour cards and pre-pour clearance cards waiting on you',
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => CardApprovalsPage(projectId: projectId, projectName: projectName),
           )),
         ),
       if (ps.canReadSnag)

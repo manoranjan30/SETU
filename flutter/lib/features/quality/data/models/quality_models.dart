@@ -522,6 +522,15 @@ class QualityInspection extends Equatable {
   final bool pourCardActive;
   final String? pourCardActivationMode; // IMMEDIATE | AFTER_STAGE
   final bool prePourClearanceActive;
+
+  /// Whether the pre-pour clearance requirement is currently satisfied —
+  /// `true` once either the card is submitted or approved, whichever
+  /// `prePourClearanceApprovalRequirement` demands. Backend-computed
+  /// (`quality-inspection.service.ts:buildCardGateSummary`); the same
+  /// signal already drives [finalApprovalBlockers]/[approvalBlockersByStageId]
+  /// text, but is exposed as a raw boolean too per the mobile handoff so a
+  /// button can gate on it directly without parsing blocker strings.
+  final bool prePourClearanceGateSatisfied;
   final List<String> finalApprovalBlockers;
   final Map<String, List<String>> approvalBlockersByStageId;
   final String? pourCardTriggerStageName;
@@ -587,6 +596,7 @@ class QualityInspection extends Equatable {
     this.pourCardActive = false,
     this.pourCardActivationMode,
     this.prePourClearanceActive = false,
+    this.prePourClearanceGateSatisfied = false,
     this.finalApprovalBlockers = const [],
     this.approvalBlockersByStageId = const {},
     this.pourCardTriggerStageName,
@@ -717,6 +727,10 @@ class QualityInspection extends Equatable {
           as Map<String, dynamic>?)?['pourCardActivationMode'] as String?,
       prePourClearanceActive: (json['cardSummary']
               as Map<String, dynamic>?)?['prePourClearanceActive'] as bool? ??
+          false,
+      prePourClearanceGateSatisfied: (json['cardSummary']
+              as Map<String, dynamic>?)?['prePourClearanceGateSatisfied']
+          as bool? ??
           false,
       finalApprovalBlockers: ((json['cardSummary']
                       as Map<String, dynamic>?)?['finalApprovalBlockers']
@@ -849,6 +863,7 @@ class QualityInspection extends Equatable {
         relatedChecklistInspectionIds,
         pourCardActive,
         prePourClearanceActive,
+        prePourClearanceGateSatisfied,
         finalApprovalBlockers,
       ];
 
@@ -2015,6 +2030,251 @@ class PourCardEntry extends Equatable {
 /// passed, keep existing value" from "argument passed as null, clear it".
 const Object _unset = Object();
 
+// ============================================================
+// CARD APPROVAL WORKFLOW (multi-level release strategy for pour card /
+// pre-pour clearance card approvals)
+// ============================================================
+
+/// One level/step in a card's approval chain. Shared by the full `levels[]`
+/// array and the slimmer `activeLevel` object on [CardApprovalWorkflow] —
+/// `activeLevel` only ever carries `stepOrder`/`stepName`/`status`/
+/// `canApprove`, so every other field defaults to null/empty here rather
+/// than being required.
+///
+/// `status` is a loose backend string (`WAITING`/`PENDING`/`COMPLETED`/
+/// `REJECTED` observed in `quality-pour-card.service.ts`), not a declared
+/// enum server-side, so it's kept as a raw String here too rather than
+/// parsed into a Dart enum that could silently swallow an unrecognised value.
+class CardApprovalLevel extends Equatable {
+  final int? id;
+  final int stepOrder;
+  final String stepName;
+  final String? approverMode; // 'USER' | 'PROJECT_ROLE'
+  final int? assignedUserId;
+  final List<int> assignedUserIds;
+  final int? assignedRoleId;
+  final int? minApprovalsRequired;
+  final int? currentApprovalCount;
+  final List<int> approvedUserIds;
+  final String status;
+  final int? signedBy;
+  final String? signerDisplayName;
+  final String? signerCompany;
+  final String? signerRole;
+  final DateTime? completedAt;
+  final String? comments;
+
+  /// Whether the *current logged-in user* can act on this specific level —
+  /// per-level, not just the top-level [CardApprovalWorkflow.canApprove]
+  /// (which mirrors this same value for whichever level is currently active).
+  final bool canApprove;
+
+  const CardApprovalLevel({
+    this.id,
+    required this.stepOrder,
+    required this.stepName,
+    this.approverMode,
+    this.assignedUserId,
+    this.assignedUserIds = const [],
+    this.assignedRoleId,
+    this.minApprovalsRequired,
+    this.currentApprovalCount,
+    this.approvedUserIds = const [],
+    this.status = 'WAITING',
+    this.signedBy,
+    this.signerDisplayName,
+    this.signerCompany,
+    this.signerRole,
+    this.completedAt,
+    this.comments,
+    this.canApprove = false,
+  });
+
+  bool get isCompleted => status == 'COMPLETED';
+  bool get isRejected => status == 'REJECTED';
+  bool get isPending => status == 'PENDING';
+
+  factory CardApprovalLevel.fromJson(Map<String, dynamic> j) => CardApprovalLevel(
+    id: _jsonInt(j['id']),
+    stepOrder: _jsonInt(j['stepOrder']) ?? 0,
+    stepName: _jsonString(j['stepName']) ?? '',
+    approverMode: _jsonString(j['approverMode']),
+    assignedUserId: _jsonInt(j['assignedUserId']),
+    assignedUserIds: _jsonList(j['assignedUserIds']).map(_jsonInt).whereType<int>().toList(),
+    assignedRoleId: _jsonInt(j['assignedRoleId']),
+    minApprovalsRequired: _jsonInt(j['minApprovalsRequired']),
+    currentApprovalCount: _jsonInt(j['currentApprovalCount']),
+    approvedUserIds: _jsonList(j['approvedUserIds']).map(_jsonInt).whereType<int>().toList(),
+    status: _jsonString(j['status']) ?? 'WAITING',
+    signedBy: _jsonInt(j['signedBy']),
+    signerDisplayName: _jsonString(j['signerDisplayName']),
+    signerCompany: _jsonString(j['signerCompany']),
+    signerRole: _jsonString(j['signerRole']),
+    completedAt: _jsonDateTime(j['completedAt']),
+    comments: _jsonString(j['comments']),
+    canApprove: _jsonBool(j['canApprove']),
+  );
+
+  @override
+  List<Object?> get props => [id, stepOrder, stepName, status, canApprove];
+}
+
+/// The `approvalWorkflow` object attached to pour card / pre-pour clearance
+/// card responses once a card has been submitted (`quality-pour-card.service
+/// .ts:attachCardApprovalWorkflow`/`serializeCardApprovalRun`). Absent
+/// (`null`) for cards that have never been submitted — a run is only
+/// created on submission, so a fresh DRAFT card has no workflow yet.
+///
+/// `status` here is the *workflow run's* status (`IN_PROGRESS`/`APPROVED`/
+/// `REJECTED`) — a different, backend-untyped string vocabulary from the
+/// card's own [QualityCardStatus], so it is deliberately NOT parsed as that
+/// enum (doing so would misrepresent or drop legitimate values).
+class CardApprovalWorkflow extends Equatable {
+  final int? id;
+  final String status;
+  final String? documentType;
+  final int currentStepOrder;
+  final int totalLevels;
+  final String? strategyName;
+  final int? releaseStrategyId;
+  final int? releaseStrategyVersion;
+  final CardApprovalLevel? activeLevel;
+
+  /// Whether the current logged-in user can approve/reject the active
+  /// level right now — backend-computed from level assignment (assigned
+  /// user/role) or admin override; mobile must gate the approve/reject
+  /// buttons on this rather than permission alone, since the permission
+  /// check only proves the user's role *category* can approve cards in
+  /// general, not that they're the assigned approver for *this* level.
+  final bool canApprove;
+
+  /// Note: as of this handoff, the backend computes [canReject] identically
+  /// to [canApprove] (`quality-pour-card.service.ts`'s `canActOnStep` is
+  /// used for both) — there is no independently-gated reject permission.
+  final bool canReject;
+  final List<CardApprovalLevel> levels;
+
+  const CardApprovalWorkflow({
+    this.id,
+    this.status = 'IN_PROGRESS',
+    this.documentType,
+    this.currentStepOrder = 1,
+    this.totalLevels = 0,
+    this.strategyName,
+    this.releaseStrategyId,
+    this.releaseStrategyVersion,
+    this.activeLevel,
+    this.canApprove = false,
+    this.canReject = false,
+    this.levels = const [],
+  });
+
+  factory CardApprovalWorkflow.fromJson(Map<String, dynamic> j) => CardApprovalWorkflow(
+    id: _jsonInt(j['id']),
+    status: _jsonString(j['status']) ?? 'IN_PROGRESS',
+    documentType: _jsonString(j['documentType']),
+    currentStepOrder: _jsonInt(j['currentStepOrder']) ?? 1,
+    totalLevels: _jsonInt(j['totalLevels']) ?? 0,
+    strategyName: _jsonString(j['strategyName']),
+    releaseStrategyId: _jsonInt(j['releaseStrategyId']),
+    releaseStrategyVersion: _jsonInt(j['releaseStrategyVersion']),
+    activeLevel: j['activeLevel'] == null ? null : CardApprovalLevel.fromJson(Map<String, dynamic>.from(j['activeLevel'] as Map)),
+    canApprove: _jsonBool(j['canApprove']),
+    canReject: _jsonBool(j['canReject']),
+    levels: _jsonList(j['levels'])
+        .whereType<Map>()
+        .map((e) => CardApprovalLevel.fromJson(Map<String, dynamic>.from(e)))
+        .toList(),
+  );
+
+  /// Parses the nested `approvalWorkflow` key from a card response, or
+  /// `null` when absent (never-submitted card) or explicitly null.
+  static CardApprovalWorkflow? fromCardJson(Map<String, dynamic> cardJson) {
+    final raw = cardJson['approvalWorkflow'];
+    if (raw == null) return null;
+    return CardApprovalWorkflow.fromJson(Map<String, dynamic>.from(raw as Map));
+  }
+
+  @override
+  List<Object?> get props => [id, status, currentStepOrder, totalLevels, canApprove, canReject, levels];
+}
+
+/// One row from `GET /quality/inspections/card-approvals/pending?projectId=X`
+/// — a pour card or pre-pour clearance card whose active approval level the
+/// logged-in user (or an admin) can currently act on. The backend already
+/// filters to only actionable items (`quality-pour-card.service.ts
+/// :listPendingCardApprovals` skips any run where `canApprove` is false), so
+/// this is a ready-to-render "my card approvals" inbox with no further
+/// client-side filtering needed.
+class PendingCardApproval extends Equatable {
+  final int runId;
+
+  /// `'CONCRETE_POUR_CARD'` or `'PRE_POUR_CLEARANCE'` — use [isPourCard] to
+  /// branch rather than comparing this string directly at call sites.
+  final String documentType;
+  final int cardId;
+  final int inspectionId;
+  final int? projectId;
+  final int? activityId;
+  final int? epsNodeId;
+  final String? cardStatus;
+  final String title;
+  final String? activityName;
+  final String? elementName;
+  final String? locationText;
+  final DateTime? submittedAt;
+  final int? submittedByUserId;
+  final CardApprovalLevel? activeLevel;
+  final CardApprovalWorkflow? approvalWorkflow;
+
+  const PendingCardApproval({
+    required this.runId,
+    required this.documentType,
+    required this.cardId,
+    required this.inspectionId,
+    this.projectId,
+    this.activityId,
+    this.epsNodeId,
+    this.cardStatus,
+    required this.title,
+    this.activityName,
+    this.elementName,
+    this.locationText,
+    this.submittedAt,
+    this.submittedByUserId,
+    this.activeLevel,
+    this.approvalWorkflow,
+  });
+
+  bool get isPourCard => documentType == 'CONCRETE_POUR_CARD';
+
+  factory PendingCardApproval.fromJson(Map<String, dynamic> j) => PendingCardApproval(
+    runId: _jsonInt(j['runId']) ?? 0,
+    documentType: _jsonString(j['documentType']) ?? '',
+    cardId: _jsonInt(j['cardId']) ?? 0,
+    inspectionId: _jsonInt(j['inspectionId']) ?? 0,
+    projectId: _jsonInt(j['projectId']),
+    activityId: _jsonInt(j['activityId']),
+    epsNodeId: _jsonInt(j['epsNodeId']),
+    cardStatus: _jsonString(j['cardStatus']),
+    title: _jsonString(j['title']) ?? 'Card Approval',
+    activityName: _jsonString(j['activityName']),
+    elementName: _jsonString(j['elementName']),
+    locationText: _jsonString(j['locationText']),
+    submittedAt: _jsonDateTime(j['submittedAt']),
+    submittedByUserId: _jsonInt(j['submittedByUserId']),
+    activeLevel: j['activeLevel'] == null
+        ? null
+        : CardApprovalLevel.fromJson(Map<String, dynamic>.from(j['activeLevel'] as Map)),
+    approvalWorkflow: j['approvalWorkflow'] == null
+        ? null
+        : CardApprovalWorkflow.fromJson(Map<String, dynamic>.from(j['approvalWorkflow'] as Map)),
+  );
+
+  @override
+  List<Object?> get props => [runId, documentType, cardId, inspectionId, cardStatus];
+}
+
 class QualityPourCard extends Equatable {
   final int id;
   final int inspectionId;
@@ -2036,6 +2296,10 @@ class QualityPourCard extends Equatable {
   final DateTime? approvedAt;
   final DateTime? rejectedAt;
 
+  /// Multi-level approval chain state — `null` until the card is first
+  /// submitted. See [CardApprovalWorkflow]'s doc comment.
+  final CardApprovalWorkflow? approvalWorkflow;
+
   const QualityPourCard({
     required this.id,
     required this.inspectionId,
@@ -2056,6 +2320,7 @@ class QualityPourCard extends Equatable {
     this.submittedAt,
     this.approvedAt,
     this.rejectedAt,
+    this.approvalWorkflow,
   });
 
   factory QualityPourCard.fromJson(Map<String, dynamic> j) {
@@ -2082,6 +2347,7 @@ class QualityPourCard extends Equatable {
       submittedAt: _jsonDateTime(j['submittedAt']),
       approvedAt: _jsonDateTime(j['approvedAt']),
       rejectedAt: _jsonDateTime(j['rejectedAt']),
+      approvalWorkflow: CardApprovalWorkflow.fromCardJson(j),
     );
   }
 
@@ -2133,10 +2399,11 @@ class QualityPourCard extends Equatable {
         submittedAt: submittedAt,
         approvedAt: approvedAt,
         rejectedAt: rejectedAt,
+        approvalWorkflow: approvalWorkflow,
       );
 
   @override
-  List<Object?> get props => [id, inspectionId, status, entries];
+  List<Object?> get props => [id, inspectionId, status, entries, approvalWorkflow];
 }
 
 // ============================================================
@@ -2348,6 +2615,10 @@ class QualityPrePourClearanceCard extends Equatable {
   final DateTime? approvedAt;
   final DateTime? rejectedAt;
 
+  /// Multi-level approval chain state — see [CardApprovalWorkflow]'s doc
+  /// comment. Null until the card is first submitted.
+  final CardApprovalWorkflow? approvalWorkflow;
+
   const QualityPrePourClearanceCard({
     required this.id,
     required this.inspectionId,
@@ -2383,6 +2654,7 @@ class QualityPrePourClearanceCard extends Equatable {
     this.submittedAt,
     this.approvedAt,
     this.rejectedAt,
+    this.approvalWorkflow,
   });
 
   factory QualityPrePourClearanceCard.fromJson(Map<String, dynamic> j) {
@@ -2444,6 +2716,7 @@ class QualityPrePourClearanceCard extends Equatable {
       submittedAt: _jsonDateTime(j['submittedAt']),
       approvedAt: _jsonDateTime(j['approvedAt']),
       rejectedAt: _jsonDateTime(j['rejectedAt']),
+      approvalWorkflow: CardApprovalWorkflow.fromCardJson(j),
     );
   }
 
@@ -2532,6 +2805,7 @@ class QualityPrePourClearanceCard extends Equatable {
         submittedAt: submittedAt,
         approvedAt: approvedAt,
         rejectedAt: rejectedAt,
+        approvalWorkflow: approvalWorkflow,
       );
 
   @override
@@ -2543,6 +2817,7 @@ class QualityPrePourClearanceCard extends Equatable {
         attachments,
         attachmentChecklistSelections,
         attachmentDocuments,
-        signoffs
+        signoffs,
+        approvalWorkflow,
       ];
 }

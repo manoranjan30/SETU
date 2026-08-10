@@ -101,6 +101,11 @@ interface DashboardMetric {
   visualLabel?: string;
 }
 
+interface BudgetRatioVisual {
+  visualPercent?: number;
+  visualLabel: string;
+}
+
 interface DashboardTrendPoint {
   label: string;
   value: number;
@@ -1337,9 +1342,21 @@ export class DashboardExecutiveService {
     projectRows: ExecutiveProjectRow[],
     visibleCompanyCount: number,
   ): DashboardMetric[] {
-    const budgetBase = Math.max(totals.portfolioValue, 1);
-    const workOrderCommitmentPct = (totals.workOrderValue / budgetBase) * 100;
-    const burnCoveragePct = (totals.burnValue / budgetBase) * 100;
+    const hasBudget = totals.portfolioValue > 0;
+    const budgetVisual: BudgetRatioVisual = hasBudget
+      ? { visualPercent: 100, visualLabel: 'Budget baseline' }
+      : { visualLabel: 'Budget unavailable' };
+    const workOrderVisual = this.buildBudgetRatioVisual(
+      totals.workOrderValue,
+      totals.portfolioValue,
+      'budget committed',
+    );
+    const burnVisual = this.buildBudgetRatioVisual(
+      totals.burnValue,
+      totals.portfolioValue,
+      'budget burned',
+    );
+    const burnCoveragePct = burnVisual.visualPercent ?? 0;
 
     if (mode === 'enterprise') {
       return [
@@ -1370,8 +1387,7 @@ export class DashboardExecutiveService {
           value: totals.portfolioValue,
           format: 'currency',
           helper: 'Approved and estimated value across visible projects',
-          visualPercent: 100,
-          visualLabel: 'Budget baseline',
+          ...budgetVisual,
         },
         {
           key: 'woIssuedValue',
@@ -1380,8 +1396,7 @@ export class DashboardExecutiveService {
           format: 'currency',
           tone: totals.workOrderValue > 0 ? 'positive' : 'warning',
           helper: `${totals.activeWorkOrders} active work orders in the selected scope`,
-          visualPercent: workOrderCommitmentPct,
-          visualLabel: `${workOrderCommitmentPct.toFixed(0)}% of budget committed`,
+          ...workOrderVisual,
         },
         {
           key: 'burnValue',
@@ -1391,8 +1406,7 @@ export class DashboardExecutiveService {
           tone:
             burnCoveragePct >= 75 ? 'positive' : burnCoveragePct >= 40 ? 'warning' : 'default',
           helper: 'Measured execution burn during the selected range',
-          visualPercent: burnCoveragePct,
-          visualLabel: `${burnCoveragePct.toFixed(0)}% of budget burned`,
+          ...burnVisual,
         },
       ];
     }
@@ -1433,8 +1447,7 @@ export class DashboardExecutiveService {
           value: totals.portfolioValue,
           format: 'currency',
           helper: 'Approved and estimated value across company projects',
-          visualPercent: 100,
-          visualLabel: 'Budget baseline',
+          ...budgetVisual,
         },
         {
           key: 'woIssuedValue',
@@ -1443,8 +1456,7 @@ export class DashboardExecutiveService {
           format: 'currency',
           tone: totals.workOrderValue > 0 ? 'positive' : 'warning',
           helper: `${totals.activeWorkOrders} active work orders across company projects`,
-          visualPercent: workOrderCommitmentPct,
-          visualLabel: `${workOrderCommitmentPct.toFixed(0)}% of budget committed`,
+          ...workOrderVisual,
         },
         {
           key: 'burnValue',
@@ -1454,20 +1466,28 @@ export class DashboardExecutiveService {
           tone:
             burnCoveragePct >= 75 ? 'positive' : burnCoveragePct >= 40 ? 'warning' : 'default',
           helper: 'Measured execution burn during the selected range',
-          visualPercent: burnCoveragePct,
-          visualLabel: `${burnCoveragePct.toFixed(0)}% of budget burned`,
+          ...burnVisual,
         },
       ];
     }
 
     const currentProject = projectRows[0];
-    const projectBudget = Math.max(
-      currentProject?.approvedBudget || currentProject?.estimatedCost || 0,
-      1,
+    const projectBudget =
+      currentProject?.approvedBudget || currentProject?.estimatedCost || 0;
+    const projectBudgetVisual: BudgetRatioVisual = projectBudget > 0
+      ? { visualPercent: 100, visualLabel: 'Budget baseline' }
+      : { visualLabel: 'Budget unavailable' };
+    const projectWorkOrderVisual = this.buildBudgetRatioVisual(
+      currentProject?.activeWorkOrderValue || 0,
+      projectBudget,
+      'budget committed',
     );
-    const projectWorkOrderPct =
-      ((currentProject?.activeWorkOrderValue || 0) / projectBudget) * 100;
-    const projectBurnPct = ((currentProject?.burnValue || 0) / projectBudget) * 100;
+    const projectBurnVisual = this.buildBudgetRatioVisual(
+      currentProject?.burnValue || 0,
+      projectBudget,
+      'budget burned',
+    );
+    const projectBurnPct = projectBurnVisual.visualPercent ?? 0;
     const projectActualProgressMetric = this.buildActualProgressMetric(
       currentProject?.progressPercent || 0,
       currentProject?.burnValue || 0,
@@ -1517,8 +1537,7 @@ export class DashboardExecutiveService {
         value: currentProject?.approvedBudget || currentProject?.estimatedCost || 0,
         format: 'currency',
         helper: 'Approved or estimated project budget baseline',
-        visualPercent: 100,
-        visualLabel: 'Budget baseline',
+        ...projectBudgetVisual,
       },
       {
         key: 'woIssuedValue',
@@ -1527,8 +1546,7 @@ export class DashboardExecutiveService {
         format: 'currency',
         tone: (currentProject?.activeWorkOrderValue || 0) > 0 ? 'positive' : 'warning',
         helper: `${currentProject?.activeWorkOrders || 0} active work orders`,
-        visualPercent: projectWorkOrderPct,
-        visualLabel: `${projectWorkOrderPct.toFixed(0)}% of budget committed`,
+        ...projectWorkOrderVisual,
       },
       {
         key: 'burnValue',
@@ -1538,8 +1556,7 @@ export class DashboardExecutiveService {
         tone:
           projectBurnPct >= 75 ? 'positive' : projectBurnPct >= 40 ? 'warning' : 'default',
         helper: 'Measured execution burn during the selected range',
-        visualPercent: projectBurnPct,
-        visualLabel: `${projectBurnPct.toFixed(0)}% of budget burned`,
+        ...projectBurnVisual,
       },
     ];
   }
@@ -1550,9 +1567,21 @@ export class DashboardExecutiveService {
     trend: DashboardTrend,
     mode: ExecutiveMode,
   ): DashboardSection {
-    const budgetBase = Math.max(totals.portfolioValue, 1);
-    const workOrderCommitmentPct = (totals.workOrderValue / budgetBase) * 100;
-    const burnCoveragePct = (totals.burnValue / budgetBase) * 100;
+    const hasBudget = totals.portfolioValue > 0;
+    const budgetVisual: BudgetRatioVisual = hasBudget
+      ? { visualPercent: 100, visualLabel: 'Budget baseline' }
+      : { visualLabel: 'Budget unavailable' };
+    const workOrderVisual = this.buildBudgetRatioVisual(
+      totals.workOrderValue,
+      totals.portfolioValue,
+      'budget committed',
+    );
+    const burnVisual = this.buildBudgetRatioVisual(
+      totals.burnValue,
+      totals.portfolioValue,
+      'budget burned',
+    );
+    const burnCoveragePct = burnVisual.visualPercent ?? 0;
     const scheduleProgress = projectRows.length
       ? projectRows.reduce((sum, row) => sum + row.progressPercent, 0) /
         projectRows.length
@@ -1580,8 +1609,7 @@ export class DashboardExecutiveService {
           value: totals.portfolioValue,
           format: 'currency',
           helper: 'Approved and estimated value in the selected scope',
-          visualPercent: 100,
-          visualLabel: 'Budget baseline',
+          ...budgetVisual,
         },
         {
           key: 'woIssuedValue',
@@ -1590,8 +1618,7 @@ export class DashboardExecutiveService {
           format: 'currency',
           tone: totals.workOrderValue > 0 ? 'positive' : 'warning',
           helper: `${totals.activeWorkOrders} active work orders`,
-          visualPercent: workOrderCommitmentPct,
-          visualLabel: `${workOrderCommitmentPct.toFixed(0)}% of budget committed`,
+          ...workOrderVisual,
         },
         {
           key: 'burnValue',
@@ -1601,8 +1628,7 @@ export class DashboardExecutiveService {
           tone:
             burnCoveragePct >= 75 ? 'positive' : burnCoveragePct >= 40 ? 'warning' : 'default',
           helper: 'Measured execution burn during the selected range',
-          visualPercent: burnCoveragePct,
-          visualLabel: `${burnCoveragePct.toFixed(0)}% of budget burned`,
+          ...burnVisual,
         },
         { key: 'manpower', label: 'Latest Manpower', value: totals.manpower, format: 'number' },
         {
@@ -1622,6 +1648,25 @@ export class DashboardExecutiveService {
       trend,
       alerts: this.buildProgressAlerts(projectRows),
       actions: this.buildProgressActions(projectRows, mode),
+    };
+  }
+
+  private buildBudgetRatioVisual(
+    value: number,
+    budgetValue: number,
+    label: string,
+  ): BudgetRatioVisual {
+    const normalizedValue = Math.max(0, Number(value || 0));
+    const normalizedBudget = Math.max(0, Number(budgetValue || 0));
+
+    if (normalizedBudget <= 0) {
+      return { visualLabel: 'Budget unavailable' };
+    }
+
+    const percent = (normalizedValue / normalizedBudget) * 100;
+    return {
+      visualPercent: percent,
+      visualLabel: `${percent.toFixed(0)}% of ${label}`,
     };
   }
 

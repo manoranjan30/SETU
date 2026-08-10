@@ -18,6 +18,8 @@ import {
   QualityPourCard,
 } from './entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './entities/quality-pre-pour-clearance-card.entity';
+import { QualityCardApprovalRun } from './entities/quality-card-approval-run.entity';
+import { QualityCardApprovalStep } from './entities/quality-card-approval-step.entity';
 import {
   QualityCubeTestAge,
   QualityCubeTestRegister,
@@ -119,6 +121,8 @@ type SignatureRequestMeta = {
   userAgent?: string | null;
 };
 
+type CardApprovalDocument = QualityPourCard | QualityPrePourClearanceCard;
+
 @Injectable()
 export class QualityPourCardService {
   constructor(
@@ -128,6 +132,10 @@ export class QualityPourCardService {
     private readonly pourCardRepo: Repository<QualityPourCard>,
     @InjectRepository(QualityPrePourClearanceCard)
     private readonly clearanceRepo: Repository<QualityPrePourClearanceCard>,
+    @InjectRepository(QualityCardApprovalRun)
+    private readonly cardApprovalRunRepo: Repository<QualityCardApprovalRun>,
+    @InjectRepository(QualityCardApprovalStep)
+    private readonly cardApprovalStepRepo: Repository<QualityCardApprovalStep>,
     @InjectRepository(QualityCubeTestRegister)
     private readonly cubeRegisterRepo: Repository<QualityCubeTestRegister>,
     @InjectRepository(QualityConcreteGrade)
@@ -301,9 +309,9 @@ export class QualityPourCardService {
       : QualityCubeTestAge.TWENTY_EIGHT_DAY;
   }
 
-  private async assertCardReleaseStrategyApprover(
+  private async resolveCardApprovalStrategy(
     card: Pick<
-      QualityPourCard | QualityPrePourClearanceCard,
+      CardApprovalDocument,
       | 'projectId'
       | 'inspectionId'
       | 'activityId'
@@ -312,10 +320,7 @@ export class QualityPourCardService {
       | 'submittedByUserId'
     >,
     documentType: string,
-    userId?: number,
-    isAdmin = false,
   ) {
-    if (!userId || isAdmin) return;
     const resolved = await this.releaseStrategyService.resolveStrategy(
       card.projectId,
       {
@@ -333,25 +338,435 @@ export class QualityPourCardService {
       },
     );
 
-    const steps = resolved?.matchedStrategy?.resolvedSteps || [];
-    if (!steps.length) {
+    const strategy = resolved?.matchedStrategy;
+    const steps = [...(strategy?.resolvedSteps || [])].sort(
+      (a, b) => Number(a.levelNo || 0) - Number(b.levelNo || 0),
+    );
+    if (!strategy || !steps.length) {
       throw new BadRequestException(
         `No active release strategy is configured for ${documentType}. Configure QUALITY / ${QUALITY_CARD_APPROVAL_PROCESS} / ${documentType} before approving this card.`,
       );
     }
 
-    const approvers = steps.flatMap((step) => step.approvers || []);
-    if (!approvers.length) {
+    if (!steps.some((step) => (step.approvers || []).length > 0)) {
       throw new BadRequestException(
         `The active release strategy for ${documentType} has no eligible approvers.`,
       );
     }
 
-    if (!approvers.some((approver) => approver.userId === userId)) {
+    return { strategy, steps };
+  }
+
+  private async resetCardApprovalRun(
+    card: CardApprovalDocument,
+    documentType: string,
+    initiatorUserId?: number,
+  ) {
+    await this.cardApprovalRunRepo.delete({
+      documentType,
+      documentId: card.id,
+    });
+    const { strategy, steps } = await this.resolveCardApprovalStrategy(
+      card,
+      documentType,
+    );
+    const run = await this.cardApprovalRunRepo.save(
+      this.cardApprovalRunRepo.create({
+        projectId: card.projectId,
+        inspectionId: card.inspectionId,
+        activityId: card.activityId ?? null,
+        epsNodeId: card.epsNodeId ?? null,
+        documentType,
+        documentId: card.id,
+        releaseStrategyId: strategy.id,
+        releaseStrategyVersion: strategy.version,
+        strategyName: strategy.name,
+        moduleCode: strategy.moduleCode,
+        processCode: strategy.processCode,
+        status: 'IN_PROGRESS',
+        currentStepOrder: Number(steps[0].levelNo || 1),
+        initiatorUserId: initiatorUserId ?? card.submittedByUserId ?? null,
+        contextSnapshot: {
+          inspectionId: card.inspectionId,
+          activityId: card.activityId,
+          epsNodeId: card.epsNodeId,
+          elementName: (card as QualityPourCard).elementName || null,
+        },
+      }),
+    );
+    await this.cardApprovalStepRepo.save(
+      steps.map((step, index) => {
+        const userIds =
+          step.approverMode === 'USER'
+            ? step.userIds?.length
+              ? step.userIds
+              : step.userId
+                ? [step.userId]
+                : []
+            : null;
+        return this.cardApprovalStepRepo.create({
+          runId: run.id,
+          stepOrder: Number(step.levelNo || index + 1),
+          stepName: step.stepName || `Level ${step.levelNo || index + 1}`,
+          approverMode: step.approverMode || null,
+          assignedUserId:
+            step.approverMode === 'USER'
+              ? userIds?.[0] ?? null
+              : null,
+          assignedUserIds: userIds,
+          assignedRoleId: step.roleId ?? null,
+          minApprovalsRequired: step.minApprovalsRequired || 1,
+          currentApprovalCount: 0,
+          approvedUserIds: [],
+          status: index === 0 ? 'PENDING' : 'WAITING',
+        });
+      }),
+    );
+    return this.getCardApprovalRun(documentType, card.id);
+  }
+
+  private async ensureCardApprovalRun(
+    card: CardApprovalDocument,
+    documentType: string,
+  ) {
+    const existing = await this.cardApprovalRunRepo.findOne({
+      where: { documentType, documentId: card.id },
+      relations: ['steps'],
+      order: { steps: { stepOrder: 'ASC' } },
+    });
+    if (existing) {
+      existing.steps = [...(existing.steps || [])].sort(
+        (a, b) => a.stepOrder - b.stepOrder,
+      );
+      return existing;
+    }
+    return this.resetCardApprovalRun(
+      card,
+      documentType,
+      card.submittedByUserId ?? card.createdByUserId ?? undefined,
+    );
+  }
+
+  private async getCardApprovalRun(documentType: string, documentId: number) {
+    const run = await this.cardApprovalRunRepo.findOne({
+      where: { documentType, documentId },
+      relations: ['steps'],
+      order: { steps: { stepOrder: 'ASC' } },
+    });
+    if (!run) throw new NotFoundException('Card approval workflow not found');
+    run.steps = [...(run.steps || [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    return run;
+  }
+
+  private async assertUserCanApproveCardStep(
+    projectId: number,
+    step: QualityCardApprovalStep,
+    userId?: number,
+    isAdmin = false,
+  ) {
+    if (!userId) {
+      throw new ForbiddenException('A logged-in approver is required.');
+    }
+    if (isAdmin) return;
+    if (step.approverMode === 'USER') {
+      const allowed = new Set(
+        step.assignedUserIds?.length
+          ? step.assignedUserIds
+          : step.assignedUserId
+            ? [step.assignedUserId]
+            : [],
+      );
+      if (!allowed.has(userId)) {
+        throw new ForbiddenException(
+          'You are not assigned to this card approval level.',
+        );
+      }
+      return;
+    }
+    if (step.approverMode === 'PROJECT_ROLE' && step.assignedRoleId) {
+      const roleIds = await this.approvalRuntimeService.getProjectRoleIds(
+        projectId,
+        userId,
+      );
+      if (!roleIds.includes(step.assignedRoleId)) {
+        throw new ForbiddenException(
+          'Your project role is not assigned to this card approval level.',
+        );
+      }
+      return;
+    }
+    const allowed = new Set(step.assignedUserIds || []);
+    if (allowed.size > 0 && !allowed.has(userId)) {
       throw new ForbiddenException(
-        `Only approvers configured in the ${documentType} release strategy can approve or reject this card.`,
+        'You are not assigned to this card approval level.',
       );
     }
+  }
+
+  private async serializeCardApprovalRun(
+    run: QualityCardApprovalRun | null,
+    userId?: number,
+    isAdmin = false,
+  ) {
+    if (!run) return null;
+    const steps = [...(run.steps || [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    const activeStep = steps.find((step) => step.stepOrder === run.currentStepOrder) || null;
+    const userRoleIds =
+      userId && !isAdmin
+        ? await this.approvalRuntimeService.getProjectRoleIds(
+            run.projectId,
+            userId,
+          )
+        : [];
+    const canActOnStep = (step: QualityCardApprovalStep | null) => {
+      if (!step || step.status !== 'PENDING') return false;
+      if (isAdmin) return true;
+      if (!userId) return false;
+      if (step.approverMode === 'USER') {
+        const allowed = step.assignedUserIds?.length
+          ? step.assignedUserIds
+          : step.assignedUserId
+            ? [step.assignedUserId]
+            : [];
+        return allowed.includes(userId);
+      }
+      if (step.approverMode === 'PROJECT_ROLE' && step.assignedRoleId) {
+        return userRoleIds.includes(step.assignedRoleId);
+      }
+      return false;
+    };
+    return {
+      id: run.id,
+      status: run.status,
+      documentType: run.documentType,
+      currentStepOrder: run.currentStepOrder,
+      totalLevels: steps.length,
+      strategyName: run.strategyName,
+      releaseStrategyId: run.releaseStrategyId,
+      releaseStrategyVersion: run.releaseStrategyVersion,
+      activeLevel: activeStep
+        ? {
+            stepOrder: activeStep.stepOrder,
+            stepName: activeStep.stepName,
+            status: activeStep.status,
+            canApprove: canActOnStep(activeStep),
+          }
+        : null,
+      canApprove: canActOnStep(activeStep),
+      canReject: canActOnStep(activeStep),
+      levels: steps.map((step) => ({
+        id: step.id,
+        stepOrder: step.stepOrder,
+        stepName: step.stepName,
+        approverMode: step.approverMode,
+        assignedUserId: step.assignedUserId,
+        assignedUserIds: step.assignedUserIds || [],
+        assignedRoleId: step.assignedRoleId,
+        minApprovalsRequired: step.minApprovalsRequired,
+        currentApprovalCount: step.currentApprovalCount,
+        approvedUserIds: step.approvedUserIds || [],
+        status: step.status,
+        signedBy: step.signedBy,
+        signerDisplayName: step.signerDisplayName,
+        signerCompany: step.signerCompany,
+        signerRole: step.signerRole,
+        completedAt: step.completedAt,
+        comments: step.comments,
+        canApprove: canActOnStep(step),
+      })),
+    };
+  }
+
+  private async attachCardApprovalWorkflow<T extends CardApprovalDocument>(
+    card: T,
+    documentType: string,
+    userId?: number,
+    isAdmin = false,
+  ) {
+    const run =
+      card.status === QualityCardStatus.SUBMITTED
+        ? await this.ensureCardApprovalRun(card, documentType)
+        : await this.cardApprovalRunRepo.findOne({
+            where: { documentType, documentId: card.id },
+            relations: ['steps'],
+            order: { steps: { stepOrder: 'ASC' } },
+          });
+    return {
+      ...(card as any),
+      approvalWorkflow: await this.serializeCardApprovalRun(
+        run,
+        userId,
+        isAdmin,
+      ),
+    };
+  }
+
+  private async approveCardWorkflowStep<T extends CardApprovalDocument>(
+    card: T,
+    documentType: string,
+    userId: number | undefined,
+    remarks: string | undefined,
+    isAdmin: boolean,
+  ) {
+    const run = await this.ensureCardApprovalRun(card, documentType);
+    if (run.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('This card approval workflow is not active.');
+    }
+    const step = run.steps.find(
+      (item) => item.stepOrder === run.currentStepOrder,
+    );
+    if (!step || step.status !== 'PENDING') {
+      throw new BadRequestException('No pending approval level is available.');
+    }
+    await this.assertUserCanApproveCardStep(
+      run.projectId,
+      step,
+      userId,
+      isAdmin,
+    );
+    const approverId = userId as number;
+    const approvedUserIds = new Set(step.approvedUserIds || []);
+    if (approvedUserIds.has(approverId)) {
+      throw new BadRequestException('You have already approved this card level.');
+    }
+    approvedUserIds.add(approverId);
+    const signer = await this.approvalRuntimeService.getSignerSnapshot(
+      run.projectId,
+      approverId,
+    );
+    step.approvedUserIds = Array.from(approvedUserIds);
+    step.currentApprovalCount = step.approvedUserIds.length;
+    step.signedBy = signer.displayName;
+    step.signerDisplayName = signer.displayName;
+    step.signerCompany = signer.companyLabel;
+    step.signerRole = signer.roleLabel;
+    step.comments = remarks?.trim() || null;
+    if (step.currentApprovalCount >= step.minApprovalsRequired) {
+      step.status = 'COMPLETED';
+      step.completedAt = new Date();
+      await this.cardApprovalStepRepo.save(step);
+      const latest = await this.getCardApprovalRun(documentType, card.id);
+      const next = latest.steps.find((item) => item.status === 'WAITING');
+      if (next) {
+        next.status = 'PENDING';
+        latest.currentStepOrder = next.stepOrder;
+        await this.cardApprovalStepRepo.save(next);
+        await this.cardApprovalRunRepo.save(latest);
+        return { complete: false };
+      }
+      latest.status = 'APPROVED';
+      await this.cardApprovalRunRepo.save(latest);
+      return { complete: true, signer };
+    }
+    await this.cardApprovalStepRepo.save(step);
+    return { complete: false };
+  }
+
+  private async rejectCardWorkflowStep<T extends CardApprovalDocument>(
+    card: T,
+    documentType: string,
+    userId: number | undefined,
+    remarks: string | undefined,
+    isAdmin: boolean,
+  ) {
+    const run = await this.ensureCardApprovalRun(card, documentType);
+    if (run.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('This card approval workflow is not active.');
+    }
+    const step = run.steps.find(
+      (item) => item.stepOrder === run.currentStepOrder,
+    );
+    if (!step || step.status !== 'PENDING') {
+      throw new BadRequestException('No pending approval level is available.');
+    }
+    await this.assertUserCanApproveCardStep(
+      run.projectId,
+      step,
+      userId,
+      isAdmin,
+    );
+    const signer = await this.approvalRuntimeService.getSignerSnapshot(
+      run.projectId,
+      userId as number,
+    );
+    step.status = 'REJECTED';
+    step.signedBy = signer.displayName;
+    step.signerDisplayName = signer.displayName;
+    step.signerCompany = signer.companyLabel;
+    step.signerRole = signer.roleLabel;
+    step.comments = remarks?.trim() || 'Rejected for revision';
+    step.completedAt = new Date();
+    run.status = 'REJECTED';
+    await this.cardApprovalStepRepo.save(step);
+    await this.cardApprovalRunRepo.save(run);
+  }
+
+  async listPendingCardApprovals(
+    projectId: number,
+    userId?: number,
+    isAdmin = false,
+  ) {
+    const runs = await this.cardApprovalRunRepo.find({
+      where: { projectId, status: 'IN_PROGRESS' },
+      relations: ['steps'],
+      order: { currentStepOrder: 'ASC', updatedAt: 'DESC' },
+    });
+    const items: any[] = [];
+    for (const run of runs) {
+      run.steps = [...(run.steps || [])].sort(
+        (a, b) => a.stepOrder - b.stepOrder,
+      );
+      const workflow = await this.serializeCardApprovalRun(
+        run,
+        userId,
+        isAdmin,
+      );
+      if (!workflow?.canApprove) continue;
+      const card =
+        run.documentType === POUR_CARD_DOCUMENT_TYPE
+          ? await this.pourCardRepo.findOne({ where: { id: run.documentId } })
+          : run.documentType === PRE_POUR_CLEARANCE_DOCUMENT_TYPE
+            ? await this.clearanceRepo.findOne({
+                where: { id: run.documentId },
+              })
+            : null;
+      if (!card || card.status !== QualityCardStatus.SUBMITTED) continue;
+      const inspection = await this.inspectionRepo.findOne({
+        where: { id: run.inspectionId },
+        relations: ['activity', 'epsNode'],
+      });
+      items.push({
+        runId: run.id,
+        documentType: run.documentType,
+        cardId: run.documentId,
+        inspectionId: run.inspectionId,
+        projectId: run.projectId,
+        activityId: run.activityId,
+        epsNodeId: run.epsNodeId,
+        cardStatus: card.status,
+        title:
+          run.documentType === POUR_CARD_DOCUMENT_TYPE
+            ? 'Concrete Pour Card'
+            : 'Pre-Pour Clearance',
+        activityName:
+          inspection?.activity?.activityName ||
+          (card as QualityPrePourClearanceCard).activityLabel ||
+          null,
+        elementName:
+          (card as QualityPourCard).elementName ||
+          inspection?.elementName ||
+          null,
+        locationText:
+          (card as QualityPourCard).locationText ||
+          inspection?.epsNode?.name ||
+          null,
+        submittedAt: card.submittedAt,
+        submittedByUserId: card.submittedByUserId,
+        activeLevel: workflow.activeLevel,
+        approvalWorkflow: workflow,
+      });
+    }
+    return { data: items, total: items.length };
   }
 
   private async resolveApproverDisplayName(
@@ -1387,7 +1802,7 @@ export class QualityPourCardService {
     });
   }
 
-  async getPourCard(inspectionId: number) {
+  async getPourCard(inspectionId: number, userId?: number, isAdmin = false) {
     const inspection = await this.getInspectionWithClearanceContextOrThrow(
       inspectionId,
     );
@@ -1431,13 +1846,19 @@ export class QualityPourCardService {
       card = await this.pourCardRepo.save(card);
     }
     const activationMeta = this.getPourCardActivationMeta(inspection);
-    return Object.assign(card, {
+    const response = Object.assign(card, {
       isActivated: activationMeta.triggerApproved,
       activationStageTemplateId: activationMeta.triggerStageTemplateId,
       activationStageName: activationMeta.triggerStageName,
       activationApprovalLevel: activationMeta.triggerApprovalLevel,
       activationApprovalLevelName: activationMeta.triggerApprovalLevelName,
     });
+    return this.attachCardApprovalWorkflow(
+      response,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
   }
 
   async savePourCard(inspectionId: number, payload: Partial<QualityPourCard>, userId?: number) {
@@ -1570,7 +1991,17 @@ export class QualityPourCardService {
     card.rejectedAt = null;
     card.rejectedByUserId = null;
     card.rejectionRemarks = null;
-    return this.pourCardRepo.save(card);
+    const saved = await this.pourCardRepo.save(card);
+    await this.resetCardApprovalRun(
+      saved,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+    );
+    return this.attachCardApprovalWorkflow(
+      saved,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+    );
   }
 
   private async ensureCubeRegisterForApprovedPourCard(
@@ -1672,20 +2103,26 @@ export class QualityPourCardService {
         'Pour card must be submitted before it can be approved.',
       );
     }
-    await this.assertCardReleaseStrategyApprover(
-      card,
+    const workflowResult = await this.approveCardWorkflowStep(
+      card as QualityPourCard,
       POUR_CARD_DOCUMENT_TYPE,
       userId,
+      remarks,
       isAdmin,
     );
     this.validatePourCardForSubmission(card);
+    if (!workflowResult.complete) {
+      return this.attachCardApprovalWorkflow(
+        card,
+        POUR_CARD_DOCUMENT_TYPE,
+        userId,
+        isAdmin,
+      );
+    }
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;
-    card.approvedByName = await this.resolveApproverDisplayName(
-      card.projectId,
-      userId,
-    );
+    card.approvedByName = workflowResult.signer?.displayName || null;
     card.approvalRemarks = remarks?.trim() || null;
     card.rejectedAt = null;
     card.rejectedByUserId = null;
@@ -1693,7 +2130,12 @@ export class QualityPourCardService {
     const saved = await this.pourCardRepo.save(card);
     const inspection = await this.getInspectionOrThrow(inspectionId);
     await this.ensureCubeRegisterForApprovedPourCard(saved, inspection);
-    return saved;
+    return this.attachCardApprovalWorkflow(
+      saved,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
   }
 
   async rejectPourCard(
@@ -1711,17 +2153,24 @@ export class QualityPourCardService {
         'Only submitted pour cards can be rejected.',
       );
     }
-    await this.assertCardReleaseStrategyApprover(
-      card,
+    await this.rejectCardWorkflowStep(
+      card as QualityPourCard,
       POUR_CARD_DOCUMENT_TYPE,
       userId,
+      remarks,
       isAdmin,
     );
     card.status = QualityCardStatus.REJECTED;
     card.rejectedAt = new Date();
     card.rejectedByUserId = userId ?? null;
     card.rejectionRemarks = remarks?.trim() || 'Rejected for revision';
-    return this.pourCardRepo.save(card);
+    const saved = await this.pourCardRepo.save(card);
+    return this.attachCardApprovalWorkflow(
+      saved,
+      POUR_CARD_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
   }
 
   private writeStandardPourCardCell(
@@ -2184,7 +2633,11 @@ export class QualityPourCardService {
     }, { margin: 0, size: [792, 612] });
   }
 
-  async getPrePourClearanceCard(inspectionId: number) {
+  async getPrePourClearanceCard(
+    inspectionId: number,
+    userId?: number,
+    isAdmin = false,
+  ) {
     const inspection = await this.getInspectionWithClearanceContextOrThrow(
       inspectionId,
     );
@@ -2271,10 +2724,16 @@ export class QualityPourCardService {
       card = await this.clearanceRepo.save(card);
     }
     const activationMeta = this.getClearanceActivationMeta(inspection);
-    return Object.assign(card, {
+    const response = Object.assign(card, {
       activationApprovalLevel: activationMeta.triggerApprovalLevel,
       activationApprovalLevelName: activationMeta.triggerApprovalLevelName,
     });
+    return this.attachCardApprovalWorkflow(
+      response,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
   }
 
   async savePrePourClearanceCard(
@@ -2460,7 +2919,17 @@ export class QualityPourCardService {
     card.rejectedAt = null;
     card.rejectedByUserId = null;
     card.rejectionRemarks = null;
-    return this.clearanceRepo.save(card);
+    const saved = await this.clearanceRepo.save(card);
+    await this.resetCardApprovalRun(
+      saved,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+    );
+    return this.attachCardApprovalWorkflow(
+      saved,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+    );
   }
 
   async approvePrePourClearanceCard(
@@ -2476,12 +2945,21 @@ export class QualityPourCardService {
         'Pre-pour clearance must be submitted before it can be approved.',
       );
     }
-    await this.assertCardReleaseStrategyApprover(
-      card,
+    const workflowResult = await this.approveCardWorkflowStep(
+      card as QualityPrePourClearanceCard,
       PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
       userId,
+      remarks,
       isAdmin,
     );
+    if (!workflowResult.complete) {
+      return this.attachCardApprovalWorkflow(
+        card,
+        PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+        userId,
+        isAdmin,
+      );
+    }
     card.status = QualityCardStatus.APPROVED;
     card.approvedAt = new Date();
     card.approvedByUserId = userId ?? null;
@@ -2489,7 +2967,13 @@ export class QualityPourCardService {
     card.rejectedAt = null;
     card.rejectedByUserId = null;
     card.rejectionRemarks = null;
-    return this.clearanceRepo.save(card);
+    const saved = await this.clearanceRepo.save(card);
+    return this.attachCardApprovalWorkflow(
+      saved,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
   }
 
   async rejectPrePourClearanceCard(
@@ -2509,17 +2993,24 @@ export class QualityPourCardService {
         'Only submitted pre-pour clearance cards can be rejected.',
       );
     }
-    await this.assertCardReleaseStrategyApprover(
-      card,
+    await this.rejectCardWorkflowStep(
+      card as QualityPrePourClearanceCard,
       PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
       userId,
+      remarks,
       isAdmin,
     );
     card.status = QualityCardStatus.REJECTED;
     card.rejectedAt = new Date();
     card.rejectedByUserId = userId ?? null;
     card.rejectionRemarks = remarks?.trim() || 'Rejected for revision';
-    return this.clearanceRepo.save(card);
+    const saved = await this.clearanceRepo.save(card);
+    return this.attachCardApprovalWorkflow(
+      saved,
+      PRE_POUR_CLEARANCE_DOCUMENT_TYPE,
+      userId,
+      isAdmin,
+    );
   }
 
   private writeClearanceAttachmentTable(

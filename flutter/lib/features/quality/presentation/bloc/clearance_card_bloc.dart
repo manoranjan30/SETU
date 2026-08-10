@@ -388,15 +388,22 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
   Future<void> _onApprove(
       ApproveClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
+    final inspectionId = _card!.inspectionId;
     emit(ClearanceCardSaving(_card!));
     try {
-      final data = await _api.approveClearanceCard(
-        _card!.inspectionId,
-        remarks: event.remarks,
-      );
+      await _api.approveClearanceCard(inspectionId, remarks: event.remarks);
+      // Re-fetch rather than trust the approve response's own shape — with
+      // a multi-level workflow this call may have only advanced to the next
+      // level (card still SUBMITTED) rather than fully approved it, and the
+      // GET endpoint is the one guaranteed to return the fresh
+      // approvalWorkflow (active level, levels[]) either way.
+      final data = await _api.getClearanceCard(inspectionId);
       _card = QualityPrePourClearanceCard.fromJson(data);
+      final isFinal = _card!.status == QualityCardStatus.approved;
       emit(ClearanceCardActionSuccess(
-          message: 'Clearance card approved', card: _card!));
+        message: isFinal ? 'Clearance card approved' : 'Level approved — next level is now active',
+        card: _card!,
+      ));
     } catch (e) {
       emit(ClearanceCardError(_friendlyError(e)));
     }
@@ -405,12 +412,11 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
   Future<void> _onReject(
       RejectClearanceCard event, Emitter<ClearanceCardState> emit) async {
     if (_card == null) return;
+    final inspectionId = _card!.inspectionId;
     emit(ClearanceCardSaving(_card!));
     try {
-      final data = await _api.rejectClearanceCard(
-        _card!.inspectionId,
-        remarks: event.reason,
-      );
+      await _api.rejectClearanceCard(inspectionId, remarks: event.reason);
+      final data = await _api.getClearanceCard(inspectionId);
       _card = QualityPrePourClearanceCard.fromJson(data);
       emit(ClearanceCardActionSuccess(
           message: 'Clearance card rejected', card: _card!));

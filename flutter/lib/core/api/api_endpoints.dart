@@ -627,6 +627,14 @@ class ApiEndpoints {
   static String pourCardPdf(int inspectionId) =>
       '/quality/inspections/$inspectionId/pour-card/pdf';
 
+  /// GET /quality/inspections/card-approvals/pending?projectId=X — pour
+  /// card / pre-pour clearance card approvals currently actionable by the
+  /// logged-in user (or any, if admin). Verified against
+  /// `quality-pour-card.controller.ts:listPendingCardApprovals`; the only
+  /// query param is `projectId`.
+  static String cardApprovalsPending(int projectId) =>
+      '/quality/inspections/card-approvals/pending?projectId=$projectId';
+
   // ==================== QUALITY PRE-POUR CLEARANCE ENDPOINTS ====================
 
   /// GET/PUT /quality/inspections/:id/pre-pour-clearance
