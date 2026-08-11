@@ -189,9 +189,14 @@ class ClearanceCardActionSuccess extends ClearanceCardState {
 
 class ClearanceCardError extends ClearanceCardState {
   final String message;
-  const ClearanceCardError(this.message);
+
+  /// Raw `e.toString()` behind [message] — see [PourCardError.technicalDetail]
+  /// for why this is kept separately and surfaced in a "Technical details"
+  /// section rather than folded into the friendly message.
+  final String? technicalDetail;
+  const ClearanceCardError(this.message, {this.technicalDetail});
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, technicalDetail];
 }
 
 // ==================== BLOC ====================
@@ -230,7 +235,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       _card = QualityPrePourClearanceCard.fromJson(data);
       emit(ClearanceCardLoaded(_card!));
     } catch (e) {
-      emit(ClearanceCardError(_friendlyError(e)));
+      emit(ClearanceCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -367,7 +372,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       emit(ClearanceCardActionSuccess(
           message: 'Clearance card saved', card: _card!));
     } catch (e) {
-      emit(ClearanceCardError(_friendlyError(e)));
+      emit(ClearanceCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -381,7 +386,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       emit(ClearanceCardActionSuccess(
           message: 'Clearance card submitted for approval', card: _card!));
     } catch (e) {
-      emit(ClearanceCardError(_friendlyError(e)));
+      emit(ClearanceCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -405,7 +410,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
         card: _card!,
       ));
     } catch (e) {
-      emit(ClearanceCardError(_friendlyError(e)));
+      emit(ClearanceCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -421,7 +426,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       emit(ClearanceCardActionSuccess(
           message: 'Clearance card rejected', card: _card!));
     } catch (e) {
-      emit(ClearanceCardError(_friendlyError(e)));
+      emit(ClearanceCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -457,7 +462,7 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
       _card = _card!.copyWith(attachmentDocuments: updated);
       emit(ClearanceCardLoaded(_card!));
     } catch (e) {
-      emit(ClearanceCardError(_friendlyError(e)));
+      emit(ClearanceCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -478,6 +483,11 @@ class ClearanceCardBloc extends Bloc<ClearanceCardEvent, ClearanceCardState> {
           : e.message;
     }
     if (e is BadRequestException) return e.message;
+    if (e is ServerErrorException) {
+      return e.message == 'Server error'
+          ? 'The server hit an error loading this card. Please try again, or contact support if it keeps happening.'
+          : 'Server error: ${e.message}';
+    }
     if (e is TypeError || e is FormatException) {
       return 'Clearance card data could not be read by the mobile app. Please retry after updating the app.';
     }

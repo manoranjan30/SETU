@@ -2747,7 +2747,12 @@ class _ErrorInterceptor extends Interceptor {
           case 404:
             return const ApiException.notFound();
           case 500:
-            return const ApiException.serverError();
+            // Previously discarded the backend's own message and always
+            // showed a bare "Server error" — pass it through when NestJS's
+            // exception filter includes one, same as the 400/403 cases,
+            // so an unhandled server-side exception isn't completely opaque
+            // to the user.
+            return ApiException.serverError(message is String ? message : 'Server error');
           default:
             // Catch-all for uncommon HTTP status codes (e.g., 409 Conflict,
             // 422 Unprocessable Entity) that we have not specialised yet.

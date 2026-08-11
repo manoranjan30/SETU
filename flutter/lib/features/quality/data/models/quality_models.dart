@@ -2189,10 +2189,19 @@ class CardApprovalWorkflow extends Equatable {
 
   /// Parses the nested `approvalWorkflow` key from a card response, or
   /// `null` when absent (never-submitted card) or explicitly null.
+  /// Never lets a malformed/unexpected `approvalWorkflow` shape take the
+  /// whole card load down with it — the rest of the card (entries, header,
+  /// status) is far more important to show than the approval-level
+  /// timeline, so a parse failure here degrades to "no workflow shown"
+  /// rather than "Failed to load [card]" for the entire screen.
   static CardApprovalWorkflow? fromCardJson(Map<String, dynamic> cardJson) {
     final raw = cardJson['approvalWorkflow'];
     if (raw == null) return null;
-    return CardApprovalWorkflow.fromJson(Map<String, dynamic>.from(raw as Map));
+    try {
+      return CardApprovalWorkflow.fromJson(Map<String, dynamic>.from(raw as Map));
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

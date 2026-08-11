@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  InternalServerErrorException,
   Logger,
   Put,
   Post,
@@ -19,13 +20,20 @@ import { RolesGuard } from '../auth/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join, resolve } from 'path';
-import { mkdirSync } from 'fs';
+import { accessSync, constants, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { unlink } from 'fs/promises';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const ApkParser = require('app-info-parser/src/apk');
 
-const uploadRoot = resolve(process.env.UPLOAD_DIR || join(process.cwd(), 'uploads'));
+const getUploadRoot = () =>
+  resolve(process.env.UPLOAD_DIR || join(process.cwd(), 'uploads'));
 const apkUploadMaxBytes =
   Number(process.env.APK_UPLOAD_MAX_MB || 500) * 1024 * 1024;
+
+const normalizePlatform = (platform?: unknown) =>
+  String(platform || 'android')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '') || 'android';
 
 const getRequestOrigin = (req: any) => {
   const proto =
@@ -38,10 +46,8 @@ const getRequestOrigin = (req: any) => {
 
 const apkUploadStorage = diskStorage({
   destination: (req, _file, cb) => {
-    const platform = String(req?.query?.platform || 'android')
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '');
-    const destination = join(uploadRoot, 'mobile-app', platform || 'android');
+    const platform = normalizePlatform(req?.query?.platform);
+    const destination = join(getUploadRoot(), 'mobile-app', platform);
     try {
       mkdirSync(destination, { recursive: true });
       cb(null, destination);
@@ -76,7 +82,39 @@ export class AppConfigController {
 
   @Get('mobile-app')
   getMobileAppDownload(@Query('platform') platform = 'android', @Req() req) {
-    return this.service.getDownloadInfo(platform, getRequestOrigin(req));
+    return this.service.getDownloadInfo(
+      normalizePlatform(platform),
+      getRequestOrigin(req),
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  @Get('mobile-app/upload-health')
+  getMobileAppUploadHealth(@Query('platform') platform = 'android') {
+    const normalizedPlatform = normalizePlatform(platform);
+    const root = getUploadRoot();
+    const destination = join(root, 'mobile-app', normalizedPlatform);
+    const probePath = join(destination, `.write-test-${Date.now()}.tmp`);
+    try {
+      mkdirSync(destination, { recursive: true });
+      accessSync(destination, constants.W_OK);
+      writeFileSync(probePath, 'ok');
+      rmSync(probePath, { force: true });
+      return {
+        ok: true,
+        uploadRoot: root,
+        destination,
+        maxUploadMb: Number(process.env.APK_UPLOAD_MAX_MB || 500),
+      };
+    } catch (error) {
+      this.logger.error(
+        `APK upload path health check failed for ${destination}: ${error}`,
+      );
+      throw new InternalServerErrorException(
+        `APK upload path is not writable: ${destination}`,
+      );
+    }
   }
 
   /**
@@ -130,6 +168,7 @@ export class AppConfigController {
     if (!file) {
       throw new BadRequestException('APK file is required.');
     }
+    const normalizedPlatform = normalizePlatform(platform);
 
     // Prefer the versionCode/versionName actually embedded in the uploaded
     // APK's AndroidManifest.xml — these are what Flutter's build tooling
@@ -167,14 +206,28 @@ export class AppConfigController {
       versionName = body.versionName;
     }
 
-    return this.service.updateApk(
-      platform,
-      file,
-      {
-        buildNumber,
-        versionName,
-      },
-      getRequestOrigin(req),
-    );
+    try {
+      return await this.service.updateApk(
+        normalizedPlatform,
+        file,
+        {
+          buildNumber,
+          versionName,
+        },
+        getRequestOrigin(req),
+      );
+    } catch (error) {
+      this.logger.error(
+        `APK upload failed after file save. path=${file.path} uploadRoot=${getUploadRoot()} platform=${normalizedPlatform}: ${error}`,
+      );
+      try {
+        await unlink(file.path);
+      } catch {
+        // Best effort cleanup only.
+      }
+      throw new InternalServerErrorException(
+        'APK was uploaded to disk but server failed to save app update metadata. Check app_config migrations and database connectivity.',
+      );
+    }
   }
 }

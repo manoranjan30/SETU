@@ -160,6 +160,8 @@ import { QualityRatingConfig } from './quality/entities/quality-rating-config.en
 import { ProjectRating } from './quality/entities/quality-project-rating.entity';
 import { QualityPourCard } from './quality/entities/quality-pour-card.entity';
 import { QualityPrePourClearanceCard } from './quality/entities/quality-pre-pour-clearance-card.entity';
+import { QualityCardApprovalRun } from './quality/entities/quality-card-approval-run.entity';
+import { QualityCardApprovalStep } from './quality/entities/quality-card-approval-step.entity';
 import { QualityCubeTestRegister } from './quality/entities/quality-cube-test-register.entity';
 import { QualityConcreteGrade } from './quality/entities/quality-concrete-grade.entity';
 import { QualitySignatureQrSession } from './quality/entities/quality-signature-qr-session.entity';
@@ -389,6 +391,8 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         ProjectRating,
         QualityPourCard,
         QualityPrePourClearanceCard,
+        QualityCardApprovalRun,
+        QualityCardApprovalStep,
         // Design
         DrawingCategory,
         DrawingRegister,
@@ -470,7 +474,7 @@ import { AdminDataCorrection } from './admin-data/admin-data-correction.entity';
         rootPath: join(process.cwd(), 'client'),
       },
       {
-        rootPath: join(process.cwd(), 'uploads'),
+        rootPath: process.env.UPLOAD_DIR || join(process.cwd(), 'uploads'),
         serveRoot: '/uploads',
       },
     ),

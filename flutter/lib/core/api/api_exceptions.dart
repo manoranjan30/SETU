@@ -19,7 +19,7 @@ class ApiException implements Exception {
   const factory ApiException.unauthorized([String message]) = UnauthorizedException;
   const factory ApiException.forbidden([String message]) = ForbiddenException;
   const factory ApiException.notFound() = NotFoundException;
-  const factory ApiException.serverError() = ServerErrorException;
+  const factory ApiException.serverError([String detail]) = ServerErrorException;
   const factory ApiException.httpError(int statusCode, String message) = HttpException;
   const factory ApiException.cancelled() = CancelledException;
   const factory ApiException.unknown(String message) = UnknownException;
@@ -47,7 +47,12 @@ class NotFoundException extends ApiException {
 }
 
 class ServerErrorException extends ApiException {
-  const ServerErrorException() : super(message: 'Server error', statusCode: 500);
+  /// [detail] is the backend's own response body message when it sends
+  /// one (NestJS exception filters sometimes do, sometimes don't for a
+  /// genuinely unhandled 500) — falls back to a generic message so callers
+  /// always have *something* to show rather than a blank string.
+  const ServerErrorException([String detail = 'Server error'])
+      : super(message: detail, statusCode: 500);
 }
 
 class HttpException extends ApiException {

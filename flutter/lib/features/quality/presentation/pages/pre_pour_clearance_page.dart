@@ -205,7 +205,11 @@ class _ClearanceViewState extends State<_ClearanceView> {
           body: isLoading
               ? const Center(child: CircularProgressIndicator())
               : card == null
-                  ? _ErrorView(inspectionId: widget.inspectionId)
+                  ? _ErrorView(
+                      inspectionId: widget.inspectionId,
+                      message: state is ClearanceCardError ? state.message : null,
+                      technicalDetail: state is ClearanceCardError ? state.technicalDetail : null,
+                    )
                   : Stack(
                       children: [
                         _ClearanceBody(
@@ -225,24 +229,59 @@ class _ClearanceViewState extends State<_ClearanceView> {
 
 class _ErrorView extends StatelessWidget {
   final int inspectionId;
-  const _ErrorView({required this.inspectionId});
+
+  /// The bloc's friendly error message — see `pour_card_page.dart`'s
+  /// `_ErrorView` for why this and [technicalDetail] are threaded through
+  /// rather than always showing a generic hardcoded string.
+  final String? message;
+  final String? technicalDetail;
+
+  const _ErrorView({required this.inspectionId, this.message, this.technicalDetail});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text('Failed to load clearance card', style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () => context.read<ClearanceCardBloc>().add(LoadClearanceCard(inspectionId)),
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(
+              message ?? 'Failed to load clearance card',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => context.read<ClearanceCardBloc>().add(LoadClearanceCard(inspectionId)),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+            if (technicalDetail != null && technicalDetail!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('Technical details', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
+                      child: SelectableText(
+                        technicalDetail!,
+                        style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
