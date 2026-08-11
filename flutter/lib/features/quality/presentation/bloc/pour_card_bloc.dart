@@ -131,9 +131,17 @@ class PourCardActionSuccess extends PourCardState {
 
 class PourCardError extends PourCardState {
   final String message;
-  const PourCardError(this.message);
+
+  /// Raw `e.toString()` behind [message] — [message] is a friendly,
+  /// end-user string, but for a genuinely unhandled backend exception
+  /// (500 with no useful body) that friendly string is necessarily vague.
+  /// This is shown in a collapsible "Technical details" section on the
+  /// error screen so the user can actually report something specific
+  /// instead of a bare "An error occurred."
+  final String? technicalDetail;
+  const PourCardError(this.message, {this.technicalDetail});
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, technicalDetail];
 }
 
 // ==================== BLOC ====================
@@ -165,7 +173,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
       _currentCard = QualityPourCard.fromJson(data);
       emit(PourCardLoaded(_currentCard!));
     } catch (e) {
-      emit(PourCardError(_friendlyError(e)));
+      emit(PourCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -221,7 +229,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
         card: _currentCard!,
       ));
     } catch (e) {
-      emit(PourCardError(_friendlyError(e)));
+      emit(PourCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -264,7 +272,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
         card: _currentCard!,
       ));
     } catch (e) {
-      emit(PourCardError(_friendlyError(e)));
+      emit(PourCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -280,7 +288,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
         card: _currentCard!,
       ));
     } catch (e) {
-      emit(PourCardError(_friendlyError(e)));
+      emit(PourCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -306,7 +314,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
         card: _currentCard!,
       ));
     } catch (e) {
-      emit(PourCardError(_friendlyError(e)));
+      emit(PourCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -324,7 +332,7 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
         card: _currentCard!,
       ));
     } catch (e) {
-      emit(PourCardError(_friendlyError(e)));
+      emit(PourCardError(_friendlyError(e), technicalDetail: e.toString()));
     }
   }
 
@@ -346,6 +354,11 @@ class PourCardBloc extends Bloc<PourCardEvent, PourCardState> {
           : e.message;
     }
     if (e is BadRequestException) return e.message;
+    if (e is ServerErrorException) {
+      return e.message == 'Server error'
+          ? 'The server hit an error loading this card. Please try again, or contact support if it keeps happening.'
+          : 'Server error: ${e.message}';
+    }
     if (e is TypeError || e is FormatException) {
       return 'Pour card data could not be read by the mobile app. Please retry after updating the app.';
     }

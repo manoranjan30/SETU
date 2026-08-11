@@ -173,7 +173,11 @@ class _PourCardViewState extends State<_PourCardView> {
           body: isLoading
               ? const Center(child: CircularProgressIndicator())
               : card == null
-                  ? _ErrorView(inspectionId: widget.inspectionId)
+                  ? _ErrorView(
+                      inspectionId: widget.inspectionId,
+                      message: state is PourCardError ? state.message : null,
+                      technicalDetail: state is PourCardError ? state.technicalDetail : null,
+                    )
                   : Stack(
                       children: [
                         _PourCardBody(
@@ -197,7 +201,18 @@ class _PourCardViewState extends State<_PourCardView> {
 
 class _ErrorView extends StatelessWidget {
   final int inspectionId;
-  const _ErrorView({required this.inspectionId});
+
+  /// The bloc's friendly error message, when available — falls back to a
+  /// generic "Failed to load" only if this load failure somehow reached
+  /// here without an error state (shouldn't normally happen).
+  final String? message;
+
+  /// Raw exception text, shown behind an expandable "Technical details"
+  /// tile so a report to support/backend can include the actual error
+  /// instead of just "an error occurred" — see [PourCardError.technicalDetail].
+  final String? technicalDetail;
+
+  const _ErrorView({required this.inspectionId, this.message, this.technicalDetail});
 
   @override
   Widget build(BuildContext context) {
@@ -209,13 +224,38 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, size: 48, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text('Failed to load pour card', style: TextStyle(color: Colors.grey)),
+            Text(
+              message ?? 'Failed to load pour card',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey),
+            ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () => context.read<PourCardBloc>().add(LoadPourCard(inspectionId)),
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
             ),
+            if (technicalDetail != null && technicalDetail!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('Technical details', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
+                      child: SelectableText(
+                        technicalDetail!,
+                        style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

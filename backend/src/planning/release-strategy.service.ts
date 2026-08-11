@@ -549,9 +549,20 @@ export class ReleaseStrategyService {
       order: { priority: 'DESC', updatedAt: 'DESC' },
     });
 
-    const matches = strategies.filter((strategy) =>
-      this.matchesStrategy(strategy, context),
-    );
+    const matches = strategies
+      .filter((strategy) => this.matchesStrategy(strategy, context))
+      .sort((a, b) => {
+        const priorityDelta = (b.priority || 0) - (a.priority || 0);
+        if (priorityDelta !== 0) return priorityDelta;
+        const specificityDelta =
+          this.getDocumentTypeMatchScore(b.documentType, context.documentType) -
+          this.getDocumentTypeMatchScore(a.documentType, context.documentType);
+        if (specificityDelta !== 0) return specificityDelta;
+        return (
+          new Date((b as any).updatedAt || 0).getTime() -
+          new Date((a as any).updatedAt || 0).getTime()
+        );
+      });
 
     const winner = matches[0] || null;
     const eligibleActors = winner
@@ -821,6 +832,16 @@ export class ReleaseStrategyService {
     strategyDocumentType: string | null | undefined,
     contextDocumentType: string | null | undefined,
   ) {
+    return (
+      this.getDocumentTypeMatchScore(strategyDocumentType, contextDocumentType) >
+      0
+    );
+  }
+
+  private getDocumentTypeMatchScore(
+    strategyDocumentType: string | null | undefined,
+    contextDocumentType: string | null | undefined,
+  ) {
     const strategyValue = String(strategyDocumentType || '')
       .trim()
       .toUpperCase();
@@ -828,16 +849,16 @@ export class ReleaseStrategyService {
       .trim()
       .toUpperCase();
 
-    if (!strategyValue) return true;
-    if (!contextValue) return false;
-    if (strategyValue === contextValue) return true;
+    if (!strategyValue) return 1;
+    if (!contextValue) return 0;
+    if (strategyValue === contextValue) return 4;
 
     // Allow generic quality document types like RFI to match specific variants
     // such as FLOOR_RFI, UNIT_RFI, or ROOM_RFI.
-    if (contextValue.endsWith(`_${strategyValue}`)) return true;
-    if (strategyValue.endsWith(`_${contextValue}`)) return true;
+    if (contextValue.endsWith(`_${strategyValue}`)) return 2;
+    if (strategyValue.endsWith(`_${contextValue}`)) return 2;
 
-    return false;
+    return 0;
   }
 
   private getUnmatchedConditions(
