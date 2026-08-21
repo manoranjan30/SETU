@@ -249,9 +249,10 @@ export class EhsService {
     let compExpired = 0;
     let compExpiringSoon = 0;
     competency.forEach((c) => {
-      const certs = [c.licenseExpiry, c.fitnessExpiry].map((d) =>
-        d ? new Date(d) : null,
-      );
+      const certs = [
+        c.licenseExpiry,
+        c.fitnessExpiryNotApplicable ? null : c.fitnessExpiry,
+      ].map((d) => (d ? new Date(d) : null));
       if (certs.some((d) => d && d < today)) {
         compExpired++;
       } else if (certs.some((d) => d && d <= next30Days)) {
@@ -536,12 +537,12 @@ export class EhsService {
   }
 
   async createLegal(data: any) {
-    const legal = this.legalRepo.create(data);
+    const legal = this.legalRepo.create(this.normalizeEhsDocumentPayload(data));
     return this.legalRepo.save(legal);
   }
 
   async updateLegal(id: number, data: any) {
-    await this.legalRepo.update(id, data);
+    await this.legalRepo.update(id, this.normalizeEhsDocumentPayload(data));
     return this.legalRepo.findOne({ where: { id } });
   }
 
@@ -558,14 +559,14 @@ export class EhsService {
   }
   async createMachinery(data: any) {
     const item = this.machineryRepo.create({
-      ...data,
+      ...this.normalizeEhsDocumentPayload(data),
       isActive: normalizeActiveStatus(data.isActive),
     });
     return this.machineryRepo.save(item);
   }
   async updateMachinery(id: number, data: any) {
     await this.machineryRepo.update(id, {
-      ...data,
+      ...this.normalizeEhsDocumentPayload(data),
       ...(data.isActive !== undefined
         ? { isActive: normalizeActiveStatus(data.isActive) }
         : {}),
@@ -601,14 +602,14 @@ export class EhsService {
   }
   async createVehicle(data: any) {
     const item = this.vehicleRepo.create({
-      ...data,
+      ...this.normalizeEhsDocumentPayload(data),
       isActive: normalizeActiveStatus(data.isActive),
     });
     return this.vehicleRepo.save(item);
   }
   async updateVehicle(id: number, data: any) {
     await this.vehicleRepo.update(id, {
-      ...data,
+      ...this.normalizeEhsDocumentPayload(data),
       ...(data.isActive !== undefined
         ? { isActive: normalizeActiveStatus(data.isActive) }
         : {}),
@@ -624,22 +625,57 @@ export class EhsService {
     return this.competencyRepo.find({ where: { projectId } });
   }
   async createCompetency(data: any) {
+    const normalized = this.normalizeCompetencyPayload(data);
     const item = this.competencyRepo.create({
-      ...data,
-      isActive: normalizeActiveStatus(data.isActive),
+      ...normalized,
+      isActive: normalizeActiveStatus(normalized.isActive),
     });
     return this.competencyRepo.save(item);
   }
   async updateCompetency(id: number, data: any) {
+    const normalized = this.normalizeCompetencyPayload(data);
     await this.competencyRepo.update(id, {
-      ...data,
-      ...(data.isActive !== undefined
-        ? { isActive: normalizeActiveStatus(data.isActive) }
+      ...normalized,
+      ...(normalized.isActive !== undefined
+        ? { isActive: normalizeActiveStatus(normalized.isActive) }
         : {}),
     });
     return this.competencyRepo.findOne({ where: { id } });
   }
   async deleteCompetency(id: number) {
     return this.competencyRepo.delete(id);
+  }
+
+  private normalizeEhsDocumentPayload(data: any) {
+    const normalized = { ...data };
+    for (const field of [
+      'documentUrl',
+      'documentOriginalName',
+      'documentMimeType',
+      'documentNumber',
+    ]) {
+      if (normalized[field] !== undefined) {
+        normalized[field] =
+          typeof normalized[field] === 'string'
+            ? normalized[field].trim() || null
+            : normalized[field] ?? null;
+      }
+    }
+    if (normalized.documentSize !== undefined) {
+      const size = Number(normalized.documentSize);
+      normalized.documentSize = Number.isFinite(size) && size > 0 ? size : null;
+    }
+    return normalized;
+  }
+
+  private normalizeCompetencyPayload(data: any) {
+    const normalized = this.normalizeEhsDocumentPayload(data);
+    normalized.fitnessExpiryNotApplicable =
+      normalized.fitnessExpiryNotApplicable === true ||
+      normalized.fitnessExpiryNotApplicable === 'true';
+    if (normalized.fitnessExpiryNotApplicable) {
+      normalized.fitnessExpiry = null;
+    }
+    return normalized;
   }
 }

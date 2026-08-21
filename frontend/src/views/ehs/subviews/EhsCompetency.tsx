@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  FileText,
+  Upload,
 } from "lucide-react";
 import api from "../../../api/axios";
 
@@ -19,6 +21,7 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -30,7 +33,12 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
     vehicleMachine: "",
     licenseExpiry: "",
     fitnessExpiry: "",
+    fitnessExpiryNotApplicable: false,
     isActive: true,
+    documentUrl: "",
+    documentOriginalName: "",
+    documentMimeType: "",
+    documentSize: null as number | null,
   });
 
   const [stats, setStats] = useState({
@@ -69,7 +77,10 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
     activeItems.forEach((item) => {
       // Check both license and fitness expiry
       const ex1 = item.licenseExpiry ? new Date(item.licenseExpiry) : null;
-      const ex2 = item.fitnessExpiry ? new Date(item.fitnessExpiry) : null;
+      const ex2 =
+        item.fitnessExpiryNotApplicable || !item.fitnessExpiry
+          ? null
+          : new Date(item.fitnessExpiry);
 
       let isExpired = false;
       let isExpiringSoon = false;
@@ -116,8 +127,14 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
       vehicleMachine: item.vehicleMachine,
       licenseExpiry: item.licenseExpiry || "",
       fitnessExpiry: item.fitnessExpiry || "",
+      fitnessExpiryNotApplicable: Boolean(item.fitnessExpiryNotApplicable),
       isActive: item.isActive !== false,
+      documentUrl: item.documentUrl || "",
+      documentOriginalName: item.documentOriginalName || "",
+      documentMimeType: item.documentMimeType || "",
+      documentSize: item.documentSize || null,
     });
+    setDocumentFile(null);
     setEditingId(item.id);
     setShowModal(true);
   };
@@ -137,7 +154,17 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...formData, projectId };
+      const uploaded = documentFile
+        ? await uploadEhsDocument(documentFile, "competency")
+        : {};
+      const payload = {
+        ...formData,
+        ...uploaded,
+        fitnessExpiry: formData.fitnessExpiryNotApplicable
+          ? null
+          : formData.fitnessExpiry,
+        projectId,
+      };
 
       if (editingId) {
         await api.put(`/ehs/competencies/${editingId}`, payload);
@@ -160,9 +187,40 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
       vehicleMachine: "",
       licenseExpiry: "",
       fitnessExpiry: "",
+      fitnessExpiryNotApplicable: false,
       isActive: true,
+      documentUrl: "",
+      documentOriginalName: "",
+      documentMimeType: "",
+      documentSize: null,
     });
+    setDocumentFile(null);
   };
+
+  const uploadEhsDocument = async (file: File, recordType: string) => {
+    const body = new FormData();
+    body.append("recordType", recordType);
+    body.append("file", file);
+    const response = await api.post(`/ehs/${projectId}/documents`, body, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  };
+
+  const renderDocumentLink = (item: any) =>
+    item.documentUrl ? (
+      <a
+        href={item.documentUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-primary font-bold hover:underline"
+      >
+        <FileText className="w-4 h-4" />
+        View
+      </a>
+    ) : (
+      "-"
+    );
 
   if (loading) return <div>Loading...</div>;
 
@@ -239,6 +297,7 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                 <th className="px-6 py-4">License Expiry</th>
                 <th className="px-6 py-4">Fitness Expiry</th>
                 <th className="px-6 py-4">Site Status</th>
+                <th className="px-6 py-4">Document</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -252,12 +311,14 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                 // Logic for checking row class (if either is expired, highlight row)
                 const today = new Date();
                 const ex1 = new Date(item.licenseExpiry);
-                const ex2 = new Date(item.fitnessExpiry);
+                const ex2 = item.fitnessExpiryNotApplicable
+                  ? null
+                  : new Date(item.fitnessExpiry);
                 const isExpired =
                   isActive &&
                   Boolean(
                     (item.licenseExpiry && ex1 < today) ||
-                      (item.fitnessExpiry && ex2 < today),
+                      (item.fitnessExpiry && ex2 && ex2 < today),
                   );
                 const rowClass = !isActive
                   ? "opacity-70"
@@ -289,7 +350,9 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                         : "-"}
                     </td>
                     <td className="px-6 py-4 font-medium">
-                      {item.fitnessExpiry
+                      {item.fitnessExpiryNotApplicable
+                        ? "Not Applicable"
+                        : item.fitnessExpiry
                         ? new Date(item.fitnessExpiry).toLocaleDateString(
                             "en-GB",
                           )
@@ -306,6 +369,7 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                         {item.isActive !== false ? "Active" : "Inactive"}
                       </span>
                     </td>
+                    <td className="px-6 py-4">{renderDocumentLink(item)}</td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -432,7 +496,8 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                   </label>
                   <input
                     type="date"
-                    required
+                    required={!formData.fitnessExpiryNotApplicable}
+                    disabled={formData.fitnessExpiryNotApplicable}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
                     value={formData.fitnessExpiry}
                     onChange={(e) =>
@@ -442,7 +507,43 @@ const EhsCompetency: React.FC<Props> = ({ projectId }) => {
                       })
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2 text-xs font-bold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.fitnessExpiryNotApplicable}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fitnessExpiryNotApplicable: e.target.checked,
+                          fitnessExpiry: e.target.checked
+                            ? ""
+                            : formData.fitnessExpiry,
+                        })
+                      }
+                    />
+                    Not applicable
+                  </label>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-text-secondary mb-1">
+                  Supporting Document
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-surface-base">
+                  <span className="truncate text-sm text-text-secondary">
+                    {documentFile?.name ||
+                      formData.documentOriginalName ||
+                      "Upload PDF or image"}
+                  </span>
+                  <Upload className="w-4 h-4 text-primary" />
+                  <input
+                    hidden
+                    type="file"
+                    accept=".pdf,image/jpeg,image/png,image/webp"
+                    onChange={(e) => setDocumentFile(e.target.files?.[0] || null)}
+                  />
+                </label>
               </div>
 
               <button

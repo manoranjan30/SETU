@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -7,13 +8,78 @@ import {
   Put,
   Delete,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
   Request,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomUUID } from 'crypto';
+import { mkdirSync } from 'fs';
+import { extname, resolve } from 'path';
 import { EhsService } from './ehs.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Permissions } from '../auth/permissions.decorator';
+
+const ehsUploadRoot = resolve(
+  process.env.UPLOAD_DIR || resolve(process.cwd(), 'uploads'),
+  'ehs',
+);
+
+const normalizeEhsDocumentType = (value: string) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '');
+  return ['legal', 'machinery', 'competency', 'vehicle'].includes(normalized)
+    ? normalized
+    : 'general';
+};
+
+const ehsDocumentUploadOptions = {
+  storage: diskStorage({
+    destination: (req, _file, callback) => {
+      const projectId = String(req?.params?.projectId || 'unknown').replace(
+        /[^0-9]+/g,
+        '',
+      );
+      const recordType = normalizeEhsDocumentType(req?.body?.recordType);
+      const destination = resolve(
+        ehsUploadRoot,
+        recordType,
+        projectId || 'unknown',
+      );
+      mkdirSync(destination, { recursive: true });
+      callback(null, destination);
+    },
+    filename: (_req, file, callback) => {
+      const safeBase = file.originalname
+        .replace(extname(file.originalname), '')
+        .replace(/[^a-zA-Z0-9._-]+/g, '-')
+        .slice(0, 80);
+      callback(null, `${randomUUID()}-${safeBase || 'document'}${extname(file.originalname).toLowerCase()}`);
+    },
+  }),
+  fileFilter: (_req: any, file: Express.Multer.File, callback: any) => {
+    const ext = extname(file.originalname).toLowerCase();
+    const allowedExts = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.webp']);
+    const allowedMimes = new Set([
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ]);
+    if (!allowedExts.has(ext) || !allowedMimes.has(file.mimetype.toLowerCase())) {
+      return callback(
+        new BadRequestException('Only PDF, JPG, PNG, and WEBP documents are allowed.'),
+        false,
+      );
+    }
+    callback(null, true);
+  },
+  limits: { fileSize: 10 * 1024 * 1024 },
+};
 
 @Controller('ehs')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -215,6 +281,31 @@ export class EhsController {
   @Permissions('EHS.TRAINING.DELETE')
   async deleteTraining(@Param('id') id: number) {
     return this.ehsService.deleteTraining(id);
+  }
+
+  @Post(':projectId/documents')
+  @Permissions(
+    'EHS.LEGAL.MANAGE',
+    'EHS.MACHINERY.MANAGE',
+    'EHS.COMPETENCY.MANAGE',
+    'EHS.VEHICLE.MANAGE',
+  )
+  @UseInterceptors(FileInterceptor('file', ehsDocumentUploadOptions))
+  async uploadDocument(
+    @Param('projectId') projectId: number,
+    @Body('recordType') recordType: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Select a PDF or image document to upload.');
+    }
+    const type = normalizeEhsDocumentType(recordType);
+    return {
+      documentUrl: `/uploads/ehs/${type}/${projectId}/${file.filename}`,
+      documentOriginalName: file.originalname,
+      documentMimeType: file.mimetype,
+      documentSize: file.size,
+    };
   }
 
   // Legal Compliance

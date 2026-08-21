@@ -7,6 +7,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:signature/signature.dart';
+import 'package:setu_mobile/core/config/app_flavor.dart';
 import 'package:setu_mobile/core/media/signature_cleanup.dart';
 import 'package:setu_mobile/core/update/update_dialog_helper.dart';
 import 'package:setu_mobile/features/auth/data/models/user_model.dart';
@@ -655,15 +656,19 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 32),
-
-          // ── App Updates ────────────────────────────────────────────
-          const _SectionHeader(
-            icon: Icons.system_update_outlined,
-            title: 'App Updates',
-          ),
-          const SizedBox(height: 14),
-          const _AppUpdateSection(),
+          // ── App Updates — internal build only. The Play Store build has
+          // no self-update mechanism to check (Play's own Store listing
+          // handles updates there), and the underlying permission is
+          // stripped from that flavor's manifest entirely — see AppFlavor.
+          if (AppFlavor.isInternal) ...[
+            const SizedBox(height: 32),
+            const _SectionHeader(
+              icon: Icons.system_update_outlined,
+              title: 'App Updates',
+            ),
+            const SizedBox(height: 14),
+            const _AppUpdateSection(),
+          ],
 
           const SizedBox(height: 40),
         ],

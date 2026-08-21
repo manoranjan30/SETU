@@ -4,6 +4,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
+import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/cube_register_models.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
@@ -28,8 +29,18 @@ class PourCardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => PourCardBloc(apiClient: sl<SetuApiClient>())
-        ..add(LoadPourCard(inspectionId)),
+      create: (context) {
+        // Permissions live in AuthBloc's in-memory state from login/last
+        // refresh. If an admin just granted QUALITY.POUR_CARD.APPROVE (or
+        // changed the release strategy), a running app won't see it until
+        // the profile is re-fetched — RefreshProfile exists for exactly
+        // this but nothing in the app ever dispatched it, so a fresh grant
+        // silently had no effect short of a full app restart. Firing it
+        // here means this approval-critical screen always opens with a
+        // current permission set.
+        context.read<AuthBloc>().add(RefreshProfile());
+        return PourCardBloc(apiClient: sl<SetuApiClient>())..add(LoadPourCard(inspectionId));
+      },
       child: _PourCardView(
         inspectionId: inspectionId,
         projectId: projectId,
@@ -453,6 +464,7 @@ class _PourCardBodyState extends State<_PourCardBody> {
           isEditable: isEditable,
           canSubmit: canSubmit,
           canApprove: canApprove,
+          hasApprovePermission: ps.canApprovePourCard,
           theme: theme,
           onSave: () => context.read<PourCardBloc>().add(const SavePourCard()),
           onSubmit: () => _confirmSubmit(context),
@@ -847,6 +859,15 @@ class _ActionBar extends StatelessWidget {
   final bool isEditable;
   final bool canSubmit;
   final bool canApprove;
+
+  /// The RBAC half of [canApprove] on its own — needed to tell apart the
+  /// two reasons Approve/Reject can be hidden while SUBMITTED: no
+  /// `QUALITY.POUR_CARD.APPROVE` permission at all, vs. having it but not
+  /// being the assigned approver for the currently active release-strategy
+  /// level. Those need different fixes (role permission grant vs. release
+  /// strategy assignment), so collapsing them into one hidden button with
+  /// no explanation left users unable to tell which admin action was needed.
+  final bool hasApprovePermission;
   final ThemeData theme;
   final VoidCallback onSave;
   final VoidCallback onSubmit;
@@ -858,6 +879,7 @@ class _ActionBar extends StatelessWidget {
     required this.isEditable,
     required this.canSubmit,
     required this.canApprove,
+    required this.hasApprovePermission,
     required this.theme,
     required this.onSave,
     required this.onSubmit,
@@ -885,8 +907,14 @@ class _ActionBar extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (card.status == QualityCardStatus.submitted && !canApprove)
+            _ApprovalBlockedHint(hasPermission: hasApprovePermission, workflow: card.approvalWorkflow),
+          Row(
+            children: [
           if (isEditable) ...[
             OutlinedButton.icon(
               onPressed: onSave,
@@ -929,7 +957,58 @@ class _ActionBar extends StatelessWidget {
               ),
             ),
           ],
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// Explains *why* Approve/Reject are hidden on a SUBMITTED card instead of
+/// silently showing nothing — the two causes need different fixes and look
+/// identical to the user otherwise. See [_ActionBar.hasApprovePermission]'s
+/// doc comment.
+class _ApprovalBlockedHint extends StatelessWidget {
+  final bool hasPermission;
+  final CardApprovalWorkflow? workflow;
+  const _ApprovalBlockedHint({required this.hasPermission, required this.workflow});
+
+  @override
+  Widget build(BuildContext context) {
+    final String text;
+    if (!hasPermission) {
+      text = "You don't have permission to approve pour cards "
+          '(QUALITY.POUR_CARD.APPROVE). Ask your administrator to grant this '
+          "to your role — it's separate from being assigned in the release strategy.";
+    } else if (workflow == null) {
+      text = 'No approval workflow found for this card yet.';
+    } else {
+      final level = workflow!.activeLevel;
+      final levelLabel = level != null ? 'Level ${level.stepOrder} (${level.stepName})' : 'the active level';
+      text = "You have approval permission, but the backend hasn't matched your "
+          'account as the approver for $levelLabel. Check the release strategy: '
+          'make sure your user (or your project role) is assigned to exactly this '
+          'level, for this project.';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, size: 15, color: Colors.orange.shade800),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: TextStyle(fontSize: 11.5, color: Colors.orange.shade900))),
+          ],
+        ),
       ),
     );
   }
