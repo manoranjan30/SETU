@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  FileText,
+  Upload,
 } from "lucide-react";
 import api from "../../../api/axios";
 
@@ -19,6 +21,7 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -26,11 +29,16 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
 
   const [formData, setFormData] = useState({
     requirement: "",
+    documentNumber: "",
     responsibility: "Client",
     status: "Valid",
     certifiedDate: "",
     expiryDate: "",
     remarks: "",
+    documentUrl: "",
+    documentOriginalName: "",
+    documentMimeType: "",
+    documentSize: null as number | null,
   });
 
   const [stats, setStats] = useState({
@@ -114,12 +122,18 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
   const handleEdit = (item: any) => {
     setFormData({
       requirement: item.requirement,
+      documentNumber: item.documentNumber || "",
       responsibility: item.responsibility,
       status: item.status,
       certifiedDate: item.certifiedDate || "",
       expiryDate: item.expiryDate || "",
       remarks: item.remarks || "",
+      documentUrl: item.documentUrl || "",
+      documentOriginalName: item.documentOriginalName || "",
+      documentMimeType: item.documentMimeType || "",
+      documentSize: item.documentSize || null,
     });
+    setDocumentFile(null);
     setEditingId(item.id);
     setShowModal(true);
   };
@@ -139,7 +153,10 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...formData, projectId };
+      const uploaded = documentFile
+        ? await uploadEhsDocument(documentFile, "legal")
+        : {};
+      const payload = { ...formData, ...uploaded, projectId };
 
       if (editingId) {
         await api.put(`/ehs/legal/${editingId}`, payload);
@@ -158,13 +175,44 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
   const resetForm = () => {
     setFormData({
       requirement: "",
+      documentNumber: "",
       responsibility: "Client",
       status: "Valid",
       certifiedDate: "",
       expiryDate: "",
       remarks: "",
+      documentUrl: "",
+      documentOriginalName: "",
+      documentMimeType: "",
+      documentSize: null,
     });
+    setDocumentFile(null);
   };
+
+  const uploadEhsDocument = async (file: File, recordType: string) => {
+    const body = new FormData();
+    body.append("recordType", recordType);
+    body.append("file", file);
+    const response = await api.post(`/ehs/${projectId}/documents`, body, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  };
+
+  const renderDocumentLink = (item: any) =>
+    item.documentUrl ? (
+      <a
+        href={item.documentUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-primary font-bold hover:underline"
+      >
+        <FileText className="w-4 h-4" />
+        View
+      </a>
+    ) : (
+      "-"
+    );
 
   if (loading) return <div>Loading...</div>;
 
@@ -231,10 +279,12 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
               <tr>
                 <th className="px-6 py-4">SI</th>
                 <th className="px-6 py-4">Requirement</th>
+                <th className="px-6 py-4">Document No.</th>
                 <th className="px-6 py-4">Responsibility</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Certified Date</th>
                 <th className="px-6 py-4">Expiry Date</th>
+                <th className="px-6 py-4">Document</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -251,6 +301,7 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                     <td className="px-6 py-4 font-medium">
                       {item.requirement}
                     </td>
+                    <td className="px-6 py-4">{item.documentNumber || "-"}</td>
                     <td className="px-6 py-4">{item.responsibility}</td>
                     <td className="px-6 py-4">
                       <span
@@ -271,6 +322,7 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                         ? new Date(item.expiryDate).toLocaleDateString("en-GB")
                         : "Perpetual"}
                     </td>
+                    <td className="px-6 py-4">{renderDocumentLink(item)}</td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -326,6 +378,22 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-text-secondary mb-1">
+                    Document Number
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                    value={formData.documentNumber}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        documentNumber: e.target.value,
+                      })
+                    }
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-bold text-text-secondary mb-1">
                     Responsibility
@@ -397,6 +465,25 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                     Leave blank if perpetual
                   </p>
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-text-secondary mb-1">
+                  Supporting Document
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-surface-base">
+                  <span className="truncate text-sm text-text-secondary">
+                    {documentFile?.name ||
+                      formData.documentOriginalName ||
+                      "Upload PDF or image"}
+                  </span>
+                  <Upload className="w-4 h-4 text-primary" />
+                  <input
+                    hidden
+                    type="file"
+                    accept=".pdf,image/jpeg,image/png,image/webp"
+                    onChange={(e) => setDocumentFile(e.target.files?.[0] || null)}
+                  />
+                </label>
               </div>
               <div>
                 <label className="block text-sm font-bold text-text-secondary mb-1">

@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  FileText,
+  Upload,
 } from "lucide-react";
 import api from "../../../api/axios";
 
@@ -19,6 +21,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -32,6 +35,10 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
     pollutionDate: "",
     isActive: true,
     remarks: "",
+    documentUrl: "",
+    documentOriginalName: "",
+    documentMimeType: "",
+    documentSize: null as number | null,
   });
 
   const [stats, setStats] = useState({
@@ -125,7 +132,12 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       pollutionDate: item.pollutionDate || "",
       isActive: item.isActive !== false,
       remarks: item.remarks || "",
+      documentUrl: item.documentUrl || "",
+      documentOriginalName: item.documentOriginalName || "",
+      documentMimeType: item.documentMimeType || "",
+      documentSize: item.documentSize || null,
     });
+    setDocumentFile(null);
     setEditingId(item.id);
     setShowModal(true);
   };
@@ -145,7 +157,10 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...formData, projectId };
+      const uploaded = documentFile
+        ? await uploadEhsDocument(documentFile, "vehicle")
+        : {};
+      const payload = { ...formData, ...uploaded, projectId };
 
       if (editingId) {
         await api.put(`/ehs/vehicles/${editingId}`, payload);
@@ -170,8 +185,38 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       pollutionDate: "",
       isActive: true,
       remarks: "",
+      documentUrl: "",
+      documentOriginalName: "",
+      documentMimeType: "",
+      documentSize: null,
     });
+    setDocumentFile(null);
   };
+
+  const uploadEhsDocument = async (file: File, recordType: string) => {
+    const body = new FormData();
+    body.append("recordType", recordType);
+    body.append("file", file);
+    const response = await api.post(`/ehs/${projectId}/documents`, body, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  };
+
+  const renderDocumentLink = (item: any) =>
+    item.documentUrl ? (
+      <a
+        href={item.documentUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-primary font-bold hover:underline"
+      >
+        <FileText className="w-4 h-4" />
+        View
+      </a>
+    ) : (
+      "-"
+    );
 
   if (loading) return <div>Loading...</div>;
 
@@ -251,6 +296,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                 <th className="px-6 py-4">Pollution Status</th>
                 <th className="px-6 py-4">Overall Status</th>
                 <th className="px-6 py-4">Site Status</th>
+                <th className="px-6 py-4">Document</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -328,6 +374,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                         {item.isActive !== false ? "Active" : "Inactive"}
                       </span>
                     </td>
+                    <td className="px-6 py-4">{renderDocumentLink(item)}</td>
 
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -470,6 +517,25 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                   <option value="active">Active at site</option>
                   <option value="inactive">Inactive / Removed from site</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-text-secondary mb-1">
+                  Supporting Document
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-surface-base">
+                  <span className="truncate text-sm text-text-secondary">
+                    {documentFile?.name ||
+                      formData.documentOriginalName ||
+                      "Upload PDF or image"}
+                  </span>
+                  <Upload className="w-4 h-4 text-primary" />
+                  <input
+                    hidden
+                    type="file"
+                    accept=".pdf,image/jpeg,image/png,image/webp"
+                    onChange={(e) => setDocumentFile(e.target.files?.[0] || null)}
+                  />
+                </label>
               </div>
               <div>
                 <label className="block text-sm font-bold text-text-secondary mb-1">

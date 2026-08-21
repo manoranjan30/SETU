@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Play Store build only: strip the in-app-updater's install permission at
+         the manifest-merge level rather than just leaving the Dart code path
+         unreachable (see AppFlavor.isPlayStore in app.dart) — this way Play's
+         static permission scanner sees the permission is genuinely absent, not
+         just unused. Google Play policy prohibits apps from installing
+         executable code by any means other than Play's own update mechanism;
+         the "internal" flavor keeps this permission for direct-APK distribution. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+</manifest>

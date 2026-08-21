@@ -12,6 +12,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:setu_mobile/core/api/setu_api_client.dart';
 import 'package:setu_mobile/core/auth/permission_service.dart';
 import 'package:setu_mobile/core/sync/sync_service.dart';
+import 'package:setu_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:setu_mobile/injection_container.dart';
 import 'package:setu_mobile/features/quality/data/models/quality_models.dart';
 import 'package:setu_mobile/features/quality/presentation/bloc/clearance_card_bloc.dart';
@@ -58,8 +59,15 @@ class PrePourClearancePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => ClearanceCardBloc(apiClient: sl<SetuApiClient>())
-        ..add(LoadClearanceCard(inspectionId)),
+      create: (context) {
+        // See pour_card_page.dart's identical comment — RefreshProfile
+        // existed but was never dispatched anywhere, so a newly granted
+        // permission (or release-strategy assignment) silently had no
+        // effect on an already-running app until a full restart.
+        context.read<AuthBloc>().add(RefreshProfile());
+        return ClearanceCardBloc(apiClient: sl<SetuApiClient>())
+          ..add(LoadClearanceCard(inspectionId));
+      },
       child: _ClearanceView(
         inspectionId: inspectionId,
         activityName: activityName,
@@ -527,6 +535,7 @@ class _ClearanceBodyState extends State<_ClearanceBody> {
           isEditable: isEditable,
           canSubmit: canSubmit,
           canApprove: canApprove,
+          hasApprovePermission: ps.canApprovePourClearance,
           theme: theme,
           onSave: () => context.read<ClearanceCardBloc>().add(const SaveClearanceCard()),
           onSubmit: () => _confirmSubmit(context),
@@ -1864,6 +1873,11 @@ class _ActionBar extends StatelessWidget {
   final bool isEditable;
   final bool canSubmit;
   final bool canApprove;
+
+  /// See `pour_card_page.dart`'s `_ActionBar.hasApprovePermission` doc
+  /// comment — the RBAC half of [canApprove] on its own, so the blocked-hint
+  /// can tell "no permission" apart from "not the assigned approver."
+  final bool hasApprovePermission;
   final ThemeData theme;
   final VoidCallback onSave;
   final VoidCallback onSubmit;
@@ -1875,6 +1889,7 @@ class _ActionBar extends StatelessWidget {
     required this.isEditable,
     required this.canSubmit,
     required this.canApprove,
+    required this.hasApprovePermission,
     required this.theme,
     required this.onSave,
     required this.onSubmit,
@@ -1899,51 +1914,107 @@ class _ActionBar extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (isEditable) ...[
-            OutlinedButton.icon(
-              onPressed: onSave,
-              icon: const Icon(Icons.save_outlined, size: 16),
-              label: const Text('Save'),
-              style: OutlinedButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (canSubmit)
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onSubmit,
-                icon: const Icon(Icons.send_outlined, size: 16),
-                label: const Text('Submit'),
-                style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
-              ),
-            ),
-          if (card.status == QualityCardStatus.submitted && canApprove) ...[
-            OutlinedButton.icon(
-              onPressed: onReject,
-              icon: const Icon(Icons.cancel_outlined, size: 16),
-              label: const Text('Reject'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red.shade700,
-                side: BorderSide(color: Colors.red.shade400),
-                textStyle: const TextStyle(fontSize: 12),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onApprove,
-                icon: const Icon(Icons.verified_outlined, size: 16),
-                label: const Text('Approve'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green.shade700,
-                  textStyle: const TextStyle(fontSize: 12),
+          if (card.status == QualityCardStatus.submitted && !canApprove)
+            _ApprovalBlockedHint(hasPermission: hasApprovePermission, workflow: card.approvalWorkflow),
+          Row(
+            children: [
+              if (isEditable) ...[
+                OutlinedButton.icon(
+                  onPressed: onSave,
+                  icon: const Icon(Icons.save_outlined, size: 16),
+                  label: const Text('Save'),
+                  style: OutlinedButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
                 ),
-              ),
-            ),
-          ],
+                const SizedBox(width: 8),
+              ],
+              if (canSubmit)
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onSubmit,
+                    icon: const Icon(Icons.send_outlined, size: 16),
+                    label: const Text('Submit'),
+                    style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+              if (card.status == QualityCardStatus.submitted && canApprove) ...[
+                OutlinedButton.icon(
+                  onPressed: onReject,
+                  icon: const Icon(Icons.cancel_outlined, size: 16),
+                  label: const Text('Reject'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade400),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onApprove,
+                    icon: const Icon(Icons.verified_outlined, size: 16),
+                    label: const Text('Approve'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// See `pour_card_page.dart`'s `_ApprovalBlockedHint` — identical logic,
+/// duplicated rather than shared because the two pages' card types differ
+/// and neither is worth a shared widget file for one small hint box.
+class _ApprovalBlockedHint extends StatelessWidget {
+  final bool hasPermission;
+  final CardApprovalWorkflow? workflow;
+  const _ApprovalBlockedHint({required this.hasPermission, required this.workflow});
+
+  @override
+  Widget build(BuildContext context) {
+    final String text;
+    if (!hasPermission) {
+      text = "You don't have permission to approve pre-pour clearance cards "
+          '(QUALITY.POUR_CLEARANCE.APPROVE). Ask your administrator to grant this '
+          "to your role — it's separate from being assigned in the release strategy.";
+    } else if (workflow == null) {
+      text = 'No approval workflow found for this card yet.';
+    } else {
+      final level = workflow!.activeLevel;
+      final levelLabel = level != null ? 'Level ${level.stepOrder} (${level.stepName})' : 'the active level';
+      text = "You have approval permission, but the backend hasn't matched your "
+          'account as the approver for $levelLabel. Check the release strategy: '
+          'make sure your user (or your project role) is assigned to exactly this '
+          'level, for this project.';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, size: 15, color: Colors.orange.shade800),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: TextStyle(fontSize: 11.5, color: Colors.orange.shade900))),
+          ],
+        ),
       ),
     );
   }

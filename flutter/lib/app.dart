@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:setu_mobile/core/config/app_flavor.dart';
 import 'package:setu_mobile/core/config/server_config_service.dart';
 import 'package:setu_mobile/core/navigation/deep_link_service.dart';
 import 'package:setu_mobile/core/navigation/pending_qr_service.dart';
@@ -130,6 +131,11 @@ class _SETUMobileAppState extends State<SETUMobileApp> with WidgetsBindingObserv
   /// user-initiated action, so there's nothing to report when there's no
   /// update.
   void _checkForUpdate() {
+    // Play Store build must never reach the self-update-and-install flow —
+    // see AppFlavor's doc comment. Gating here (rather than at each call
+    // site) covers both the cold-start and resume triggers in one place, and
+    // any future caller automatically inherits the same guard.
+    if (!AppFlavor.isInternal) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _navigatorKey.currentContext;
       if (ctx != null) checkForUpdateAndPrompt(ctx, silent: true);

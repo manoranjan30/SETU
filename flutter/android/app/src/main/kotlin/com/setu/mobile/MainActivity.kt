@@ -1,4 +1,4 @@
-package com.example.setu_mobile
+package com.setu.mobile
 
 import android.app.DownloadManager
 import android.content.Context

@@ -38,6 +38,18 @@ export class EhsMachinery {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
+  @Column({ type: 'text', nullable: true })
+  documentUrl: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  documentOriginalName: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  documentMimeType: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  documentSize: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
