@@ -33,7 +33,9 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
     responsibility: "Client",
     status: "Valid",
     certifiedDate: "",
+    certifiedDateNotApplicable: false,
     expiryDate: "",
+    expiryDateNotApplicable: false,
     remarks: "",
     documentUrl: "",
     documentOriginalName: "",
@@ -73,7 +75,7 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
     let expired = 0;
 
     items.forEach((item) => {
-      if (!item.expiryDate) {
+      if (item.expiryDateNotApplicable || !item.expiryDate) {
         valid++; // Assuming no expiry date means perpetual validity
         return;
       }
@@ -92,25 +94,27 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
     setStats({ valid, expiringSoon, expired });
   };
 
-  const getStatusStyle = (expiryDate: string) => {
-    if (!expiryDate) return "";
+  const getStatusStyle = (item: any) => {
+    if (item.expiryDateNotApplicable || !item.expiryDate) return "";
     const today = new Date();
     const next30Days = new Date();
     next30Days.setDate(today.getDate() + 30);
-    const expiry = new Date(expiryDate);
+    const expiry = new Date(item.expiryDate);
 
     if (expiry < today) return "bg-error-muted text-red-700 font-bold"; // Row style for expired
     return "";
   };
 
-  const getStatusLabel = (expiryDate: string) => {
-    if (!expiryDate)
+  const getStatusLabel = (item: any) => {
+    if (item.expiryDateNotApplicable)
+      return { label: "Not Applicable", color: "bg-gray-200 text-gray-700" };
+    if (!item.expiryDate)
       return { label: "Valid", color: "bg-green-100 text-green-700" };
 
     const today = new Date();
     const next30Days = new Date();
     next30Days.setDate(today.getDate() + 30);
-    const expiry = new Date(expiryDate);
+    const expiry = new Date(item.expiryDate);
 
     if (expiry < today)
       return { label: "Expired", color: "bg-red-100 text-red-700" };
@@ -126,7 +130,9 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
       responsibility: item.responsibility,
       status: item.status,
       certifiedDate: item.certifiedDate || "",
+      certifiedDateNotApplicable: Boolean(item.certifiedDateNotApplicable),
       expiryDate: item.expiryDate || "",
+      expiryDateNotApplicable: Boolean(item.expiryDateNotApplicable),
       remarks: item.remarks || "",
       documentUrl: item.documentUrl || "",
       documentOriginalName: item.documentOriginalName || "",
@@ -156,7 +162,17 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
       const uploaded = documentFile
         ? await uploadEhsDocument(documentFile, "legal")
         : {};
-      const payload = { ...formData, ...uploaded, projectId };
+      const payload = {
+        ...formData,
+        ...uploaded,
+        certifiedDate: formData.certifiedDateNotApplicable
+          ? null
+          : formData.certifiedDate,
+        expiryDate: formData.expiryDateNotApplicable
+          ? null
+          : formData.expiryDate,
+        projectId,
+      };
 
       if (editingId) {
         await api.put(`/ehs/legal/${editingId}`, payload);
@@ -179,7 +195,9 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
       responsibility: "Client",
       status: "Valid",
       certifiedDate: "",
+      certifiedDateNotApplicable: false,
       expiryDate: "",
+      expiryDateNotApplicable: false,
       remarks: "",
       documentUrl: "",
       documentOriginalName: "",
@@ -213,6 +231,11 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
     ) : (
       "-"
     );
+
+  const renderDate = (date: string, notApplicable?: boolean) => {
+    if (notApplicable) return "Not Applicable";
+    return date ? new Date(date).toLocaleDateString("en-GB") : "-";
+  };
 
   if (loading) return <div>Loading...</div>;
 
@@ -290,8 +313,8 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
             </thead>
             <tbody className="divide-y">
               {data.map((item, index) => {
-                const status = getStatusLabel(item.expiryDate);
-                const rowClass = getStatusStyle(item.expiryDate);
+                const status = getStatusLabel(item);
+                const rowClass = getStatusStyle(item);
                 return (
                   <tr
                     key={item.id}
@@ -311,16 +334,19 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {item.certifiedDate
-                        ? new Date(item.certifiedDate).toLocaleDateString(
-                            "en-GB",
-                          )
-                        : "-"}
+                      {renderDate(
+                        item.certifiedDate,
+                        item.certifiedDateNotApplicable,
+                      )}
                     </td>
                     <td className="px-6 py-4 font-medium">
-                      {item.expiryDate
-                        ? new Date(item.expiryDate).toLocaleDateString("en-GB")
-                        : "Perpetual"}
+                      {item.expiryDateNotApplicable
+                        ? "Not Applicable"
+                        : item.expiryDate
+                          ? new Date(item.expiryDate).toLocaleDateString(
+                              "en-GB",
+                            )
+                          : "Perpetual"}
                     </td>
                     <td className="px-6 py-4">{renderDocumentLink(item)}</td>
                     <td className="px-6 py-4 text-right">
@@ -439,6 +465,7 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                   </label>
                   <input
                     type="date"
+                    disabled={formData.certifiedDateNotApplicable}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
                     value={formData.certifiedDate}
                     onChange={(e) =>
@@ -448,6 +475,22 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                       })
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2 text-xs font-bold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.certifiedDateNotApplicable}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          certifiedDateNotApplicable: e.target.checked,
+                          certifiedDate: e.target.checked
+                            ? ""
+                            : formData.certifiedDate,
+                        })
+                      }
+                    />
+                    Not applicable
+                  </label>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-text-secondary mb-1">
@@ -455,12 +498,29 @@ const EhsLegalRegister: React.FC<Props> = ({ projectId }) => {
                   </label>
                   <input
                     type="date"
+                    disabled={formData.expiryDateNotApplicable}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
                     value={formData.expiryDate}
                     onChange={(e) =>
                       setFormData({ ...formData, expiryDate: e.target.value })
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2 text-xs font-bold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.expiryDateNotApplicable}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          expiryDateNotApplicable: e.target.checked,
+                          expiryDate: e.target.checked
+                            ? ""
+                            : formData.expiryDate,
+                        })
+                      }
+                    />
+                    Not applicable
+                  </label>
                   <p className="text-xs text-text-disabled mt-1">
                     Leave blank if perpetual
                   </p>

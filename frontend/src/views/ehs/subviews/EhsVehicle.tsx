@@ -31,8 +31,11 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
     vehicleNumber: "",
     vehicleType: "",
     fitnessCertDate: "",
+    fitnessCertDateNotApplicable: false,
     insuranceDate: "",
+    insuranceDateNotApplicable: false,
     pollutionDate: "",
+    pollutionDateNotApplicable: false,
     isActive: true,
     remarks: "",
     documentUrl: "",
@@ -64,7 +67,8 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
     }
   };
 
-  const getStatus = (date: string) => {
+  const getStatus = (date: string, notApplicable?: boolean) => {
+    if (notApplicable) return "Not Applicable";
     if (!date) return "Valid"; // Assume valid if no date
     const today = new Date();
     const next30Days = new Date();
@@ -79,9 +83,12 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
   // Overall status is worst of individual statuses
   const getOverallStatus = (item: any) => {
     if (item.isActive === false) return "Not Applicable";
-    const s1 = getStatus(item.fitnessCertDate);
-    const s2 = getStatus(item.insuranceDate);
-    const s3 = getStatus(item.pollutionDate);
+    const s1 = getStatus(
+      item.fitnessCertDate,
+      item.fitnessCertDateNotApplicable,
+    );
+    const s2 = getStatus(item.insuranceDate, item.insuranceDateNotApplicable);
+    const s3 = getStatus(item.pollutionDate, item.pollutionDateNotApplicable);
 
     if (s1 === "Expired" || s2 === "Expired" || s3 === "Expired")
       return "Expired";
@@ -128,8 +135,13 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       vehicleNumber: item.vehicleNumber,
       vehicleType: item.vehicleType,
       fitnessCertDate: item.fitnessCertDate || "",
+      fitnessCertDateNotApplicable: Boolean(
+        item.fitnessCertDateNotApplicable,
+      ),
       insuranceDate: item.insuranceDate || "",
+      insuranceDateNotApplicable: Boolean(item.insuranceDateNotApplicable),
       pollutionDate: item.pollutionDate || "",
+      pollutionDateNotApplicable: Boolean(item.pollutionDateNotApplicable),
       isActive: item.isActive !== false,
       remarks: item.remarks || "",
       documentUrl: item.documentUrl || "",
@@ -160,7 +172,20 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       const uploaded = documentFile
         ? await uploadEhsDocument(documentFile, "vehicle")
         : {};
-      const payload = { ...formData, ...uploaded, projectId };
+      const payload = {
+        ...formData,
+        ...uploaded,
+        fitnessCertDate: formData.fitnessCertDateNotApplicable
+          ? null
+          : formData.fitnessCertDate,
+        insuranceDate: formData.insuranceDateNotApplicable
+          ? null
+          : formData.insuranceDate,
+        pollutionDate: formData.pollutionDateNotApplicable
+          ? null
+          : formData.pollutionDate,
+        projectId,
+      };
 
       if (editingId) {
         await api.put(`/ehs/vehicles/${editingId}`, payload);
@@ -181,8 +206,11 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
       vehicleNumber: "",
       vehicleType: "",
       fitnessCertDate: "",
+      fitnessCertDateNotApplicable: false,
       insuranceDate: "",
+      insuranceDateNotApplicable: false,
       pollutionDate: "",
+      pollutionDateNotApplicable: false,
       isActive: true,
       remarks: "",
       documentUrl: "",
@@ -217,6 +245,11 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
     ) : (
       "-"
     );
+
+  const renderDate = (date: string, notApplicable?: boolean) => {
+    if (notApplicable) return "Not Applicable";
+    return date ? new Date(date).toLocaleDateString("en-GB") : "-";
+  };
 
   if (loading) return <div>Loading...</div>;
 
@@ -305,13 +338,22 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                 const inactive = item.isActive === false;
                 const fitnessStatus = inactive
                   ? "Not Applicable"
-                  : getStatus(item.fitnessCertDate);
+                  : getStatus(
+                      item.fitnessCertDate,
+                      item.fitnessCertDateNotApplicable,
+                    );
                 const insuranceStatus = inactive
                   ? "Not Applicable"
-                  : getStatus(item.insuranceDate);
+                  : getStatus(
+                      item.insuranceDate,
+                      item.insuranceDateNotApplicable,
+                    );
                 const pollutionStatus = inactive
                   ? "Not Applicable"
-                  : getStatus(item.pollutionDate);
+                  : getStatus(
+                      item.pollutionDate,
+                      item.pollutionDateNotApplicable,
+                    );
                 const overallStatus = getOverallStatus(item);
 
                 return (
@@ -328,33 +370,30 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                     <td className="px-6 py-4">{item.vehicleType}</td>
 
                     <td className="px-6 py-4">
-                      {item.fitnessCertDate
-                        ? new Date(item.fitnessCertDate).toLocaleDateString(
-                            "en-GB",
-                          )
-                        : "-"}
+                      {renderDate(
+                        item.fitnessCertDate,
+                        item.fitnessCertDateNotApplicable,
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge status={fitnessStatus} />
                     </td>
 
                     <td className="px-6 py-4">
-                      {item.insuranceDate
-                        ? new Date(item.insuranceDate).toLocaleDateString(
-                            "en-GB",
-                          )
-                        : "-"}
+                      {renderDate(
+                        item.insuranceDate,
+                        item.insuranceDateNotApplicable,
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge status={insuranceStatus} />
                     </td>
 
                     <td className="px-6 py-4">
-                      {item.pollutionDate
-                        ? new Date(item.pollutionDate).toLocaleDateString(
-                            "en-GB",
-                          )
-                        : "-"}
+                      {renderDate(
+                        item.pollutionDate,
+                        item.pollutionDateNotApplicable,
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge status={pollutionStatus} />
@@ -457,6 +496,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                   </label>
                   <input
                     type="date"
+                    disabled={formData.fitnessCertDateNotApplicable}
                     className="w-full px-2 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none text-sm"
                     value={formData.fitnessCertDate}
                     onChange={(e) =>
@@ -466,6 +506,22 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                       })
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2 text-xs font-bold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.fitnessCertDateNotApplicable}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          fitnessCertDateNotApplicable: e.target.checked,
+                          fitnessCertDate: e.target.checked
+                            ? ""
+                            : formData.fitnessCertDate,
+                        })
+                      }
+                    />
+                    Not applicable
+                  </label>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
@@ -473,6 +529,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                   </label>
                   <input
                     type="date"
+                    disabled={formData.insuranceDateNotApplicable}
                     className="w-full px-2 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none text-sm"
                     value={formData.insuranceDate}
                     onChange={(e) =>
@@ -482,6 +539,22 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                       })
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2 text-xs font-bold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.insuranceDateNotApplicable}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          insuranceDateNotApplicable: e.target.checked,
+                          insuranceDate: e.target.checked
+                            ? ""
+                            : formData.insuranceDate,
+                        })
+                      }
+                    />
+                    Not applicable
+                  </label>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
@@ -489,6 +562,7 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                   </label>
                   <input
                     type="date"
+                    disabled={formData.pollutionDateNotApplicable}
                     className="w-full px-2 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none text-sm"
                     value={formData.pollutionDate}
                     onChange={(e) =>
@@ -498,6 +572,22 @@ const EhsVehicle: React.FC<Props> = ({ projectId }) => {
                       })
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2 text-xs font-bold text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={formData.pollutionDateNotApplicable}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          pollutionDateNotApplicable: e.target.checked,
+                          pollutionDate: e.target.checked
+                            ? ""
+                            : formData.pollutionDate,
+                        })
+                      }
+                    />
+                    Not applicable
+                  </label>
                 </div>
               </div>
               <div>
