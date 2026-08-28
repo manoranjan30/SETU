@@ -31,8 +31,14 @@ export class EhsLegalRegister {
   @Column({ type: 'date', nullable: true })
   certifiedDate: string;
 
+  @Column({ default: false })
+  certifiedDateNotApplicable: boolean;
+
   @Column({ type: 'date', nullable: true })
   expiryDate: string;
+
+  @Column({ default: false })
+  expiryDateNotApplicable: boolean;
 
   @Column({ type: 'text', nullable: true })
   remarks: string;

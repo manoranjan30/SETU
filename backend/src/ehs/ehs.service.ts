@@ -183,10 +183,14 @@ export class EhsService {
     const legalStats = {
       total: legal.length,
       expired: legal.filter(
-        (i) => i.expiryDate && new Date(i.expiryDate) < today,
+        (i) =>
+          !i.expiryDateNotApplicable &&
+          i.expiryDate &&
+          new Date(i.expiryDate) < today,
       ).length,
       expiringSoon: legal.filter(
         (i) =>
+          !i.expiryDateNotApplicable &&
           i.expiryDate &&
           new Date(i.expiryDate) >= today &&
           new Date(i.expiryDate) <= next30Days,
@@ -204,10 +208,14 @@ export class EhsService {
     const machineryStats = {
       total: machinery.length,
       expired: machinery.filter(
-        (i) => i.expiryDate && new Date(i.expiryDate) < today,
+        (i) =>
+          !i.expiryDateNotApplicable &&
+          i.expiryDate &&
+          new Date(i.expiryDate) < today,
       ).length,
       expiringSoon: machinery.filter(
         (i) =>
+          !i.expiryDateNotApplicable &&
           i.expiryDate &&
           new Date(i.expiryDate) >= today &&
           new Date(i.expiryDate) <= next30Days,
@@ -225,9 +233,11 @@ export class EhsService {
     let vehicleExpired = 0;
     let vehicleExpiringSoon = 0;
     vehicles.forEach((v) => {
-      const certs = [v.fitnessCertDate, v.insuranceDate, v.pollutionDate].map(
-        (d) => (d ? new Date(d) : null),
-      );
+      const certs = [
+        v.fitnessCertDateNotApplicable ? null : v.fitnessCertDate,
+        v.insuranceDateNotApplicable ? null : v.insuranceDate,
+        v.pollutionDateNotApplicable ? null : v.pollutionDate,
+      ].map((d) => (d ? new Date(d) : null));
       if (certs.some((d) => d && d < today)) {
         vehicleExpired++;
       } else if (certs.some((d) => d && d <= next30Days)) {
@@ -537,12 +547,12 @@ export class EhsService {
   }
 
   async createLegal(data: any) {
-    const legal = this.legalRepo.create(this.normalizeEhsDocumentPayload(data));
+    const legal = this.legalRepo.create(this.normalizeLegalPayload(data));
     return this.legalRepo.save(legal);
   }
 
   async updateLegal(id: number, data: any) {
-    await this.legalRepo.update(id, this.normalizeEhsDocumentPayload(data));
+    await this.legalRepo.update(id, this.normalizeLegalPayload(data));
     return this.legalRepo.findOne({ where: { id } });
   }
 
@@ -558,17 +568,19 @@ export class EhsService {
     });
   }
   async createMachinery(data: any) {
+    const normalized = this.normalizeMachineryPayload(data);
     const item = this.machineryRepo.create({
-      ...this.normalizeEhsDocumentPayload(data),
-      isActive: normalizeActiveStatus(data.isActive),
+      ...normalized,
+      isActive: normalizeActiveStatus(normalized.isActive),
     });
     return this.machineryRepo.save(item);
   }
   async updateMachinery(id: number, data: any) {
+    const normalized = this.normalizeMachineryPayload(data);
     await this.machineryRepo.update(id, {
-      ...this.normalizeEhsDocumentPayload(data),
-      ...(data.isActive !== undefined
-        ? { isActive: normalizeActiveStatus(data.isActive) }
+      ...normalized,
+      ...(normalized.isActive !== undefined
+        ? { isActive: normalizeActiveStatus(normalized.isActive) }
         : {}),
     });
     return this.machineryRepo.findOne({ where: { id } });
@@ -601,17 +613,19 @@ export class EhsService {
     return this.vehicleRepo.find({ where: { projectId } });
   }
   async createVehicle(data: any) {
+    const normalized = this.normalizeVehiclePayload(data);
     const item = this.vehicleRepo.create({
-      ...this.normalizeEhsDocumentPayload(data),
-      isActive: normalizeActiveStatus(data.isActive),
+      ...normalized,
+      isActive: normalizeActiveStatus(normalized.isActive),
     });
     return this.vehicleRepo.save(item);
   }
   async updateVehicle(id: number, data: any) {
+    const normalized = this.normalizeVehiclePayload(data);
     await this.vehicleRepo.update(id, {
-      ...this.normalizeEhsDocumentPayload(data),
-      ...(data.isActive !== undefined
-        ? { isActive: normalizeActiveStatus(data.isActive) }
+      ...normalized,
+      ...(normalized.isActive !== undefined
+        ? { isActive: normalizeActiveStatus(normalized.isActive) }
         : {}),
     });
     return this.vehicleRepo.findOne({ where: { id } });
@@ -675,6 +689,52 @@ export class EhsService {
       normalized.fitnessExpiryNotApplicable === 'true';
     if (normalized.fitnessExpiryNotApplicable) {
       normalized.fitnessExpiry = null;
+    }
+    return normalized;
+  }
+
+  private normalizeLegalPayload(data: any) {
+    return this.normalizeDateNotApplicablePayload(
+      this.normalizeEhsDocumentPayload(data),
+      [
+        ['certifiedDate', 'certifiedDateNotApplicable'],
+        ['expiryDate', 'expiryDateNotApplicable'],
+      ],
+    );
+  }
+
+  private normalizeMachineryPayload(data: any) {
+    return this.normalizeDateNotApplicablePayload(
+      this.normalizeEhsDocumentPayload(data),
+      [
+        ['certifiedDate', 'certifiedDateNotApplicable'],
+        ['expiryDate', 'expiryDateNotApplicable'],
+      ],
+    );
+  }
+
+  private normalizeVehiclePayload(data: any) {
+    return this.normalizeDateNotApplicablePayload(
+      this.normalizeEhsDocumentPayload(data),
+      [
+        ['fitnessCertDate', 'fitnessCertDateNotApplicable'],
+        ['insuranceDate', 'insuranceDateNotApplicable'],
+        ['pollutionDate', 'pollutionDateNotApplicable'],
+      ],
+    );
+  }
+
+  private normalizeDateNotApplicablePayload(
+    data: any,
+    fields: Array<[string, string]>,
+  ) {
+    const normalized = { ...data };
+    for (const [dateField, flagField] of fields) {
+      normalized[flagField] =
+        normalized[flagField] === true || normalized[flagField] === 'true';
+      if (normalized[flagField]) {
+        normalized[dateField] = null;
+      }
     }
     return normalized;
   }

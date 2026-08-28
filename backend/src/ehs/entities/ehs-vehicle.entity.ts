@@ -23,11 +23,20 @@ export class EhsVehicle {
   @Column({ type: 'date', nullable: true })
   fitnessCertDate: string; // The expiry date of fitness
 
+  @Column({ default: false })
+  fitnessCertDateNotApplicable: boolean;
+
   @Column({ type: 'date', nullable: true })
   insuranceDate: string; // The expiry date of insurance
 
+  @Column({ default: false })
+  insuranceDateNotApplicable: boolean;
+
   @Column({ type: 'date', nullable: true })
   pollutionDate: string; // The expiry date of pollution
+
+  @Column({ default: false })
+  pollutionDateNotApplicable: boolean;
 
   @Column({ type: 'text', nullable: true })
   remarks: string;

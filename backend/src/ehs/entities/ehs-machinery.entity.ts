@@ -26,8 +26,14 @@ export class EhsMachinery {
   @Column({ type: 'date', nullable: true })
   certifiedDate: string;
 
+  @Column({ default: false })
+  certifiedDateNotApplicable: boolean;
+
   @Column({ type: 'date', nullable: true })
   expiryDate: string;
+
+  @Column({ default: false })
+  expiryDateNotApplicable: boolean;
 
   @Column({ default: 'Valid' })
   status: string;
