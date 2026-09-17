@@ -31,6 +31,7 @@ const LaborImportModal = ({
   const [_file, _setFile] = useState<File | null>(null);
   const [excelData, setExcelData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  const [vendorHeader, setVendorHeader] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<ImportPreviewResult | null>(null);
   const [preflightErrors, setPreflightErrors] = useState<string[]>([]);
   const [mappings, setMappings] = useState<Record<string, number>>({});
@@ -46,14 +47,40 @@ const LaborImportModal = ({
       normalizeHeader(header),
     );
 
+  const isVendorHeader = (header: string) =>
+    [
+      "vendor",
+      "vendor name",
+      "contractor",
+      "contractor name",
+      "contractor agency",
+      "agency",
+      "agency name",
+    ].includes(normalizeHeader(header));
+
   const getDateValue = (row: Record<string, unknown>) => {
     const dateHeader = Object.keys(row).find(isDateHeader);
     return dateHeader ? row[dateHeader] : "N/A";
   };
 
+  const formatDateValue = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "N/A";
+    if (/^\d{5}(?:\.\d+)?$/.test(raw)) {
+      const date = new Date(
+        Date.UTC(1899, 11, 30) + Math.floor(Number(raw)) * 86400000,
+      );
+      return date.toLocaleDateString("en-GB", { timeZone: "UTC" });
+    }
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+    return raw;
+  };
+
   const downloadTemplate = () => {
     const row = Object.fromEntries([
       ["Date", new Date().toISOString().split("T")[0]],
+      ["Vendor Name", "Enter vendor or contractor name"],
       ...categories.map((category) => [category.name, 0]),
     ]);
     const worksheet = utils.json_to_sheet([row]);
@@ -74,6 +101,7 @@ const LaborImportModal = ({
     setPreflightErrors([]);
     setExcelData([]);
     setHeaders([]);
+    setVendorHeader(null);
     setMappings({});
     setImportError("");
     setStep(1);
@@ -83,7 +111,7 @@ const LaborImportModal = ({
         const hasDateColumn = parsed.headers.some(isDateHeader);
         const automaticMappings = Object.fromEntries(
           parsed.headers.flatMap((header) => {
-            if (isDateHeader(header)) return [];
+            if (isDateHeader(header) || isVendorHeader(header)) return [];
             const category = categories.find(
               (item) => normalizeHeader(item.name) === normalizeHeader(header),
             );
@@ -93,7 +121,14 @@ const LaborImportModal = ({
 
         setLocalPreview(parsed);
         setExcelData(parsed.rows);
-        setHeaders(parsed.headers.filter((header) => !isDateHeader(header)));
+        setVendorHeader(
+          parsed.headers.find((header) => isVendorHeader(header)) || null,
+        );
+        setHeaders(
+          parsed.headers.filter(
+            (header) => !isDateHeader(header) && !isVendorHeader(header),
+          ),
+        );
         setMappings(automaticMappings);
         setPreflightErrors(
           hasDateColumn
@@ -381,6 +416,9 @@ const LaborImportModal = ({
                         <th className="px-4 py-3 font-black text-text-disabled uppercase tracking-wider">
                           Date
                         </th>
+                        <th className="px-4 py-3 font-black text-text-disabled uppercase tracking-wider">
+                          Vendor / Contractor
+                        </th>
                         {Object.entries(mappings).map(([header, catId]) => {
                           const cat = categories.find((c) => c.id === catId);
                           return cat ? (
@@ -401,7 +439,12 @@ const LaborImportModal = ({
                           className="hover:bg-surface-base/30 transition-colors"
                         >
                           <td className="px-4 py-3 font-medium text-text-muted">
-                            {String(getDateValue(row))}
+                            {formatDateValue(getDateValue(row))}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-text-muted">
+                            {vendorHeader
+                              ? String(row[vendorHeader] || "Not specified")
+                              : "Not specified"}
                           </td>
                           {Object.entries(mappings).map(([header, catId]) => {
                             const cat = categories.find((c) => c.id === catId);

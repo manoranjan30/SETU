@@ -7,6 +7,7 @@ import { ActivityLaborUpdate } from './entities/activity-labor-update.entity';
 import { LaborExcelMapping } from './entities/labor-excel-mapping.entity';
 import {
   findLaborDateValue,
+  findLaborVendorValue,
   normalizeLaborImportDate,
   resolveLaborImportMappings,
 } from './labor-import.utils';
@@ -171,6 +172,7 @@ export class LaborService {
           skippedRows += 1;
           continue;
         }
+        const contractorName = findLaborVendorValue(row);
 
         for (const [colName, categoryId] of Object.entries(colMap)) {
           const count = Number(String(row[colName] ?? '').replace(/,/g, ''));
@@ -181,6 +183,7 @@ export class LaborService {
             date,
             categoryId: Number(categoryId),
             count,
+            contractorName: contractorName || null,
             updatedBy: userIdStr,
             remarks: 'Imported from Excel',
           });

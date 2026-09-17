@@ -75,7 +75,7 @@ const parseWorkbookPreview = async (
   previewLimit: number,
 ): Promise<ImportPreviewResult> => {
   const buffer = await file.arrayBuffer();
-  const workbook = read(buffer, { type: "array" });
+  const workbook = read(buffer, { type: "array", cellDates: true });
   const firstSheetName = workbook.SheetNames[0];
   const firstSheet = workbook.Sheets[firstSheetName];
   const matrix = utils.sheet_to_json<unknown[]>(firstSheet, {
