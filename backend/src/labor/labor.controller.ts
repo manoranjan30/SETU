@@ -90,13 +90,20 @@ export class LaborController {
   @Permissions('LABOR.ENTRY.IMPORT')
   importData(
     @Param('projectId') projectId: string,
-    @Body() body: { data: any[]; mappingId: number; userId: number },
+    @Body()
+    body: {
+      data: any[];
+      mappingId?: number;
+      manualMappings?: Record<string, number>;
+      userId: number;
+    },
   ) {
     return this.laborService.importLaborData(
       parseInt(projectId),
       body.data,
       body.mappingId,
       body.userId,
+      body.manualMappings,
     );
   }
 }

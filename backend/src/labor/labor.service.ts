@@ -1,10 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
 import { LaborCategory } from './entities/labor-category.entity';
 import { DailyLaborPresence } from './entities/daily-labor-presence.entity';
 import { ActivityLaborUpdate } from './entities/activity-labor-update.entity';
 import { LaborExcelMapping } from './entities/labor-excel-mapping.entity';
+import {
+  findLaborDateValue,
+  normalizeLaborImportDate,
+  resolveLaborImportMappings,
+} from './labor-import.utils';
 
 @Injectable()
 export class LaborService {
@@ -121,26 +126,55 @@ export class LaborService {
   async importLaborData(
     projectId: number,
     data: any[],
-    mappingId: number,
+    mappingId: number | undefined,
     userId: number,
+    manualMappings?: Record<string, number>,
   ) {
     try {
-      const mapping = await this.mappingRepo.findOne({
-        where: { id: mappingId },
-      });
-      // For demo/simple import, mappings might be passed directly or used from mappingId
-      const colMap = mapping?.columnMappings || {};
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new BadRequestException('The import file contains no data rows.');
+      }
+
+      const mapping = mappingId
+        ? await this.mappingRepo.findOne({ where: { id: mappingId, projectId } })
+        : null;
+      const colMap = resolveLaborImportMappings(
+        mapping?.columnMappings,
+        manualMappings,
+      );
+      if (Object.keys(colMap).length === 0) {
+        throw new BadRequestException('Map at least one manpower category.');
+      }
+
+      const validCategoryIds = new Set(
+        (
+          await this.categoryRepo.find({
+            where: [{ projectId }, { projectId: IsNull() }],
+          })
+        ).map((category) => category.id),
+      );
+      for (const categoryId of Object.values(colMap)) {
+        if (!validCategoryIds.has(Number(categoryId))) {
+          throw new BadRequestException(
+            `Category ${categoryId} is not available for this project.`,
+          );
+        }
+      }
 
       const userIdStr = userId?.toString() || 'unknown';
       const results: any[] = [];
+      let skippedRows = 0;
 
       for (const row of data) {
-        const date = row.date || row.Date;
-        if (!date) continue;
+        const date = normalizeLaborImportDate(findLaborDateValue(row));
+        if (!date) {
+          skippedRows += 1;
+          continue;
+        }
 
         for (const [colName, categoryId] of Object.entries(colMap)) {
-          const count = parseFloat(row[colName]);
-          if (isNaN(count) || count === 0) continue;
+          const count = Number(String(row[colName] ?? '').replace(/,/g, ''));
+          if (!Number.isFinite(count) || count <= 0) continue;
 
           results.push({
             projectId,
@@ -153,8 +187,17 @@ export class LaborService {
         }
       }
 
-      if (results.length === 0) return [];
-      return await this.presenceRepo.save(results);
+      if (results.length === 0) {
+        throw new BadRequestException(
+          'No valid manpower counts were found in the mapped columns.',
+        );
+      }
+      const saved = await this.presenceRepo.save(results);
+      return {
+        importedEntries: saved.length,
+        processedRows: data.length - skippedRows,
+        skippedRows,
+      };
     } catch (error) {
       this.logger.error(
         `Failed to import labor data for project ${projectId}: ${error.message}`,

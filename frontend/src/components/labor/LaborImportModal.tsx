@@ -6,7 +6,9 @@ import {
   CheckCircle2,
   Upload,
   Map,
+  Download,
 } from "lucide-react";
+import { utils, writeFile } from "xlsx";
 import api from "../../api/axios";
 import type { ImportPreviewResult } from "../../types/data-transfer";
 import { readSpreadsheetPreview } from "../../utils/import-staging.utils";
@@ -34,6 +36,34 @@ const LaborImportModal = ({
   const [mappings, setMappings] = useState<Record<string, number>>({});
   const [step, setStep] = useState(1); // 1: Upload, 2: Map, 3: Verify
   const [loading, setLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+
+  const normalizeHeader = (header: string) =>
+    header.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  const isDateHeader = (header: string) =>
+    ["date", "attendance date", "manpower date"].includes(
+      normalizeHeader(header),
+    );
+
+  const getDateValue = (row: Record<string, unknown>) => {
+    const dateHeader = Object.keys(row).find(isDateHeader);
+    return dateHeader ? row[dateHeader] : "N/A";
+  };
+
+  const downloadTemplate = () => {
+    const row = Object.fromEntries([
+      ["Date", new Date().toISOString().split("T")[0]],
+      ...categories.map((category) => [category.name, 0]),
+    ]);
+    const worksheet = utils.json_to_sheet([row]);
+    worksheet["!cols"] = Object.keys(row).map((header) => ({
+      wch: Math.max(14, header.length + 2),
+    }));
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, worksheet, "Manpower Import");
+    writeFile(workbook, `manpower-import-template-${projectId}.xlsx`);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,23 +75,26 @@ const LaborImportModal = ({
     setExcelData([]);
     setHeaders([]);
     setMappings({});
+    setImportError("");
     setStep(1);
 
     readSpreadsheetPreview(file, 5)
       .then((parsed) => {
-        const normalizedHeaders = parsed.headers.map((header) =>
-          header.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(),
-        );
-        const hasDateColumn = normalizedHeaders.some(
-          (header) =>
-            header === "date" ||
-            header.includes("date") ||
-            header.includes("attendance date"),
+        const hasDateColumn = parsed.headers.some(isDateHeader);
+        const automaticMappings = Object.fromEntries(
+          parsed.headers.flatMap((header) => {
+            if (isDateHeader(header)) return [];
+            const category = categories.find(
+              (item) => normalizeHeader(item.name) === normalizeHeader(header),
+            );
+            return category ? [[header, category.id]] : [];
+          }),
         );
 
         setLocalPreview(parsed);
         setExcelData(parsed.rows);
-        setHeaders(parsed.headers);
+        setHeaders(parsed.headers.filter((header) => !isDateHeader(header)));
+        setMappings(automaticMappings);
         setPreflightErrors(
           hasDateColumn
             ? []
@@ -78,11 +111,17 @@ const LaborImportModal = ({
   };
 
   const handleMap = (header: string, categoryId: number) => {
-    setMappings((prev) => ({ ...prev, [header]: categoryId }));
+    setMappings((prev) => {
+      const next = { ...prev };
+      if (categoryId) next[header] = categoryId;
+      else delete next[header];
+      return next;
+    });
   };
 
   const handleImport = async () => {
     setLoading(true);
+    setImportError("");
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       const userId = user?.id;
@@ -92,26 +131,24 @@ const LaborImportModal = ({
         return;
       }
 
-      // 1. Save Mapping for future use
-      await api.post("/labor/mappings", {
-        projectId: parseInt(projectId),
-        mappingName: `Import ${new Date().toLocaleDateString()}`,
-        columnMappings: mappings,
-      });
-
-      // 2. Perform Import
-      await api.post(`/labor/import/${projectId}`, {
+      const response = await api.post(`/labor/import/${projectId}`, {
         data: excelData,
-        mappingId: 0, // In a real app, we'd use the ID from step 1
         userId,
-        // Passing mappings directly for simplicity in this demo
         manualMappings: mappings,
       });
 
+      const { importedEntries = 0, skippedRows = 0 } = response.data || {};
+      alert(
+        `Import completed: ${importedEntries} manpower entries added${skippedRows ? `, ${skippedRows} invalid rows skipped` : ""}.`,
+      );
       onSave();
       onClose();
     } catch (err) {
       console.error("Import failed", err);
+      const message =
+        (err as any)?.response?.data?.message ||
+        "Import failed. Check the file and mapped columns, then try again.";
+      setImportError(Array.isArray(message) ? message.join(" ") : message);
     } finally {
       setLoading(false);
     }
@@ -136,12 +173,22 @@ const LaborImportModal = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-surface-card rounded-xl text-text-disabled"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={downloadTemplate}
+              className="flex items-center gap-2 rounded-lg border border-border-default bg-surface-card px-3 py-2 text-xs font-bold text-text-secondary hover:bg-surface-base"
+            >
+              <Download className="w-4 h-4" />
+              Download Template
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-surface-card rounded-xl text-text-disabled"
+              aria-label="Close import"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -354,7 +401,7 @@ const LaborImportModal = ({
                           className="hover:bg-surface-base/30 transition-colors"
                         >
                           <td className="px-4 py-3 font-medium text-text-muted">
-                            {row.date || row.Date || "N/A"}
+                            {String(getDateValue(row))}
                           </td>
                           {Object.entries(mappings).map(([header, catId]) => {
                             const cat = categories.find((c) => c.id === catId);
@@ -389,6 +436,11 @@ const LaborImportModal = ({
             Back
           </button>
           <div className="flex gap-3">
+            {importError && (
+              <p className="max-w-sm self-center text-right text-xs font-semibold text-error">
+                {importError}
+              </p>
+            )}
             <button
               onClick={onClose}
               className="px-6 py-2.5 rounded-xl font-bold text-sm text-text-muted"
