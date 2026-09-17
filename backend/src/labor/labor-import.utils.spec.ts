@@ -1,5 +1,6 @@
 import {
   findLaborDateValue,
+  findLaborVendorValue,
   normalizeLaborImportDate,
   resolveLaborImportMappings,
 } from './labor-import.utils';
@@ -32,6 +33,21 @@ describe('labor import utilities', () => {
       expect(findLaborDateValue({ 'Attendance Date ': '17/09/2026' })).toBe(
         '17/09/2026',
       );
+    });
+  });
+
+  describe('findLaborVendorValue', () => {
+    it('finds vendor and contractor header aliases', () => {
+      expect(findLaborVendorValue({ 'Vendor Name': 'ABC Constructions' })).toBe(
+        'ABC Constructions',
+      );
+      expect(findLaborVendorValue({ Contractor: 'XYZ Agency' })).toBe(
+        'XYZ Agency',
+      );
+    });
+
+    it('returns an empty string when vendor details are absent', () => {
+      expect(findLaborVendorValue({ Date: '2026-09-17' })).toBe('');
     });
   });
 

@@ -58,3 +58,22 @@ export const findLaborDateValue = (row: Record<string, unknown>): unknown => {
   );
   return dateKey ? row[dateKey] : undefined;
 };
+
+export const findLaborVendorValue = (
+  row: Record<string, unknown>,
+): string => {
+  const aliases = [
+    'vendor',
+    'vendor name',
+    'contractor',
+    'contractor name',
+    'contractor agency',
+    'agency',
+    'agency name',
+  ];
+  const vendorKey = Object.keys(row).find((key) =>
+    aliases.includes(key.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()),
+  );
+  const value = vendorKey ? row[vendorKey] : '';
+  return value === null || value === undefined ? '' : String(value).trim();
+};

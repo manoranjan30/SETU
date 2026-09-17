@@ -348,6 +348,7 @@ const LaborCountView = () => {
   const downloadImportTemplate = () => {
     const row = Object.fromEntries([
       ["Date", toDateKey(new Date())],
+      ["Vendor Name", "Enter vendor or contractor name"],
       ...categories.map((category) => [category.name, 0]),
     ]);
     const worksheet = utils.json_to_sheet([row]);
