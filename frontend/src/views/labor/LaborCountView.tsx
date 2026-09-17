@@ -14,7 +14,11 @@ import {
   CheckCircle2,
   BarChart3,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Download,
 } from "lucide-react";
+import { utils, writeFile } from "xlsx";
 import api from "../../api/axios";
 import LaborCategoryModal from "../../components/labor/LaborCategoryModal";
 import LaborEntryModal from "../../components/labor/LaborEntryModal";
@@ -35,6 +39,7 @@ const LaborCountView = () => {
     new Date().toISOString().split("T")[0],
   );
   const [activeTab, setActiveTab] = useState<TabType>("daily");
+  const [reportDate, setReportDate] = useState(() => new Date());
 
   // Modals
   const [showCatModal, setShowCatModal] = useState(false);
@@ -68,15 +73,31 @@ const LaborCountView = () => {
     }
   };
 
-  // Get weekly summary (last 7 days)
-  const getWeeklySummary = () => {
-    const today = new Date();
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
+  const toDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
+  const startOfWeek = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const day = start.getDay();
+    start.setDate(start.getDate() - (day === 0 ? 6 : day - 1));
+    return start;
+  };
+
+  const weekStart = startOfWeek(reportDate);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const monthStart = new Date(reportDate.getFullYear(), reportDate.getMonth(), 1);
+  const monthEnd = new Date(reportDate.getFullYear(), reportDate.getMonth() + 1, 0);
+
+  // Get weekly summary for the selected calendar week.
+  const getWeeklySummary = () => {
     const weekData = presence.filter((p) => {
-      const d = new Date(p.date);
-      return d >= weekAgo && d <= today;
+      const dateKey = String(p.date).slice(0, 10);
+      return dateKey >= toDateKey(weekStart) && dateKey <= toDateKey(weekEnd);
     });
 
     // Group by category
@@ -113,12 +134,9 @@ const LaborCountView = () => {
 
   // Get monthly summary
   const getMonthlySummary = () => {
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
     const monthData = presence.filter((p) => {
-      const d = new Date(p.date);
-      return d >= monthStart && d <= today;
+      const dateKey = String(p.date).slice(0, 10);
+      return dateKey >= toDateKey(monthStart) && dateKey <= toDateKey(monthEnd);
     });
 
     const summary: Record<
@@ -318,6 +336,29 @@ const LaborCountView = () => {
     exportUtils.toCsv(rows, fileName, { columns });
   };
 
+  const changeReportPeriod = (amount: number) => {
+    setReportDate((current) => {
+      const next = new Date(current);
+      if (activeTab === "weekly") next.setDate(next.getDate() + amount * 7);
+      else next.setMonth(next.getMonth() + amount, 1);
+      return next;
+    });
+  };
+
+  const downloadImportTemplate = () => {
+    const row = Object.fromEntries([
+      ["Date", toDateKey(new Date())],
+      ...categories.map((category) => [category.name, 0]),
+    ]);
+    const worksheet = utils.json_to_sheet([row]);
+    worksheet["!cols"] = Object.keys(row).map((header) => ({
+      wch: Math.max(14, header.length + 2),
+    }));
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, worksheet, "Manpower Import");
+    writeFile(workbook, `manpower-import-template-${projectId}.xlsx`);
+  };
+
   return (
     <div className="h-full flex flex-col bg-surface-base">
       {/* Top Header */}
@@ -343,6 +384,14 @@ const LaborCountView = () => {
             >
               <Settings className="w-4 h-4" />
               Categories
+            </button>
+            <button
+              onClick={downloadImportTemplate}
+              className="flex items-center gap-2 bg-surface-card hover:bg-surface-base text-text-secondary px-4 py-2.5 rounded-xl font-bold text-sm transition-all border border-border-default"
+              title="Download bulk manpower import template"
+            >
+              <Download className="w-4 h-4" />
+              Import Template
             </button>
             <button
               onClick={() => setShowImportModal(true)}
@@ -555,14 +604,36 @@ const LaborCountView = () => {
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-text-secondary flex items-center gap-2">
                   <CalendarDays className="w-5 h-5 text-secondary" />
-                  Weekly Manpower Summary (Last 7 Days)
+                  Weekly Manpower Summary
                 </h3>
-                <span className="text-xs font-bold text-text-disabled">
-                  {new Date(
-                    Date.now() - 7 * 24 * 60 * 60 * 1000,
-                  ).toLocaleDateString()}{" "}
-                  - {new Date().toLocaleDateString()}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => changeReportPeriod(-1)}
+                    className="p-2 rounded-lg border border-border-default text-text-muted hover:bg-surface-base"
+                    title="Previous week"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="date"
+                    value={toDateKey(reportDate)}
+                    onChange={(event) =>
+                      setReportDate(new Date(`${event.target.value}T00:00:00`))
+                    }
+                    className="rounded-lg border-border-default bg-surface-card px-3 py-1.5 text-xs font-bold text-text-secondary"
+                    title="Choose a date in the week"
+                  />
+                  <span className="min-w-[190px] text-center text-xs font-bold text-text-disabled">
+                    {weekStart.toLocaleDateString()} - {weekEnd.toLocaleDateString()}
+                  </span>
+                  <button
+                    onClick={() => changeReportPeriod(1)}
+                    className="p-2 rounded-lg border border-border-default text-text-muted hover:bg-surface-base"
+                    title="Next week"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <table className="w-full text-left">
                 <thead>
@@ -606,7 +677,7 @@ const LaborCountView = () => {
                         colSpan={4}
                         className="px-6 py-12 text-center text-text-disabled"
                       >
-                        No data for the past 7 days
+                        No data for this week
                       </td>
                     </tr>
                   )}
@@ -623,12 +694,37 @@ const LaborCountView = () => {
                   <BarChart3 className="w-5 h-5 text-emerald-500" />
                   Monthly Manpower Report
                 </h3>
-                <span className="text-xs font-bold text-text-disabled">
-                  {new Date().toLocaleString("default", {
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => changeReportPeriod(-1)}
+                    className="p-2 rounded-lg border border-border-default text-text-muted hover:bg-surface-base"
+                    title="Previous month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="month"
+                    value={`${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, "0")}`}
+                    onChange={(event) => {
+                      const [year, month] = event.target.value.split("-").map(Number);
+                      setReportDate(new Date(year, month - 1, 1));
+                    }}
+                    className="rounded-lg border-border-default bg-surface-card px-3 py-1.5 text-xs font-bold text-text-secondary"
+                  />
+                  <span className="min-w-[130px] text-center text-xs font-bold text-text-disabled">
+                    {reportDate.toLocaleString("default", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </span>
+                  <button
+                    onClick={() => changeReportPeriod(1)}
+                    className="p-2 rounded-lg border border-border-default text-text-muted hover:bg-surface-base"
+                    title="Next month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <table className="w-full text-left">
                 <thead>
