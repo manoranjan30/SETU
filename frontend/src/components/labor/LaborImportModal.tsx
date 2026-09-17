@@ -38,6 +38,19 @@ const LaborImportModal = ({
   const [loading, setLoading] = useState(false);
   const [importError, setImportError] = useState("");
 
+  const normalizeHeader = (header: string) =>
+    header.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  const isDateHeader = (header: string) =>
+    ["date", "attendance date", "manpower date"].includes(
+      normalizeHeader(header),
+    );
+
+  const getDateValue = (row: Record<string, unknown>) => {
+    const dateHeader = Object.keys(row).find(isDateHeader);
+    return dateHeader ? row[dateHeader] : "N/A";
+  };
+
   const downloadTemplate = () => {
     const row = Object.fromEntries([
       ["Date", new Date().toISOString().split("T")[0]],
@@ -67,19 +80,21 @@ const LaborImportModal = ({
 
     readSpreadsheetPreview(file, 5)
       .then((parsed) => {
-        const normalizedHeaders = parsed.headers.map((header) =>
-          header.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(),
-        );
-        const hasDateColumn = normalizedHeaders.some(
-          (header) =>
-            header === "date" ||
-            header.includes("date") ||
-            header.includes("attendance date"),
+        const hasDateColumn = parsed.headers.some(isDateHeader);
+        const automaticMappings = Object.fromEntries(
+          parsed.headers.flatMap((header) => {
+            if (isDateHeader(header)) return [];
+            const category = categories.find(
+              (item) => normalizeHeader(item.name) === normalizeHeader(header),
+            );
+            return category ? [[header, category.id]] : [];
+          }),
         );
 
         setLocalPreview(parsed);
         setExcelData(parsed.rows);
-        setHeaders(parsed.headers);
+        setHeaders(parsed.headers.filter((header) => !isDateHeader(header)));
+        setMappings(automaticMappings);
         setPreflightErrors(
           hasDateColumn
             ? []
@@ -116,21 +131,16 @@ const LaborImportModal = ({
         return;
       }
 
-      // 1. Save Mapping for future use
-      const mappingResponse = await api.post("/labor/mappings", {
-        projectId: parseInt(projectId),
-        mappingName: `Import ${new Date().toLocaleDateString()}`,
-        columnMappings: mappings,
-      });
-
-      // 2. Perform Import
-      await api.post(`/labor/import/${projectId}`, {
+      const response = await api.post(`/labor/import/${projectId}`, {
         data: excelData,
-        mappingId: mappingResponse.data.id,
         userId,
         manualMappings: mappings,
       });
 
+      const { importedEntries = 0, skippedRows = 0 } = response.data || {};
+      alert(
+        `Import completed: ${importedEntries} manpower entries added${skippedRows ? `, ${skippedRows} invalid rows skipped` : ""}.`,
+      );
       onSave();
       onClose();
     } catch (err) {
@@ -391,7 +401,7 @@ const LaborImportModal = ({
                           className="hover:bg-surface-base/30 transition-colors"
                         >
                           <td className="px-4 py-3 font-medium text-text-muted">
-                            {row.date || row.Date || "N/A"}
+                            {String(getDateValue(row))}
                           </td>
                           {Object.entries(mappings).map(([header, catId]) => {
                             const cat = categories.find((c) => c.id === catId);

@@ -18,6 +18,13 @@ export const normalizeLaborImportDate = (value: unknown): string | null => {
   const text = value.trim();
   if (!text) return null;
 
+  if (/^\d{5}(?:\.\d+)?$/.test(text)) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    return toIsoDate(
+      new Date(excelEpoch + Math.floor(Number(text)) * 86400000),
+    );
+  }
+
   const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (isoMatch) {
     return toIsoDate(

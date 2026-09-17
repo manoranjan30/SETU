@@ -1,4 +1,5 @@
 import {
+  findLaborDateValue,
   normalizeLaborImportDate,
   resolveLaborImportMappings,
 } from './labor-import.utils';
@@ -13,12 +14,24 @@ describe('labor import utilities', () => {
       expect(normalizeLaborImportDate(46022)).toBe('2025-12-31');
     });
 
+    it('converts Excel serial dates after spreadsheet preview stringification', () => {
+      expect(normalizeLaborImportDate('46022')).toBe('2025-12-31');
+    });
+
     it('converts dd/mm/yyyy dates', () => {
       expect(normalizeLaborImportDate('17/09/2026')).toBe('2026-09-17');
     });
 
     it('rejects invalid dates', () => {
       expect(normalizeLaborImportDate('not-a-date')).toBeNull();
+    });
+  });
+
+  describe('findLaborDateValue', () => {
+    it('finds normalized attendance date headers', () => {
+      expect(findLaborDateValue({ 'Attendance Date ': '17/09/2026' })).toBe(
+        '17/09/2026',
+      );
     });
   });
 
